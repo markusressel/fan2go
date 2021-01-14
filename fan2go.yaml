@@ -1,0 +1,6 @@
+fan2go:
+
+
+  "/sys/devices/pci0000:00/0000:00:01.0/0000:01:00.0/hwmon/hwmon4/pwm1":
+    min: 20
+    max: 100
