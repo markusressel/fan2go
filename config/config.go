@@ -6,7 +6,25 @@ import (
 )
 
 type Configuration struct {
-	FanCurves []FanCurve
+	Sensors []SensorConfig
+	Fans    []FanConfig
+	//FanCurves []FanCurve
+}
+
+type SensorConfig struct {
+	Id       string
+	Platform string
+	Sensor   string
+	Min      int
+	Max      int
+}
+
+type FanConfig struct {
+	Id        string
+	Platform  string
+	Fan       int
+	NeverStop bool
+	Temps     []string
 }
 
 var CurrentConfig Configuration

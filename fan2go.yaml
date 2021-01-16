@@ -1,6 +1,41 @@
-fan2go:
-
-
-  "/sys/devices/pci0000:00/0000:00:01.0/0000:01:00.0/hwmon/hwmon4/pwm1":
-    min: 20
-    max: 100
+sensors:
+  - id: cpu_package
+    platform: coretemp
+    sensor: package
+    min: 45
+    max: 70
+  - id: mainboard
+    platform: it8620
+    sensor: temp3 # Intel PECI
+    min: 40
+    max: 60
+  - id: sata_ssd
+    platform: acpitz
+    sensor: temp1
+    min: 28
+    max: 40
+fans:
+  - id: in_front
+    platform: it8620
+    fan: 3 # HDD Cage (Front)
+    #pwm_line_start: 100
+    #pwm_line_end: 240
+    never_stop: yes
+    temps:
+      - sata_ssd
+  - id: in_bottom
+    platform: it8620
+    fan: 4 # Power Supply (Bottom)
+    #pwm_line_start: 100
+    #pwm_line_end: 240
+    never_stop: yes
+    temps:
+      - mainboard
+  - id: in_top_double
+    platform: it8620
+    fan: 5 # Radiator (Top)
+    #pwm_line_start: 100
+    #pwm_line_end: 240
+    never_stop: yes
+    temps:
+      - cpu_package
