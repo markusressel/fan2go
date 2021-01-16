@@ -38,6 +38,7 @@ import (
 
 const (
 	MaxPwmValue   = 255
+	MinPwmValue   = 0
 	BucketFans    = "fans"
 	BucketSensors = "sensors"
 )
@@ -58,6 +59,7 @@ type Fan struct {
 	rpmInput  string // RPM values
 	pwmOutput string // PWM control
 	config    *config.FanConfig
+	startPwm  int
 }
 
 type Sensor struct {
@@ -72,10 +74,10 @@ var (
 )
 
 func main() {
-	// TODO: enable
-	//if getProcessOwner() != "root" {
-	//	log.Fatalf("Please run fan2go as root")
-	//}
+	// TODO: maybe it is possible without root by providing permissions?
+	if getProcessOwner() != "root" {
+		log.Fatalf("Fan control requires root access, please run fan2go as root")
+	}
 
 	// TODO: cmd line parameters
 	//cmd.Execute()
@@ -571,72 +573,34 @@ func setPwmEnabled(fan Fan, value int) (err error) {
 	return err
 }
 
-func getPwmEnabled(outputPath string) (int, error) {
-	pwmEnabledFilePath := outputPath + "_enable"
+// get the pwmX_enabled value of a fan
+func getPwmEnabled(fan Fan) (int, error) {
+	pwmEnabledFilePath := fan.pwmOutput + "_enable"
 	return readIntFromFile(pwmEnabledFilePath)
 }
 
-//func setAllFandsToMax(outputPath string) (err error) {
-//	pwmEnabledFilePath := outputPath + "_enable"
-//
-//	// I think this tries to set all fans to maximum speed to
-//	// detect which fans are actually populated.
-//
-//	if _, err := os.Stat(pwmEnabledFilePath); err != nil {
-//		if os.IsNotExist(err) {
-//			// No enable file? Just set to max
-//			err = writeIntToFile(MaxPwmValue, pwmEnabledFilePath)
-//			return err
-//		}
-//		panic(err)
-//	}
-//
-//	// Try pwmN_enable=0
-//	//err = writeIntToFile(0, pwmEnabledFilePath)
-//	//if err == nil {
-//	//	value := readIntFromFile(pwmEnabledFilePath)
-//	//	if value == 0 {
-//	//		// success
-//	//		return err
-//	//	}
-//	//}
-//
-//	//	# It didn't work, try pwmN_enable=1 pwmN=255
-//	err = setPwmEnabled(outputPath, 1)
-//	if err != nil {
-//		return err
-//	}
-//
-//	err = writeIntToFile(getMaxPwmValue(outputPath), outputPath)
-//	if err == nil {
-//		time.Sleep(1 * time.Second)
-//		value := readIntFromFile(outputPath)
-//		if value >= getMaxPwmValue(outputPath) {
-//			// success
-//			return nil
-//		} else {
-//			return errors.New(fmt.Sprintf("PWM stuck to %d", value))
-//		}
-//	}
-//
-//	return err
-//}
-
+// get the maximum valid pwm value of a fan
 func getMaxPwmValue(fan Fan) (result int) {
-	err := Database.View(func(tx *bolt.Tx) error {
-		key := fmt.Sprintf("%s_pwm_max", fan.name)
-		value, err := readInt(BucketFans, key)
-		if err == nil {
-			result = value
-		}
-		return err
-	})
-
-	if err == nil {
-		return result
-	} else {
-		log.Print(err.Error())
+	key := fmt.Sprintf("%s_pwm_max", fan.name)
+	result, err := readInt(BucketFans, key)
+	if err != nil {
 		result = MaxPwmValue
+	}
+	return result
+}
+
+// get the minimum valid pwm value of a fan
+func getMinPwmValue(fan Fan) (result int) {
+	key := fmt.Sprintf("%s_pwm_min", fan.name)
+	result, err := readInt(BucketFans, key)
+	if err != nil {
+		result = MinPwmValue
+	}
+
+	// if the fan is never supposed to stop,
+	// use the lowest pwm value where the fan is still spinning
+	if fan.config.NeverStop {
+		result = fan.startPwm
 	}
 
 	return result
@@ -646,31 +610,42 @@ func getMaxPwmValue(fan Fan) (result int) {
 func getPwm(fan Fan) int {
 	value, err := readIntFromFile(fan.pwmOutput)
 	if err != nil {
-		return 0
+		return MinPwmValue
 	}
 	return value
 }
 
 // set the pwm speed of a fan to the specified value (0..255)
 func setPwm(fan Fan, pwm int) (err error) {
-	if pwm > 255 {
-		pwm = 255
-	} else if pwm < 0 {
-		pwm = 0
+	// ensure target value is within bounds of possible values
+	if pwm > MaxPwmValue {
+		pwm = MaxPwmValue
+	} else if pwm < MinPwmValue {
+		pwm = MinPwmValue
 	}
 
-	log.Printf("Setting %s to %d ...", fan.name, pwm)
+	// map the target value to the possible range of this fan
+	maxPwm := getMaxPwmValue(fan)
+	minPwm := getMinPwmValue(fan)
+
+	target := minPwm + int((float64(pwm)/MaxPwmValue)*float64(maxPwm))
+
+	log.Printf("Setting %s to %d (mapped: %d) ...", fan.name, pwm, target)
 	return writeIntToFile(pwm, fan.pwmOutput)
 }
 
 // ===== Bolt =====
 func readInt(bucket string, key string) (result int, err error) {
-	err = Database.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte(bucket))
+	err = Database.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
 		if err != nil {
 			return fmt.Errorf("create bucket: %s", err)
 		}
-		result, err = strconv.Atoi(string(b.Get([]byte(key))))
+		v := b.Get([]byte(key))
+		if v == nil {
+			return os.ErrNotExist
+		}
+		result, err = strconv.Atoi(string(v))
 		return err
 	})
 	return result, err
