@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asecurityteam/rolling"
 	"github.com/fsnotify/fsnotify"
 	bolt "go.etcd.io/bbolt"
 	//"github.com/markusressel/fan2go/cmd"
@@ -37,10 +38,11 @@ import (
 )
 
 const (
-	MaxPwmValue   = 255
-	MinPwmValue   = 0
-	BucketFans    = "fans"
-	BucketSensors = "sensors"
+	MovingAvgWindowSize = 10 * 20
+	MaxPwmValue         = 255
+	MinPwmValue         = 0
+	BucketFans          = "fans"
+	BucketSensors       = "sensors"
 )
 
 type Controller struct {
@@ -63,14 +65,17 @@ type Fan struct {
 }
 
 type Sensor struct {
-	name  string
-	index int
-	input string
+	name   string
+	index  int
+	input  string
+	config *config.SensorConfig
 }
 
 var (
-	Controllers []Controller
-	Database    *bolt.DB
+	Controllers         []Controller
+	Database            *bolt.DB
+	SensorMap           = map[string]*Sensor{}
+	SensorValueArrayMap = map[string]*rolling.PointPolicy{}
 )
 
 func main() {
@@ -95,13 +100,34 @@ func main() {
 	}
 
 	for _, controller := range Controllers {
+		// match fan and fan config entries
 		for _, fan := range controller.fans {
 			fanConfig := findFanConfig(controller, *fan)
 			if fanConfig != nil {
 				fan.config = fanConfig
 			}
 		}
-		// TODO: match sensors and sensor config entries
+		// match sensor and sensor config entries
+		for _, sensor := range controller.sensors {
+			sensorConfig := findSensorConfig(controller, *sensor)
+			if sensorConfig != nil {
+				sensor.config = sensorConfig
+
+				SensorMap[sensorConfig.Id] = sensor
+				// initialize arrays for storing temps
+				pointWindow := rolling.NewPointPolicy(rolling.NewWindow(MovingAvgWindowSize))
+				SensorValueArrayMap[sensor.input] = pointWindow
+				currentValue, err := readIntFromFile(sensor.input)
+				if err != nil {
+					currentValue = 50000
+				}
+				for i := 0; i < MovingAvgWindowSize; i++ {
+					values := SensorValueArrayMap[sensor.input]
+					values.Append(float64(currentValue))
+				}
+				fmt.Println(SensorValueArrayMap[sensor.input])
+			}
+		}
 	}
 
 	// TODO: measure fan curves / use realtime measurements to update the curve?
@@ -143,8 +169,7 @@ func findControllers() (controllers []Controller, err error) {
 		fans := createFans(devicePath)
 		sensors := createSensors(devicePath)
 
-		if len(fans) <= 0 {
-			//log.Printf("No usable PWM outputs for %s, skipping.", devicePath)
+		if len(fans) <= 0 && len(sensors) <= 0 {
 			continue
 		}
 
@@ -210,34 +235,22 @@ func findHwmonDevicePaths() []string {
 
 // goroutine to monitor temp and fan sensors
 func monitor() {
-	for _, device := range Controllers {
-		for _, sensor := range device.sensors {
-			watcher, err := startSensorWatcher(*sensor)
-			if err != nil {
-				log.Print(err.Error())
-			} else {
-				defer watcher.Close()
-			}
-		}
-		for _, fan := range device.fans {
-			watcher, err := startFanFsWatcher(*fan)
-			if err != nil {
-				log.Print(err.Error())
-			} else {
-				defer watcher.Close()
-			}
+	go startSensorWatcher()
 
-		}
-	}
-
-	//t := time.Tick(2 * time.Second)
-	//for {
-	//	select {
-	//	case <-t:
-	//		//updateInputs()
-	//		printDeviceStatus(Controllers)
+	// TODO: seems like its not possible to watch for changes on temp and rpm files using inotify :(
+	//for _, device := range Controllers {
+	//	for _, fan := range device.fans {
+	//		watcher, err := startFanFsWatcher(*fan)
+	//		if err != nil {
+	//			log.Print(err.Error())
+	//		} else {
+	//			defer watcher.Close()
+	//		}
 	//	}
 	//}
+
+	// wait forever
+	select {}
 }
 
 func startFanFsWatcher(fan Fan) (*fsnotify.Watcher, error) {
@@ -296,53 +309,42 @@ func updateFan(fan Fan) (err error) {
 	return err
 }
 
-func startSensorWatcher(sensor Sensor) (*fsnotify.Watcher, error) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	go func() {
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				if event.Op&fsnotify.Write == fsnotify.Write {
-					err := updateSensor(sensor)
-					if err != nil {
-						log.Print(err.Error())
-					}
-					newValue, _ := readInt(BucketSensors, sensor.input)
-					log.Printf("%s: %d", sensor.name, newValue)
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				log.Println("error:", err)
-			}
+func startSensorWatcher() {
+	t := time.Tick(100 * time.Millisecond)
+	for {
+		select {
+		case <-t:
+			updateInputs()
 		}
-	}()
-
-	err = watcher.Add(sensor.input)
-	if err != nil {
-		log.Fatal(err.Error())
 	}
-
-	return watcher, err
 }
 
 func updateInputs() {
-	for _, device := range Controllers {
-		for _, sensor := range device.sensors {
-			err := updateSensor(*sensor)
+	for _, controller := range Controllers {
+		for _, fan := range controller.fans {
+			err := updateRpm(*fan)
 			if err != nil {
 				log.Fatal(err)
 			}
 		}
+
+		for _, sensor := range controller.sensors {
+			if _, ok := SensorValueArrayMap[sensor.input]; ok {
+				err := updateSensor(*sensor)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+		}
 	}
+}
+
+func updateRpm(fan Fan) (err error) {
+	value, err := readIntFromFile(fan.rpmInput)
+	if err != nil {
+		return err
+	}
+	return storeInt(BucketSensors, fan.rpmInput, value)
 }
 
 func updateSensor(sensor Sensor) (err error) {
@@ -350,16 +352,19 @@ func updateSensor(sensor Sensor) (err error) {
 	if err != nil {
 		return err
 	}
+	values := SensorValueArrayMap[sensor.input]
+	values.Append(float64(value))
+
 	return storeInt(BucketSensors, sensor.input, value)
 }
 
 // goroutine to update fan speeds
 func fanSpeedUpdater() {
-	t := time.Tick(5 * time.Second)
+	t := time.Tick(100 * time.Millisecond)
 	for {
 		select {
 		case <-t:
-			log.Printf("Updating fan speeds...")
+			//log.Printf("Updating fan speeds...")
 			for _, controller := range Controllers {
 				for _, fan := range controller.fans {
 					if fan.config == nil {
@@ -390,6 +395,16 @@ func findFanConfig(controller Controller, fan Fan) (fanConfig *config.FanConfig)
 	return nil
 }
 
+func findSensorConfig(controller Controller, sensor Sensor) (sensorConfig *config.SensorConfig) {
+	for _, sensorConfig := range config.CurrentConfig.Sensors {
+		if controller.platform == sensorConfig.Platform &&
+			sensor.index == sensorConfig.Index {
+			return &sensorConfig
+		}
+	}
+	return nil
+}
+
 // calculates optimal fan speeds for all given devices
 func setOptimalFanSpeed(fan Fan) {
 	target := calculateTargetSpeed(fan)
@@ -403,12 +418,35 @@ func setOptimalFanSpeed(fan Fan) {
 func calculateTargetSpeed(fan Fan) int {
 	// TODO: calculate target fan curve based on min/max temp values
 
-	pwm := getPwm(fan)
-	if pwm < 255 {
+	sensor := SensorMap[fan.config.Sensor]
+	minTemp := sensor.config.Min * 1000 // degree to milli-degree
+	maxTemp := sensor.config.Max * 1000
+
+	var avgTemp int
+	temps := SensorValueArrayMap[sensor.input]
+	avgTemp = int(temps.Reduce(rolling.Avg))
+
+	//log.Printf("Avg temp of %s: %d", sensor.name, avgTemp)
+
+	if avgTemp >= maxTemp {
+		// full throttle if max temp is reached
 		return 255
+	} else if avgTemp <= minTemp {
+		// turn fan off if at/below min temp
+		return 0
 	}
 
-	return 1
+	ratio := (float64(avgTemp) - float64(minTemp)) / (float64(maxTemp) - float64(minTemp))
+	return int(ratio * 255)
+
+	// Toggling between off and "full on" for testing
+	//pwm := getPwm(fan)
+	//if pwm < 255 {
+	//	return 255
+	//}
+	//
+	//return 1
+
 	//return rand.Intn(getMaxPwmValue(fan))
 }
 
@@ -628,8 +666,14 @@ func setPwm(fan Fan, pwm int) (err error) {
 	maxPwm := getMaxPwmValue(fan)
 	minPwm := getMinPwmValue(fan)
 
+	// TODO: map target pwm to fancurve?
+
 	target := minPwm + int((float64(pwm)/MaxPwmValue)*float64(maxPwm))
 
+	current := getPwm(fan)
+	if target == current {
+		return nil
+	}
 	log.Printf("Setting %s to %d (mapped: %d) ...", fan.name, pwm, target)
 	return writeIntToFile(pwm, fan.pwmOutput)
 }

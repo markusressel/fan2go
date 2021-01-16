@@ -14,7 +14,7 @@ type Configuration struct {
 type SensorConfig struct {
 	Id       string
 	Platform string
-	Sensor   string
+	Index    int
 	Min      int
 	Max      int
 }
@@ -24,7 +24,7 @@ type FanConfig struct {
 	Platform  string
 	Fan       int
 	NeverStop bool
-	Temps     []string
+	Sensor    string
 }
 
 var CurrentConfig Configuration
