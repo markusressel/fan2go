@@ -7,7 +7,7 @@ A daemon to control the fans of a computer.
 Download the latest release from GitHub:
 
 ```shell
-curl -L -o fan2go  https://api.github.com/repos/markusressel/fan2go/releases/latest
+curl -L -o fan2go  https://github.com/markusressel/fan2go/releases/latest/download/fan2go-linux-amd64
 ```
 
 ### Configuration
