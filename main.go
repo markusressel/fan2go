@@ -24,6 +24,7 @@ import (
 	"io/ioutil"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -76,7 +77,10 @@ var (
 	Controllers         []Controller
 	Database            *bolt.DB
 	SensorMap           = map[string]*Sensor{}
+	// map of sensor ids -> sensor value rolling window
 	SensorValueArrayMap = map[string]*rolling.PointPolicy{}
+	// map fan id -> pwm -> rpm value rolling window
+	FanCurveMap = map[string]*map[int]*rolling.PointPolicy{}
 )
 
 func main() {
@@ -126,8 +130,7 @@ func main() {
 					currentValue = 50000
 				}
 				for i := 0; i < MovingAvgWindowSize; i++ {
-					values := SensorValueArrayMap[sensor.input]
-					values.Append(float64(currentValue))
+					pointWindow.Append(float64(currentValue))
 				}
 				fmt.Println(SensorValueArrayMap[sensor.input])
 			}
@@ -257,7 +260,7 @@ func monitor() {
 	select {}
 }
 
-func startFanFsWatcher(fan Fan) (*fsnotify.Watcher, error) {
+func startFanFsWatcher(fan *Fan) (*fsnotify.Watcher, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err)
@@ -297,7 +300,7 @@ func startFanFsWatcher(fan Fan) (*fsnotify.Watcher, error) {
 	return watcher, err
 }
 
-func updateFan(fan Fan) (err error) {
+func updateFan(fan *Fan) (err error) {
 	pwmValue := getPwm(fan)
 	rpmValue, err := readIntFromFile(fan.rpmInput)
 	if err != nil {
@@ -323,13 +326,16 @@ func startSensorWatcher() {
 	}
 }
 
+// iterates all sensors and updates their values
 func updateInputs() {
 	for _, controller := range Controllers {
 		for _, fan := range controller.fans {
-			err := updateRpm(*fan)
+			err := updateRpm(fan)
 			if err != nil {
 				log.Fatal(err)
 			}
+			// TODO: probably not necessary to do this all the time
+			updateStartPwm(fan)
 		}
 
 		for _, sensor := range controller.sensors {
@@ -343,14 +349,62 @@ func updateInputs() {
 	}
 }
 
-func updateRpm(fan Fan) (err error) {
-	value, err := readIntFromFile(fan.rpmInput)
-	if err != nil {
-		return err
+// read the current value of a fan RPM sensor and append it to the moving window
+func updateRpm(fan *Fan) (err error) {
+	pwm := getPwm(fan)
+	rpm := getRpm(fan)
+
+	pwmRpmMap, ok := FanCurveMap[fan.rpmInput]
+	if !ok {
+		// create map for the current fan
+		pwmRpmMap = &map[int]*rolling.PointPolicy{}
+		FanCurveMap[fan.rpmInput] = pwmRpmMap
 	}
-	return storeInt(BucketSensors, fan.rpmInput, value)
+	pointWindow, ok := (*pwmRpmMap)[pwm]
+	if !ok {
+		// create rolling window for current pwm value
+		pointWindow = rolling.NewPointPolicy(rolling.NewWindow(MovingAvgWindowSize))
+		(*pwmRpmMap)[pwm] = pointWindow
+	}
+	pointWindow.Append(float64(rpm))
+
+	return storeInt(BucketSensors, fan.rpmInput, rpm)
 }
 
+func updateStartPwm(fan *Fan) {
+	var startPwm int
+	pwmRpmMap, ok := FanCurveMap[fan.rpmInput]
+	if !ok {
+		// we have no data yet
+		startPwm = 0
+	} else {
+		// get pwm keys that we have data for
+		keys := make([]int, len(*pwmRpmMap))
+		i := 0
+		for k := range *pwmRpmMap {
+			keys[i] = k
+			i++
+		}
+		// sort them increasing
+		sort.Ints(keys)
+
+		for _, pwm := range keys {
+			window := (*pwmRpmMap)[pwm]
+			avgRpm := int(window.Reduce(rolling.Avg))
+			if avgRpm > 0 {
+				startPwm = pwm
+				break
+			}
+		}
+	}
+
+	if fan.startPwm != startPwm {
+		log.Printf("Start PWM of %s: %d", fan.rpmInput, startPwm)
+		fan.startPwm = startPwm
+	}
+}
+
+// read the current value of a sensor and append it to the moving window
 func updateSensor(sensor Sensor) (err error) {
 	value, err := readIntFromFile(sensor.input)
 	if err != nil {
@@ -382,7 +436,7 @@ func fanSpeedUpdater() {
 							continue
 						}
 					}
-					setOptimalFanSpeed(*fan)
+					setOptimalFanSpeed(fan)
 				}
 			}
 		}
@@ -410,7 +464,7 @@ func findSensorConfig(controller Controller, sensor Sensor) (sensorConfig *confi
 }
 
 // calculates optimal fan speeds for all given devices
-func setOptimalFanSpeed(fan Fan) {
+func setOptimalFanSpeed(fan *Fan) {
 	target := calculateTargetSpeed(fan)
 	err := setPwm(fan, target)
 	if err != nil {
@@ -419,7 +473,7 @@ func setOptimalFanSpeed(fan Fan) {
 }
 
 // calculates the target speed for a given device output
-func calculateTargetSpeed(fan Fan) int {
+func calculateTargetSpeed(fan *Fan) int {
 	// TODO: calculate target fan curve based on min/max temp values
 
 	sensor := SensorMap[fan.config.Sensor]
@@ -540,6 +594,7 @@ func createFans(devicePath string) []*Fan {
 			index:     index,
 			pwmOutput: output,
 			rpmInput:  inputs[idx],
+			startPwm:  0,
 		})
 	}
 
@@ -612,7 +667,7 @@ func getPwmEnabled(fan Fan) (int, error) {
 }
 
 // get the maximum valid pwm value of a fan
-func getMaxPwmValue(fan Fan) (result int) {
+func getMaxPwmValue(fan *Fan) (result int) {
 	key := fmt.Sprintf("%s_pwm_max", fan.name)
 	result, err := readInt(BucketFans, key)
 	if err != nil {
@@ -622,7 +677,7 @@ func getMaxPwmValue(fan Fan) (result int) {
 }
 
 // get the minimum valid pwm value of a fan
-func getMinPwmValue(fan Fan) (result int) {
+func getMinPwmValue(fan *Fan) (result int) {
 	key := fmt.Sprintf("%s_pwm_min", fan.name)
 	result, err := readInt(BucketFans, key)
 	if err != nil {
@@ -639,7 +694,7 @@ func getMinPwmValue(fan Fan) (result int) {
 }
 
 // get the pwm speed of a fan (0..255)
-func getPwm(fan Fan) int {
+func getPwm(fan *Fan) int {
 	value, err := readIntFromFile(fan.pwmOutput)
 	if err != nil {
 		return MinPwmValue
@@ -648,7 +703,7 @@ func getPwm(fan Fan) int {
 }
 
 // set the pwm speed of a fan to the specified value (0..255)
-func setPwm(fan Fan, pwm int) (err error) {
+func setPwm(fan *Fan, pwm int) (err error) {
 	// ensure target value is within bounds of possible values
 	if pwm > MaxPwmValue {
 		pwm = MaxPwmValue
@@ -672,13 +727,22 @@ func setPwm(fan Fan, pwm int) (err error) {
 	return writeIntToFile(pwm, fan.pwmOutput)
 }
 
+// get the rpm value of a fan
+func getRpm(fan *Fan) int {
+	value, err := readIntFromFile(fan.rpmInput)
+	if err != nil {
+		return 0
+	}
+	return value
+}
+
 // ===== Console Output =====
 
 func printDeviceStatus(devices []Controller) {
 	for _, device := range devices {
 		log.Printf("Controller: %s", device.name)
 		for _, fan := range device.fans {
-			value := getPwm(*fan)
+			value := getPwm(fan)
 			isAuto, _ := isPwmAuto(device.path)
 			log.Printf("Output: %s Value: %d Auto: %v", fan.name, value, isAuto)
 		}
