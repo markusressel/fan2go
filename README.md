@@ -13,7 +13,7 @@ curl -L -o fan2go  https://api.github.com/repos/markusressel/fan2go/releases/lat
 ### Configuration
 
 ```yaml
-dbPath: "fan2go.db"
+dbPath: "~/.fan2go.db"
 tempSensorPollingRate: 200ms
 rollingWindowSize: 100
 rpmPollingRate: 1s
@@ -67,7 +67,8 @@ fan2go scans the `/sys/class/hwmon` directory for hardware monitor paths. All of
 - `tempX_input`
 - `pwmX`
 - `pwm_input`
-  files, which represent temperature sensors, RPM sensors and PWM outputs.
+
+files, which represent temperature sensors, RPM sensors and PWM outputs.
 
 ### Initialization
 
@@ -86,12 +87,11 @@ All of this is saved to a local bolt database.
 
 To monitor changes in temperature sensor values, a goroutine is started which continuously reads the `tempX_input` files
 of all sensors specified in the config. Sensor values are stored in a moving window of size `rollingWindowSize` (see
-
-# configuration).
+configuration).
 
 ### Fan Controllers
 
-To update the fan speed, one goroutine is started **per fan**, which continously adjusts the PWM value of a given fan
+To update the fan speed, one goroutine is started **per fan**, which continuously adjusts the PWM value of a given fan
 based on the sensor data measured by the monitor.
 
 # Dependencies
