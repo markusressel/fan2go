@@ -798,7 +798,7 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	maxPwm := getMaxPwmValue(fan)
 	minPwm := getMinPwmValue(fan)
 
-	target := minPwm + int((float64(pwm)/MaxPwmValue)*float64(maxPwm))
+	target := minPwm + int((float64(pwm)/MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
 
 	// TODO: map target pwm to fancurve?
 
