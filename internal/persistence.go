@@ -1,11 +1,9 @@
-package persistence
+package internal
 
 import (
 	"encoding/json"
 	"fmt"
 	"github.com/asecurityteam/rolling"
-	"github.com/markusressel/fan2go/internal/config"
-	"github.com/markusressel/fan2go/internal/data"
 	bolt "go.etcd.io/bbolt"
 	"log"
 	"os"
@@ -21,7 +19,7 @@ var (
 )
 
 func Open() *bolt.DB {
-	DB, err := bolt.Open(config.CurrentConfig.DbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
+	DB, err := bolt.Open(CurrentConfig.DbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -30,7 +28,7 @@ func Open() *bolt.DB {
 }
 
 // saves the fan curve data of the given fan
-func SaveFanPwmData(fan *data.Fan) (err error) {
+func SaveFanPwmData(fan *Fan) (err error) {
 	key := fan.PwmOutput
 
 	// convert the curve data moving window to a map to arrays, so we can persist them
@@ -60,7 +58,7 @@ func SaveFanPwmData(fan *data.Fan) (err error) {
 }
 
 // loads the fan curve data and attaches it to the given fan
-func LoadFanPwmData(fan *data.Fan) error {
+func LoadFanPwmData(fan *Fan) error {
 	key := fan.PwmOutput
 
 	fanCurveDataMap := map[int][]float64{}
@@ -90,7 +88,7 @@ func LoadFanPwmData(fan *data.Fan) error {
 
 	// convert the persisted map to arrays back to a moving window and attach it to the fan
 	for key, value := range fanCurveDataMap {
-		fanCurveMovingWindow := rolling.NewPointPolicy(rolling.NewWindow(config.CurrentConfig.RpmRollingWindowSize))
+		fanCurveMovingWindow := rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.RpmRollingWindowSize))
 		for _, rpm := range value {
 			fanCurveMovingWindow.Append(rpm)
 		}

@@ -1,12 +1,9 @@
-package backend
+package internal
 
 import (
 	"errors"
 	"fmt"
 	"github.com/asecurityteam/rolling"
-	"github.com/markusressel/fan2go/internal/config"
-	"github.com/markusressel/fan2go/internal/data"
-	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/util"
 	"log"
 	"os"
@@ -23,8 +20,8 @@ const (
 )
 
 var (
-	Controllers []*data.Controller
-	SensorMap   = map[string]*data.Sensor{}
+	Controllers []*Controller
+	SensorMap   = map[string]*Sensor{}
 )
 
 func Run() {
@@ -43,7 +40,7 @@ func Run() {
 	// try to load fans from persistence
 	for _, controller := range Controllers {
 		for _, fan := range controller.Fans {
-			err = persistence.LoadFanPwmData(fan)
+			err = LoadFanPwmData(fan)
 		}
 	}
 
@@ -99,13 +96,13 @@ func mapConfigToControllers() {
 
 				SensorMap[sensorConfig.Id] = sensor
 				// initialize arrays for storing temps
-				pointWindow := rolling.NewPointPolicy(rolling.NewWindow(config.CurrentConfig.TempRollingWindowSize))
+				pointWindow := rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.TempRollingWindowSize))
 				sensor.Values = pointWindow
 				currentValue, err := util.ReadIntFromFile(sensor.Input)
 				if err != nil {
 					currentValue = 50000
 				}
-				for i := 0; i < config.CurrentConfig.TempRollingWindowSize; i++ {
+				for i := 0; i < CurrentConfig.TempRollingWindowSize; i++ {
 					pointWindow.Append(float64(currentValue))
 				}
 			}
@@ -191,8 +188,8 @@ func monitor() {
 
 func startSensorWatcher() {
 	// update RPM and Temps at different rates
-	tempTick := time.Tick(config.CurrentConfig.TempSensorPollingRate)
-	rpmTick := time.Tick(config.CurrentConfig.RpmPollingRate)
+	tempTick := time.Tick(CurrentConfig.TempSensorPollingRate)
+	rpmTick := time.Tick(CurrentConfig.RpmPollingRate)
 	for {
 		select {
 		case <-tempTick:
@@ -212,7 +209,7 @@ func measureRpmSensors() {
 }
 
 // read the current value of a fan RPM sensor and append it to the moving window
-func measureRpm(fan *data.Fan) {
+func measureRpm(fan *Fan) {
 	pwm := getPwm(fan)
 	rpm := getRpm(fan)
 
@@ -225,7 +222,7 @@ func measureRpm(fan *data.Fan) {
 	pointWindow, ok := (*pwmRpmMap)[pwm]
 	if !ok {
 		// create rolling window for current pwm value
-		pointWindow = rolling.NewPointPolicy(rolling.NewWindow(config.CurrentConfig.RpmRollingWindowSize))
+		pointWindow = rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.RpmRollingWindowSize))
 		(*pwmRpmMap)[pwm] = pointWindow
 	}
 	pointWindow.Append(float64(rpm))
@@ -244,7 +241,7 @@ func measureTempSensors() {
 	}
 }
 
-func updatePwmBoundaries(fan *data.Fan) {
+func updatePwmBoundaries(fan *Fan) {
 	startPwm := 255
 	maxPwm := 255
 	pwmRpmMap := fan.FanCurveData
@@ -289,7 +286,7 @@ func updatePwmBoundaries(fan *data.Fan) {
 }
 
 // read the current value of a sensor and append it to the moving window
-func updateSensor(sensor data.Sensor) (err error) {
+func updateSensor(sensor Sensor) (err error) {
 	value, err := util.ReadIntFromFile(sensor.Input)
 	if err != nil {
 		return err
@@ -308,7 +305,7 @@ func updateSensor(sensor data.Sensor) (err error) {
 }
 
 // goroutine to continuously adjust the speed of a fan
-func fanController(fan *data.Fan) {
+func fanController(fan *Fan) {
 	err := setPwmEnabled(*fan, 1)
 	if err != nil {
 		err = setPwmEnabled(*fan, 0)
@@ -320,13 +317,13 @@ func fanController(fan *data.Fan) {
 
 	// check if we have data for this fan in persistence,
 	// if not we need to run the initialization sequence
-	err = persistence.LoadFanPwmData(fan)
+	err = LoadFanPwmData(fan)
 	if err != nil {
 		runInitializationSequence(fan)
 	}
 	updatePwmBoundaries(fan)
 
-	t := time.Tick(config.CurrentConfig.ControllerAdjustmentTickRate)
+	t := time.Tick(CurrentConfig.ControllerAdjustmentTickRate)
 	for {
 		select {
 		case <-t:
@@ -337,7 +334,7 @@ func fanController(fan *data.Fan) {
 
 // runs an initialization sequence for the given fan
 // to determine an estimation of its fan curve
-func runInitializationSequence(fan *data.Fan) {
+func runInitializationSequence(fan *Fan) {
 	log.Printf("Running initialization sequence for %s", fan.Config.Id)
 	for pwm := 0; pwm < MaxPwmValue; pwm++ {
 		// set a pwm
@@ -363,21 +360,21 @@ func runInitializationSequence(fan *data.Fan) {
 		time.Sleep(1100 * time.Millisecond)
 
 		log.Printf("Measuring RPM of  %s at PWM: %d", fan.Config.Id, pwm)
-		for i := 0; i < config.CurrentConfig.RpmRollingWindowSize; i++ {
+		for i := 0; i < CurrentConfig.RpmRollingWindowSize; i++ {
 			// update rpm curve
 			measureRpm(fan)
 		}
 	}
 
 	// save to database to restore it on restarts
-	err := persistence.SaveFanPwmData(fan)
+	err := SaveFanPwmData(fan)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
 }
 
-func findFanConfig(controller *data.Controller, fan *data.Fan) (fanConfig *config.FanConfig) {
-	for _, fanConfig := range config.CurrentConfig.Fans {
+func findFanConfig(controller *Controller, fan *Fan) (fanConfig *FanConfig) {
+	for _, fanConfig := range CurrentConfig.Fans {
 		if controller.Platform == fanConfig.Platform &&
 			fan.Index == fanConfig.Fan {
 			return &fanConfig
@@ -386,8 +383,8 @@ func findFanConfig(controller *data.Controller, fan *data.Fan) (fanConfig *confi
 	return nil
 }
 
-func findSensorConfig(controller *data.Controller, sensor *data.Sensor) (sensorConfig *config.SensorConfig) {
-	for _, sensorConfig := range config.CurrentConfig.Sensors {
+func findSensorConfig(controller *Controller, sensor *Sensor) (sensorConfig *SensorConfig) {
+	for _, sensorConfig := range CurrentConfig.Sensors {
 		if controller.Platform == sensorConfig.Platform &&
 			sensor.Index == sensorConfig.Index {
 			return &sensorConfig
@@ -397,7 +394,7 @@ func findSensorConfig(controller *data.Controller, sensor *data.Sensor) (sensorC
 }
 
 // calculates optimal fan speeds for all given devices
-func setOptimalFanSpeed(fan *data.Fan) {
+func setOptimalFanSpeed(fan *Fan) {
 	target := calculateTargetSpeed(fan)
 	err := setPwm(fan, target)
 	if err != nil {
@@ -406,7 +403,7 @@ func setOptimalFanSpeed(fan *data.Fan) {
 }
 
 // calculates the target speed for a given device output
-func calculateTargetSpeed(fan *data.Fan) int {
+func calculateTargetSpeed(fan *Fan) int {
 	sensor := SensorMap[fan.Config.Sensor]
 	minTemp := sensor.Config.Min * 1000 // degree to milli-degree
 	maxTemp := sensor.Config.Max * 1000
@@ -439,7 +436,7 @@ func calculateTargetSpeed(fan *data.Fan) int {
 }
 
 // Finds controllers and fans
-func findControllers() (controllers []*data.Controller, err error) {
+func findControllers() (controllers []*Controller, err error) {
 	hwmonDevices := util.FindHwmonDevicePaths()
 	i2cDevices := util.FindI2cDevicePaths()
 	allDevices := append(hwmonDevices, i2cDevices...)
@@ -462,7 +459,7 @@ func findControllers() (controllers []*data.Controller, err error) {
 			continue
 		}
 
-		controller := data.Controller{
+		controller := Controller{
 			Name:     name,
 			DType:    dType,
 			Modalias: modalias,
@@ -478,8 +475,8 @@ func findControllers() (controllers []*data.Controller, err error) {
 }
 
 // creates fan objects for the given device path
-func createFans(devicePath string) []*data.Fan {
-	var fans []*data.Fan
+func createFans(devicePath string) []*Fan {
+	var fans []*Fan
 
 	inputs := util.FindFilesMatching(devicePath, "^fan[1-9]_input$")
 	outputs := util.FindFilesMatching(devicePath, "^pwm[1-9]$")
@@ -492,7 +489,7 @@ func createFans(devicePath string) []*data.Fan {
 			log.Fatal(err)
 		}
 
-		fans = append(fans, &data.Fan{
+		fans = append(fans, &Fan{
 			Name:         file,
 			Index:        index,
 			PwmOutput:    output,
@@ -507,8 +504,8 @@ func createFans(devicePath string) []*data.Fan {
 }
 
 // creates sensor objects for the given device path
-func createSensors(devicePath string) []*data.Sensor {
-	var sensors []*data.Sensor
+func createSensors(devicePath string) []*Sensor {
+	var sensors []*Sensor
 
 	inputs := util.FindFilesMatching(devicePath, "^temp[1-9]_input$")
 
@@ -520,7 +517,7 @@ func createSensors(devicePath string) []*data.Sensor {
 			log.Fatal(err)
 		}
 
-		sensors = append(sensors, &data.Sensor{
+		sensors = append(sensors, &Sensor{
 			Name:  file,
 			Index: index,
 			Input: input,
@@ -553,7 +550,7 @@ func isPwmAuto(outputPath string) (bool, error) {
 // 0 - no control (results in max speed)
 // 1 - manual pwm control
 // 2 - motherboard pwm control
-func setPwmEnabled(fan data.Fan, value int) (err error) {
+func setPwmEnabled(fan Fan, value int) (err error) {
 	pwmEnabledFilePath := fan.PwmOutput + "_enable"
 	err = util.WriteIntToFile(value, pwmEnabledFilePath)
 	if err == nil {
@@ -566,13 +563,13 @@ func setPwmEnabled(fan data.Fan, value int) (err error) {
 }
 
 // get the pwmX_enabled value of a fan
-func getPwmEnabled(fan data.Fan) (int, error) {
+func getPwmEnabled(fan Fan) (int, error) {
 	pwmEnabledFilePath := fan.PwmOutput + "_enable"
 	return util.ReadIntFromFile(pwmEnabledFilePath)
 }
 
 // get the maximum valid pwm value of a fan
-func getMaxPwmValue(fan *data.Fan) (result int) {
+func getMaxPwmValue(fan *Fan) (result int) {
 	// TODO: load this from persistence
 
 	return fan.MaxPwm
@@ -586,7 +583,7 @@ func getMaxPwmValue(fan *data.Fan) (result int) {
 }
 
 // get the minimum valid pwm value of a fan
-func getMinPwmValue(fan *data.Fan) (result int) {
+func getMinPwmValue(fan *Fan) (result int) {
 	// if the fan is never supposed to stop,
 	// use the lowest pwm value where the fan is still spinning
 	if fan.Config.NeverStop {
@@ -597,7 +594,7 @@ func getMinPwmValue(fan *data.Fan) (result int) {
 }
 
 // get the pwm speed of a fan (0..255)
-func getPwm(fan *data.Fan) int {
+func getPwm(fan *Fan) int {
 	value, err := util.ReadIntFromFile(fan.PwmOutput)
 	if err != nil {
 		return MinPwmValue
@@ -606,7 +603,7 @@ func getPwm(fan *data.Fan) int {
 }
 
 // set the pwm speed of a fan to the specified value (0..255)
-func setPwm(fan *data.Fan, pwm int) (err error) {
+func setPwm(fan *Fan, pwm int) (err error) {
 	// ensure target value is within bounds of possible values
 	if pwm > MaxPwmValue {
 		pwm = MaxPwmValue
@@ -630,7 +627,7 @@ func setPwm(fan *data.Fan, pwm int) (err error) {
 }
 
 // get the rpm value of a fan
-func getRpm(fan *data.Fan) int {
+func getRpm(fan *Fan) int {
 	value, err := util.ReadIntFromFile(fan.RpmInput)
 	if err != nil {
 		return 0
@@ -640,7 +637,7 @@ func getRpm(fan *data.Fan) int {
 
 // ===== Console Output =====
 
-func printDeviceStatus(devices []*data.Controller) {
+func printDeviceStatus(devices []*Controller) {
 	for _, device := range devices {
 		log.Printf("Controller: %s", device.Name)
 		for _, fan := range device.Fans {
