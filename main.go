@@ -136,10 +136,16 @@ func main() {
 	// TODO: save reference fan curves in db
 
 	go monitor()
-	// TODO: run one goroutine for each fan, to keep them separate
+
+	// run one goroutine for each fan
 	for _, controller := range Controllers {
 		for _, fan := range controller.fans {
-			go fanSpeedUpdater(fan)
+			if fan.config == nil {
+				// this fan is not configured, ignore it
+				log.Printf("Ignoring unconfigured fan: %s", fan.pwmOutput)
+				continue
+			}
+			go fanController(fan)
 		}
 	}
 
@@ -417,14 +423,11 @@ func updateSensor(sensor Sensor) (err error) {
 }
 
 // goroutine to continuously adjust the speed of a fan
-func fanSpeedUpdater(fan *Fan) {
+func fanController(fan *Fan) {
 	t := time.Tick(config.CurrentConfig.UpdateTickRate)
 	for {
 		select {
 		case <-t:
-			if fan.config == nil {
-				continue
-			}
 			err := setPwmEnabled(*fan, 1)
 			if err != nil {
 				err = setPwmEnabled(*fan, 0)
