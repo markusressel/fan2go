@@ -61,7 +61,8 @@ type Fan struct {
 	rpmInput  string
 	pwmOutput string
 	config    *config.FanConfig
-	startPwm  int
+	startPwm  int // lowest PWM value where the fans are still spinning
+	maxPwm    int // highest PWM value that yields an RPM increase
 }
 
 type Sensor struct {
@@ -399,8 +400,9 @@ func measureTempSensors() {
 	}
 }
 
-func updateStartPwm(fan *Fan) {
-	var startPwm int
+func updatePwmBoundaries(fan *Fan) {
+	startPwm := 255
+	maxPwm := 255
 	pwmRpmMap, ok := FanCurveMap[fan.rpmInput]
 	if !ok {
 		// we have no data yet
@@ -416,12 +418,18 @@ func updateStartPwm(fan *Fan) {
 		// sort them increasing
 		sort.Ints(keys)
 
+		maxRpm := 0
 		for _, pwm := range keys {
 			window := (*pwmRpmMap)[pwm]
 			avgRpm := int(window.Reduce(rolling.Avg))
-			if avgRpm > 0 {
+
+			if avgRpm > maxRpm {
+				maxRpm = avgRpm
+				maxPwm = pwm
+			}
+
+			if avgRpm > 0 && pwm < startPwm {
 				startPwm = pwm
-				break
 			}
 		}
 	}
@@ -429,6 +437,10 @@ func updateStartPwm(fan *Fan) {
 	if fan.startPwm != startPwm {
 		log.Printf("Start PWM of %s: %d", fan.rpmInput, startPwm)
 		fan.startPwm = startPwm
+	}
+	if fan.maxPwm != maxPwm {
+		log.Printf("Max PWM of %s: %d", fan.rpmInput, startPwm)
+		fan.maxPwm = maxPwm
 	}
 }
 
@@ -474,17 +486,26 @@ func runInitializationSequence(fan *Fan) {
 	log.Printf("Running initialization sequence for %s", fan.config.Id)
 	for pwm := 0; pwm < MaxPwmValue; pwm++ {
 		// set a pwm
-		err := setPwm(fan, pwm)
+		err := writeIntToFile(pwm, fan.pwmOutput)
+		if err != nil {
+			log.Fatalf("Unable to run initialization sequence on %s: %s", fan.config.Id, err.Error())
+		}
+
+		if pwm == 0 {
+			// wait an additional 2 seconds, to make sure the fans
+			// have time to spin down even from max speed to 0
+			time.Sleep(3 * time.Second)
+		}
 
 		// TODO:
 		// on some fans it is not possible to use the full pwm of 0..255
 		// so we try what values work and save them for later
 
-		if err != nil {
-			log.Fatalf("Unable to run initialization sequence on %s: %s", fan.config.Id, err.Error())
-		}
 		// wait a bit to allow the fan speed to settle
-		time.Sleep(500 * time.Millisecond)
+		// since most sensors are update only each second,
+		// we wait a second + a bit, to make sure we get
+		// the most recent measurement
+		time.Sleep(500 * time.Millisecond) // TODO: use 1s+ here
 
 		log.Printf("Measuring RPM of  %s at PWM: %d", fan.config.Id, pwm)
 		for i := 0; i < config.CurrentConfig.RpmRollingWindowSize; i++ {
@@ -496,7 +517,7 @@ func runInitializationSequence(fan *Fan) {
 		}
 	}
 
-	updateStartPwm(fan)
+	updatePwmBoundaries(fan)
 }
 
 func findFanConfig(controller Controller, fan Fan) (fanConfig *config.FanConfig) {
@@ -651,6 +672,7 @@ func createFans(devicePath string) []*Fan {
 			pwmOutput: output,
 			rpmInput:  inputs[idx],
 			startPwm:  0,
+			maxPwm:    255,
 		})
 	}
 
@@ -724,12 +746,16 @@ func getPwmEnabled(fan Fan) (int, error) {
 
 // get the maximum valid pwm value of a fan
 func getMaxPwmValue(fan *Fan) (result int) {
-	key := fmt.Sprintf("%s_pwm_max", fan.name)
-	result, err := readInt(BucketFans, key)
-	if err != nil {
-		result = MaxPwmValue
-	}
-	return result
+	// TODO: load this from persistence
+
+	return fan.maxPwm
+	//
+	//key := fmt.Sprintf("%s_pwm_max", fan.name)
+	//result, err := readInt(BucketFans, key)
+	//if err != nil {
+	//	result = MaxPwmValue
+	//}
+	//return result
 }
 
 // get the minimum valid pwm value of a fan
