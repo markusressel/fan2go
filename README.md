@@ -96,9 +96,7 @@ based on the sensor data measured by the monitor.
 
 # Dependencies
 
-- [bbolt](https://github.com/etcd-io/bbolt) - An embedded key/value database for Go.
-- [rolling](https://github.com/asecurityteam/rolling#point-window) - Rolling window implementation in go.
-- [viper](https://github.com/spf13/viper) - Go configuration with fangs.
+See [go.mod](go.mod)
 
 # License
 

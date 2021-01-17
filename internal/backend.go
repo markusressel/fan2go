@@ -44,8 +44,6 @@ func Run() {
 		}
 	}
 
-	// TODO: measure fan curves / use realtime measurements to update the curve?
-
 	// === start sensor monitoring
 	// TODO: use multiple monitoring threads(?)
 	// TODO: only monitor configured sensors
@@ -114,6 +112,8 @@ func mapConfigToControllers() {
 func monitor() {
 	go startSensorWatcher()
 
+	// TODO: use realtime measurements to update the curve?
+
 	// TODO: seems like its not possible to watch for changes on temp and rpm files using inotify :(
 	//for _, device := range Controllers {
 	//	for _, fan := range device.Fans {
@@ -168,22 +168,6 @@ func monitor() {
 //	}
 //
 //	return watcher, err
-//}
-//
-//func updateFan(fan *data.Fan) (err error) {
-//	pwmValue := getPwm(fan)
-//	rpmValue, err := util.ReadIntFromFile(fan.RpmInput)
-//	if err != nil {
-//		return err
-//	}
-//	key := fmt.Sprintf("%s_pwm", fan.Name)
-//	err = persistence.StoreInt(BucketFans, key, pwmValue)
-//	if err != nil {
-//		return err
-//	}
-//	key = fmt.Sprintf("%s_rpm", fan.Name)
-//	err = persistence.StoreInt(BucketFans, key, rpmValue)
-//	return err
 //}
 
 func startSensorWatcher() {
