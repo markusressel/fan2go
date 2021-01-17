@@ -450,8 +450,15 @@ func updateSensor(sensor Sensor) (err error) {
 	if err != nil {
 		return err
 	}
+
 	values := SensorValueArrayMap[sensor.input]
 	values.Append(float64(value))
+	if value > sensor.config.Max {
+		// if the value is higher than the specified max temperature,
+		// insert the value twice into the moving window,
+		// to give it a bigger impact
+		values.Append(float64(value))
+	}
 
 	return storeInt(BucketSensors, sensor.input, value)
 }
