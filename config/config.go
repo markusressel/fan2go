@@ -35,7 +35,7 @@ type FanConfig struct {
 
 var CurrentConfig Configuration
 
-// one time setup for the configuration file
+// one time setup for the configuration file.go
 func init() {
 	viper.SetConfigName("fan2go")
 
@@ -49,7 +49,7 @@ func init() {
 
 func readConfigFile() {
 	if err := viper.ReadInConfig(); err != nil {
-		log.Fatalf("Error reading config file, %s", err)
+		log.Fatalf("Error reading config file.go, %s", err)
 	}
 
 	err := viper.Unmarshal(&CurrentConfig)

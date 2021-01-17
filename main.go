@@ -20,8 +20,9 @@ package main
 import (
 	"errors"
 	"fan2go/config"
+	"fan2go/persistence"
+	"fan2go/util"
 	"fmt"
-	"io/ioutil"
 	"os/exec"
 	"regexp"
 	"sort"
@@ -31,7 +32,6 @@ import (
 
 	"github.com/asecurityteam/rolling"
 	"github.com/fsnotify/fsnotify"
-	bolt "go.etcd.io/bbolt"
 	//"github.com/markusressel/fan2go/cmd"
 	"log"
 	"os"
@@ -74,7 +74,6 @@ type Sensor struct {
 
 var (
 	Controllers []Controller
-	Database    *bolt.DB
 	SensorMap   = map[string]*Sensor{}
 	// map of sensor ids -> sensor value rolling window
 	SensorValueArrayMap = map[string]*rolling.PointPolicy{}
@@ -88,22 +87,17 @@ func main() {
 		log.Fatalf("Fan control requires root access, please run fan2go as root")
 	}
 
+	defer persistence.Open().Close()
+
 	// TODO: cmd line parameters
 	//cmd.Execute()
 
-	// === Database ===
-	DB, err := bolt.Open(config.CurrentConfig.DbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
-	if err != nil {
-		log.Fatal(err)
-	}
-	Database = DB
-	defer Database.Close()
-
 	// === Detect devices ===
-	Controllers, err = findControllers()
+	controllers, err := findControllers()
 	if err != nil {
 		log.Fatalf("Error detecting devices: %s", err.Error())
 	}
+	Controllers = controllers
 	mapConfigToControllers()
 
 	// === Print detected devices ===
@@ -123,6 +117,7 @@ func main() {
 
 	// === start fan controllers
 	// run one goroutine for each fan
+	count := 0
 	for _, controller := range Controllers {
 		for _, fan := range controller.fans {
 			if fan.config == nil {
@@ -132,7 +127,12 @@ func main() {
 			}
 
 			go fanController(fan)
+			count++
 		}
+	}
+
+	if count == 0 {
+		log.Fatal("No valid fan configurations, exiting.")
 	}
 
 	// wait forever
@@ -159,7 +159,7 @@ func mapConfigToControllers() {
 				// initialize arrays for storing temps
 				pointWindow := rolling.NewPointPolicy(rolling.NewWindow(config.CurrentConfig.TempRollingWindowSize))
 				SensorValueArrayMap[sensor.input] = pointWindow
-				currentValue, err := readIntFromFile(sensor.input)
+				currentValue, err := util.ReadIntFromFile(sensor.input)
 				if err != nil {
 					currentValue = 50000
 				}
@@ -178,90 +178,6 @@ func getProcessOwner() string {
 		os.Exit(1)
 	}
 	return strings.TrimSpace(string(stdout))
-}
-
-// Finds controllers and fans
-func findControllers() (controllers []Controller, err error) {
-	hwmonDevices := findHwmonDevicePaths()
-	i2cDevices := findI2cDevicePaths()
-	allDevices := append(hwmonDevices, i2cDevices...)
-
-	platformRegex := regexp.MustCompile(".*/platform/{}/.*")
-
-	for _, devicePath := range allDevices {
-		name := getDeviceName(devicePath)
-		dType := getDeviceType(devicePath)
-		modalias := getDeviceModalias(devicePath)
-		platform := platformRegex.FindString(devicePath)
-		if len(platform) <= 0 {
-			platform = name
-		}
-
-		fans := createFans(devicePath)
-		sensors := createSensors(devicePath)
-
-		if len(fans) <= 0 && len(sensors) <= 0 {
-			continue
-		}
-
-		controller := Controller{
-			name:     name,
-			dType:    dType,
-			modalias: modalias,
-			platform: platform,
-			path:     devicePath,
-			fans:     fans,
-			sensors:  sensors,
-		}
-		controllers = append(controllers, controller)
-	}
-
-	return controllers, err
-}
-
-func findI2cDevicePaths() []string {
-	basePath := "/sys/bus/i2c/devices"
-
-	if _, err := os.Stat(basePath); err != nil {
-		if os.IsNotExist(err) {
-			// file does not exist
-		} else {
-			// other error
-		}
-		return []string{}
-	}
-
-	return findFilesMatching(basePath, ".+-.+")
-
-	//	# Find available fan control outputs
-	//	MATCH=$device/'pwm[1-9]'
-	//	device_pwm=$(echo $MATCH)
-	//	if [ "$SYSFS" = "1" -a "$MATCH" = "$device_pwm" ]
-	//	then
-	//		# Deprecated naming scheme (used in kernels 2.6.5 to 2.6.9)
-	//		MATCH=$device/'fan[1-9]_pwm'
-	//		device_pwm=$(echo $MATCH)
-	//	fi
-	//	if [ "$MATCH" != "$device_pwm" ]
-	//	then
-	//		PWM="$PWM $device_pwm"
-	//	fi
-}
-
-func findHwmonDevicePaths() []string {
-	basePath := "/sys/class/hwmon"
-	if _, err := os.Stat(basePath); err != nil {
-		if os.IsNotExist(err) {
-			// file does not exist
-		} else {
-			// other error
-		}
-		return []string{}
-	}
-
-	result := findFilesMatching(basePath, "hwmon.*")
-
-	return result
 }
 
 // goroutine to monitor temp and fan sensors
@@ -303,7 +219,7 @@ func startFanFsWatcher(fan *Fan) (*fsnotify.Watcher, error) {
 						log.Print(err.Error())
 					}
 					key := fmt.Sprintf("%s_pwm", fan.name)
-					newValue, _ := readInt(BucketFans, key)
+					newValue, _ := persistence.ReadInt(BucketFans, key)
 					log.Printf("%s PWM: %d", fan.name, newValue)
 				}
 			case err, ok := <-watcher.Errors:
@@ -326,17 +242,17 @@ func startFanFsWatcher(fan *Fan) (*fsnotify.Watcher, error) {
 
 func updateFan(fan *Fan) (err error) {
 	pwmValue := getPwm(fan)
-	rpmValue, err := readIntFromFile(fan.rpmInput)
+	rpmValue, err := util.ReadIntFromFile(fan.rpmInput)
 	if err != nil {
 		return err
 	}
 	key := fmt.Sprintf("%s_pwm", fan.name)
-	err = storeInt(BucketFans, key, pwmValue)
+	err = persistence.StoreInt(BucketFans, key, pwmValue)
 	if err != nil {
 		return err
 	}
 	key = fmt.Sprintf("%s_rpm", fan.name)
-	err = storeInt(BucketFans, key, rpmValue)
+	err = persistence.StoreInt(BucketFans, key, rpmValue)
 	return err
 }
 
@@ -384,7 +300,7 @@ func measureRpm(fan *Fan) (err error) {
 	}
 	pointWindow.Append(float64(rpm))
 
-	return storeInt(BucketSensors, fan.rpmInput, rpm)
+	return persistence.StoreInt(BucketSensors, fan.rpmInput, rpm)
 }
 
 func measureTempSensors() {
@@ -446,7 +362,7 @@ func updatePwmBoundaries(fan *Fan) {
 
 // read the current value of a sensor and append it to the moving window
 func updateSensor(sensor Sensor) (err error) {
-	value, err := readIntFromFile(sensor.input)
+	value, err := util.ReadIntFromFile(sensor.input)
 	if err != nil {
 		return err
 	}
@@ -460,7 +376,7 @@ func updateSensor(sensor Sensor) (err error) {
 		values.Append(float64(value))
 	}
 
-	return storeInt(BucketSensors, sensor.input, value)
+	return persistence.StoreInt(BucketSensors, sensor.input, value)
 }
 
 // goroutine to continuously adjust the speed of a fan
@@ -482,7 +398,6 @@ func fanController(fan *Fan) {
 	for {
 		select {
 		case <-t:
-
 			setOptimalFanSpeed(fan)
 		}
 	}
@@ -494,7 +409,7 @@ func runInitializationSequence(fan *Fan) {
 	log.Printf("Running initialization sequence for %s", fan.config.Id)
 	for pwm := 0; pwm < MaxPwmValue; pwm++ {
 		// set a pwm
-		err := writeIntToFile(pwm, fan.pwmOutput)
+		err := util.WriteIntToFile(pwm, fan.pwmOutput)
 		if err != nil {
 			log.Fatalf("Unable to run initialization sequence on %s: %s", fan.config.Id, err.Error())
 		}
@@ -561,8 +476,6 @@ func setOptimalFanSpeed(fan *Fan) {
 
 // calculates the target speed for a given device output
 func calculateTargetSpeed(fan *Fan) int {
-	// TODO: calculate target fan curve based on min/max temp values
-
 	sensor := SensorMap[fan.config.Sensor]
 	minTemp := sensor.config.Min * 1000 // degree to milli-degree
 	maxTemp := sensor.config.Max * 1000
@@ -595,78 +508,51 @@ func calculateTargetSpeed(fan *Fan) int {
 	//return rand.Intn(getMaxPwmValue(fan))
 }
 
-// read the name of a device
-func getDeviceName(devicePath string) string {
-	namePath := devicePath + "/name"
-	content, _ := ioutil.ReadFile(namePath)
-	name := string(content)
-	if len(name) <= 0 {
-		_, name = filepath.Split(devicePath)
-	}
-	return strings.TrimSpace(name)
-}
+// Finds controllers and fans
+func findControllers() (controllers []Controller, err error) {
+	hwmonDevices := util.FindHwmonDevicePaths()
+	i2cDevices := util.FindI2cDevicePaths()
+	allDevices := append(hwmonDevices, i2cDevices...)
 
-// read the modalias of a device
-func getDeviceModalias(devicePath string) string {
-	modaliasPath := devicePath + "/device/modalias"
-	content, _ := ioutil.ReadFile(modaliasPath)
-	return strings.TrimSpace(string(content))
-}
+	platformRegex := regexp.MustCompile(".*/platform/{}/.*")
 
-// read the type of a device
-func getDeviceType(devicePath string) string {
-	modaliasPath := devicePath + "/device/type"
-	content, _ := ioutil.ReadFile(modaliasPath)
-	return strings.TrimSpace(string(content))
-}
-
-// finds all files in a given directory, matching the given regex
-func findFilesMatching(path string, regex string) []string {
-	r, err := regexp.Compile(regex)
-	if err != nil {
-		log.Fatalf("Cannot compile regex: %s", regex)
-	}
-
-	var result []string
-	err = filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			log.Fatalf(err.Error())
+	for _, devicePath := range allDevices {
+		name := util.GetDeviceName(devicePath)
+		dType := util.GetDeviceType(devicePath)
+		modalias := util.GetDeviceModalias(devicePath)
+		platform := platformRegex.FindString(devicePath)
+		if len(platform) <= 0 {
+			platform = name
 		}
 
-		if !info.IsDir() && r.MatchString(info.Name()) {
-			var devicePath string
+		fans := createFans(devicePath)
+		sensors := createSensors(devicePath)
 
-			// we may need to adjust the path (pwmconfig cite...)
-			_, err := os.Stat(path + "/name")
-			if os.IsNotExist(err) {
-				devicePath = path + "/device"
-			} else {
-				devicePath = path
-			}
-
-			devicePath, err = filepath.EvalSymlinks(devicePath)
-			if err != nil {
-				panic(err)
-			}
-
-			//fmt.Printf("File Name: %s\n", info.Name())
-			result = append(result, devicePath)
+		if len(fans) <= 0 && len(sensors) <= 0 {
+			continue
 		}
-		return nil
-	})
-	if err != nil {
-		panic(err)
+
+		controller := Controller{
+			name:     name,
+			dType:    dType,
+			modalias: modalias,
+			platform: platform,
+			path:     devicePath,
+			fans:     fans,
+			sensors:  sensors,
+		}
+		controllers = append(controllers, controller)
 	}
 
-	return result
+	return controllers, err
 }
 
 // creates fan objects for the given device path
 func createFans(devicePath string) []*Fan {
 	var fans []*Fan
 
-	inputs := findFilesMatching(devicePath, "^fan[1-9]_input$")
-	outputs := findFilesMatching(devicePath, "^pwm[1-9]$")
+	inputs := util.FindFilesMatching(devicePath, "^fan[1-9]_input$")
+	outputs := util.FindFilesMatching(devicePath, "^pwm[1-9]$")
 
 	for idx, output := range outputs {
 		_, file := filepath.Split(output)
@@ -693,7 +579,7 @@ func createFans(devicePath string) []*Fan {
 func createSensors(devicePath string) []*Sensor {
 	var sensors []*Sensor
 
-	inputs := findFilesMatching(devicePath, "^temp[1-9]_input$")
+	inputs := util.FindFilesMatching(devicePath, "^temp[1-9]_input$")
 
 	for _, input := range inputs {
 		_, file := filepath.Split(input)
@@ -724,7 +610,7 @@ func isPwmAuto(outputPath string) (bool, error) {
 		panic(err)
 	}
 
-	value, err := readIntFromFile(pwmEnabledFilePath)
+	value, err := util.ReadIntFromFile(pwmEnabledFilePath)
 	if err != nil {
 		return false, err
 	}
@@ -738,9 +624,9 @@ func isPwmAuto(outputPath string) (bool, error) {
 // 2 - motherboard pwm control
 func setPwmEnabled(fan Fan, value int) (err error) {
 	pwmEnabledFilePath := fan.pwmOutput + "_enable"
-	err = writeIntToFile(value, pwmEnabledFilePath)
+	err = util.WriteIntToFile(value, pwmEnabledFilePath)
 	if err == nil {
-		value, err := readIntFromFile(pwmEnabledFilePath)
+		value, err := util.ReadIntFromFile(pwmEnabledFilePath)
 		if err != nil || value != value {
 			return errors.New(fmt.Sprintf("PWM mode stuck to %d", value))
 		}
@@ -751,7 +637,7 @@ func setPwmEnabled(fan Fan, value int) (err error) {
 // get the pwmX_enabled value of a fan
 func getPwmEnabled(fan Fan) (int, error) {
 	pwmEnabledFilePath := fan.pwmOutput + "_enable"
-	return readIntFromFile(pwmEnabledFilePath)
+	return util.ReadIntFromFile(pwmEnabledFilePath)
 }
 
 // get the maximum valid pwm value of a fan
@@ -778,7 +664,7 @@ func getMinPwmValue(fan *Fan) (result int) {
 
 	// get the minimum possible pwm value for this fan
 	key := fmt.Sprintf("%s_pwm_min", fan.name)
-	result, err := readInt(BucketFans, key)
+	result, err := persistence.ReadInt(BucketFans, key)
 	if err != nil {
 		result = MinPwmValue
 	}
@@ -788,7 +674,7 @@ func getMinPwmValue(fan *Fan) (result int) {
 
 // get the pwm speed of a fan (0..255)
 func getPwm(fan *Fan) int {
-	value, err := readIntFromFile(fan.pwmOutput)
+	value, err := util.ReadIntFromFile(fan.pwmOutput)
 	if err != nil {
 		return MinPwmValue
 	}
@@ -817,12 +703,12 @@ func setPwm(fan *Fan, pwm int) (err error) {
 		return nil
 	}
 	log.Printf("Setting %s to %d (mapped: %d) ...", fan.name, pwm, target)
-	return writeIntToFile(target, fan.pwmOutput)
+	return util.WriteIntToFile(target, fan.pwmOutput)
 }
 
 // get the rpm value of a fan
 func getRpm(fan *Fan) int {
-	value, err := readIntFromFile(fan.rpmInput)
+	value, err := util.ReadIntFromFile(fan.rpmInput)
 	if err != nil {
 		return 0
 	}
@@ -842,64 +728,8 @@ func printDeviceStatus(devices []Controller) {
 		}
 
 		for _, sensor := range device.sensors {
-			value, _ := readIntFromFile(sensor.input)
+			value, _ := util.ReadIntFromFile(sensor.input)
 			log.Printf("Sensor %d (%s): %d", sensor.index, sensor.name, value)
 		}
 	}
-}
-
-// ===== Bolt =====
-
-func readInt(bucket string, key string) (result int, err error) {
-	err = Database.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucket))
-		if err != nil {
-			return fmt.Errorf("create bucket: %s", err)
-		}
-		v := b.Get([]byte(key))
-		if v == nil {
-			return os.ErrNotExist
-		}
-		result, err = strconv.Atoi(string(v))
-		return err
-	})
-	return result, err
-}
-
-func storeInt(bucket string, key string, value int) (err error) {
-	return Database.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte(bucket))
-		if err != nil {
-			return fmt.Errorf("create bucket: %s", err)
-		}
-		err = b.Put([]byte(key), []byte(strconv.Itoa(value)))
-		return nil
-	})
-}
-
-// ===== File Access =====
-
-func readIntFromFile(path string) (value int, err error) {
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		log.Println("File reading error", err)
-		return -1, nil
-	}
-	text := string(data)
-	text = strings.TrimSpace(text)
-	return strconv.Atoi(text)
-}
-
-// write a single integer to a file path
-func writeIntToFile(value int, path string) (err error) {
-	f, err := os.OpenFile(path, os.O_SYNC|os.O_WRONLY, 644)
-	if err != nil {
-		return err
-	}
-	//goland:noinspection GoUnhandledErrorResult
-	defer f.Close()
-
-	valueAsString := fmt.Sprintf("%d", value)
-	_, err = f.WriteString(valueAsString)
-	return err
 }

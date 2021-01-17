@@ -1,4 +1,6 @@
 dbPath: "fan2go.db"
+#tempSensorPollingRate: 1000ms
+#rollingWindowSize: 20
 tempSensorPollingRate: 200ms
 rollingWindowSize: 100
 rpmPollingRate: 1s
