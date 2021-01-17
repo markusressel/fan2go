@@ -38,11 +38,10 @@ import (
 )
 
 const (
-	MovingAvgWindowSize = 10 * 20
-	MaxPwmValue         = 255
-	MinPwmValue         = 0
-	BucketFans          = "fans"
-	BucketSensors       = "sensors"
+	MaxPwmValue   = 255
+	MinPwmValue   = 0
+	BucketFans    = "fans"
+	BucketSensors = "sensors"
 )
 
 type Controller struct {
@@ -72,6 +71,8 @@ type Sensor struct {
 }
 
 var (
+	PollingRate         = 200 * time.Millisecond
+	MovingAvgWindowSize = 100
 	Controllers         []Controller
 	Database            *bolt.DB
 	SensorMap           = map[string]*Sensor{}
@@ -83,6 +84,9 @@ func main() {
 	if getProcessOwner() != "root" {
 		log.Fatalf("Fan control requires root access, please run fan2go as root")
 	}
+
+	PollingRate = config.CurrentConfig.PollingRate
+	MovingAvgWindowSize = config.CurrentConfig.RollingwindowSize
 
 	// TODO: cmd line parameters
 	//cmd.Execute()
@@ -310,7 +314,7 @@ func updateFan(fan Fan) (err error) {
 }
 
 func startSensorWatcher() {
-	t := time.Tick(100 * time.Millisecond)
+	t := time.Tick(PollingRate)
 	for {
 		select {
 		case <-t:
@@ -450,22 +454,7 @@ func calculateTargetSpeed(fan Fan) int {
 	//return rand.Intn(getMaxPwmValue(fan))
 }
 
-func printDeviceStatus(devices []Controller) {
-	for _, device := range devices {
-		log.Printf("Controller: %s", device.name)
-		for _, fan := range device.fans {
-			value := getPwm(*fan)
-			isAuto, _ := isPwmAuto(device.path)
-			log.Printf("Output: %s Value: %d Auto: %v", fan.name, value, isAuto)
-		}
-
-		for _, sensor := range device.sensors {
-			value, _ := readIntFromFile(sensor.input)
-			log.Printf("Input: %s Value: %d", sensor.name, value)
-		}
-	}
-}
-
+// read the name of a device
 func getDeviceName(devicePath string) string {
 	namePath := devicePath + "/name"
 	content, _ := ioutil.ReadFile(namePath)
@@ -476,18 +465,21 @@ func getDeviceName(devicePath string) string {
 	return strings.TrimSpace(name)
 }
 
+// read the modalias of a device
 func getDeviceModalias(devicePath string) string {
 	modaliasPath := devicePath + "/device/modalias"
 	content, _ := ioutil.ReadFile(modaliasPath)
 	return strings.TrimSpace(string(content))
 }
 
+// read the type of a device
 func getDeviceType(devicePath string) string {
 	modaliasPath := devicePath + "/device/type"
 	content, _ := ioutil.ReadFile(modaliasPath)
 	return strings.TrimSpace(string(content))
 }
 
+// finds all files in a given directory, matching the given regex
 func findFilesMatching(path string, regex string) []string {
 	r, err := regexp.Compile(regex)
 	if err != nil {
@@ -528,11 +520,12 @@ func findFilesMatching(path string, regex string) []string {
 	return result
 }
 
-func createFans(path string) []*Fan {
+// creates fan objects for the given device path
+func createFans(devicePath string) []*Fan {
 	var fans []*Fan
 
-	inputs := findFilesMatching(path, "^fan[1-9]_input$")
-	outputs := findFilesMatching(path, "^pwm[1-9]$")
+	inputs := findFilesMatching(devicePath, "^fan[1-9]_input$")
+	outputs := findFilesMatching(devicePath, "^pwm[1-9]$")
 
 	for idx, output := range outputs {
 		_, file := filepath.Split(output)
@@ -553,10 +546,11 @@ func createFans(path string) []*Fan {
 	return fans
 }
 
-func createSensors(path string) []*Sensor {
+// creates sensor objects for the given device path
+func createSensors(devicePath string) []*Sensor {
 	var sensors []*Sensor
 
-	inputs := findFilesMatching(path, "^temp[1-9]_input$")
+	inputs := findFilesMatching(devicePath, "^temp[1-9]_input$")
 
 	for _, input := range inputs {
 		_, file := filepath.Split(input)
@@ -678,7 +672,26 @@ func setPwm(fan Fan, pwm int) (err error) {
 	return writeIntToFile(pwm, fan.pwmOutput)
 }
 
+// ===== Console Output =====
+
+func printDeviceStatus(devices []Controller) {
+	for _, device := range devices {
+		log.Printf("Controller: %s", device.name)
+		for _, fan := range device.fans {
+			value := getPwm(*fan)
+			isAuto, _ := isPwmAuto(device.path)
+			log.Printf("Output: %s Value: %d Auto: %v", fan.name, value, isAuto)
+		}
+
+		for _, sensor := range device.sensors {
+			value, _ := readIntFromFile(sensor.input)
+			log.Printf("Input: %s Value: %d", sensor.name, value)
+		}
+	}
+}
+
 // ===== Bolt =====
+
 func readInt(bucket string, key string) (result int, err error) {
 	err = Database.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucket))

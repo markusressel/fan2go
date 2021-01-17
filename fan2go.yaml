@@ -1,3 +1,5 @@
+pollingRate: 200ms
+RollingWIndowSize: 100
 sensors:
   - id: cpu_package
     platform: coretemp

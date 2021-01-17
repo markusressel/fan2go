@@ -3,11 +3,14 @@ package config
 import (
 	"github.com/spf13/viper"
 	"log"
+	"time"
 )
 
 type Configuration struct {
-	Sensors []SensorConfig
-	Fans    []FanConfig
+	PollingRate       time.Duration
+	RollingwindowSize int
+	Sensors           []SensorConfig
+	Fans              []FanConfig
 	//FanCurves []FanCurve
 }
 
