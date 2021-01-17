@@ -2,10 +2,10 @@ package persistence
 
 import (
 	"encoding/json"
-	"fan2go/internal/config"
-	"fan2go/internal/data"
 	"fmt"
 	"github.com/asecurityteam/rolling"
+	"github.com/markusressel/fan2go/internal/config"
+	"github.com/markusressel/fan2go/internal/data"
 	bolt "go.etcd.io/bbolt"
 	"log"
 	"os"

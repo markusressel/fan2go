@@ -1,8 +1,8 @@
 package data
 
 import (
-	"fan2go/internal/config"
 	"github.com/asecurityteam/rolling"
+	"github.com/markusressel/fan2go/internal/config"
 )
 
 type Controller struct {

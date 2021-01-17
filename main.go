@@ -18,8 +18,7 @@
 package main
 
 import (
-	"fan2go/cmd"
-	"fan2go/internal/persistence"
+	"github.com/markusressel/fan2go/cmd"
 	"log"
 	"os"
 	"os/exec"
@@ -32,8 +31,6 @@ func main() {
 	if getProcessOwner() != "root" {
 		log.Fatalf("Fan control requires root access, please run fan2go as root")
 	}
-
-	defer persistence.Open().Close()
 
 	cmd.Execute()
 }

@@ -2,12 +2,12 @@ package backend
 
 import (
 	"errors"
-	"fan2go/internal/config"
-	"fan2go/internal/data"
-	"fan2go/internal/persistence"
-	"fan2go/internal/util"
 	"fmt"
 	"github.com/asecurityteam/rolling"
+	"github.com/markusressel/fan2go/internal/config"
+	"github.com/markusressel/fan2go/internal/data"
+	"github.com/markusressel/fan2go/internal/persistence"
+	"github.com/markusressel/fan2go/internal/util"
 	"log"
 	"os"
 	"path/filepath"
