@@ -8,12 +8,23 @@ Download the latest release from GitHub:
 
 ```shell
 curl -L -o fan2go  https://github.com/markusressel/fan2go/releases/latest/download/fan2go-linux-amd64
+chmod +x fan2go
 ```
 
 ### Configuration
 
+To configure fan2go create a YAML configuration file in **one** of the following locations:
+
+* `./fan2go.yaml`
+* `/etc/fan2go/fan2go.yaml`
+* `/root/.fan2go/fan2go.yaml`
+
+```shell
+sudo mkdir /etc/fan2go
+```
+
 ```yaml
-dbPath: "~/.fan2go.db"
+dbPath: "/etc/fan2go/fan2go.db"
 tempSensorPollingRate: 200ms
 rollingWindowSize: 100
 rpmPollingRate: 1s
@@ -55,7 +66,27 @@ fans:
 ### Run
 
 ```shell
-./fan2go
+sudo ./fan2go
+```
+
+### As a Service
+
+#### Systemd
+
+```
+sudo cp ./fan2go /usr/bin/fan2go
+sudo tee /usr/lib/systemd/system/fan2go.service <<- 'EOF'
+[Unit]
+Description=Advanced Fan Control program
+After=lm-sensors.service
+
+[Service]
+LimitNOFILE=8192
+ExecStart=/usr/bin/fan2go
+
+[Install]
+WantedBy=multi-user.target
+EOF
 ```
 
 ## How it works
