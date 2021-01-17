@@ -1,5 +1,8 @@
-pollingRate: 200ms
+dbPath: "fan2go.db"
+tempSensorPollingRate: 200ms
 rollingWindowSize: 100
+rpmPollingRate: 1s
+controllerAdjustmentTickRate: 200ms
 sensors:
   - id: cpu_package
     platform: coretemp

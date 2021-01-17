@@ -58,8 +58,8 @@ type Controller struct {
 type Fan struct {
 	name      string
 	index     int
-	rpmInput  string // RPM values
-	pwmOutput string // PWM control
+	rpmInput  string
+	pwmOutput string
 	config    *config.FanConfig
 	startPwm  int
 }
@@ -90,18 +90,21 @@ func main() {
 	// TODO: cmd line parameters
 	//cmd.Execute()
 
-	DB, err := bolt.Open("fan2go.db", 0600, &bolt.Options{Timeout: 1 * time.Second})
+	// === Database ===
+	DB, err := bolt.Open(config.CurrentConfig.DbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
 		log.Fatal(err)
 	}
 	Database = DB
 	defer Database.Close()
 
+	// === Detect devices ===
 	Controllers, err = findControllers()
 	if err != nil {
 		log.Fatalf("Error detecting devices: %s", err.Error())
 	}
 
+	// === Map detect devices to configuration values ===
 	for _, controller := range Controllers {
 		// match fan and fan config entries
 		for _, fan := range controller.fans {
@@ -127,16 +130,23 @@ func main() {
 				for i := 0; i < config.CurrentConfig.RollingWindowSize; i++ {
 					pointWindow.Append(float64(currentValue))
 				}
-				fmt.Println(SensorValueArrayMap[sensor.input])
 			}
 		}
 	}
 
+	// === Print detected devices ===
+	log.Printf("Detected Devices:")
+	printDeviceStatus(Controllers)
+
 	// TODO: measure fan curves / use realtime measurements to update the curve?
 	// TODO: save reference fan curves in db
 
+	// === start sensor monitoring
+	// TODO: use multiple monitoring threads(?)
+	// TODO: only monitor configured sensors
 	go monitor()
 
+	// === start fan controllers
 	// run one goroutine for each fan
 	for _, controller := range Controllers {
 		for _, fan := range controller.fans {
@@ -323,17 +333,20 @@ func updateFan(fan *Fan) (err error) {
 }
 
 func startSensorWatcher() {
-	t := time.Tick(config.CurrentConfig.PollingRate)
+	// TODO: update RPM and Temps at different rates
+	tempTick := time.Tick(config.CurrentConfig.TempSensorPollingRate)
+	rpmTick := time.Tick(config.CurrentConfig.RpmPollingRate)
 	for {
 		select {
-		case <-t:
-			updateInputs()
+		case <-tempTick:
+			measureSensors()
+		case <-rpmTick:
+			measureRpmSensors()
 		}
 	}
 }
 
-// iterates all sensors and updates their values
-func updateInputs() {
+func measureRpmSensors() {
 	for _, controller := range Controllers {
 		for _, fan := range controller.fans {
 			err := updateRpm(fan)
@@ -343,7 +356,11 @@ func updateInputs() {
 			// TODO: probably not necessary to do this all the time
 			updateStartPwm(fan)
 		}
+	}
+}
 
+func measureSensors() {
+	for _, controller := range Controllers {
 		for _, sensor := range controller.sensors {
 			if _, ok := SensorValueArrayMap[sensor.input]; ok {
 				err := updateSensor(*sensor)
@@ -424,7 +441,7 @@ func updateSensor(sensor Sensor) (err error) {
 
 // goroutine to continuously adjust the speed of a fan
 func fanController(fan *Fan) {
-	t := time.Tick(config.CurrentConfig.UpdateTickRate)
+	t := time.Tick(config.CurrentConfig.ControllerAdjustmentTickRate)
 	for {
 		select {
 		case <-t:
@@ -740,14 +757,15 @@ func printDeviceStatus(devices []Controller) {
 	for _, device := range devices {
 		log.Printf("Controller: %s", device.name)
 		for _, fan := range device.fans {
-			value := getPwm(fan)
+			pwm := getPwm(fan)
+			rpm := getRpm(fan)
 			isAuto, _ := isPwmAuto(device.path)
-			log.Printf("Output: %s Value: %d Auto: %v", fan.name, value, isAuto)
+			log.Printf("Fan %d (%s): RPM: %d PWM: %d Auto: %v", fan.index, fan.name, rpm, pwm, isAuto)
 		}
 
 		for _, sensor := range device.sensors {
 			value, _ := readIntFromFile(sensor.input)
-			log.Printf("Input: %s Value: %d", sensor.name, value)
+			log.Printf("Sensor %d (%s): %d", sensor.index, sensor.name, value)
 		}
 	}
 }
@@ -800,6 +818,7 @@ func writeIntToFile(value int, path string) (err error) {
 	if err != nil {
 		return err
 	}
+	//goland:noinspection GoUnhandledErrorResult
 	defer f.Close()
 
 	valueAsString := fmt.Sprintf("%d", value)

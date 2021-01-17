@@ -7,12 +7,13 @@ import (
 )
 
 type Configuration struct {
-	PollingRate       time.Duration
-	RollingWindowSize int
-	UpdateTickRate    time.Duration
-	Sensors           []SensorConfig
-	Fans              []FanConfig
-	//FanCurves []FanCurve
+	DbPath                       string
+	TempSensorPollingRate        time.Duration
+	RpmPollingRate               time.Duration
+	ControllerAdjustmentTickRate time.Duration
+	RollingWindowSize            int
+	Sensors                      []SensorConfig
+	Fans                         []FanConfig
 }
 
 type SensorConfig struct {
@@ -57,7 +58,9 @@ func readConfigFile() {
 }
 
 func setDefaultValues() {
-	viper.SetDefault("pollingRate", 200*time.Millisecond)
+	viper.SetDefault("dbpath", "fan2go.db")
+	viper.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
+	viper.SetDefault("RpmPollingRate", 1*time.Second)
 	viper.SetDefault("rollingWindowSize", 100)
 	viper.SetDefault("updateTickRate", 100*time.Millisecond)
 }
