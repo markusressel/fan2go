@@ -5,6 +5,7 @@ import (
 	"fan2go/internal/config"
 	"fan2go/internal/data"
 	"fmt"
+	"github.com/asecurityteam/rolling"
 	bolt "go.etcd.io/bbolt"
 	"log"
 	"os"
@@ -28,9 +29,23 @@ func Open() *bolt.DB {
 	return Database
 }
 
+// saves the fan curve data of the given fan
 func SaveFanPwmData(fan *data.Fan) (err error) {
 	key := fan.PwmOutput
-	data, err := json.Marshal(fan)
+
+	// convert the curve data moving window to a map to arrays, so we can persist them
+	fanCurveDataMap := map[int][]float64{}
+	for key, value := range *fan.FanCurveData {
+		var pwmValues []float64
+		value.Reduce(func(window rolling.Window) float64 {
+			pwmValues = append(pwmValues, window[0][0])
+			return 0
+		})
+
+		fanCurveDataMap[key] = pwmValues
+	}
+
+	data, err := json.Marshal(fanCurveDataMap)
 	if err != nil {
 		return err
 	}
@@ -44,9 +59,11 @@ func SaveFanPwmData(fan *data.Fan) (err error) {
 	})
 }
 
-func LoadFanPwmData(fan *data.Fan) (*data.Fan, error) {
+// loads the fan curve data and attaches it to the given fan
+func LoadFanPwmData(fan *data.Fan) error {
 	key := fan.PwmOutput
-	var result data.Fan
+
+	fanCurveDataMap := map[int][]float64{}
 	err := Database.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFans))
 		if b == nil {
@@ -57,7 +74,7 @@ func LoadFanPwmData(fan *data.Fan) (*data.Fan, error) {
 			return os.ErrNotExist
 		}
 
-		err := json.Unmarshal(v, &result)
+		err := json.Unmarshal(v, &fanCurveDataMap)
 		if err != nil {
 			// if we cannot read the saved data, delete it
 			log.Printf("Unable to unmarshal saved fan data for %s: %s", key, err.Error())
@@ -65,9 +82,20 @@ func LoadFanPwmData(fan *data.Fan) (*data.Fan, error) {
 			if err != nil {
 				log.Printf("Unable to delete corrupt data key %s: %s", key, err.Error())
 			}
+			return nil
 		}
 
 		return err
 	})
-	return &result, err
+
+	// convert the persisted map to arrays back to a moving window and attach it to the fan
+	for key, value := range fanCurveDataMap {
+		fanCurveMovingWindow := rolling.NewPointPolicy(rolling.NewWindow(config.CurrentConfig.RpmRollingWindowSize))
+		for _, rpm := range value {
+			fanCurveMovingWindow.Append(rpm)
+		}
+		(*fan.FanCurveData)[key] = fanCurveMovingWindow
+	}
+
+	return err
 }

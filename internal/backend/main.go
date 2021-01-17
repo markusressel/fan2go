@@ -23,7 +23,7 @@ const (
 )
 
 var (
-	Controllers []data.Controller
+	Controllers []*data.Controller
 	SensorMap   = map[string]*data.Sensor{}
 )
 
@@ -43,10 +43,7 @@ func Run() {
 	// try to load fans from persistence
 	for _, controller := range Controllers {
 		for _, fan := range controller.Fans {
-			loadedFan, err := persistence.LoadFanPwmData(fan)
-			if err == nil {
-				fan = loadedFan
-			}
+			err = persistence.LoadFanPwmData(fan)
 		}
 	}
 
@@ -89,14 +86,14 @@ func mapConfigToControllers() {
 	for _, controller := range Controllers {
 		// match fan and fan config entries
 		for _, fan := range controller.Fans {
-			fanConfig := findFanConfig(controller, *fan)
+			fanConfig := findFanConfig(controller, fan)
 			if fanConfig != nil {
 				fan.Config = fanConfig
 			}
 		}
 		// match sensor and sensor config entries
 		for _, sensor := range controller.Sensors {
-			sensorConfig := findSensorConfig(controller, *sensor)
+			sensorConfig := findSensorConfig(controller, sensor)
 			if sensorConfig != nil {
 				sensor.Config = sensorConfig
 
@@ -323,10 +320,11 @@ func fanController(fan *data.Fan) {
 
 	// check if we have data for this fan in persistence,
 	// if not we need to run the initialization sequence
-	_, err = persistence.LoadFanPwmData(fan)
+	err = persistence.LoadFanPwmData(fan)
 	if err != nil {
 		runInitializationSequence(fan)
 	}
+	updatePwmBoundaries(fan)
 
 	t := time.Tick(config.CurrentConfig.ControllerAdjustmentTickRate)
 	for {
@@ -371,8 +369,6 @@ func runInitializationSequence(fan *data.Fan) {
 		}
 	}
 
-	updatePwmBoundaries(fan)
-
 	// save to database to restore it on restarts
 	err := persistence.SaveFanPwmData(fan)
 	if err != nil {
@@ -380,7 +376,7 @@ func runInitializationSequence(fan *data.Fan) {
 	}
 }
 
-func findFanConfig(controller data.Controller, fan data.Fan) (fanConfig *config.FanConfig) {
+func findFanConfig(controller *data.Controller, fan *data.Fan) (fanConfig *config.FanConfig) {
 	for _, fanConfig := range config.CurrentConfig.Fans {
 		if controller.Platform == fanConfig.Platform &&
 			fan.Index == fanConfig.Fan {
@@ -390,7 +386,7 @@ func findFanConfig(controller data.Controller, fan data.Fan) (fanConfig *config.
 	return nil
 }
 
-func findSensorConfig(controller data.Controller, sensor data.Sensor) (sensorConfig *config.SensorConfig) {
+func findSensorConfig(controller *data.Controller, sensor *data.Sensor) (sensorConfig *config.SensorConfig) {
 	for _, sensorConfig := range config.CurrentConfig.Sensors {
 		if controller.Platform == sensorConfig.Platform &&
 			sensor.Index == sensorConfig.Index {
@@ -443,7 +439,7 @@ func calculateTargetSpeed(fan *data.Fan) int {
 }
 
 // Finds controllers and fans
-func findControllers() (controllers []data.Controller, err error) {
+func findControllers() (controllers []*data.Controller, err error) {
 	hwmonDevices := util.FindHwmonDevicePaths()
 	i2cDevices := util.FindI2cDevicePaths()
 	allDevices := append(hwmonDevices, i2cDevices...)
@@ -475,7 +471,7 @@ func findControllers() (controllers []data.Controller, err error) {
 			Fans:     fans,
 			Sensors:  sensors,
 		}
-		controllers = append(controllers, controller)
+		controllers = append(controllers, &controller)
 	}
 
 	return controllers, err
@@ -497,12 +493,13 @@ func createFans(devicePath string) []*data.Fan {
 		}
 
 		fans = append(fans, &data.Fan{
-			Name:      file,
-			Index:     index,
-			PwmOutput: output,
-			RpmInput:  inputs[idx],
-			StartPwm:  0,
-			MaxPwm:    255,
+			Name:         file,
+			Index:        index,
+			PwmOutput:    output,
+			RpmInput:     inputs[idx],
+			StartPwm:     0,
+			MaxPwm:       255,
+			FanCurveData: &map[int]*rolling.PointPolicy{},
 		})
 	}
 
@@ -643,7 +640,7 @@ func getRpm(fan *data.Fan) int {
 
 // ===== Console Output =====
 
-func printDeviceStatus(devices []data.Controller) {
+func printDeviceStatus(devices []*data.Controller) {
 	for _, device := range devices {
 		log.Printf("Controller: %s", device.Name)
 		for _, fan := range device.Fans {
