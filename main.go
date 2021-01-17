@@ -476,6 +476,7 @@ func fanController(fan *Fan) {
 
 	// TODO: check if this fan is "new"
 	runInitializationSequence(fan)
+	// TODO: read fan data from database and attach it to the fan object
 
 	t := time.Tick(config.CurrentConfig.ControllerAdjustmentTickRate)
 	for {
@@ -525,6 +526,8 @@ func runInitializationSequence(fan *Fan) {
 	}
 
 	updatePwmBoundaries(fan)
+
+	// TODO: save this data to the database
 }
 
 func findFanConfig(controller Controller, fan Fan) (fanConfig *config.FanConfig) {
