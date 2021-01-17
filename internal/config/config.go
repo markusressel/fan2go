@@ -26,11 +26,11 @@ type SensorConfig struct {
 }
 
 type FanConfig struct {
-	Id        string
-	Platform  string
-	Fan       int
-	NeverStop bool
-	Sensor    string
+	Id        string `json:"id"`
+	Platform  string `json:"platform"`
+	Fan       int    `json:"fan"`
+	NeverStop bool   `json:"neverstop"`
+	Sensor    string `json:"sensor"`
 }
 
 var CurrentConfig Configuration

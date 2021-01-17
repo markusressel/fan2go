@@ -8,7 +8,6 @@ import (
 	"fan2go/internal/util"
 	"fmt"
 	"github.com/asecurityteam/rolling"
-	"github.com/fsnotify/fsnotify"
 	"log"
 	"os"
 	"path/filepath"
@@ -19,10 +18,8 @@ import (
 )
 
 const (
-	MaxPwmValue   = 255
-	MinPwmValue   = 0
-	BucketFans    = "fans"
-	BucketSensors = "sensors"
+	MaxPwmValue = 255
+	MinPwmValue = 0
 )
 
 var (
@@ -43,8 +40,17 @@ func Run() {
 	log.Printf("Detected Devices:")
 	printDeviceStatus(Controllers)
 
+	// try to load fans from persistence
+	for _, controller := range Controllers {
+		for _, fan := range controller.Fans {
+			loadedFan, err := persistence.LoadFanPwmData(fan)
+			if err == nil {
+				fan = loadedFan
+			}
+		}
+	}
+
 	// TODO: measure fan curves / use realtime measurements to update the curve?
-	// TODO: save reference fan curves in db
 
 	// === start sensor monitoring
 	// TODO: use multiple monitoring threads(?)
@@ -130,61 +136,61 @@ func monitor() {
 	select {}
 }
 
-func startFanFsWatcher(fan *data.Fan) (*fsnotify.Watcher, error) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	go func() {
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				if event.Op&fsnotify.Write == fsnotify.Write {
-					err := updateFan(fan)
-					if err != nil {
-						log.Print(err.Error())
-					}
-					key := fmt.Sprintf("%s_pwm", fan.Name)
-					newValue, _ := persistence.ReadInt(BucketFans, key)
-					log.Printf("%s PWM: %d", fan.Name, newValue)
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				log.Println("error:", err)
-			}
-		}
-	}()
-
-	err = watcher.Add(fan.RpmInput)
-	err = watcher.Add(fan.PwmOutput)
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
-	return watcher, err
-}
-
-func updateFan(fan *data.Fan) (err error) {
-	pwmValue := getPwm(fan)
-	rpmValue, err := util.ReadIntFromFile(fan.RpmInput)
-	if err != nil {
-		return err
-	}
-	key := fmt.Sprintf("%s_pwm", fan.Name)
-	err = persistence.StoreInt(BucketFans, key, pwmValue)
-	if err != nil {
-		return err
-	}
-	key = fmt.Sprintf("%s_rpm", fan.Name)
-	err = persistence.StoreInt(BucketFans, key, rpmValue)
-	return err
-}
+//func startFanFsWatcher(fan *data.Fan) (*fsnotify.Watcher, error) {
+//	watcher, err := fsnotify.NewWatcher()
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//
+//	go func() {
+//		for {
+//			select {
+//			case event, ok := <-watcher.Events:
+//				if !ok {
+//					return
+//				}
+//				if event.Op&fsnotify.Write == fsnotify.Write {
+//					err := updateFan(fan)
+//					if err != nil {
+//						log.Print(err.Error())
+//					}
+//					key := fmt.Sprintf("%s_pwm", fan.Name)
+//					newValue, _ := persistence.ReadInt(BucketFans, key)
+//					log.Printf("%s PWM: %d", fan.Name, newValue)
+//				}
+//			case err, ok := <-watcher.Errors:
+//				if !ok {
+//					return
+//				}
+//				log.Println("error:", err)
+//			}
+//		}
+//	}()
+//
+//	err = watcher.Add(fan.RpmInput)
+//	err = watcher.Add(fan.PwmOutput)
+//	if err != nil {
+//		log.Fatal(err.Error())
+//	}
+//
+//	return watcher, err
+//}
+//
+//func updateFan(fan *data.Fan) (err error) {
+//	pwmValue := getPwm(fan)
+//	rpmValue, err := util.ReadIntFromFile(fan.RpmInput)
+//	if err != nil {
+//		return err
+//	}
+//	key := fmt.Sprintf("%s_pwm", fan.Name)
+//	err = persistence.StoreInt(BucketFans, key, pwmValue)
+//	if err != nil {
+//		return err
+//	}
+//	key = fmt.Sprintf("%s_rpm", fan.Name)
+//	err = persistence.StoreInt(BucketFans, key, rpmValue)
+//	return err
+//}
 
 func startSensorWatcher() {
 	// update RPM and Temps at different rates
@@ -203,16 +209,13 @@ func startSensorWatcher() {
 func measureRpmSensors() {
 	for _, controller := range Controllers {
 		for _, fan := range controller.Fans {
-			err := measureRpm(fan)
-			if err != nil {
-				log.Printf("Error measuring RPM: %s", err.Error())
-			}
+			measureRpm(fan)
 		}
 	}
 }
 
 // read the current value of a fan RPM sensor and append it to the moving window
-func measureRpm(fan *data.Fan) (err error) {
+func measureRpm(fan *data.Fan) {
 	pwm := getPwm(fan)
 	rpm := getRpm(fan)
 
@@ -229,8 +232,6 @@ func measureRpm(fan *data.Fan) (err error) {
 		(*pwmRpmMap)[pwm] = pointWindow
 	}
 	pointWindow.Append(float64(rpm))
-
-	return persistence.StoreInt(BucketSensors, fan.RpmInput, rpm)
 }
 
 func measureTempSensors() {
@@ -306,7 +307,7 @@ func updateSensor(sensor data.Sensor) (err error) {
 		values.Append(float64(value))
 	}
 
-	return persistence.StoreInt(BucketSensors, sensor.Input, value)
+	return nil
 }
 
 // goroutine to continuously adjust the speed of a fan
@@ -320,9 +321,12 @@ func fanController(fan *data.Fan) {
 		}
 	}
 
-	// TODO: check if this fan is "new"
-	runInitializationSequence(fan)
-	// TODO: read fan data from database and attach it to the fan object
+	// check if we have data for this fan in persistence,
+	// if not we need to run the initialization sequence
+	_, err = persistence.LoadFanPwmData(fan)
+	if err != nil {
+		runInitializationSequence(fan)
+	}
 
 	t := time.Tick(config.CurrentConfig.ControllerAdjustmentTickRate)
 	for {
@@ -363,16 +367,17 @@ func runInitializationSequence(fan *data.Fan) {
 		log.Printf("Measuring RPM of  %s at PWM: %d", fan.Config.Id, pwm)
 		for i := 0; i < config.CurrentConfig.RpmRollingWindowSize; i++ {
 			// update rpm curve
-			err = measureRpm(fan)
-			if err != nil {
-				log.Fatalf("Unable to update fan curve data on %s: %s", fan.Config.Id, err.Error())
-			}
+			measureRpm(fan)
 		}
 	}
 
 	updatePwmBoundaries(fan)
 
-	// TODO: save this data to the database
+	// save to database to restore it on restarts
+	err := persistence.SaveFanPwmData(fan)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 }
 
 func findFanConfig(controller data.Controller, fan data.Fan) (fanConfig *config.FanConfig) {
@@ -591,14 +596,7 @@ func getMinPwmValue(fan *data.Fan) (result int) {
 		return fan.StartPwm
 	}
 
-	// get the minimum possible pwm value for this fan
-	key := fmt.Sprintf("%s_pwm_min", fan.Name)
-	result, err := persistence.ReadInt(BucketFans, key)
-	if err != nil {
-		result = MinPwmValue
-	}
-
-	return result
+	return MinPwmValue
 }
 
 // get the pwm speed of a fan (0..255)
@@ -623,9 +621,8 @@ func setPwm(fan *data.Fan, pwm int) (err error) {
 	maxPwm := getMaxPwmValue(fan)
 	minPwm := getMinPwmValue(fan)
 
+	// TODO: this assumes a linear curve, but it might be something else
 	target := minPwm + int((float64(pwm)/MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
-
-	// TODO: map target pwm to fancurve?
 
 	current := getPwm(fan)
 	if target == current {

@@ -6,30 +6,30 @@ import (
 )
 
 type Controller struct {
-	Name     string
-	DType    string
-	Modalias string
-	Platform string
-	Path     string
-	Fans     []*Fan
-	Sensors  []*Sensor
+	Name     string    `json:"name"`
+	DType    string    `json:"dtype"`
+	Modalias string    `json:"modalias"`
+	Platform string    `json:"platform"`
+	Path     string    `json:"path"`
+	Fans     []*Fan    `json:"fans"`
+	Sensors  []*Sensor `json:"sensors"`
 }
 
 type Fan struct {
-	Name         string
-	Index        int
-	RpmInput     string
-	PwmOutput    string
-	Config       *config.FanConfig
-	StartPwm     int // lowest PWM value where the fans are still spinning
-	MaxPwm       int // highest PWM value that yields an RPM increase
-	FanCurveData *map[int]*rolling.PointPolicy
+	Name         string                        `json:"name"`
+	Index        int                           `json:"index"`
+	RpmInput     string                        `json:"rpminput"`
+	PwmOutput    string                        `json:"pwmoutput"`
+	Config       *config.FanConfig             `json:"config"`
+	StartPwm     int                           `json:"startpwm"` // lowest PWM value where the fans are still spinning
+	MaxPwm       int                           `json:"maxpwm"`   // highest PWM value that yields an RPM increase
+	FanCurveData *map[int]*rolling.PointPolicy `json:"fancurvedata"`
 }
 
 type Sensor struct {
-	Name   string
-	Index  int
-	Input  string
-	Config *config.SensorConfig
-	Values *rolling.PointPolicy
+	Name   string               `json:"name"`
+	Index  int                  `json:"index"`
+	Input  string               `json:"string"`
+	Config *config.SensorConfig `json:"config"`
+	Values *rolling.PointPolicy `json:"values"`
 }
