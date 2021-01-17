@@ -72,11 +72,9 @@ type Sensor struct {
 }
 
 var (
-	PollingRate         = 200 * time.Millisecond
-	MovingAvgWindowSize = 100
-	Controllers         []Controller
-	Database            *bolt.DB
-	SensorMap           = map[string]*Sensor{}
+	Controllers []Controller
+	Database    *bolt.DB
+	SensorMap   = map[string]*Sensor{}
 	// map of sensor ids -> sensor value rolling window
 	SensorValueArrayMap = map[string]*rolling.PointPolicy{}
 	// map fan id -> pwm -> rpm value rolling window
@@ -88,9 +86,6 @@ func main() {
 	if getProcessOwner() != "root" {
 		log.Fatalf("Fan control requires root access, please run fan2go as root")
 	}
-
-	PollingRate = config.CurrentConfig.PollingRate
-	MovingAvgWindowSize = config.CurrentConfig.RollingwindowSize
 
 	// TODO: cmd line parameters
 	//cmd.Execute()
@@ -123,13 +118,13 @@ func main() {
 
 				SensorMap[sensorConfig.Id] = sensor
 				// initialize arrays for storing temps
-				pointWindow := rolling.NewPointPolicy(rolling.NewWindow(MovingAvgWindowSize))
+				pointWindow := rolling.NewPointPolicy(rolling.NewWindow(config.CurrentConfig.RollingWindowSize))
 				SensorValueArrayMap[sensor.input] = pointWindow
 				currentValue, err := readIntFromFile(sensor.input)
 				if err != nil {
 					currentValue = 50000
 				}
-				for i := 0; i < MovingAvgWindowSize; i++ {
+				for i := 0; i < config.CurrentConfig.RollingWindowSize; i++ {
 					pointWindow.Append(float64(currentValue))
 				}
 				fmt.Println(SensorValueArrayMap[sensor.input])
@@ -141,7 +136,12 @@ func main() {
 	// TODO: save reference fan curves in db
 
 	go monitor()
-	go fanSpeedUpdater()
+	// TODO: run one goroutine for each fan, to keep them separate
+	for _, controller := range Controllers {
+		for _, fan := range controller.fans {
+			go fanSpeedUpdater(fan)
+		}
+	}
 
 	// wait forever
 	select {}
@@ -317,7 +317,7 @@ func updateFan(fan *Fan) (err error) {
 }
 
 func startSensorWatcher() {
-	t := time.Tick(PollingRate)
+	t := time.Tick(config.CurrentConfig.PollingRate)
 	for {
 		select {
 		case <-t:
@@ -363,7 +363,7 @@ func updateRpm(fan *Fan) (err error) {
 	pointWindow, ok := (*pwmRpmMap)[pwm]
 	if !ok {
 		// create rolling window for current pwm value
-		pointWindow = rolling.NewPointPolicy(rolling.NewWindow(MovingAvgWindowSize))
+		pointWindow = rolling.NewPointPolicy(rolling.NewWindow(config.CurrentConfig.RollingWindowSize))
 		(*pwmRpmMap)[pwm] = pointWindow
 	}
 	pointWindow.Append(float64(rpm))
@@ -416,29 +416,24 @@ func updateSensor(sensor Sensor) (err error) {
 	return storeInt(BucketSensors, sensor.input, value)
 }
 
-// goroutine to update fan speeds
-func fanSpeedUpdater() {
-	t := time.Tick(100 * time.Millisecond)
+// goroutine to continuously adjust the speed of a fan
+func fanSpeedUpdater(fan *Fan) {
+	t := time.Tick(config.CurrentConfig.UpdateTickRate)
 	for {
 		select {
 		case <-t:
-			//log.Printf("Updating fan speeds...")
-			for _, controller := range Controllers {
-				for _, fan := range controller.fans {
-					if fan.config == nil {
-						continue
-					}
-					err := setPwmEnabled(*fan, 1)
-					if err != nil {
-						err = setPwmEnabled(*fan, 0)
-						if err != nil {
-							log.Printf("Could not enable fan control on %s", fan.name)
-							continue
-						}
-					}
-					setOptimalFanSpeed(fan)
+			if fan.config == nil {
+				continue
+			}
+			err := setPwmEnabled(*fan, 1)
+			if err != nil {
+				err = setPwmEnabled(*fan, 0)
+				if err != nil {
+					log.Printf("Could not enable fan control on %s", fan.name)
+					continue
 				}
 			}
+			setOptimalFanSpeed(fan)
 		}
 	}
 }
