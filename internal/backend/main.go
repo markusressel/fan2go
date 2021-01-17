@@ -356,11 +356,11 @@ func runInitializationSequence(fan *data.Fan) {
 		// on some fans it is not possible to use the full pwm of 0..255
 		// so we try what values work and save them for later
 
-		// wait a bit to allow the fan speed to settle
+		// wait a bit to allow the fan speed to settle.
 		// since most sensors are update only each second,
 		// we wait a second + a bit, to make sure we get
 		// the most recent measurement
-		time.Sleep(500 * time.Millisecond) // TODO: use 1s+ here
+		time.Sleep(1100 * time.Millisecond)
 
 		log.Printf("Measuring RPM of  %s at PWM: %d", fan.Config.Id, pwm)
 		for i := 0; i < config.CurrentConfig.RpmRollingWindowSize; i++ {
