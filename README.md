@@ -89,6 +89,13 @@ WantedBy=multi-user.target
 EOF
 ```
 
+```shell
+sudo systemctl daemon-reload
+sudo systemctl start fan2go
+# follow logs
+journalctl -u fan2go -f
+```
+
 ## How it works
 
 ### Device detection
