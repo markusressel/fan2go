@@ -24,38 +24,71 @@ sudo mkdir /etc/fan2go
 ```
 
 ```yaml
+# The path of the database file.
 dbPath: "/etc/fan2go/fan2go.db"
+# The rate to poll temperature sensors at.
 tempSensorPollingRate: 200ms
+# The number of sensor items to keep in a rolling window array.
 rollingWindowSize: 100
+# The rate to poll fan RPM input sensors at.
 rpmPollingRate: 1s
+# The rate to update fan speed targets at.
 controllerAdjustmentTickRate: 200ms
+
+# A list of sensors to monitor.
 sensors:
+  # A user defined ID, which is used to reference a
+  # a sensor in a fan configuration (see below)
   - id: cpu_package
+    # The controller platform as displayed by `sensors`, f.ex.:
+    # If sensors displays a group with the title "nouveau-pci-0100",
+    # the platform would be "nouveau"
     platform: coretemp
+    # The index of this sensor as displayed by `sensors`.
     index: 1
+    # The minimum target temp for this sensor.
+    # If the sensor falls below this value, a fan configured
+    # for it will run at minimum PWM value.
     min: 50
+    # The maximum target temp for this sensor.
+    # If the sensor falls below this value, a fan configured
+    # for it will run at maximum PWM value.
     max: 75
+
   - id: mainboard
     platform: it8620
     index: 3 # Intel PECI
     min: 50
     max: 80
+
   - id: sata_ssd
     platform: acpitz
     index: 1
     min: 30
     max: 40
+
+# A list of fans to control.
 fans:
+  # An user defined ID.
+  # Used for logging only.
   - id: in_front
+    # The platform of the controller which is
+    # connected to this fan (see sensor.platform above).
     platform: it8620
+    # The index of this fan as displayed by `sensors`.
     fan: 3 # HDD Cage (Front)
-    neverStop: yes
+    # Indicates whether this fan is allowed to fully stop.
+    neverStop: no
+    # The sensor ID (defined above) that should be used to determine the
+    # speed of this fan.
     sensor: sata_ssd
+
   - id: in_bottom
     platform: it8620
     fan: 4 # Power Supply (Bottom)
     neverStop: yes
     sensor: mainboard
+
   - id: in_top_double
     platform: it8620
     fan: 5 # Radiator (Top)
