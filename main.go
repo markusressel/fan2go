@@ -103,8 +103,40 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error detecting devices: %s", err.Error())
 	}
+	mapConfigToControllers()
 
-	// === Map detect devices to configuration values ===
+	// === Print detected devices ===
+	log.Printf("Detected Devices:")
+	printDeviceStatus(Controllers)
+
+	// TODO: measure fan curves / use realtime measurements to update the curve?
+	// TODO: save reference fan curves in db
+
+	// === start sensor monitoring
+	// TODO: use multiple monitoring threads(?)
+	// TODO: only monitor configured sensors
+	go monitor()
+
+	// === start fan controllers
+	// run one goroutine for each fan
+	for _, controller := range Controllers {
+		for _, fan := range controller.fans {
+			if fan.config == nil {
+				// this fan is not configured, ignore it
+				log.Printf("Ignoring unconfigured fan: %s", fan.pwmOutput)
+				continue
+			}
+
+			go fanController(fan)
+		}
+	}
+
+	// wait forever
+	select {}
+}
+
+// Map detect devices to configuration values
+func mapConfigToControllers() {
 	for _, controller := range Controllers {
 		// match fan and fan config entries
 		for _, fan := range controller.fans {
@@ -133,34 +165,6 @@ func main() {
 			}
 		}
 	}
-
-	// === Print detected devices ===
-	log.Printf("Detected Devices:")
-	printDeviceStatus(Controllers)
-
-	// TODO: measure fan curves / use realtime measurements to update the curve?
-	// TODO: save reference fan curves in db
-
-	// === start sensor monitoring
-	// TODO: use multiple monitoring threads(?)
-	// TODO: only monitor configured sensors
-	go monitor()
-
-	// === start fan controllers
-	// run one goroutine for each fan
-	for _, controller := range Controllers {
-		for _, fan := range controller.fans {
-			if fan.config == nil {
-				// this fan is not configured, ignore it
-				log.Printf("Ignoring unconfigured fan: %s", fan.pwmOutput)
-				continue
-			}
-			go fanController(fan)
-		}
-	}
-
-	// wait forever
-	select {}
 }
 
 func getProcessOwner() string {
@@ -333,13 +337,13 @@ func updateFan(fan *Fan) (err error) {
 }
 
 func startSensorWatcher() {
-	// TODO: update RPM and Temps at different rates
+	// update RPM and Temps at different rates
 	tempTick := time.Tick(config.CurrentConfig.TempSensorPollingRate)
 	rpmTick := time.Tick(config.CurrentConfig.RpmPollingRate)
 	for {
 		select {
 		case <-tempTick:
-			measureSensors()
+			measureTempSensors()
 		case <-rpmTick:
 			measureRpmSensors()
 		}
@@ -359,7 +363,7 @@ func measureRpmSensors() {
 	}
 }
 
-func measureSensors() {
+func measureTempSensors() {
 	for _, controller := range Controllers {
 		for _, sensor := range controller.sensors {
 			if _, ok := SensorValueArrayMap[sensor.input]; ok {
