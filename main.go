@@ -117,6 +117,9 @@ func main() {
 	// TODO: only monitor configured sensors
 	go monitor()
 
+	// wait a bit to gather monitoring data
+	time.Sleep(2 * time.Second)
+
 	// === start fan controllers
 	// run one goroutine for each fan
 	for _, controller := range Controllers {
@@ -153,13 +156,13 @@ func mapConfigToControllers() {
 
 				SensorMap[sensorConfig.Id] = sensor
 				// initialize arrays for storing temps
-				pointWindow := rolling.NewPointPolicy(rolling.NewWindow(config.CurrentConfig.RollingWindowSize))
+				pointWindow := rolling.NewPointPolicy(rolling.NewWindow(config.CurrentConfig.TempRollingWindowSize))
 				SensorValueArrayMap[sensor.input] = pointWindow
 				currentValue, err := readIntFromFile(sensor.input)
 				if err != nil {
 					currentValue = 50000
 				}
-				for i := 0; i < config.CurrentConfig.RollingWindowSize; i++ {
+				for i := 0; i < config.CurrentConfig.TempRollingWindowSize; i++ {
 					pointWindow.Append(float64(currentValue))
 				}
 			}
@@ -353,14 +356,34 @@ func startSensorWatcher() {
 func measureRpmSensors() {
 	for _, controller := range Controllers {
 		for _, fan := range controller.fans {
-			err := updateRpm(fan)
+			err := measureRpm(fan)
 			if err != nil {
-				log.Fatal(err)
+				log.Printf("Error measuring RPM: %s", err.Error())
 			}
-			// TODO: probably not necessary to do this all the time
-			updateStartPwm(fan)
 		}
 	}
+}
+
+// read the current value of a fan RPM sensor and append it to the moving window
+func measureRpm(fan *Fan) (err error) {
+	pwm := getPwm(fan)
+	rpm := getRpm(fan)
+
+	pwmRpmMap, ok := FanCurveMap[fan.rpmInput]
+	if !ok {
+		// create map for the current fan
+		pwmRpmMap = &map[int]*rolling.PointPolicy{}
+		FanCurveMap[fan.rpmInput] = pwmRpmMap
+	}
+	pointWindow, ok := (*pwmRpmMap)[pwm]
+	if !ok {
+		// create rolling window for current pwm value
+		pointWindow = rolling.NewPointPolicy(rolling.NewWindow(config.CurrentConfig.RpmRollingWindowSize))
+		(*pwmRpmMap)[pwm] = pointWindow
+	}
+	pointWindow.Append(float64(rpm))
+
+	return storeInt(BucketSensors, fan.rpmInput, rpm)
 }
 
 func measureTempSensors() {
@@ -374,28 +397,6 @@ func measureTempSensors() {
 			}
 		}
 	}
-}
-
-// read the current value of a fan RPM sensor and append it to the moving window
-func updateRpm(fan *Fan) (err error) {
-	pwm := getPwm(fan)
-	rpm := getRpm(fan)
-
-	pwmRpmMap, ok := FanCurveMap[fan.rpmInput]
-	if !ok {
-		// create map for the current fan
-		pwmRpmMap = &map[int]*rolling.PointPolicy{}
-		FanCurveMap[fan.rpmInput] = pwmRpmMap
-	}
-	pointWindow, ok := (*pwmRpmMap)[pwm]
-	if !ok {
-		// create rolling window for current pwm value
-		pointWindow = rolling.NewPointPolicy(rolling.NewWindow(config.CurrentConfig.RollingWindowSize))
-		(*pwmRpmMap)[pwm] = pointWindow
-	}
-	pointWindow.Append(float64(rpm))
-
-	return storeInt(BucketSensors, fan.rpmInput, rpm)
 }
 
 func updateStartPwm(fan *Fan) {
@@ -445,21 +446,57 @@ func updateSensor(sensor Sensor) (err error) {
 
 // goroutine to continuously adjust the speed of a fan
 func fanController(fan *Fan) {
+	err := setPwmEnabled(*fan, 1)
+	if err != nil {
+		err = setPwmEnabled(*fan, 0)
+		if err != nil {
+			log.Printf("Could not enable fan control on %s", fan.name)
+			return
+		}
+	}
+
+	// TODO: check if this fan is "new"
+	runInitializationSequence(fan)
+
 	t := time.Tick(config.CurrentConfig.ControllerAdjustmentTickRate)
 	for {
 		select {
 		case <-t:
-			err := setPwmEnabled(*fan, 1)
-			if err != nil {
-				err = setPwmEnabled(*fan, 0)
-				if err != nil {
-					log.Printf("Could not enable fan control on %s", fan.name)
-					continue
-				}
-			}
+
 			setOptimalFanSpeed(fan)
 		}
 	}
+}
+
+// runs an initialization sequence for the given fan
+// to determine an estimation of its fan curve
+func runInitializationSequence(fan *Fan) {
+	log.Printf("Running initialization sequence for %s", fan.config.Id)
+	for pwm := 0; pwm < MaxPwmValue; pwm++ {
+		// set a pwm
+		err := setPwm(fan, pwm)
+
+		// TODO:
+		// on some fans it is not possible to use the full pwm of 0..255
+		// so we try what values work and save them for later
+
+		if err != nil {
+			log.Fatalf("Unable to run initialization sequence on %s: %s", fan.config.Id, err.Error())
+		}
+		// wait a bit to allow the fan speed to settle
+		time.Sleep(500 * time.Millisecond)
+
+		log.Printf("Measuring RPM of  %s at PWM: %d", fan.config.Id, pwm)
+		for i := 0; i < config.CurrentConfig.RpmRollingWindowSize; i++ {
+			// update rpm curve
+			err = measureRpm(fan)
+			if err != nil {
+				log.Fatalf("Unable to update fan curve data on %s: %s", fan.config.Id, err.Error())
+			}
+		}
+	}
+
+	updateStartPwm(fan)
 }
 
 func findFanConfig(controller Controller, fan Fan) (fanConfig *config.FanConfig) {
@@ -697,16 +734,17 @@ func getMaxPwmValue(fan *Fan) (result int) {
 
 // get the minimum valid pwm value of a fan
 func getMinPwmValue(fan *Fan) (result int) {
+	// if the fan is never supposed to stop,
+	// use the lowest pwm value where the fan is still spinning
+	if fan.config.NeverStop {
+		return fan.startPwm
+	}
+
+	// get the minimum possible pwm value for this fan
 	key := fmt.Sprintf("%s_pwm_min", fan.name)
 	result, err := readInt(BucketFans, key)
 	if err != nil {
 		result = MinPwmValue
-	}
-
-	// if the fan is never supposed to stop,
-	// use the lowest pwm value where the fan is still spinning
-	if fan.config.NeverStop {
-		result = fan.startPwm
 	}
 
 	return result
@@ -734,16 +772,16 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	maxPwm := getMaxPwmValue(fan)
 	minPwm := getMinPwmValue(fan)
 
-	// TODO: map target pwm to fancurve?
-
 	target := minPwm + int((float64(pwm)/MaxPwmValue)*float64(maxPwm))
+
+	// TODO: map target pwm to fancurve?
 
 	current := getPwm(fan)
 	if target == current {
 		return nil
 	}
 	log.Printf("Setting %s to %d (mapped: %d) ...", fan.name, pwm, target)
-	return writeIntToFile(pwm, fan.pwmOutput)
+	return writeIntToFile(target, fan.pwmOutput)
 }
 
 // get the rpm value of a fan

@@ -11,7 +11,8 @@ type Configuration struct {
 	TempSensorPollingRate        time.Duration
 	RpmPollingRate               time.Duration
 	ControllerAdjustmentTickRate time.Duration
-	RollingWindowSize            int
+	TempRollingWindowSize        int
+	RpmRollingWindowSize         int
 	Sensors                      []SensorConfig
 	Fans                         []FanConfig
 }
@@ -61,6 +62,7 @@ func setDefaultValues() {
 	viper.SetDefault("dbpath", "fan2go.db")
 	viper.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
 	viper.SetDefault("RpmPollingRate", 1*time.Second)
-	viper.SetDefault("rollingWindowSize", 100)
+	viper.SetDefault("TempRollingWindowSize", 100)
+	viper.SetDefault("RpmRollingWindowSize", 10)
 	viper.SetDefault("updateTickRate", 100*time.Millisecond)
 }

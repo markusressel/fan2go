@@ -7,37 +7,37 @@ sensors:
   - id: cpu_package
     platform: coretemp
     index: 1
-    min: 40
-    max: 70
+    min: 50
+    max: 75
   - id: mainboard
     platform: it8620
     index: 3 # Intel PECI
-    min: 40
-    max: 70
+    min: 50
+    max: 80
   - id: sata_ssd
     platform: acpitz
     index: 1
-    min: 28
+    min: 30
     max: 40
 fans:
   - id: in_front
     platform: it8620
     fan: 3 # HDD Cage (Front)
-    #pwm_line_start: 100
-    #pwm_line_end: 240
-    never_stop: yes
+    #pwmLineStart: 100
+    #pwmLineEnd: 240
+    neverStop: yes
     sensor: sata_ssd
   - id: in_bottom
     platform: it8620
     fan: 4 # Power Supply (Bottom)
-    #pwm_line_start: 100
-    #pwm_line_end: 240
-    never_stop: yes
+    #pwmLineStart: 100
+    #pwmLineEnd: 240
+    neverStop: yes
     sensor: mainboard
   - id: in_top_double
     platform: it8620
     fan: 5 # Radiator (Top)
-    #pwm_line_start: 100
-    #pwm_line_end: 240
-    never_stop: yes
+    #pwmLineStart: 100
+    #pwmLineEnd: 240
+    neverStop: yes
     sensor: cpu_package
