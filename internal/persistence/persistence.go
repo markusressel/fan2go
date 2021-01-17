@@ -1,7 +1,8 @@
 package persistence
 
 import (
-	"fan2go/config"
+	"fan2go/internal/config"
+	"fan2go/internal/data"
 	"fmt"
 	bolt "go.etcd.io/bbolt"
 	"log"
@@ -48,4 +49,12 @@ func StoreInt(bucket string, key string, value int) (err error) {
 		err = b.Put([]byte(key), []byte(strconv.Itoa(value)))
 		return nil
 	})
+}
+
+func SaveFanPwmData(fan *data.Fan) {
+
+}
+
+func LoadFanPwmData(fan *data.Fan) {
+
 }
