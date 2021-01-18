@@ -4,6 +4,10 @@ A daemon to control the fans of a computer.
 
 ## How to use
 
+fan2go relies on [lm-sensors](https://github.com/lm-sensors/lm-sensors) to both get temperature and RPM sensor readings,
+as well as PWM controls, so you will have
+to [set it up first](https://wiki.archlinux.org/index.php/Lm_sensors#Installation).
+
 Download the latest release from GitHub:
 
 ```shell
