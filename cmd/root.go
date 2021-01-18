@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal"
+	"github.com/markusressel/fan2go/internal/util"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -30,7 +31,33 @@ var detectCmd = &cobra.Command{
 	Short: "Detect devices",
 	Long:  `Detects all fans and sensors and prints them as a list`,
 	Run: func(cmd *cobra.Command, args []string) {
-		internal.DetectDevices()
+
+		controllers, err := internal.FindControllers()
+		if err != nil {
+			log.Fatalf("Error detecting devices: %s", err.Error())
+		}
+
+		// === Print detected devices ===
+		fmt.Printf("Detected Devices:\n")
+
+		for _, controller := range controllers {
+			if len(controller.Name) <= 0 {
+				continue
+			}
+
+			fmt.Printf("%s\n", controller.Name)
+			for _, fan := range controller.Fans {
+				pwm := internal.GetPwm(fan)
+				rpm := internal.GetRpm(fan)
+				isAuto, _ := internal.IsPwmAuto(controller.Path)
+				fmt.Printf("  %s (%d): RPM: %d PWM: %d Auto: %v\n", fan.Name, fan.Index, rpm, pwm, isAuto)
+			}
+
+			for _, sensor := range controller.Sensors {
+				value, _ := util.ReadIntFromFile(sensor.Input)
+				fmt.Printf("  %s (%d): %d\n", sensor.Name, sensor.Index, value)
+			}
+		}
 	},
 }
 

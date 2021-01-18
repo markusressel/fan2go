@@ -18,7 +18,41 @@ sudo cp ./fan2go /usr/bin/fan2go
 
 ### Configuration
 
-To configure fan2go create a YAML configuration file in **one** of the following locations:
+Use `fan2go detect` to print a list of all usable devices:
+
+```shell
+Detected Devices:
+acpitz
+  temp1_input (1): 27800
+  temp2_input (2): 29800
+nvme
+  temp1_input (1): 52850
+  temp2_input (2): 52850
+  temp3_input (3): 64850
+coretemp
+  temp1_input (1): 59000
+  temp2_input (2): 57000
+  temp3_input (3): 52000
+  temp4_input (4): 56000
+  temp5_input (5): 50000
+it8620
+  pwm1 (1): RPM: 0 PWM: 70 Auto: false
+  pwm2 (2): RPM: 0 PWM: 70 Auto: false
+  pwm3 (3): RPM: 709 PWM: 106 Auto: false
+  pwm4 (4): RPM: 627 PWM: 94 Auto: false
+  pwm5 (5): RPM: 684 PWM: 100 Auto: false
+  temp1_input (1): 29000
+  temp2_input (2): 32000
+  temp3_input (3): 49000
+  temp4_input (4): 29000
+  temp5_input (5): 46000
+  temp6_input (6): 46000
+nouveau
+  pwm1 (1): RPM: 1560 PWM: 31 Auto: false
+  temp1_input (1): 33000
+```
+
+Then configure fan2go by creating a YAML configuration file in **one** of the following locations:
 
 * `./fan2go.yaml`
 * `/etc/fan2go/fan2go.yaml` (recommended)
@@ -49,7 +83,7 @@ sensors:
     # If sensors displays a group with the title "nouveau-pci-0100",
     # the platform would be "nouveau"
     platform: coretemp
-    # The index of this sensor as displayed by `sensors`.
+    # The index of this sensor as displayed by `fan2go detect`.
     index: 1
     # The minimum target temp for this sensor.
     # If the sensor falls below this value, a fan configured
@@ -80,7 +114,7 @@ fans:
     # The platform of the controller which is
     # connected to this fan (see sensor.platform above).
     platform: it8620
-    # The index of this fan as displayed by `sensors`.
+    # The index of this fan as displayed by `fan2go detect`.
     fan: 3 # HDD Cage (Front)
     # Indicates whether this fan is allowed to fully stop.
     neverStop: no

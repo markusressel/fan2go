@@ -34,7 +34,7 @@ func Run() {
 
 	defer OpenPersistence().Close()
 
-	DetectDevices()
+	detectDevices()
 	mapConfigToControllers()
 
 	// === start sensor monitoring
@@ -69,17 +69,13 @@ func Run() {
 	select {}
 }
 
-func DetectDevices() {
+func detectDevices() {
 	// === Detect devices ===
-	controllers, err := findControllers()
+	controllers, err := FindControllers()
 	if err != nil {
 		log.Fatalf("Error detecting devices: %s", err.Error())
 	}
 	Controllers = controllers
-
-	// === Print detected devices ===
-	log.Printf("Detected Devices:")
-	printDeviceStatus(Controllers)
 }
 
 func getProcessOwner() string {
@@ -209,8 +205,8 @@ func measureRpmSensors() {
 
 // read the current value of a fan RPM sensor and append it to the moving window
 func measureRpm(fan *Fan) {
-	pwm := getPwm(fan)
-	rpm := getRpm(fan)
+	pwm := GetPwm(fan)
+	rpm := GetRpm(fan)
 
 	pwmRpmMap := fan.FanCurveData
 	if pwmRpmMap == nil {
@@ -437,7 +433,7 @@ func calculateTargetSpeed(fan *Fan) int {
 	return int(ratio * 255)
 
 	// Toggling between off and "full on" for testing
-	//pwm := getPwm(fan)
+	//pwm := GetPwm(fan)
 	//if pwm < 255 {
 	//	return 255
 	//}
@@ -448,7 +444,7 @@ func calculateTargetSpeed(fan *Fan) int {
 }
 
 // Finds controllers and fans
-func findControllers() (controllers []*Controller, err error) {
+func FindControllers() (controllers []*Controller, err error) {
 	hwmonDevices := util.FindHwmonDevicePaths()
 	i2cDevices := util.FindI2cDevicePaths()
 	allDevices := append(hwmonDevices, i2cDevices...)
@@ -540,7 +536,7 @@ func createSensors(devicePath string) []*Sensor {
 }
 
 // checks if the given output is in auto mode
-func isPwmAuto(outputPath string) (bool, error) {
+func IsPwmAuto(outputPath string) (bool, error) {
 	pwmEnabledFilePath := outputPath + "_enable"
 
 	if _, err := os.Stat(pwmEnabledFilePath); err != nil {
@@ -597,7 +593,7 @@ func getMinPwmValue(fan *Fan) (result int) {
 }
 
 // get the pwm speed of a fan (0..255)
-func getPwm(fan *Fan) int {
+func GetPwm(fan *Fan) int {
 	value, err := util.ReadIntFromFile(fan.PwmOutput)
 	if err != nil {
 		return MinPwmValue
@@ -621,7 +617,7 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	// TODO: this assumes a linear curve, but it might be something else
 	target := minPwm + int((float64(pwm)/MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
 
-	current := getPwm(fan)
+	current := GetPwm(fan)
 	if target == current {
 		return nil
 	}
@@ -630,29 +626,10 @@ func setPwm(fan *Fan, pwm int) (err error) {
 }
 
 // get the rpm value of a fan
-func getRpm(fan *Fan) int {
+func GetRpm(fan *Fan) int {
 	value, err := util.ReadIntFromFile(fan.RpmInput)
 	if err != nil {
 		return 0
 	}
 	return value
-}
-
-// ===== Console Output =====
-
-func printDeviceStatus(devices []*Controller) {
-	for _, device := range devices {
-		log.Printf("Controller: %s", device.Name)
-		for _, fan := range device.Fans {
-			pwm := getPwm(fan)
-			rpm := getRpm(fan)
-			isAuto, _ := isPwmAuto(device.Path)
-			log.Printf("Fan %d (%s): RPM: %d PWM: %d Auto: %v", fan.Index, fan.Name, rpm, pwm, isAuto)
-		}
-
-		for _, sensor := range device.Sensors {
-			value, _ := util.ReadIntFromFile(sensor.Input)
-			log.Printf("Sensor %d (%s): %d", sensor.Index, sensor.Name, value)
-		}
-	}
 }
