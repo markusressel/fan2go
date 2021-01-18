@@ -368,7 +368,7 @@ func runInitializationSequence(fan *Fan) {
 		// since most sensors are update only each second,
 		// we wait a second + a bit, to make sure we get
 		// the most recent measurement
-		time.Sleep(1100 * time.Millisecond)
+		time.Sleep(2 * time.Second)
 
 		log.Printf("Measuring RPM of %s (%s) at PWM: %d", fan.Config.Id, fan.Name, pwm)
 		for i := 0; i < CurrentConfig.RpmRollingWindowSize; i++ {
