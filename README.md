@@ -21,6 +21,7 @@ sudo cp ./fan2go /usr/bin/fan2go
 Use `fan2go detect` to print a list of all usable devices:
 
 ```shell
+> fan2go detect
 Detected Devices:
 acpitz
   temp1_input (1): 27800
