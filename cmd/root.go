@@ -3,11 +3,12 @@ package cmd
 import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal"
+	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
-	"os"
-
-	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
+	"log"
+	"os"
+	"time"
 )
 
 var cfgFile string
@@ -16,31 +17,39 @@ var cfgFile string
 var rootCmd = &cobra.Command{
 	Use:   "fan2go",
 	Short: "A daemon to control the fans of a computer.",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
+	Long: `fan2go is a simple daemon that controls the fans
+on your computer based on temperature sensors.`,
+	// this is the default command to run when no subcommand is specified
 	Run: func(cmd *cobra.Command, args []string) {
 		internal.Run()
 	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute() {
-	defer internal.Open().Close()
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+var detectCmd = &cobra.Command{
+	Use:   "detect",
+	Short: "Detect devices",
+	Long:  `Detects all fans and sensors and prints them as a list`,
+	Run: func(cmd *cobra.Command, args []string) {
+		internal.DetectDevices()
+	},
+}
+
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print the version number of fan2go",
+	Long:  `All software has versions. This is fan2go's`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("v0.0.2")
+	},
 }
 
 func init() {
 	cobra.OnInitialize(initConfig)
+
+	rootCmd.AddCommand(detectCmd)
+	rootCmd.AddCommand(versionCmd)
+
+	//rootCmd.SetHelpCommand("-h")
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
@@ -55,6 +64,8 @@ func init() {
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
+	viper.SetConfigName("fan2go")
+
 	if cfgFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
@@ -67,14 +78,45 @@ func initConfig() {
 		}
 
 		// Search config in home directory with name ".system-control" (without extension).
+		viper.AddConfigPath(".")
 		viper.AddConfigPath(home)
-		viper.SetConfigName(".fan2go")
+		viper.AddConfigPath("/etc/fan2go/")
 	}
 
 	viper.AutomaticEnv() // read in environment variables that match
 
-	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		fmt.Println("Using config file:", viper.ConfigFileUsed())
+	setDefaultValues()
+	readConfigFile()
+}
+
+func readConfigFile() {
+	if err := viper.ReadInConfig(); err != nil {
+		// config file is required, so we fail here
+		log.Fatalf("Error reading config file, %s", err)
+	}
+
+	err := viper.Unmarshal(&internal.CurrentConfig)
+	if err != nil {
+		log.Fatalf("unable to decode into struct, %v", err)
+	}
+}
+
+func setDefaultValues() {
+	viper.SetDefault("dbpath", "/etc/fan2go/fan2go.db")
+	viper.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
+	viper.SetDefault("RpmPollingRate", 1*time.Second)
+	viper.SetDefault("TempRollingWindowSize", 100)
+	viper.SetDefault("RpmRollingWindowSize", 10)
+	viper.SetDefault("updateTickRate", 100*time.Millisecond)
+	viper.SetDefault("sensors", []internal.SensorConfig{})
+	viper.SetDefault("fans", []internal.FanConfig{})
+}
+
+// Execute adds all child commands to the root command and sets flags appropriately.
+// This is called by main.main(). It only needs to happen once to the rootCmd.
+func Execute() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 }

@@ -7,10 +7,12 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -25,24 +27,15 @@ var (
 )
 
 func Run() {
-	// === Detect devices ===
-	controllers, err := findControllers()
-	if err != nil {
-		log.Fatalf("Error detecting devices: %s", err.Error())
+	// TODO: maybe it is possible without root by providing permissions?
+	if getProcessOwner() != "root" {
+		log.Fatalf("Fan control requires root access, please run fan2go as root")
 	}
-	Controllers = controllers
+
+	defer OpenPersistence().Close()
+
+	DetectDevices()
 	mapConfigToControllers()
-
-	// === Print detected devices ===
-	log.Printf("Detected Devices:")
-	printDeviceStatus(Controllers)
-
-	// try to load fans from persistence
-	for _, controller := range Controllers {
-		for _, fan := range controller.Fans {
-			err = LoadFanPwmData(fan)
-		}
-	}
 
 	// === start sensor monitoring
 	// TODO: use multiple monitoring threads(?)
@@ -74,6 +67,28 @@ func Run() {
 
 	// wait forever
 	select {}
+}
+
+func DetectDevices() {
+	// === Detect devices ===
+	controllers, err := findControllers()
+	if err != nil {
+		log.Fatalf("Error detecting devices: %s", err.Error())
+	}
+	Controllers = controllers
+
+	// === Print detected devices ===
+	log.Printf("Detected Devices:")
+	printDeviceStatus(Controllers)
+}
+
+func getProcessOwner() string {
+	stdout, err := exec.Command("ps", "-o", "user=", "-p", strconv.Itoa(os.Getpid())).Output()
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+	return strings.TrimSpace(string(stdout))
 }
 
 // Map detect devices to configuration values

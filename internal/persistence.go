@@ -18,7 +18,7 @@ var (
 	Database *bolt.DB
 )
 
-func Open() *bolt.DB {
+func OpenPersistence() *bolt.DB {
 	DB, err := bolt.Open(CurrentConfig.DbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
 		log.Fatalf("Could not open database file: %s", err.Error())
