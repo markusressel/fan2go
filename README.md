@@ -158,7 +158,7 @@ is controlled properly. This means
 Measurements taken during this process will then be used to determine the lowest PWM value at which the fan is still
 running, as well as the highest PWM value that still yields a change in RPM.
 
-All of this is saved to a local bolt database.
+All of this is saved to a local database.
 
 ### Monitoring
 
@@ -169,7 +169,12 @@ configuration).
 ### Fan Controllers
 
 To update the fan speed, one goroutine is started **per fan**, which continuously adjusts the PWM value of a given fan
-based on the sensor data measured by the monitor.
+based on the sensor data measured by the monitor. This means:
+
+* calculating the average temperature per sensor using the rolling window data
+* calculating the ratio between the average temp and the max/min values defined in the config
+* calculating the target PWM of a fan using the previous ratio, taking its startPWM and maxPWM into account
+* applyingthe calculated target PWM to the fan
 
 # Dependencies
 
