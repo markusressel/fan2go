@@ -191,10 +191,11 @@ is controlled properly. This means
 * spinning down the fans to 0
 * slowly ramping up the speed and monitoring RPM changes along the way
 
-Measurements taken during this process will then be used to determine the lowest PWM value at which the fan is still
-running, as well as the highest PWM value that still yields a change in RPM.
+**Note that this takes approx. 8 1/2 minutes**, since we have to wait for the fan speed to settle before taking
+measurements. Measurements taken during this process will then be used to determine the lowest PWM value at which the
+fan is still running, as well as the highest PWM value that still yields a change in RPM.
 
-All of this is saved to a local database.
+All of this is saved to a local database, so it is only needed once per fan configuration.
 
 ### Monitoring
 
