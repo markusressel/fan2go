@@ -116,6 +116,8 @@ After=lm-sensors.service
 [Service]
 LimitNOFILE=8192
 ExecStart=/usr/bin/fan2go
+Restart=always
+RestartSec=1s
 
 [Install]
 WantedBy=multi-user.target
