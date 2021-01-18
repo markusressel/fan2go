@@ -130,7 +130,7 @@ EOF
 
 ```shell
 sudo systemctl daemon-reload
-sudo systemctl start fan2go
+sudo systemctl enable --now fan2go
 # follow logs
 journalctl -u fan2go -f
 ```
