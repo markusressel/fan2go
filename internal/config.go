@@ -59,10 +59,12 @@ func readConfigFile() {
 }
 
 func setDefaultValues() {
-	viper.SetDefault("dbpath", "fan2go.db")
+	viper.SetDefault("dbpath", "/etc/fan2go/fan2go.db")
 	viper.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
 	viper.SetDefault("RpmPollingRate", 1*time.Second)
 	viper.SetDefault("TempRollingWindowSize", 100)
 	viper.SetDefault("RpmRollingWindowSize", 10)
 	viper.SetDefault("updateTickRate", 100*time.Millisecond)
+	viper.SetDefault("sensors", []SensorConfig{})
+	viper.SetDefault("fans", []FanConfig{})
 }
