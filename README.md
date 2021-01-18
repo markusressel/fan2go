@@ -174,7 +174,7 @@ based on the sensor data measured by the monitor. This means:
 * calculating the average temperature per sensor using the rolling window data
 * calculating the ratio between the average temp and the max/min values defined in the config
 * calculating the target PWM of a fan using the previous ratio, taking its startPWM and maxPWM into account
-* applyingthe calculated target PWM to the fan
+* applying the calculated target PWM to the fan
 
 # Dependencies
 
