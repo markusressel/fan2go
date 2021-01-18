@@ -290,13 +290,10 @@ func updateSensor(sensor Sensor) (err error) {
 
 // goroutine to continuously adjust the speed of a fan
 func fanController(fan *Fan) {
-	err := setPwmEnabled(*fan, 1)
+	err := trySetManualPwm(fan)
 	if err != nil {
-		err = setPwmEnabled(*fan, 0)
-		if err != nil {
-			log.Printf("Could not enable fan control on %s", fan.Name)
-			return
-		}
+		log.Printf("Could not enable fan control on %s", fan.Name)
+		return
 	}
 
 	// check if we have data for this fan in persistence,
@@ -311,9 +308,28 @@ func fanController(fan *Fan) {
 	for {
 		select {
 		case <-t:
-			setOptimalFanSpeed(fan)
+			err = setOptimalFanSpeed(fan)
+			if err != nil {
+				log.Printf("Error setting %s/%d: %s", fan.Name, fan.Index, err.Error())
+				err = trySetManualPwm(fan)
+				if err != nil {
+					log.Printf("Could not enable fan control on %s", fan.Name)
+					return
+				}
+			}
 		}
 	}
+}
+
+func trySetManualPwm(fan *Fan) (err error) {
+	err = setPwmEnabled(fan, 1)
+	if err != nil {
+		err = setPwmEnabled(fan, 0)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // runs an initialization sequence for the given fan
@@ -378,12 +394,9 @@ func findSensorConfig(controller *Controller, sensor *Sensor) (sensorConfig *Sen
 }
 
 // calculates optimal fan speeds for all given devices
-func setOptimalFanSpeed(fan *Fan) {
+func setOptimalFanSpeed(fan *Fan) (err error) {
 	target := calculateTargetSpeed(fan)
-	err := setPwm(fan, target)
-	if err != nil {
-		log.Printf("Error setting %s/%d: %s", fan.Name, fan.Index, err.Error())
-	}
+	return setPwm(fan, target)
 }
 
 // calculates the target speed for a given device output
@@ -478,8 +491,8 @@ func createFans(devicePath string) []*Fan {
 			Index:        index,
 			PwmOutput:    output,
 			RpmInput:     inputs[idx],
-			StartPwm:     0,
-			MaxPwm:       255,
+			StartPwm:     MinPwmValue,
+			MaxPwm:       MaxPwmValue,
 			FanCurveData: &map[int]*rolling.PointPolicy{},
 		})
 	}
@@ -534,7 +547,7 @@ func isPwmAuto(outputPath string) (bool, error) {
 // 0 - no control (results in max speed)
 // 1 - manual pwm control
 // 2 - motherboard pwm control
-func setPwmEnabled(fan Fan, value int) (err error) {
+func setPwmEnabled(fan *Fan, value int) (err error) {
 	pwmEnabledFilePath := fan.PwmOutput + "_enable"
 	err = util.WriteIntToFile(value, pwmEnabledFilePath)
 	if err == nil {
@@ -547,23 +560,14 @@ func setPwmEnabled(fan Fan, value int) (err error) {
 }
 
 // get the pwmX_enabled value of a fan
-func getPwmEnabled(fan Fan) (int, error) {
+func getPwmEnabled(fan *Fan) (int, error) {
 	pwmEnabledFilePath := fan.PwmOutput + "_enable"
 	return util.ReadIntFromFile(pwmEnabledFilePath)
 }
 
 // get the maximum valid pwm value of a fan
 func getMaxPwmValue(fan *Fan) (result int) {
-	// TODO: load this from persistence
-
 	return fan.MaxPwm
-	//
-	//key := fmt.Sprintf("%s_pwm_max", fan.Name)
-	//result, err := readInt(BucketFans, key)
-	//if err != nil {
-	//	result = MaxPwmValue
-	//}
-	//return result
 }
 
 // get the minimum valid pwm value of a fan
