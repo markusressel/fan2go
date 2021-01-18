@@ -21,7 +21,7 @@ var (
 func Open() *bolt.DB {
 	DB, err := bolt.Open(CurrentConfig.DbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Could not open database file: %s", err.Error())
 	}
 	Database = DB
 	return Database
