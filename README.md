@@ -9,6 +9,7 @@ Download the latest release from GitHub:
 ```shell
 curl -L -o fan2go  https://github.com/markusressel/fan2go/releases/latest/download/fan2go-linux-amd64
 chmod +x fan2go
+sudo cp ./fan2go /usr/bin/fan2go
 ```
 
 ### Configuration
@@ -16,7 +17,7 @@ chmod +x fan2go
 To configure fan2go create a YAML configuration file in **one** of the following locations:
 
 * `./fan2go.yaml`
-* `/etc/fan2go/fan2go.yaml`
+* `/etc/fan2go/fan2go.yaml` (recommended)
 * `/root/.fan2go/fan2go.yaml`
 
 ```shell
@@ -99,7 +100,7 @@ fans:
 ### Run
 
 ```shell
-sudo ./fan2go
+sudo fan2go
 ```
 
 ### As a Service
@@ -107,7 +108,6 @@ sudo ./fan2go
 #### Systemd
 
 ```
-sudo cp ./fan2go /usr/bin/fan2go
 sudo tee /usr/lib/systemd/system/fan2go.service <<- 'EOF'
 [Unit]
 Description=Advanced Fan Control program
