@@ -11,7 +11,7 @@ to [set it up first](https://wiki.archlinux.org/index.php/Lm_sensors#Installatio
 Download the latest release from GitHub:
 
 ```shell
-curl -L -o fan2go  https://github.com/markusressel/fan2go/releases/latest/download/fan2go-linux-amd64
+curl -L -o fan2go https://github.com/markusressel/fan2go/releases/latest/download/fan2go-linux-amd64
 chmod +x fan2go
 sudo cp ./fan2go /usr/bin/fan2go
 fan2go help
