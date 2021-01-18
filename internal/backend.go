@@ -52,7 +52,7 @@ func Run() {
 		for _, fan := range controller.Fans {
 			if fan.Config == nil {
 				// this fan is not configured, ignore it
-				log.Printf("Ignoring unconfigured fan: %s", fan.PwmOutput)
+				log.Printf("Ignoring unconfigured fan %s/%s", controller.Name, fan.Name)
 				continue
 			}
 
@@ -271,11 +271,11 @@ func updatePwmBoundaries(fan *Fan) {
 	}
 
 	if fan.StartPwm != startPwm {
-		log.Printf("Start PWM of %s: %d", fan.RpmInput, startPwm)
+		log.Printf("Start PWM of %s (%s): %d", fan.Config.Id, fan.Name, startPwm)
 		fan.StartPwm = startPwm
 	}
 	if fan.MaxPwm != maxPwm {
-		log.Printf("Max PWM of %s: %d", fan.RpmInput, startPwm)
+		log.Printf("Max PWM of %s (%s): %d", fan.Config.Id, fan.Name, startPwm)
 		fan.MaxPwm = maxPwm
 	}
 }
@@ -303,7 +303,7 @@ func updateSensor(sensor Sensor) (err error) {
 func fanController(fan *Fan) {
 	err := trySetManualPwm(fan)
 	if err != nil {
-		log.Printf("Could not enable fan control on %s", fan.Name)
+		log.Printf("Could not enable fan control on %s (%s)", fan.Config.Id, fan.Name)
 		return
 	}
 
@@ -321,10 +321,10 @@ func fanController(fan *Fan) {
 		case <-t:
 			err = setOptimalFanSpeed(fan)
 			if err != nil {
-				log.Printf("Error setting %s/%d: %s", fan.Name, fan.Index, err.Error())
+				log.Printf("Error setting %s (%s): %s", fan.Config.Id, fan.Name, err.Error())
 				err = trySetManualPwm(fan)
 				if err != nil {
-					log.Printf("Could not enable fan control on %s", fan.Name)
+					log.Printf("Could not enable fan control on %s (%s)", fan.Config.Id, fan.Name)
 					return
 				}
 			}
@@ -346,12 +346,12 @@ func trySetManualPwm(fan *Fan) (err error) {
 // runs an initialization sequence for the given fan
 // to determine an estimation of its fan curve
 func runInitializationSequence(fan *Fan) {
-	log.Printf("Running initialization sequence for %s", fan.Config.Id)
+	log.Printf("Running initialization sequence for %s (%s)", fan.Config.Id, fan.Name)
 	for pwm := 0; pwm < MaxPwmValue; pwm++ {
 		// set a pwm
 		err := util.WriteIntToFile(pwm, fan.PwmOutput)
 		if err != nil {
-			log.Fatalf("Unable to run initialization sequence on %s: %s", fan.Config.Id, err.Error())
+			log.Fatalf("Unable to run initialization sequence on %s (%s): %s", fan.Config.Id, fan.Name, err.Error())
 		}
 
 		if pwm == 0 {
@@ -370,7 +370,7 @@ func runInitializationSequence(fan *Fan) {
 		// the most recent measurement
 		time.Sleep(1100 * time.Millisecond)
 
-		log.Printf("Measuring RPM of  %s at PWM: %d", fan.Config.Id, pwm)
+		log.Printf("Measuring RPM of %s (%s) at PWM: %d", fan.Config.Id, fan.Name, pwm)
 		for i := 0; i < CurrentConfig.RpmRollingWindowSize; i++ {
 			// update rpm curve
 			measureRpm(fan)
@@ -621,7 +621,7 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	if target == current {
 		return nil
 	}
-	log.Printf("Setting %s to %d (mapped: %d) ...", fan.Name, pwm, target)
+	log.Printf("Setting %s (%s) to %d (mapped: %d) ...", fan.Config.Id, fan.Name, pwm, target)
 	return util.WriteIntToFile(target, fan.PwmOutput)
 }
 
