@@ -142,8 +142,8 @@ journalctl -u fan2go -f
 fan2go scans the `/sys/class/hwmon` directory for hardware monitor paths. All of these paths are then scanned for
 
 - `tempX_input`
+- `pwmX_input`
 - `pwmX`
-- `pwm_input`
 
 files, which represent temperature sensors, RPM sensors and PWM outputs.
 
