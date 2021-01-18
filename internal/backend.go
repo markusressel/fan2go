@@ -366,7 +366,7 @@ func runInitializationSequence(fan *Fan) {
 
 		// wait a bit to allow the fan speed to settle.
 		// since most sensors are update only each second,
-		// we wait a second + a bit, to make sure we get
+		// we wait double that to make sure we get
 		// the most recent measurement
 		time.Sleep(2 * time.Second)
 
