@@ -14,7 +14,7 @@ Download the latest release from GitHub:
 curl -L -o fan2go https://github.com/markusressel/fan2go/releases/latest/download/fan2go-linux-amd64
 chmod +x fan2go
 sudo cp ./fan2go /usr/bin/fan2go
-fan2go help
+fan2go -h
 ```
 
 ### Configuration
