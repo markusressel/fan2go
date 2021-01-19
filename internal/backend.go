@@ -24,9 +24,11 @@ const (
 var (
 	Controllers []*Controller
 	SensorMap   = map[string]*Sensor{}
+	Verbose     bool
 )
 
-func Run() {
+func Run(verbose bool) {
+	Verbose = verbose
 	// TODO: maybe it is possible without root by providing permissions?
 	if getProcessOwner() != "root" {
 		log.Fatalf("Fan control requires root access, please run fan2go as root")
@@ -94,6 +96,9 @@ func mapConfigToControllers() {
 		for _, fan := range controller.Fans {
 			fanConfig := findFanConfig(controller, fan)
 			if fanConfig != nil {
+				if Verbose {
+					log.Printf("Mapping fan config %s to %s", fanConfig.Id, fan.PwmOutput)
+				}
 				fan.Config = fanConfig
 			}
 		}
@@ -101,18 +106,22 @@ func mapConfigToControllers() {
 		for _, sensor := range controller.Sensors {
 			sensorConfig := findSensorConfig(controller, sensor)
 			if sensorConfig != nil {
+				if Verbose {
+					log.Printf("Mapping sensor config %s to %s", sensorConfig.Id, sensor.Input)
+				}
+
 				sensor.Config = sensorConfig
 
+				// remember ID -> Sensor association for later
 				SensorMap[sensorConfig.Id] = sensor
+
 				// initialize arrays for storing temps
-				pointWindow := rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.TempRollingWindowSize))
-				sensor.Values = pointWindow
 				currentValue, err := util.ReadIntFromFile(sensor.Input)
 				if err != nil {
-					currentValue = 50000
+					log.Fatalf("Error reading sensor %s: %s", sensorConfig.Id, err.Error())
 				}
 				for i := 0; i < CurrentConfig.TempRollingWindowSize; i++ {
-					pointWindow.Append(float64(currentValue))
+					sensor.Values.Append(float64(currentValue))
 				}
 			}
 		}
@@ -208,12 +217,11 @@ func measureRpm(fan *Fan) {
 	pwm := GetPwm(fan)
 	rpm := GetRpm(fan)
 
-	pwmRpmMap := fan.FanCurveData
-	if pwmRpmMap == nil {
-		// create map for the current fan
-		pwmRpmMap = &map[int]*rolling.PointPolicy{}
-		fan.FanCurveData = pwmRpmMap
+	if Verbose {
+		log.Printf("Measured RPM of %d at PWM %d for fan %s", rpm, pwm, fan.Config.Id)
 	}
+
+	pwmRpmMap := fan.FanCurveData
 	pointWindow, ok := (*pwmRpmMap)[pwm]
 	if !ok {
 		// create rolling window for current pwm value
@@ -272,7 +280,7 @@ func updatePwmBoundaries(fan *Fan) {
 
 	log.Printf("Start PWM of %s (%s): %d", fan.Config.Id, fan.Name, startPwm)
 	fan.StartPwm = startPwm
-	log.Printf("Max PWM of %s (%s): %d", fan.Config.Id, fan.Name, startPwm)
+	log.Printf("Max PWM of %s (%s): %d", fan.Config.Id, fan.Name, maxPwm)
 	fan.MaxPwm = maxPwm
 }
 
@@ -522,9 +530,10 @@ func createSensors(devicePath string) []*Sensor {
 		}
 
 		sensors = append(sensors, &Sensor{
-			Name:  file,
-			Index: index,
-			Input: input,
+			Name:   file,
+			Index:  index,
+			Input:  input,
+			Values: rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.TempRollingWindowSize)),
 		})
 	}
 
