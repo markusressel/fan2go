@@ -218,7 +218,7 @@ func measureRpm(fan *Fan) {
 	rpm := GetRpm(fan)
 
 	if Verbose {
-		log.Printf("Measured RPM of %d at PWM %d for fan %s", rpm, pwm, fan.Config.Id)
+		log.Printf("Measured RPM of %d at PWM %d for fan %s", rpm, pwm, fan.PwmOutput)
 	}
 
 	pwmRpmMap := fan.FanCurveData
