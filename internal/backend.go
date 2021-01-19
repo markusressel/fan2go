@@ -207,7 +207,10 @@ func startSensorWatcher() {
 func measureRpmSensors() {
 	for _, controller := range Controllers {
 		for _, fan := range controller.Fans {
-			measureRpm(fan)
+			// TODO: fans without config shouldn't be in the controller list anyway
+			if fan.Config != nil {
+				measureRpm(fan)
+			}
 		}
 	}
 }
@@ -218,7 +221,7 @@ func measureRpm(fan *Fan) {
 	rpm := GetRpm(fan)
 
 	if Verbose {
-		log.Printf("Measured RPM of %d at PWM %d for fan %s", rpm, pwm, fan.PwmOutput)
+		log.Printf("Measured RPM of %d at PWM %d for fan %s", rpm, pwm, fan.Config.Id)
 	}
 
 	pwmRpmMap := fan.FanCurveData
@@ -234,6 +237,7 @@ func measureRpm(fan *Fan) {
 func measureTempSensors() {
 	for _, controller := range Controllers {
 		for _, sensor := range controller.Sensors {
+			// TODO: fans without config shouldn't be in the controller list anyway
 			if sensor.Config != nil {
 				err := updateSensor(*sensor)
 				if err != nil {
