@@ -270,14 +270,10 @@ func updatePwmBoundaries(fan *Fan) {
 		}
 	}
 
-	if fan.StartPwm != startPwm {
-		log.Printf("Start PWM of %s (%s): %d", fan.Config.Id, fan.Name, startPwm)
-		fan.StartPwm = startPwm
-	}
-	if fan.MaxPwm != maxPwm {
-		log.Printf("Max PWM of %s (%s): %d", fan.Config.Id, fan.Name, startPwm)
-		fan.MaxPwm = maxPwm
-	}
+	log.Printf("Start PWM of %s (%s): %d", fan.Config.Id, fan.Name, startPwm)
+	fan.StartPwm = startPwm
+	log.Printf("Max PWM of %s (%s): %d", fan.Config.Id, fan.Name, startPwm)
+	fan.MaxPwm = maxPwm
 }
 
 // read the current value of a sensor and append it to the moving window
