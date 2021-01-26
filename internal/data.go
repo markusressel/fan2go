@@ -15,15 +15,16 @@ type Controller struct {
 }
 
 type Fan struct {
-	Name         string                        `json:"name"`
-	Index        int                           `json:"index"`
-	RpmInput     string                        `json:"rpminput"`
-	PwmOutput    string                        `json:"pwmoutput"`
-	Config       *FanConfig                    `json:"config"`
-	StartPwm     int                           `json:"startpwm"` // lowest PWM value where the fans are still spinning
-	MaxPwm       int                           `json:"maxpwm"`   // highest PWM value that yields an RPM increase
-	FanCurveData *map[int]*rolling.PointPolicy `json:"fancurvedata"`
-	LastSetPwm   int                           `json:"lastsetpwm"`
+	Name               string                        `json:"name"`
+	Index              int                           `json:"index"`
+	RpmInput           string                        `json:"rpminput"`
+	PwmOutput          string                        `json:"pwmoutput"`
+	Config             *FanConfig                    `json:"config"`
+	StartPwm           int                           `json:"startpwm"` // lowest PWM value where the fans are still spinning
+	MaxPwm             int                           `json:"maxpwm"`   // highest PWM value that yields an RPM increase
+	FanCurveData       *map[int]*rolling.PointPolicy `json:"fancurvedata"`
+	OriginalPwmEnabled int                           `json:"originalpwmenabled"`
+	LastSetPwm         int                           `json:"lastsetpwm"`
 }
 
 type Sensor struct {

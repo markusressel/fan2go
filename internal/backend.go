@@ -8,11 +8,13 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -46,7 +48,9 @@ func Run(verbose bool) {
 	go monitor()
 
 	// wait a bit to gather monitoring data
-	time.Sleep(2 * time.Second)
+	time.Sleep(CurrentConfig.TempSensorPollingRate * 2)
+
+	setupExitHandler()
 
 	// === start fan controllers
 	// run one goroutine for each fan
@@ -70,6 +74,36 @@ func Run(verbose bool) {
 
 	// wait forever
 	select {}
+}
+
+func setupExitHandler() {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigs
+		log.Printf("Received signal %d, trying to restore fan settings...", sig)
+
+		for _, controller := range Controllers {
+			for _, fan := range controller.Fans {
+				if fan.Config != nil {
+					// try to reset the pwm_enabled value
+					if fan.OriginalPwmEnabled != 1 {
+						err := setPwmEnabled(fan, fan.OriginalPwmEnabled)
+						if err == nil {
+							continue
+						}
+					}
+					err := setPwm(fan, MaxPwmValue)
+					if err != nil {
+						log.Printf("WARNING: Unable to revert fan %s, make sure it is running!", fan.Config.Id)
+					}
+				}
+			}
+		}
+		log.Println("Exiting...")
+		os.Exit(0)
+	}()
 }
 
 func detectDevices() {
@@ -131,65 +165,12 @@ func mapConfigToControllers() {
 
 // goroutine to monitor temp and fan sensors
 func monitor() {
+	// TODO: use realtime measurements to update fan curves?
 	go startSensorWatcher()
-
-	// TODO: use realtime measurements to update the curve?
-
-	// TODO: seems like its not possible to watch for changes on temp and rpm files using inotify :(
-	//for _, device := range Controllers {
-	//	for _, fan := range device.Fans {
-	//		watcher, err := startFanFsWatcher(*fan)
-	//		if err != nil {
-	//			log.Print(err.Error())
-	//		} else {
-	//			defer watcher.Close()
-	//		}
-	//	}
-	//}
 
 	// wait forever
 	select {}
 }
-
-//func startFanFsWatcher(fan *data.Fan) (*fsnotify.Watcher, error) {
-//	watcher, err := fsnotify.NewWatcher()
-//	if err != nil {
-//		log.Fatal(err)
-//	}
-//
-//	go func() {
-//		for {
-//			select {
-//			case event, ok := <-watcher.Events:
-//				if !ok {
-//					return
-//				}
-//				if event.Op&fsnotify.Write == fsnotify.Write {
-//					err := updateFan(fan)
-//					if err != nil {
-//						log.Print(err.Error())
-//					}
-//					key := fmt.Sprintf("%s_pwm", fan.Name)
-//					newValue, _ := persistence.ReadInt(BucketFans, key)
-//					log.Printf("%s PWM: %d", fan.Name, newValue)
-//				}
-//			case err, ok := <-watcher.Errors:
-//				if !ok {
-//					return
-//				}
-//				log.Println("error:", err)
-//			}
-//		}
-//	}()
-//
-//	err = watcher.Add(fan.RpmInput)
-//	err = watcher.Add(fan.PwmOutput)
-//	if err != nil {
-//		log.Fatal(err.Error())
-//	}
-//
-//	return watcher, err
-//}
 
 func startSensorWatcher() {
 	// update RPM and Temps at different rates
@@ -496,7 +477,7 @@ func createFans(devicePath string) []*Fan {
 			log.Fatal(err)
 		}
 
-		fans = append(fans, &Fan{
+		fan := &Fan{
 			Name:         file,
 			Index:        index,
 			PwmOutput:    output,
@@ -505,7 +486,16 @@ func createFans(devicePath string) []*Fan {
 			MaxPwm:       MaxPwmValue,
 			FanCurveData: &map[int]*rolling.PointPolicy{},
 			LastSetPwm:   InitialLastSetPwm,
-		})
+		}
+
+		// store original pwm_enabled value
+		pwmEnabled, err := getPwmEnabled(fan)
+		if err != nil {
+			log.Fatalf("Cannot read pwm_enabled value of %s", fan.Config.Id)
+		}
+		fan.OriginalPwmEnabled = pwmEnabled
+
+		fans = append(fans, fan)
 	}
 
 	return fans
@@ -644,7 +634,7 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	}
 	log.Printf("Setting %s (%s) to %d (mapped: %d) ...", fan.Config.Id, fan.Name, pwm, target)
 	err = util.WriteIntToFile(target, fan.PwmOutput)
-	if err != nil {
+	if err == nil {
 		fan.LastSetPwm = target
 	}
 	return err
