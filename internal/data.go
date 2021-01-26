@@ -23,6 +23,7 @@ type Fan struct {
 	StartPwm     int                           `json:"startpwm"` // lowest PWM value where the fans are still spinning
 	MaxPwm       int                           `json:"maxpwm"`   // highest PWM value that yields an RPM increase
 	FanCurveData *map[int]*rolling.PointPolicy `json:"fancurvedata"`
+	LastSetPwm   int
 }
 
 type Sensor struct {

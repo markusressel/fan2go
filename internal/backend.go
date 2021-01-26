@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	MaxPwmValue = 255
-	MinPwmValue = 0
+	MaxPwmValue       = 255
+	MinPwmValue       = 0
+	InitialLastSetPwm = -10
 )
 
 var (
@@ -513,6 +514,7 @@ func createFans(devicePath string) []*Fan {
 			StartPwm:     MinPwmValue,
 			MaxPwm:       MaxPwmValue,
 			FanCurveData: &map[int]*rolling.PointPolicy{},
+			LastSetPwm:   InitialLastSetPwm,
 		})
 	}
 
@@ -627,11 +629,20 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	target := minPwm + int((float64(pwm)/MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
 
 	current := GetPwm(fan)
+	if fan.LastSetPwm != InitialLastSetPwm && fan.LastSetPwm != current {
+		log.Printf("WARNING: PWM of %s was changed by third party! Last set PWM value was: %d but is now: %d",
+			fan.Config.Id, fan.LastSetPwm, current)
+	}
+
 	if target == current {
 		return nil
 	}
 	log.Printf("Setting %s (%s) to %d (mapped: %d) ...", fan.Config.Id, fan.Name, pwm, target)
-	return util.WriteIntToFile(target, fan.PwmOutput)
+	err = util.WriteIntToFile(target, fan.PwmOutput)
+	if err != nil {
+		fan.LastSetPwm = target
+	}
+	return err
 }
 
 // get the rpm value of a fan
