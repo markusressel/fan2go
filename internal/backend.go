@@ -77,6 +77,7 @@ func Run(verbose bool) {
 		count := 0
 		for _, controller := range controllers {
 			for _, fan := range controller.Fans {
+				fanCpy := fan
 				if fan.Config == nil {
 					// this fan is not configured, ignore it
 					log.Printf("Ignoring unconfigured fan %s/%s", controller.Name, fan.Name)
@@ -84,7 +85,7 @@ func Run(verbose bool) {
 				}
 
 				g.Add(func() error {
-					return fanController(ctx, fan)
+					return fanController(ctx, fanCpy)
 				}, func(err error) {
 					log.Printf("Trying to restore fan settings for %s...", fan.Config.Id)
 
