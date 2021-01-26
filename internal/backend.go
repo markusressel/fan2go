@@ -1,10 +1,12 @@
 package internal
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/util"
+	"github.com/oklog/run"
 	"log"
 	"os"
 	"os/exec"
@@ -25,9 +27,8 @@ const (
 )
 
 var (
-	Controllers []*Controller
-	SensorMap   = map[string]*Sensor{}
-	Verbose     bool
+	SensorMap = map[string]*Sensor{}
+	Verbose   bool
 )
 
 func Run(verbose bool) {
@@ -39,80 +40,92 @@ func Run(verbose bool) {
 
 	defer OpenPersistence().Close()
 
-	detectDevices()
-	mapConfigToControllers()
-
-	// === start sensor monitoring
-	// TODO: use multiple monitoring threads(?)
-	// TODO: only monitor configured sensors
-	go monitor()
-
-	// wait a bit to gather monitoring data
-	time.Sleep(CurrentConfig.TempSensorPollingRate * 2)
-
-	setupExitHandler()
-
-	// === start fan controllers
-	// run one goroutine for each fan
-	count := 0
-	for _, controller := range Controllers {
-		for _, fan := range controller.Fans {
-			if fan.Config == nil {
-				// this fan is not configured, ignore it
-				log.Printf("Ignoring unconfigured fan %s/%s", controller.Name, fan.Name)
-				continue
-			}
-
-			go fanController(fan)
-			count++
-		}
-	}
-
-	if count == 0 {
-		log.Fatal("No valid fan configurations, exiting.")
-	}
-
-	// wait forever
-	select {}
-}
-
-func setupExitHandler() {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigs
-		log.Printf("Received signal %d, trying to restore fan settings...", sig)
-
-		for _, controller := range Controllers {
-			for _, fan := range controller.Fans {
-				if fan.Config != nil {
-					// try to reset the pwm_enabled value
-					if fan.OriginalPwmEnabled != 1 {
-						err := setPwmEnabled(fan, fan.OriginalPwmEnabled)
-						if err == nil {
-							continue
-						}
-					}
-					err := setPwm(fan, MaxPwmValue)
-					if err != nil {
-						log.Printf("WARNING: Unable to revert fan %s, make sure it is running!", fan.Config.Id)
-					}
-				}
-			}
-		}
-		log.Println("Exiting...")
-		os.Exit(0)
-	}()
-}
-
-func detectDevices() {
-	// === Detect devices ===
 	controllers, err := FindControllers()
 	if err != nil {
 		log.Fatalf("Error detecting devices: %s", err.Error())
 	}
-	Controllers = controllers
+	mapConfigToControllers(controllers)
+
+	_, cancel := context.WithCancel(context.Background())
+
+	var g run.Group
+	{
+		// === sensor monitoring
+		// TODO: use multiple monitoring threads(?)
+		// TODO: only monitor configured sensors
+		// update RPM and Temps at different rates
+		tempTick := time.Tick(CurrentConfig.TempSensorPollingRate)
+		rpmTick := time.Tick(CurrentConfig.RpmPollingRate)
+
+		g.Add(func() error {
+			for {
+				select {
+				case <-tempTick:
+					measureTempSensors(controllers)
+				case <-rpmTick:
+					measureRpmSensors(controllers)
+				}
+			}
+		}, func(err error) {
+			// nothing to do here
+			cancel()
+		})
+	}
+	{
+		// === fan controllers
+		count := 0
+		for _, controller := range controllers {
+			for _, fan := range controller.Fans {
+				if fan.Config == nil {
+					// this fan is not configured, ignore it
+					log.Printf("Ignoring unconfigured fan %s/%s", controller.Name, fan.Name)
+					continue
+				}
+
+				g.Add(func() error {
+					return fanController(fan)
+				}, func(err error) {
+					cancel()
+					log.Printf("Received signal %d, trying to restore fan settings for %s...", fan)
+
+					// try to reset the pwm_enabled value
+					if fan.OriginalPwmEnabled != 1 {
+						err := setPwmEnabled(fan, fan.OriginalPwmEnabled)
+						if err == nil {
+							return
+						}
+					}
+					err = setPwm(fan, MaxPwmValue)
+					if err != nil {
+						log.Printf("WARNING: Unable to revert fan %s, make sure it is running!", fan.Config.Id)
+					}
+				})
+				count++
+			}
+		}
+
+		if count == 0 {
+			log.Fatal("No valid fan configurations, exiting.")
+		}
+	}
+	{
+		sig := make(chan os.Signal)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, os.Kill)
+
+		g.Add(func() error {
+			<-sig
+			log.Println("Exiting...")
+			return nil
+		}, func(err error) {
+			cancel()
+			close(sig)
+		})
+	}
+
+	if err := g.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
 
 func getProcessOwner() string {
@@ -125,8 +138,8 @@ func getProcessOwner() string {
 }
 
 // Map detect devices to configuration values
-func mapConfigToControllers() {
-	for _, controller := range Controllers {
+func mapConfigToControllers(controllers []*Controller) {
+	for _, controller := range controllers {
 		// match fan and fan config entries
 		for _, fan := range controller.Fans {
 			fanConfig := findFanConfig(controller, fan)
@@ -163,31 +176,8 @@ func mapConfigToControllers() {
 	}
 }
 
-// goroutine to monitor temp and fan sensors
-func monitor() {
-	// TODO: use realtime measurements to update fan curves?
-	go startSensorWatcher()
-
-	// wait forever
-	select {}
-}
-
-func startSensorWatcher() {
-	// update RPM and Temps at different rates
-	tempTick := time.Tick(CurrentConfig.TempSensorPollingRate)
-	rpmTick := time.Tick(CurrentConfig.RpmPollingRate)
-	for {
-		select {
-		case <-tempTick:
-			measureTempSensors()
-		case <-rpmTick:
-			measureRpmSensors()
-		}
-	}
-}
-
-func measureRpmSensors() {
-	for _, controller := range Controllers {
+func measureRpmSensors(controllers []*Controller) {
+	for _, controller := range controllers {
 		for _, fan := range controller.Fans {
 			// TODO: fans without config shouldn't be in the controller list anyway
 			if fan.Config != nil {
@@ -216,8 +206,8 @@ func measureRpm(fan *Fan) {
 	pointWindow.Append(float64(rpm))
 }
 
-func measureTempSensors() {
-	for _, controller := range Controllers {
+func measureTempSensors(controllers []*Controller) {
+	for _, controller := range controllers {
 		for _, sensor := range controller.Sensors {
 			// TODO: fans without config shouldn't be in the controller list anyway
 			if sensor.Config != nil {
@@ -290,11 +280,13 @@ func updateSensor(sensor Sensor) (err error) {
 }
 
 // goroutine to continuously adjust the speed of a fan
-func fanController(fan *Fan) {
+func fanController(fan *Fan) error {
+	// wait a bit to gather monitoring data
+	time.Sleep(CurrentConfig.TempSensorPollingRate * 2)
 	err := trySetManualPwm(fan)
 	if err != nil {
 		log.Printf("Could not enable fan control on %s (%s)", fan.Config.Id, fan.Name)
-		return
+		return err
 	}
 
 	// check if we have data for this fan in persistence,
@@ -315,7 +307,7 @@ func fanController(fan *Fan) {
 				err = trySetManualPwm(fan)
 				if err != nil {
 					log.Printf("Could not enable fan control on %s (%s)", fan.Config.Id, fan.Name)
-					return
+					return err
 				}
 			}
 		}
