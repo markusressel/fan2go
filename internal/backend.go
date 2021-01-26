@@ -440,16 +440,6 @@ func calculateTargetSpeed(fan *Fan) int {
 
 	ratio := (float64(avgTemp) - float64(minTemp)) / (float64(maxTemp) - float64(minTemp))
 	return int(ratio * 255)
-
-	// Toggling between off and "full on" for testing
-	//pwm := GetPwm(fan)
-	//if pwm < 255 {
-	//	return 255
-	//}
-	//
-	//return 1
-
-	//return rand.Intn(getMaxPwmValue(fan))
 }
 
 // Finds controllers and fans
@@ -632,6 +622,17 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	if fan.LastSetPwm != InitialLastSetPwm && fan.LastSetPwm != current {
 		log.Printf("WARNING: PWM of %s was changed by third party! Last set PWM value was: %d but is now: %d",
 			fan.Config.Id, fan.LastSetPwm, current)
+	}
+
+	// make sure fans never stop by validating the current RPM
+	// and adjusting the target PWM value upwards if necessary
+	if fan.Config.NeverStop {
+		rpm := GetRpm(fan)
+		if rpm <= 0 && fan.LastSetPwm == target {
+			log.Printf("WARNING: Increasing startPWM of %s, which is supposed to never stop, but RPM is 0", fan.Config.Id)
+			fan.StartPwm++
+			target++
+		}
 	}
 
 	if target == current {
