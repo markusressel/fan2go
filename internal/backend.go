@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	MaxPwmValue = 255
-	MinPwmValue = 0
+	MaxPwmValue       = 255
+	MinPwmValue       = 0
+	InitialLastSetPwm = -10
 )
 
 var (
@@ -439,16 +440,6 @@ func calculateTargetSpeed(fan *Fan) int {
 
 	ratio := (float64(avgTemp) - float64(minTemp)) / (float64(maxTemp) - float64(minTemp))
 	return int(ratio * 255)
-
-	// Toggling between off and "full on" for testing
-	//pwm := GetPwm(fan)
-	//if pwm < 255 {
-	//	return 255
-	//}
-	//
-	//return 1
-
-	//return rand.Intn(getMaxPwmValue(fan))
 }
 
 // Finds controllers and fans
@@ -513,6 +504,7 @@ func createFans(devicePath string) []*Fan {
 			StartPwm:     MinPwmValue,
 			MaxPwm:       MaxPwmValue,
 			FanCurveData: &map[int]*rolling.PointPolicy{},
+			LastSetPwm:   InitialLastSetPwm,
 		})
 	}
 
@@ -627,11 +619,35 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	target := minPwm + int((float64(pwm)/MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
 
 	current := GetPwm(fan)
+	if fan.LastSetPwm != InitialLastSetPwm && fan.LastSetPwm != current {
+		log.Printf("WARNING: PWM of %s was changed by third party! Last set PWM value was: %d but is now: %d",
+			fan.Config.Id, fan.LastSetPwm, current)
+	}
+
+	// make sure fans never stop by validating the current RPM
+	// and adjusting the target PWM value upwards if necessary
+	if fan.Config.NeverStop {
+		rpm := GetRpm(fan)
+		if rpm <= 0 && fan.LastSetPwm == target {
+			if target >= maxPwm {
+				log.Printf("CRITICAL: Fan RPM is %d, even at PWM value %d", rpm, target)
+				return nil
+			}
+			log.Printf("WARNING: Increasing startPWM of %s, which is supposed to never stop, but RPM is 0", fan.Config.Id)
+			fan.StartPwm++
+			target++
+		}
+	}
+
 	if target == current {
 		return nil
 	}
 	log.Printf("Setting %s (%s) to %d (mapped: %d) ...", fan.Config.Id, fan.Name, pwm, target)
-	return util.WriteIntToFile(target, fan.PwmOutput)
+	err = util.WriteIntToFile(target, fan.PwmOutput)
+	if err != nil {
+		fan.LastSetPwm = target
+	}
+	return err
 }
 
 // get the rpm value of a fan
