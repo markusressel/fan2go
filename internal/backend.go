@@ -46,7 +46,7 @@ func Run(verbose bool) {
 	}
 	mapConfigToControllers(controllers)
 
-	_, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 
 	var g run.Group
 	{
@@ -60,6 +60,8 @@ func Run(verbose bool) {
 		g.Add(func() error {
 			for {
 				select {
+				case <-ctx.Done():
+					return nil
 				case <-tempTick:
 					measureTempSensors(controllers)
 				case <-rpmTick:
@@ -68,7 +70,6 @@ func Run(verbose bool) {
 			}
 		}, func(err error) {
 			// nothing to do here
-			cancel()
 		})
 	}
 	{
@@ -83,10 +84,9 @@ func Run(verbose bool) {
 				}
 
 				g.Add(func() error {
-					return fanController(fan)
+					return fanController(ctx, fan)
 				}, func(err error) {
-					cancel()
-					log.Printf("Received signal %d, trying to restore fan settings for %s...", fan)
+					log.Printf("Trying to restore fan settings for %s...", fan.Config.Id)
 
 					// try to reset the pwm_enabled value
 					if fan.OriginalPwmEnabled != 1 {
@@ -280,7 +280,7 @@ func updateSensor(sensor Sensor) (err error) {
 }
 
 // goroutine to continuously adjust the speed of a fan
-func fanController(fan *Fan) error {
+func fanController(ctx context.Context, fan *Fan) error {
 	// wait a bit to gather monitoring data
 	time.Sleep(CurrentConfig.TempSensorPollingRate * 2)
 	err := trySetManualPwm(fan)
@@ -300,6 +300,8 @@ func fanController(fan *Fan) error {
 	t := time.Tick(CurrentConfig.ControllerAdjustmentTickRate)
 	for {
 		select {
+		case <-ctx.Done():
+			return nil
 		case <-t:
 			err = setOptimalFanSpeed(fan)
 			if err != nil {
