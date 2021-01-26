@@ -629,6 +629,10 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	if fan.Config.NeverStop {
 		rpm := GetRpm(fan)
 		if rpm <= 0 && fan.LastSetPwm == target {
+			if target >= maxPwm {
+				log.Printf("CRITICAL: Fan RPM is %d, even at PWM value %d", rpm, target)
+				return nil
+			}
 			log.Printf("WARNING: Increasing startPWM of %s, which is supposed to never stop, but RPM is 0", fan.Config.Id)
 			fan.StartPwm++
 			target++
