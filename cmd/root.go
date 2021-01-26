@@ -23,6 +23,7 @@ var rootCmd = &cobra.Command{
 on your computer based on temperature sensors.`,
 	// this is the default command to run when no subcommand is specified
 	Run: func(cmd *cobra.Command, args []string) {
+		readConfigFile()
 		internal.Run(verbose)
 	},
 }
@@ -105,7 +106,6 @@ func initConfig() {
 	viper.AutomaticEnv() // read in environment variables that match
 
 	setDefaultValues()
-	readConfigFile()
 }
 
 func readConfigFile() {
