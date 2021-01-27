@@ -37,10 +37,10 @@ func WriteIntToFile(value int, path string) (err error) {
 }
 
 // finds all files in a given directory, matching the given regex
-func FindFilesMatching(path string, regex string) []string {
-	r, err := regexp.Compile(regex)
+func FindFilesMatching(path string, expr string) []string {
+	r, err := regexp.Compile(expr)
 	if err != nil {
-		log.Fatalf("Cannot compile regex: %s", regex)
+		log.Fatalf("Cannot compile expr: %s", expr)
 	}
 
 	var result []string
