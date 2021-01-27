@@ -14,21 +14,16 @@ const (
 	BucketFans = "fans"
 )
 
-var (
-	Database *bolt.DB
-)
-
-func OpenPersistence() *bolt.DB {
-	DB, err := bolt.Open(CurrentConfig.DbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
+func OpenPersistence(dbPath string) *bolt.DB {
+	db, err := bolt.Open(dbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
 		log.Fatalf("Could not open database file: %s", err.Error())
 	}
-	Database = DB
-	return Database
+	return db
 }
 
 // saves the fan curve data of the given fan
-func SaveFanPwmData(fan *Fan) (err error) {
+func SaveFanPwmData(db *bolt.DB, fan *Fan) (err error) {
 	key := fan.PwmOutput
 
 	// convert the curve data moving window to a map to arrays, so we can persist them
@@ -47,7 +42,7 @@ func SaveFanPwmData(fan *Fan) (err error) {
 	if err != nil {
 		return err
 	}
-	return Database.Update(func(tx *bolt.Tx) error {
+	return db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists([]byte(BucketFans))
 		if err != nil {
 			return fmt.Errorf("create bucket: %s", err)
@@ -58,11 +53,11 @@ func SaveFanPwmData(fan *Fan) (err error) {
 }
 
 // loads the fan curve data and attaches it to the given fan
-func LoadFanPwmData(fan *Fan) error {
+func LoadFanPwmData(db *bolt.DB, fan *Fan) error {
 	key := fan.PwmOutput
 
 	fanCurveDataMap := map[int][]float64{}
-	err := Database.Update(func(tx *bolt.Tx) error {
+	err := db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFans))
 		if b == nil {
 			return os.ErrNotExist

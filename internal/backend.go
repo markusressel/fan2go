@@ -7,6 +7,7 @@ import (
 	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
+	bolt "go.etcd.io/bbolt"
 	"log"
 	"os"
 	"os/exec"
@@ -38,7 +39,8 @@ func Run(verbose bool) {
 		log.Fatalf("Fan control requires root access, please run fan2go as root")
 	}
 
-	defer OpenPersistence().Close()
+	db := OpenPersistence(CurrentConfig.DbPath)
+	defer db.Close()
 
 	controllers, err := FindControllers()
 	if err != nil {
@@ -85,7 +87,7 @@ func Run(verbose bool) {
 				}
 
 				g.Add(func() error {
-					return fanController(ctx, fan)
+					return fanController(ctx, db, fan)
 				}, func(err error) {
 					log.Printf("Trying to restore fan settings for %s...", fan.Config.Id)
 
@@ -281,7 +283,7 @@ func updateSensor(sensor Sensor) (err error) {
 }
 
 // goroutine to continuously adjust the speed of a fan
-func fanController(ctx context.Context, fan *Fan) error {
+func fanController(ctx context.Context, db *bolt.DB, fan *Fan) error {
 	// wait a bit to gather monitoring data
 	time.Sleep(CurrentConfig.TempSensorPollingRate * 2)
 	err := trySetManualPwm(fan)
@@ -292,9 +294,9 @@ func fanController(ctx context.Context, fan *Fan) error {
 
 	// check if we have data for this fan in persistence,
 	// if not we need to run the initialization sequence
-	err = LoadFanPwmData(fan)
+	err = LoadFanPwmData(db, fan)
 	if err != nil {
-		runInitializationSequence(fan)
+		runInitializationSequence(db, fan)
 	}
 	updatePwmBoundaries(fan)
 
@@ -330,7 +332,7 @@ func trySetManualPwm(fan *Fan) (err error) {
 
 // runs an initialization sequence for the given fan
 // to determine an estimation of its fan curve
-func runInitializationSequence(fan *Fan) {
+func runInitializationSequence(db *bolt.DB, fan *Fan) {
 	log.Printf("Running initialization sequence for %s (%s)", fan.Config.Id, fan.Name)
 	for pwm := 0; pwm < MaxPwmValue; pwm++ {
 		// set a pwm
@@ -363,7 +365,7 @@ func runInitializationSequence(fan *Fan) {
 	}
 
 	// save to database to restore it on restarts
-	err := SaveFanPwmData(fan)
+	err := SaveFanPwmData(db, fan)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
