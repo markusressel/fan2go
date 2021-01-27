@@ -53,29 +53,28 @@ func Run(verbose bool) {
 	var g run.Group
 	{
 		// === sensor monitoring
-		// TODO: use multiple monitoring threads(?)
-		// TODO: only monitor configured sensors
-		// update RPM and Temps at different rates
 		tempTick := time.Tick(CurrentConfig.TempSensorPollingRate)
-		rpmTick := time.Tick(CurrentConfig.RpmPollingRate)
 
-		g.Add(func() error {
-			for {
-				select {
-				case <-ctx.Done():
-					return nil
-				case <-tempTick:
-					measureTempSensors(controllers)
-				case <-rpmTick:
-					measureRpmSensors(controllers)
+		for _, controller := range controllers {
+			for _, s := range controller.Sensors {
+				sensor := s
+				if sensor.Config == nil {
+					log.Printf("Ignoring unconfigured sensor %s/%s", controller.Name, sensor.Name)
+					continue
 				}
+
+				g.Add(func() error {
+					return sensorMonitor(ctx, sensor, tempTick)
+				}, func(err error) {
+					// nothing to do here
+				})
 			}
-		}, func(err error) {
-			// nothing to do here
-		})
+		}
 	}
 	{
 		// === fan controllers
+		rpmTick := time.Tick(CurrentConfig.RpmPollingRate)
+
 		count := 0
 		for _, controller := range controllers {
 			for _, f := range controller.Fans {
@@ -85,6 +84,12 @@ func Run(verbose bool) {
 					log.Printf("Ignoring unconfigured fan %s/%s", controller.Name, fan.Name)
 					continue
 				}
+
+				g.Add(func() error {
+					return rpmMonitor(ctx, fan, rpmTick)
+				}, func(err error) {
+					// nothing to do here
+				})
 
 				g.Add(func() error {
 					return fanController(ctx, db, fan)
@@ -128,6 +133,31 @@ func Run(verbose bool) {
 	if err := g.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+}
+
+func rpmMonitor(ctx context.Context, fan *Fan, tick <-chan time.Time) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-tick:
+			measureRpm(fan)
+		}
+	}
+}
+
+func sensorMonitor(ctx context.Context, sensor *Sensor, tick <-chan time.Time) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-tick:
+			err := updateSensor(*sensor)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
 	}
 }
 
@@ -179,17 +209,6 @@ func mapConfigToControllers(controllers []*Controller) {
 	}
 }
 
-func measureRpmSensors(controllers []*Controller) {
-	for _, controller := range controllers {
-		for _, fan := range controller.Fans {
-			// TODO: fans without config shouldn't be in the controller list anyway
-			if fan.Config != nil {
-				measureRpm(fan)
-			}
-		}
-	}
-}
-
 // read the current value of a fan RPM sensor and append it to the moving window
 func measureRpm(fan *Fan) {
 	pwm := GetPwm(fan)
@@ -207,20 +226,6 @@ func measureRpm(fan *Fan) {
 		(*pwmRpmMap)[pwm] = pointWindow
 	}
 	pointWindow.Append(float64(rpm))
-}
-
-func measureTempSensors(controllers []*Controller) {
-	for _, controller := range controllers {
-		for _, sensor := range controller.Sensors {
-			// TODO: fans without config shouldn't be in the controller list anyway
-			if sensor.Config != nil {
-				err := updateSensor(*sensor)
-				if err != nil {
-					log.Fatal(err)
-				}
-			}
-		}
-	}
 }
 
 func updatePwmBoundaries(fan *Fan) {
