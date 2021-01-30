@@ -72,16 +72,6 @@ var versionCmd = &cobra.Command{
 	},
 }
 
-func init() {
-	cobra.OnInitialize(initConfig)
-
-	rootCmd.AddCommand(detectCmd)
-	rootCmd.AddCommand(versionCmd)
-
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "More verbose output")
-}
-
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
 	viper.SetConfigName("fan2go")
@@ -134,6 +124,14 @@ func setDefaultValues() {
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	cobra.OnInitialize(initConfig)
+
+	rootCmd.AddCommand(detectCmd)
+	rootCmd.AddCommand(versionCmd)
+
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "More verbose output")
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

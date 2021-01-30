@@ -81,19 +81,18 @@ sensors:
   # A user defined ID, which is used to reference a
   # a sensor in a fan configuration (see below)
   - id: cpu_package
-    # The controller platform as displayed by `sensors`, f.ex.:
-    # If sensors displays a group with the title "nouveau-pci-0100",
-    # the platform would be "nouveau"
+    # The controller platform as displayed by `fan2go detect`, f.ex.:
+    # "nouveau", "coretemp" or "it8620" etc.
     platform: coretemp
     # The index of this sensor as displayed by `fan2go detect`.
     index: 1
     # The minimum target temp for this sensor.
-    # If the sensor falls below this value, a fan configured
-    # for it will run at minimum PWM value.
+    # If the sensor falls below this value, all fans referencing it
+    # will run at minimum PWM value.
     min: 50
     # The maximum target temp for this sensor.
-    # If the sensor falls below this value, a fan configured
-    # for it will run at maximum PWM value.
+    # If the sensor is above this value, all fans referencing it
+    # will run at maximum PWM value.
     max: 75
 
   - id: mainboard
