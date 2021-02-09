@@ -6,6 +6,8 @@ tempSensorPollingRate: 200ms
 rollingWindowSize: 100
 # The rate to poll fan RPM input sensors at.
 rpmPollingRate: 1s
+# Time to wait before increasing the (initially measured) startPWM of a fan
+increaseStartPwmAfter: 10s
 # The rate to update fan speed targets at.
 controllerAdjustmentTickRate: 200ms
 
