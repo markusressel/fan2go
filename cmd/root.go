@@ -108,6 +108,15 @@ func readConfigFile() {
 	if err != nil {
 		log.Fatalf("unable to decode into struct, %v", err)
 	}
+
+	validateConfig()
+}
+
+func validateConfig() {
+	config := &internal.CurrentConfig
+	if config.IncreaseStartPwmAfter <= config.RpmPollingRate {
+		log.Fatalf("increaseStartPwmAfter must be greater or equal to rpmPollingRate")
+	}
 }
 
 func setDefaultValues() {
@@ -115,6 +124,7 @@ func setDefaultValues() {
 	viper.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
 	viper.SetDefault("RpmPollingRate", 1*time.Second)
 	viper.SetDefault("TempRollingWindowSize", 100)
+	viper.SetDefault("IncreaseStartPwmAfter", 10*time.Second)
 	viper.SetDefault("RpmRollingWindowSize", 10)
 	viper.SetDefault("updateTickRate", 100*time.Millisecond)
 	viper.SetDefault("sensors", []internal.SensorConfig{})

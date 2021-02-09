@@ -9,6 +9,7 @@ import (
 	"github.com/oklog/run"
 	bolt "go.etcd.io/bbolt"
 	"log"
+	"math"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -73,8 +74,6 @@ func Run(verbose bool) {
 	}
 	{
 		// === fan controllers
-		rpmTick := time.Tick(CurrentConfig.RpmPollingRate)
-
 		count := 0
 		for _, controller := range controllers {
 			for _, f := range controller.Fans {
@@ -86,13 +85,19 @@ func Run(verbose bool) {
 				}
 
 				g.Add(func() error {
+					rpmTick := time.Tick(CurrentConfig.RpmPollingRate)
 					return rpmMonitor(ctx, fan, rpmTick)
 				}, func(err error) {
 					// nothing to do here
 				})
 
 				g.Add(func() error {
-					return fanController(ctx, db, fan)
+					log.Printf("Gathering data...")
+					// wait a bit to gather monitoring data
+					time.Sleep(2*time.Second + CurrentConfig.TempSensorPollingRate*2)
+
+					tick := time.Tick(CurrentConfig.ControllerAdjustmentTickRate)
+					return fanController(ctx, db, fan, tick)
 				}, func(err error) {
 					log.Printf("Trying to restore fan settings for %s...", fan.Config.Id)
 
@@ -218,6 +223,8 @@ func measureRpm(fan *Fan) {
 		log.Printf("Measured RPM of %d at PWM %d for fan %s", rpm, pwm, fan.Config.Id)
 	}
 
+	fan.RpmInputWindow.Append(float64(rpm))
+
 	pwmRpmMap := fan.FanCurveData
 	pointWindow, ok := (*pwmRpmMap)[pwm]
 	if !ok {
@@ -288,9 +295,7 @@ func updateSensor(sensor Sensor) (err error) {
 }
 
 // goroutine to continuously adjust the speed of a fan
-func fanController(ctx context.Context, db *bolt.DB, fan *Fan) error {
-	// wait a bit to gather monitoring data
-	time.Sleep(CurrentConfig.TempSensorPollingRate * 2)
+func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.Time) error {
 	err := trySetManualPwm(fan)
 	if err != nil {
 		log.Printf("Could not enable fan control on %s (%s)", fan.Config.Id, fan.Name)
@@ -299,18 +304,20 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan) error {
 
 	// check if we have data for this fan in persistence,
 	// if not we need to run the initialization sequence
+	log.Printf("Loading fan curve data for fan '%s'...", fan.Config.Id)
 	err = LoadFanPwmData(db, fan)
 	if err != nil {
+		log.Printf("No fan curve data found for fan '%s', starting initialization sequence...", fan.Config.Id)
 		runInitializationSequence(db, fan)
 	}
 	updatePwmBoundaries(fan)
 
-	t := time.Tick(CurrentConfig.ControllerAdjustmentTickRate)
+	log.Printf("Starting controller loop for fan '%s'", fan.Config.Id)
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-t:
+		case <-tick:
 			err = setOptimalFanSpeed(fan)
 			if err != nil {
 				log.Printf("Error setting %s (%s): %s", fan.Config.Id, fan.Name, err.Error())
@@ -338,7 +345,6 @@ func trySetManualPwm(fan *Fan) (err error) {
 // runs an initialization sequence for the given fan
 // to determine an estimation of its fan curve
 func runInitializationSequence(db *bolt.DB, fan *Fan) {
-	log.Printf("Running initialization sequence for %s (%s)", fan.Config.Id, fan.Name)
 	for pwm := 0; pwm < MaxPwmValue; pwm++ {
 		// set a pwm
 		err := util.WriteIntToFile(pwm, fan.PwmOutput)
@@ -479,15 +485,19 @@ func createFans(devicePath string) []*Fan {
 			log.Fatal(err)
 		}
 
+		rpmWindowSize := int(math.Ceil(float64(CurrentConfig.IncreaseStartPwmAfter.Milliseconds()) / float64(CurrentConfig.RpmPollingRate.Milliseconds())))
+		rpmWindow := rolling.NewWindow(rpmWindowSize)
+
 		fan := &Fan{
-			Name:         file,
-			Index:        index,
-			PwmOutput:    output,
-			RpmInput:     inputs[idx],
-			StartPwm:     MinPwmValue,
-			MaxPwm:       MaxPwmValue,
-			FanCurveData: &map[int]*rolling.PointPolicy{},
-			LastSetPwm:   InitialLastSetPwm,
+			Name:           file,
+			Index:          index,
+			PwmOutput:      output,
+			RpmInput:       inputs[idx],
+			RpmInputWindow: rolling.NewPointPolicy(rpmWindow),
+			StartPwm:       MinPwmValue,
+			MaxPwm:         MaxPwmValue,
+			FanCurveData:   &map[int]*rolling.PointPolicy{},
+			LastSetPwm:     InitialLastSetPwm,
 		}
 
 		// store original pwm_enabled value
@@ -618,16 +628,22 @@ func setPwm(fan *Fan, pwm int) (err error) {
 
 	// make sure fans never stop by validating the current RPM
 	// and adjusting the target PWM value upwards if necessary
-	if fan.Config.NeverStop {
-		rpm := GetRpm(fan)
-		if rpm <= 0 && fan.LastSetPwm == target {
+	if fan.Config.NeverStop && fan.LastSetPwm == target {
+		avgRpm := fan.RpmInputWindow.Reduce(rolling.Avg)
+		if avgRpm <= 0 {
 			if target >= maxPwm {
-				log.Printf("CRITICAL: Fan RPM is %d, even at PWM value %d", rpm, target)
+				log.Printf("CRITICAL: Fan avg. RPM is %f, even at PWM value %d", avgRpm, target)
 				return nil
 			}
-			log.Printf("WARNING: Increasing startPWM of %s, which is supposed to never stop, but RPM is 0", fan.Config.Id)
+			log.Printf("WARNING: Increasing startPWM of %s from %d to %d, which is supposed to never stop, but RPM is %f", fan.Config.Id, fan.StartPwm, fan.StartPwm+1, avgRpm)
 			fan.StartPwm++
 			target++
+			// initialize the complete window with values > 0 to make sure
+			// the whole window is refilled before increasing the minPWM value again
+			measurementCount := int(fan.RpmInputWindow.Reduce(rolling.Count))
+			for i := 0; i < measurementCount; i++ {
+				fan.RpmInputWindow.Append(1)
+			}
 		}
 	}
 
