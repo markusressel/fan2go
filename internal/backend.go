@@ -486,6 +486,7 @@ func createFans(devicePath string) []*Fan {
 		}
 
 		rpmWindowSize := int(math.Ceil(float64(CurrentConfig.IncreaseStartPwmAfter.Milliseconds()) / float64(CurrentConfig.RpmPollingRate.Milliseconds())))
+		log.Printf("rpmWindowSize: %d", rpmWindowSize)
 		rpmWindow := rolling.NewWindow(rpmWindowSize)
 
 		fan := &Fan{
