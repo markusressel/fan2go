@@ -2,6 +2,8 @@
 
 A daemon to control the fans of a computer.
 
+![graph](screenshots/graph.png)
+
 ## How to use
 
 fan2go relies on [lm-sensors](https://github.com/lm-sensors/lm-sensors) to both get temperature and RPM sensor readings,
