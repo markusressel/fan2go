@@ -33,6 +33,11 @@ var detectCmd = &cobra.Command{
 	Short: "Detect devices",
 	Long:  `Detects all fans and sensors and prints them as a list`,
 	Run: func(cmd *cobra.Command, args []string) {
+		// load default configuration values
+		err := viper.Unmarshal(&internal.CurrentConfig)
+		if err != nil {
+			log.Fatalf("unable to decode into struct, %v", err)
+		}
 
 		controllers, err := internal.FindControllers()
 		if err != nil {
