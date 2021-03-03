@@ -11,7 +11,6 @@ type Configuration struct {
 	ControllerAdjustmentTickRate time.Duration
 	TempRollingWindowSize        int
 	RpmRollingWindowSize         int
-	IncreaseStartPwmAfter        time.Duration
 	Sensors                      []SensorConfig
 	Fans                         []FanConfig
 }

@@ -3,11 +3,9 @@ dbPath: "/etc/fan2go/fan2go.db"
 # The rate to poll temperature sensors at.
 tempSensorPollingRate: 200ms
 # The number of sensor items to keep in a rolling window array.
-rollingWindowSize: 100
+rollingWindowSize: 50
 # The rate to poll fan RPM input sensors at.
 rpmPollingRate: 1s
-# Time to wait before increasing the (initially measured) startPWM of a fan
-increaseStartPwmAfter: 10s
 # The rate to update fan speed targets at.
 controllerAdjustmentTickRate: 200ms
 
