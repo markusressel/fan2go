@@ -1,6 +1,6 @@
 module github.com/markusressel/fan2go
 
-go 1.13
+go 1.16
 
 require (
 	github.com/asecurityteam/rolling v2.0.4+incompatible
