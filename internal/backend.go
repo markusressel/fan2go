@@ -9,7 +9,6 @@ import (
 	"github.com/oklog/run"
 	bolt "go.etcd.io/bbolt"
 	"log"
-	"math"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -158,7 +157,7 @@ func sensorMonitor(ctx context.Context, sensor *Sensor, tick <-chan time.Time) e
 		case <-ctx.Done():
 			return nil
 		case <-tick:
-			err := updateSensor(*sensor)
+			err := updateSensor(sensor)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -206,9 +205,7 @@ func mapConfigToControllers(controllers []*Controller) {
 				if err != nil {
 					log.Fatalf("Error reading sensor %s: %s", sensorConfig.Id, err.Error())
 				}
-				for i := 0; i < CurrentConfig.TempRollingWindowSize; i++ {
-					sensor.Values.Append(float64(currentValue))
-				}
+				sensor.MovingAvg = float64(currentValue)
 			}
 		}
 	}
@@ -223,7 +220,7 @@ func measureRpm(fan *Fan) {
 		log.Printf("Measured RPM of %d at PWM %d for fan %s", rpm, pwm, fan.Config.Id)
 	}
 
-	fan.RpmInputWindow.Append(float64(rpm))
+	fan.RpmMovingAvg = updateSimpleMovingAvg(fan.RpmMovingAvg, CurrentConfig.RpmRollingWindowSize, float64(rpm))
 
 	pwmRpmMap := fan.FanCurveData
 	pointWindow, ok := (*pwmRpmMap)[pwm]
@@ -276,19 +273,19 @@ func updatePwmBoundaries(fan *Fan) {
 }
 
 // read the current value of a sensor and append it to the moving window
-func updateSensor(sensor Sensor) (err error) {
+func updateSensor(sensor *Sensor) (err error) {
 	value, err := util.ReadIntFromFile(sensor.Input)
 	if err != nil {
 		return err
 	}
 
-	values := sensor.Values
-	values.Append(float64(value))
-	if value > sensor.Config.Max {
+	var n = CurrentConfig.TempRollingWindowSize
+	sensor.MovingAvg = updateSimpleMovingAvg(sensor.MovingAvg, n, float64(value))
+	if value > int(sensor.Config.Max) {
 		// if the value is higher than the specified max temperature,
 		// insert the value twice into the moving window,
 		// to give it a bigger impact
-		values.Append(float64(value))
+		sensor.MovingAvg = updateSimpleMovingAvg(sensor.MovingAvg, n, float64(value))
 	}
 
 	return nil
@@ -414,10 +411,9 @@ func calculateTargetSpeed(fan *Fan) int {
 	minTemp := sensor.Config.Min * 1000 // degree to milli-degree
 	maxTemp := sensor.Config.Max * 1000
 
-	var avgTemp int
-	avgTemp = int(sensor.Values.Reduce(rolling.Avg))
+	var avgTemp = sensor.MovingAvg
 
-	//log.Printf("Avg temp of %s: %d", sensor.name, avgTemp)
+	log.Printf("Avg temp of %s: %f", sensor.Config.Id, avgTemp)
 
 	if avgTemp >= maxTemp {
 		// full throttle if max temp is reached
@@ -427,7 +423,7 @@ func calculateTargetSpeed(fan *Fan) int {
 		return 0
 	}
 
-	ratio := (float64(avgTemp) - float64(minTemp)) / (float64(maxTemp) - float64(minTemp))
+	ratio := (avgTemp - minTemp) / (maxTemp - minTemp)
 	return int(ratio * 255)
 }
 
@@ -485,20 +481,16 @@ func createFans(devicePath string) []*Fan {
 			log.Fatal(err)
 		}
 
-		rpmWindowSize := int(math.Ceil(float64(CurrentConfig.IncreaseStartPwmAfter.Milliseconds()) / float64(CurrentConfig.RpmPollingRate.Milliseconds())))
-		log.Printf("rpmWindowSize: %d", rpmWindowSize)
-		rpmWindow := rolling.NewWindow(rpmWindowSize)
-
 		fan := &Fan{
-			Name:           file,
-			Index:          index,
-			PwmOutput:      output,
-			RpmInput:       inputs[idx],
-			RpmInputWindow: rolling.NewPointPolicy(rpmWindow),
-			StartPwm:       MinPwmValue,
-			MaxPwm:         MaxPwmValue,
-			FanCurveData:   &map[int]*rolling.PointPolicy{},
-			LastSetPwm:     InitialLastSetPwm,
+			Name:         file,
+			Index:        index,
+			PwmOutput:    output,
+			RpmInput:     inputs[idx],
+			RpmMovingAvg: 0,
+			StartPwm:     MinPwmValue,
+			MaxPwm:       MaxPwmValue,
+			FanCurveData: &map[int]*rolling.PointPolicy{},
+			LastSetPwm:   InitialLastSetPwm,
 		}
 
 		// store original pwm_enabled value
@@ -529,10 +521,9 @@ func createSensors(devicePath string) []*Sensor {
 		}
 
 		sensors = append(sensors, &Sensor{
-			Name:   file,
-			Index:  index,
-			Input:  input,
-			Values: rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.TempRollingWindowSize)),
+			Name:  file,
+			Index: index,
+			Input: input,
 		})
 	}
 
@@ -630,7 +621,7 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	// make sure fans never stop by validating the current RPM
 	// and adjusting the target PWM value upwards if necessary
 	if fan.Config.NeverStop && fan.LastSetPwm == target {
-		avgRpm := fan.RpmInputWindow.Reduce(rolling.Avg)
+		avgRpm := fan.RpmMovingAvg
 		if avgRpm <= 0 {
 			if target >= maxPwm {
 				log.Printf("CRITICAL: Fan avg. RPM is %f, even at PWM value %d", avgRpm, target)
@@ -639,12 +630,10 @@ func setPwm(fan *Fan, pwm int) (err error) {
 			log.Printf("WARNING: Increasing startPWM of %s from %d to %d, which is supposed to never stop, but RPM is %f", fan.Config.Id, fan.StartPwm, fan.StartPwm+1, avgRpm)
 			fan.StartPwm++
 			target++
-			// initialize the complete window with values > 0 to make sure
-			// the whole window is refilled before increasing the minPWM value again
-			measurementCount := int(fan.RpmInputWindow.Reduce(rolling.Count))
-			for i := 0; i < measurementCount; i++ {
-				fan.RpmInputWindow.Append(1)
-			}
+
+			// set the moving avg to a value > 0 to prevent
+			// this increase from happening too fast
+			fan.RpmMovingAvg = 1
 		}
 	}
 
@@ -666,4 +655,9 @@ func GetRpm(fan *Fan) int {
 		return 0
 	}
 	return value
+}
+
+// calculates the new moving average, based on an existing average and buffer size
+func updateSimpleMovingAvg(oldAvg float64, n int, newValue float64) float64 {
+	return oldAvg + (1/float64(n))*(newValue-oldAvg)
 }

@@ -18,7 +18,7 @@ type Fan struct {
 	Name               string                        `json:"name"`
 	Index              int                           `json:"index"`
 	RpmInput           string                        `json:"rpminput"`
-	RpmInputWindow     *rolling.PointPolicy          `json:"rpminputwindow"`
+	RpmMovingAvg       float64                       `json:"rpmmovingavg"`
 	PwmOutput          string                        `json:"pwmoutput"`
 	Config             *FanConfig                    `json:"config"`
 	StartPwm           int                           `json:"startpwm"` // lowest PWM value where the fans are still spinning
@@ -29,9 +29,9 @@ type Fan struct {
 }
 
 type Sensor struct {
-	Name   string               `json:"name"`
-	Index  int                  `json:"index"`
-	Input  string               `json:"string"`
-	Config *SensorConfig        `json:"config"`
-	Values *rolling.PointPolicy `json:"values"`
+	Name      string        `json:"name"`
+	Index     int           `json:"index"`
+	Input     string        `json:"string"`
+	Config    *SensorConfig `json:"config"`
+	MovingAvg float64       `json:"movingaverage"`
 }

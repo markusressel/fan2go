@@ -72,11 +72,9 @@ dbPath: "/etc/fan2go/fan2go.db"
 # The rate to poll temperature sensors at.
 tempSensorPollingRate: 200ms
 # The number of sensor items to keep in a rolling window array.
-rollingWindowSize: 100
+rollingWindowSize: 50
 # The rate to poll fan RPM input sensors at.
 rpmPollingRate: 1s
-# Time to wait before increasing the (initially measured) startPWM of a fan
-increaseStartPwmAfter: 10s
 # The rate to update fan speed targets at.
 controllerAdjustmentTickRate: 200ms
 
@@ -203,7 +201,7 @@ All of this is saved to a local database, so it is only needed once per fan conf
 ### Monitoring
 
 To monitor changes in temperature sensor values, a goroutine is started which continuously reads the `tempX_input` files
-of all sensors specified in the config. Sensor values are stored in a moving window of size `rollingWindowSize` (see
+of all sensors specified in the config. Sensor values are stored as a moving average of size `rollingWindowSize` (see
 configuration).
 
 ### Fan Controllers
@@ -211,7 +209,6 @@ configuration).
 To update the fan speed, one goroutine is started **per fan**, which continuously adjusts the PWM value of a given fan
 based on the sensor data measured by the monitor. This means:
 
-* calculating the average temperature per sensor using the rolling window data
 * calculating the ratio between the average temp and the max/min values defined in the config
 * calculating the target PWM of a fan using the previous ratio, taking its startPWM and maxPWM into account
 * applying the calculated target PWM to the fan

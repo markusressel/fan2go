@@ -118,20 +118,17 @@ func readConfigFile() {
 }
 
 func validateConfig() {
-	config := &internal.CurrentConfig
-	if config.IncreaseStartPwmAfter <= config.RpmPollingRate {
-		log.Fatalf("increaseStartPwmAfter must be greater or equal to rpmPollingRate")
-	}
+	//config := &internal.CurrentConfig
+	// nothing yet
 }
 
 func setDefaultValues() {
 	viper.SetDefault("dbpath", "/etc/fan2go/fan2go.db")
 	viper.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
-	viper.SetDefault("TempRollingWindowSize", 100)
+	viper.SetDefault("TempRollingWindowSize", 50)
 	viper.SetDefault("RpmPollingRate", 1*time.Second)
 	viper.SetDefault("RpmRollingWindowSize", 10)
 
-	viper.SetDefault("IncreaseStartPwmAfter", 10*time.Second)
 	viper.SetDefault("ControllerAdjustmentTickRate", 200*time.Millisecond)
 
 	viper.SetDefault("sensors", []internal.SensorConfig{})
