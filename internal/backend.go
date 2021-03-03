@@ -413,7 +413,7 @@ func calculateTargetSpeed(fan *Fan) int {
 
 	var avgTemp = sensor.MovingAvg
 
-	log.Printf("Avg temp of %s: %f", sensor.Config.Id, avgTemp)
+	//log.Printf("Avg temp of %s: %f", sensor.Config.Id, avgTemp)
 
 	if avgTemp >= maxTemp {
 		// full throttle if max temp is reached
