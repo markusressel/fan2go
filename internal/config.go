@@ -20,8 +20,8 @@ type SensorConfig struct {
 	Id       string
 	Platform string
 	Index    int
-	Min      int
-	Max      int
+	Min      float64
+	Max      float64
 }
 
 type FanConfig struct {
