@@ -57,12 +57,12 @@ var detectCmd = &cobra.Command{
 				pwm := internal.GetPwm(fan)
 				rpm := internal.GetRpm(fan)
 				isAuto, _ := internal.IsPwmAuto(controller.Path)
-				fmt.Printf("  %s (%d): RPM: %d PWM: %d Auto: %v\n", fan.Name, fan.Index, rpm, pwm, isAuto)
+				fmt.Printf("  %d: %s (%s): RPM: %d PWM: %d Auto: %v\n", fan.Index, fan.Label, fan.Name, rpm, pwm, isAuto)
 			}
 
 			for _, sensor := range controller.Sensors {
 				value, _ := util.ReadIntFromFile(sensor.Input)
-				fmt.Printf("  %s (%d): %d\n", sensor.Name, sensor.Index, value)
+				fmt.Printf("  %d: %s (%s): %d\n", sensor.Index, sensor.Label, sensor.Name, value)
 			}
 		}
 	},

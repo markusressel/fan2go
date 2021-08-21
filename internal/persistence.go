@@ -22,7 +22,7 @@ func OpenPersistence(dbPath string) *bolt.DB {
 	return db
 }
 
-// saves the fan curve data of the given fan
+// SaveFanPwmData saves the fan curve data of the given fan
 func SaveFanPwmData(db *bolt.DB, fan *Fan) (err error) {
 	key := fan.PwmOutput
 
@@ -52,7 +52,7 @@ func SaveFanPwmData(db *bolt.DB, fan *Fan) (err error) {
 	})
 }
 
-// loads the fan curve data and attaches it to the given fan
+// LoadFanPwmData loads the fan curve data and attaches it to the given fan
 func LoadFanPwmData(db *bolt.DB, fan *Fan) error {
 	key := fan.PwmOutput
 
