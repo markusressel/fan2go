@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/mitchellh/go-homedir"
@@ -9,6 +10,7 @@ import (
 	"github.com/spf13/viper"
 	"log"
 	"os"
+	"sort"
 	"time"
 )
 
@@ -63,6 +65,51 @@ var detectCmd = &cobra.Command{
 			for _, sensor := range controller.Sensors {
 				value, _ := util.ReadIntFromFile(sensor.Input)
 				fmt.Printf("  %d: %s (%s): %d\n", sensor.Index, sensor.Label, sensor.Name, value)
+			}
+		}
+	},
+}
+
+var curveCmd = &cobra.Command{
+	Use:   "curve",
+	Short: "Print the measured fan curve(s) to console",
+	//Long:  `All software has versions. This is fan2go's`,
+	Run: func(cmd *cobra.Command, args []string) {
+		readConfigFile()
+		db := internal.OpenPersistence(internal.CurrentConfig.DbPath)
+		defer db.Close()
+
+		controllers, err := internal.FindControllers()
+		if err != nil {
+			log.Fatalf("Error detecting devices: %s", err.Error())
+		}
+
+		for _, controller := range controllers {
+			if len(controller.Name) <= 0 || len(controller.Fans) <= 0 {
+				continue
+			}
+
+			for _, fan := range controller.Fans {
+				pwmData, err := internal.LoadFanPwmData(db, fan)
+				if err != nil {
+					continue
+				}
+
+				keys := make([]int, 0, len(pwmData))
+				for k := range pwmData {
+					keys = append(keys, k)
+				}
+				sort.Ints(keys)
+
+				values := make([]float64, 0, len(keys))
+				for _, k := range keys {
+					values = append(values, pwmData[k][0])
+				}
+
+				caption := fan.Name
+				graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(80), asciigraph.Caption(caption))
+				fmt.Println(graph)
+				fmt.Println("")
 			}
 		}
 	},
@@ -141,6 +188,7 @@ func Execute() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.AddCommand(detectCmd)
+	rootCmd.AddCommand(curveCmd)
 	rootCmd.AddCommand(versionCmd)
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")

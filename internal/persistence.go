@@ -53,7 +53,7 @@ func SaveFanPwmData(db *bolt.DB, fan *Fan) (err error) {
 }
 
 // LoadFanPwmData loads the fan curve data and attaches it to the given fan
-func LoadFanPwmData(db *bolt.DB, fan *Fan) error {
+func LoadFanPwmData(db *bolt.DB, fan *Fan) (map[int][]float64, error) {
 	key := fan.PwmOutput
 
 	fanCurveDataMap := map[int][]float64{}
@@ -81,14 +81,5 @@ func LoadFanPwmData(db *bolt.DB, fan *Fan) error {
 		return err
 	})
 
-	// convert the persisted map to arrays back to a moving window and attach it to the fan
-	for key, value := range fanCurveDataMap {
-		fanCurveMovingWindow := rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.RpmRollingWindowSize))
-		for _, rpm := range value {
-			fanCurveMovingWindow.Append(rpm)
-		}
-		(*fan.FanCurveData)[key] = fanCurveMovingWindow
-	}
-
-	return err
+	return fanCurveDataMap, err
 }

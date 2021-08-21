@@ -302,11 +302,21 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 	// check if we have data for this fan in persistence,
 	// if not we need to run the initialization sequence
 	log.Printf("Loading fan curve data for fan '%s'...", fan.Config.Id)
-	err = LoadFanPwmData(db, fan)
+	fanPwmData, err := LoadFanPwmData(db, fan)
 	if err != nil {
 		log.Printf("No fan curve data found for fan '%s', starting initialization sequence...", fan.Config.Id)
 		runInitializationSequence(db, fan)
 	}
+
+	// convert the persisted map to arrays back to a moving window and attach it to the fan
+	for key, value := range fanPwmData {
+		fanCurveMovingWindow := rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.RpmRollingWindowSize))
+		for _, rpm := range value {
+			fanCurveMovingWindow.Append(rpm)
+		}
+		(*fan.FanCurveData)[key] = fanCurveMovingWindow
+	}
+
 	updatePwmBoundaries(fan)
 
 	log.Printf("Starting controller loop for fan '%s'", fan.Config.Id)
