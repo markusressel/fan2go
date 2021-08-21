@@ -645,7 +645,9 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	if target == current {
 		return nil
 	}
-	log.Printf("Setting %s (%s) to %d (mapped: %d) ...", fan.Config.Id, fan.Name, pwm, target)
+	if Verbose {
+		log.Printf("Setting %s (%s) to %d (mapped: %d) ...", fan.Config.Id, fan.Name, pwm, target)
+	}
 	err = util.WriteIntToFile(target, fan.PwmOutput)
 	if err == nil {
 		fan.LastSetPwm = target
