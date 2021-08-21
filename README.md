@@ -26,34 +26,46 @@ Use `fan2go detect` to print a list of all usable devices:
 ```shell
 > fan2go detect
 Detected Devices:
-acpitz
-  temp1_input (1): 27800
-  temp2_input (2): 29800
 nvme
-  temp1_input (1): 52850
-  temp2_input (2): 52850
-  temp3_input (3): 64850
-coretemp
-  temp1_input (1): 59000
-  temp2_input (2): 57000
-  temp3_input (3): 52000
-  temp4_input (4): 56000
-  temp5_input (5): 50000
-it8620
-  pwm1 (1): RPM: 0 PWM: 70 Auto: false
-  pwm2 (2): RPM: 0 PWM: 70 Auto: false
-  pwm3 (3): RPM: 709 PWM: 106 Auto: false
-  pwm4 (4): RPM: 627 PWM: 94 Auto: false
-  pwm5 (5): RPM: 684 PWM: 100 Auto: false
-  temp1_input (1): 29000
-  temp2_input (2): 32000
-  temp3_input (3): 49000
-  temp4_input (4): 29000
-  temp5_input (5): 46000
-  temp6_input (6): 46000
-nouveau
-  pwm1 (1): RPM: 1560 PWM: 31 Auto: false
-  temp1_input (1): 33000
+  1: Composite (temp1_input): 51850
+  2: Sensor 1 (temp2_input): 51850
+  3: Sensor 2 (temp3_input): 52850
+nvme
+  1: Composite (temp1_input): 52850
+  2: Sensor 1 (temp2_input): 52850
+  3: Sensor 2 (temp3_input): 45850
+nvme
+  1: Composite (temp1_input): 52850
+  2: Sensor 1 (temp2_input): 52850
+  3: Sensor 2 (temp3_input): 53850
+nct6798
+  1: hwmon5 (pwm1): RPM: 0 PWM: 142 Auto: false
+  2: hwmon5 (pwm2): RPM: 994 PWM: 68 Auto: false
+  3: hwmon5 (pwm3): RPM: 579 PWM: 96 Auto: false
+  4: hwmon5 (pwm4): RPM: 345 PWM: 58 Auto: false
+  5: hwmon5 (pwm5): RPM: 343 PWM: 57 Auto: false
+  6: hwmon5 (pwm6): RPM: 0 PWM: 255 Auto: false
+  7: hwmon5 (pwm7): RPM: 0 PWM: 255 Auto: false
+  1: SYSTIN (temp1_input): 43000
+  2: CPUTIN (temp2_input): 55500
+  3: AUXTIN0 (temp3_input): 22000
+  4: AUXTIN1 (temp4_input): 127000
+  5: AUXTIN2 (temp5_input): 100000
+  6: AUXTIN3 (temp6_input): 32000
+  7: PECI Agent 0 Calibration (temp7_input): 56500
+  8: PCH_CHIP_CPU_MAX_TEMP (temp8_input): 0
+  9: PCH_CHIP_TEMP (temp9_input): 0
+k10temp
+  1: Tctl (temp1_input): 75875
+  2: Tdie (temp2_input): 75875
+  3: Tccd1 (temp3_input): 69250
+iwlwifi_1
+  1: hwmon8 (temp1_input): 41000
+amdgpu
+  1: hwmon9 (pwm1): RPM: 561 PWM: 43 Auto: false
+  1: edge (temp1_input): 56000
+  2: junction (temp2_input): 59000
+  3: mem (temp3_input): 56000
 ```
 
 Then configure fan2go by creating a YAML configuration file in **one** of the following locations:

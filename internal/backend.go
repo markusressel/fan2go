@@ -427,7 +427,7 @@ func calculateTargetSpeed(fan *Fan) int {
 	return int(ratio * 255)
 }
 
-// Finds controllers and fans
+// FindControllers Finds controllers and fans
 func FindControllers() (controllers []*Controller, err error) {
 	hwmonDevices := util.FindHwmonDevicePaths()
 	i2cDevices := util.FindI2cDevicePaths()
@@ -476,6 +476,8 @@ func createFans(devicePath string) []*Fan {
 	for idx, output := range outputs {
 		_, file := filepath.Split(output)
 
+		label := util.GetLabel(devicePath, output)
+
 		index, err := strconv.Atoi(file[len(file)-1:])
 		if err != nil {
 			log.Fatal(err)
@@ -483,6 +485,7 @@ func createFans(devicePath string) []*Fan {
 
 		fan := &Fan{
 			Name:         file,
+			Label:        label,
 			Index:        index,
 			PwmOutput:    output,
 			RpmInput:     inputs[idx],
@@ -514,6 +517,7 @@ func createSensors(devicePath string) []*Sensor {
 
 	for _, input := range inputs {
 		_, file := filepath.Split(input)
+		label := util.GetLabel(devicePath, file)
 
 		index, err := strconv.Atoi(string(file[4]))
 		if err != nil {
@@ -522,6 +526,7 @@ func createSensors(devicePath string) []*Sensor {
 
 		sensors = append(sensors, &Sensor{
 			Name:  file,
+			Label: label,
 			Index: index,
 			Input: input,
 		})
@@ -530,7 +535,7 @@ func createSensors(devicePath string) []*Sensor {
 	return sensors
 }
 
-// checks if the given output is in auto mode
+// IsPwmAuto checks if the given output is in auto mode
 func IsPwmAuto(outputPath string) (bool, error) {
 	pwmEnabledFilePath := outputPath + "_enable"
 
@@ -587,7 +592,7 @@ func getMinPwmValue(fan *Fan) (result int) {
 	return MinPwmValue
 }
 
-// get the pwm speed of a fan (0..255)
+// GetPwm get the pwm speed of a fan (0..255)
 func GetPwm(fan *Fan) int {
 	value, err := util.ReadIntFromFile(fan.PwmOutput)
 	if err != nil {
@@ -648,7 +653,7 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	return err
 }
 
-// get the rpm value of a fan
+// GetRpm get the rpm value of a fan
 func GetRpm(fan *Fan) int {
 	value, err := util.ReadIntFromFile(fan.RpmInput)
 	if err != nil {

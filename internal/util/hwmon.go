@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// read the name of a device
+// GetDeviceName read the name of a device
 func GetDeviceName(devicePath string) string {
 	namePath := devicePath + "/name"
 	content, _ := ioutil.ReadFile(namePath)
@@ -18,14 +18,26 @@ func GetDeviceName(devicePath string) string {
 	return strings.TrimSpace(name)
 }
 
-// read the modalias of a device
+// GetLabel read the label of a in/output of a device
+func GetLabel(devicePath string, input string) string {
+	labelPath := strings.TrimSuffix(devicePath+"/"+input, "input") + "label"
+
+	content, _ := ioutil.ReadFile(labelPath)
+	label := string(content)
+	if len(label) <= 0 {
+		_, label = filepath.Split(devicePath)
+	}
+	return strings.TrimSpace(label)
+}
+
+// GetDeviceModalias read the modalias of a device
 func GetDeviceModalias(devicePath string) string {
 	modaliasPath := devicePath + "/device/modalias"
 	content, _ := ioutil.ReadFile(modaliasPath)
 	return strings.TrimSpace(string(content))
 }
 
-// read the type of a device
+// GetDeviceType read the type of a device
 func GetDeviceType(devicePath string) string {
 	modaliasPath := devicePath + "/device/type"
 	content, _ := ioutil.ReadFile(modaliasPath)

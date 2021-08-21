@@ -22,7 +22,7 @@ func ReadIntFromFile(path string) (value int, err error) {
 	return strconv.Atoi(text)
 }
 
-// write a single integer to a file.go path
+// WriteIntToFile write a single integer to a file.go path
 func WriteIntToFile(value int, path string) (err error) {
 	f, err := os.OpenFile(path, os.O_SYNC|os.O_WRONLY, 644)
 	if err != nil {
@@ -36,7 +36,7 @@ func WriteIntToFile(value int, path string) (err error) {
 	return err
 }
 
-// finds all files in a given directory, matching the given regex
+// FindFilesMatching finds all files in a given directory, matching the given regex
 func FindFilesMatching(path string, expr string) []string {
 	r, err := regexp.Compile(expr)
 	if err != nil {

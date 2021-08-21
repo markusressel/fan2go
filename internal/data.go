@@ -16,6 +16,7 @@ type Controller struct {
 
 type Fan struct {
 	Name               string                        `json:"name"`
+	Label              string                        `json:"label"`
 	Index              int                           `json:"index"`
 	RpmInput           string                        `json:"rpminput"`
 	RpmMovingAvg       float64                       `json:"rpmmovingavg"`
@@ -30,6 +31,7 @@ type Fan struct {
 
 type Sensor struct {
 	Name      string        `json:"name"`
+	Label     string        `json:"label"`
 	Index     int           `json:"index"`
 	Input     string        `json:"string"`
 	Config    *SensorConfig `json:"config"`
