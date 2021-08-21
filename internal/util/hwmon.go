@@ -18,7 +18,7 @@ func GetDeviceName(devicePath string) string {
 	return strings.TrimSpace(name)
 }
 
-// GetLabel read the name of a device
+// GetLabel read the label of a in/output of a device
 func GetLabel(devicePath string, input string) string {
 	labelPath := strings.TrimSuffix(devicePath+"/"+input, "input") + "label"
 
