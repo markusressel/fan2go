@@ -6,6 +6,7 @@ import (
 	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/util"
+	"github.com/mgutz/ansi"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -98,13 +99,12 @@ var curveCmd = &cobra.Command{
 			}
 
 			for idx, fan := range controller.Fans {
-
 				if idx > 0 {
 					fmt.Println("")
 				}
 
 				// print table
-				fmt.Println("Fan: " + fan.Name + " on " + controller.Name)
+				fmt.Println(controller.Name + " -> " + fan.Name)
 				tab := table.Table{
 					Headers: []string{"", ""},
 					Rows: [][]string{
@@ -115,8 +115,13 @@ var curveCmd = &cobra.Command{
 				var buf bytes.Buffer
 				err = tab.WriteTable(&buf, &table.Config{
 					ShowIndex:       false,
-					Color:           false,
+					Color:           true,
 					AlternateColors: true,
+					TitleColorCode:  ansi.ColorCode("white+buf"),
+					AltColorCodes: []string{
+						ansi.ColorCode("white"),
+						ansi.ColorCode("white:236"),
+					},
 				})
 				if err != nil {
 					panic(err)
@@ -127,7 +132,7 @@ var curveCmd = &cobra.Command{
 				// print graph
 				pwmData, err := internal.LoadFanPwmData(db, fan)
 				if err != nil {
-					fmt.Println(" -- No fan curve data yet --")
+					fmt.Println("No fan curve data yet...")
 					continue
 				}
 
