@@ -184,6 +184,45 @@ sudo systemctl enable --now fan2go
 journalctl -u fan2go -f
 ```
 
+### Print fan curve data
+
+For each newly configured fan **fan2go** measures its fan curve and stores it in a db for future reference. You can take
+a look at this measurement using the following command:
+
+```shell
+> sudo fan2go curve
+nct6798 -> pwm1
+                  
+ Start PWM   0    
+ Max PWM     255  
+
+No fan curve data yet...
+
+
+nct6798 -> pwm2
+                  
+ Start PWM   0    
+ Max PWM     194  
+
+ 1994 ┤                                                                          ╭────────────────────────
+ 1900 ┤                                                                       ╭──╯
+ 1805 ┤                                                                  ╭────╯
+ 1711 ┤                                                             ╭────╯
+ 1616 ┤                                                        ╭────╯
+ 1522 ┤                                                    ╭───╯
+ 1427 ┤                                               ╭────╯
+ 1333 ┤                                          ╭────╯
+ 1238 ┤                                    ╭─────╯
+ 1144 ┤                               ╭────╯
+ 1049 ┤                         ╭─────╯
+  955 ┤                   ╭─────╯
+  860 ┤             ╭─────╯
+  766 ┤       ╭─────╯
+  671 ┤ ╭─────╯
+  577 ┼─╯
+                                                    RPM / PWM
+```
+
 ## How it works
 
 ### Device detection
