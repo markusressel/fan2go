@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/internal"
@@ -8,9 +9,11 @@ import (
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/tomlazar/table"
 	"log"
 	"os"
 	"sort"
+	"strconv"
 	"time"
 )
 
@@ -84,14 +87,47 @@ var curveCmd = &cobra.Command{
 			log.Fatalf("Error detecting devices: %s", err.Error())
 		}
 
-		for _, controller := range controllers {
+		for idx, controller := range controllers {
 			if len(controller.Name) <= 0 || len(controller.Fans) <= 0 {
 				continue
 			}
 
-			for _, fan := range controller.Fans {
+			if idx > 0 {
+				fmt.Println("")
+				fmt.Println("")
+			}
+
+			for idx, fan := range controller.Fans {
+
+				if idx > 0 {
+					fmt.Println("")
+				}
+
+				// print table
+				fmt.Println("Fan: " + fan.Name + " on " + controller.Name)
+				tab := table.Table{
+					Headers: []string{"", ""},
+					Rows: [][]string{
+						{"Start PWM", strconv.Itoa(fan.StartPwm)},
+						{"Max PWM", strconv.Itoa(fan.MaxPwm)},
+					},
+				}
+				var buf bytes.Buffer
+				err = tab.WriteTable(&buf, &table.Config{
+					ShowIndex:       false,
+					Color:           false,
+					AlternateColors: true,
+				})
+				if err != nil {
+					panic(err)
+				}
+				tableString := buf.String()
+				fmt.Println(tableString)
+
+				// print graph
 				pwmData, err := internal.LoadFanPwmData(db, fan)
 				if err != nil {
+					fmt.Println(" -- No fan curve data yet --")
 					continue
 				}
 
@@ -106,10 +142,9 @@ var curveCmd = &cobra.Command{
 					values = append(values, pwmData[k][0])
 				}
 
-				caption := fan.Name
-				graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(80), asciigraph.Caption(caption))
+				caption := "RPM / PWM"
+				graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(100), asciigraph.Caption(caption))
 				fmt.Println(graph)
-				fmt.Println("")
 			}
 		}
 	},
