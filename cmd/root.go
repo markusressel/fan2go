@@ -1,14 +1,20 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/util"
+	"github.com/mgutz/ansi"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/tomlazar/table"
 	"log"
 	"os"
+	"sort"
+	"strconv"
 	"time"
 )
 
@@ -64,6 +70,87 @@ var detectCmd = &cobra.Command{
 				value, _ := util.ReadIntFromFile(sensor.Input)
 				fmt.Printf("  %d: %s (%s): %d\n", sensor.Index, sensor.Label, sensor.Name, value)
 			}
+		}
+	},
+}
+
+var curveCmd = &cobra.Command{
+	Use:   "curve",
+	Short: "Print the measured fan curve(s) to console",
+	//Long:  `All software has versions. This is fan2go's`,
+	Run: func(cmd *cobra.Command, args []string) {
+		readConfigFile()
+		db := internal.OpenPersistence(internal.CurrentConfig.DbPath)
+		defer db.Close()
+
+		controllers, err := internal.FindControllers()
+		if err != nil {
+			log.Fatalf("Error detecting devices: %s", err.Error())
+		}
+
+		for _, controller := range controllers {
+			if len(controller.Name) <= 0 || len(controller.Fans) <= 0 {
+				continue
+			}
+
+			for idx, fan := range controller.Fans {
+				pwmData, fanCurveErr := internal.LoadFanPwmData(db, fan)
+				err = internal.AttachFanCurveData(db, fan)
+
+				if idx > 0 {
+					fmt.Println("")
+					fmt.Println("")
+				}
+
+				// print table
+				fmt.Println(controller.Name + " -> " + fan.Name)
+				tab := table.Table{
+					Headers: []string{"", ""},
+					Rows: [][]string{
+						{"Start PWM", strconv.Itoa(fan.StartPwm)},
+						{"Max PWM", strconv.Itoa(fan.MaxPwm)},
+					},
+				}
+				var buf bytes.Buffer
+				tableErr := tab.WriteTable(&buf, &table.Config{
+					ShowIndex:       false,
+					Color:           true,
+					AlternateColors: true,
+					TitleColorCode:  ansi.ColorCode("white+buf"),
+					AltColorCodes: []string{
+						ansi.ColorCode("white"),
+						ansi.ColorCode("white:236"),
+					},
+				})
+				if tableErr != nil {
+					panic(err)
+				}
+				tableString := buf.String()
+				fmt.Println(tableString)
+
+				// print graph
+				if fanCurveErr != nil {
+					fmt.Println("No fan curve data yet...")
+					continue
+				}
+
+				keys := make([]int, 0, len(pwmData))
+				for k := range pwmData {
+					keys = append(keys, k)
+				}
+				sort.Ints(keys)
+
+				values := make([]float64, 0, len(keys))
+				for _, k := range keys {
+					values = append(values, pwmData[k][0])
+				}
+
+				caption := "RPM / PWM"
+				graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(100), asciigraph.Caption(caption))
+				fmt.Println(graph)
+			}
+
+			fmt.Println("")
 		}
 	},
 }
@@ -141,6 +228,7 @@ func Execute() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.AddCommand(detectCmd)
+	rootCmd.AddCommand(curveCmd)
 	rootCmd.AddCommand(versionCmd)
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")
