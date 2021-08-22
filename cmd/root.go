@@ -88,18 +88,14 @@ var curveCmd = &cobra.Command{
 			log.Fatalf("Error detecting devices: %s", err.Error())
 		}
 
-		for idx, controller := range controllers {
+		for _, controller := range controllers {
 			if len(controller.Name) <= 0 || len(controller.Fans) <= 0 {
 				continue
 			}
 
-			if idx > 0 {
-				fmt.Println("")
-				fmt.Println("")
-			}
-
 			for idx, fan := range controller.Fans {
 				if idx > 0 {
+					fmt.Println("")
 					fmt.Println("")
 				}
 
@@ -151,6 +147,8 @@ var curveCmd = &cobra.Command{
 				graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(100), asciigraph.Caption(caption))
 				fmt.Println(graph)
 			}
+
+			fmt.Println("")
 		}
 	},
 }
