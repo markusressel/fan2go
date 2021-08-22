@@ -232,16 +232,18 @@ func measureRpm(fan *Fan) {
 	pointWindow.Append(float64(rpm))
 }
 
-func updatePwmBoundaries(fan *Fan) {
+// GetPwmBoundaries calculates the startPwm and maxPwm values for a fan based on its fan curve data
+func GetPwmBoundaries(fan *Fan) (int, int) {
 	startPwm := 255
 	maxPwm := 255
 	pwmRpmMap := fan.FanCurveData
-	if pwmRpmMap == nil {
+
+	// get pwm keys that we have data for
+	keys := make([]int, len(*pwmRpmMap))
+	if pwmRpmMap == nil || len(keys) <= 0 {
 		// we have no data yet
 		startPwm = 0
 	} else {
-		// get pwm keys that we have data for
-		keys := make([]int, len(*pwmRpmMap))
 		i := 0
 		for k := range *pwmRpmMap {
 			keys[i] = k
@@ -266,10 +268,7 @@ func updatePwmBoundaries(fan *Fan) {
 		}
 	}
 
-	log.Printf("Start PWM of %s (%s): %d", fan.Config.Id, fan.Name, startPwm)
-	fan.StartPwm = startPwm
-	log.Printf("Max PWM of %s (%s): %d", fan.Config.Id, fan.Name, maxPwm)
-	fan.MaxPwm = maxPwm
+	return startPwm, maxPwm
 }
 
 // read the current value of a sensor and append it to the moving window
@@ -302,22 +301,13 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 	// check if we have data for this fan in persistence,
 	// if not we need to run the initialization sequence
 	log.Printf("Loading fan curve data for fan '%s'...", fan.Config.Id)
-	fanPwmData, err := LoadFanPwmData(db, fan)
+	err = AttachFanCurveData(db, fan)
 	if err != nil {
 		log.Printf("No fan curve data found for fan '%s', starting initialization sequence...", fan.Config.Id)
 		runInitializationSequence(db, fan)
 	}
-
-	// convert the persisted map to arrays back to a moving window and attach it to the fan
-	for key, value := range fanPwmData {
-		fanCurveMovingWindow := rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.RpmRollingWindowSize))
-		for _, rpm := range value {
-			fanCurveMovingWindow.Append(rpm)
-		}
-		(*fan.FanCurveData)[key] = fanCurveMovingWindow
-	}
-
-	updatePwmBoundaries(fan)
+	log.Printf("Start PWM of %s (%s): %d", fan.Config.Id, fan.Name, fan.StartPwm)
+	log.Printf("Max PWM of %s (%s): %d", fan.Config.Id, fan.Name, fan.MaxPwm)
 
 	log.Printf("Starting controller loop for fan '%s'", fan.Config.Id)
 	for {
@@ -336,6 +326,29 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 			}
 		}
 	}
+}
+
+// AttachFanCurveData attaches fan curve data from persistence to a fan
+func AttachFanCurveData(db *bolt.DB, fan *Fan) error {
+	fanPwmData, err := LoadFanPwmData(db, fan)
+	if err != nil {
+		return err
+	}
+
+	// convert the persisted map to arrays back to a moving window and attach it to the fan
+	for key, value := range fanPwmData {
+		fanCurveMovingWindow := rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.RpmRollingWindowSize))
+		for _, rpm := range value {
+			fanCurveMovingWindow.Append(rpm)
+		}
+		(*fan.FanCurveData)[key] = fanCurveMovingWindow
+	}
+
+	startPwm, maxPwm := GetPwmBoundaries(fan)
+	fan.StartPwm = startPwm
+	fan.MaxPwm = maxPwm
+
+	return nil
 }
 
 func trySetManualPwm(fan *Fan) (err error) {

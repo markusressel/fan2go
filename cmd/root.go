@@ -94,6 +94,9 @@ var curveCmd = &cobra.Command{
 			}
 
 			for idx, fan := range controller.Fans {
+				pwmData, fanCurveErr := internal.LoadFanPwmData(db, fan)
+				err = internal.AttachFanCurveData(db, fan)
+
 				if idx > 0 {
 					fmt.Println("")
 					fmt.Println("")
@@ -109,7 +112,7 @@ var curveCmd = &cobra.Command{
 					},
 				}
 				var buf bytes.Buffer
-				err = tab.WriteTable(&buf, &table.Config{
+				tableErr := tab.WriteTable(&buf, &table.Config{
 					ShowIndex:       false,
 					Color:           true,
 					AlternateColors: true,
@@ -119,15 +122,14 @@ var curveCmd = &cobra.Command{
 						ansi.ColorCode("white:236"),
 					},
 				})
-				if err != nil {
+				if tableErr != nil {
 					panic(err)
 				}
 				tableString := buf.String()
 				fmt.Println(tableString)
 
 				// print graph
-				pwmData, err := internal.LoadFanPwmData(db, fan)
-				if err != nil {
+				if fanCurveErr != nil {
 					fmt.Println("No fan curve data yet...")
 					continue
 				}
