@@ -301,10 +301,12 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 	// check if we have data for this fan in persistence,
 	// if not we need to run the initialization sequence
 	log.Printf("Loading fan curve data for fan '%s'...", fan.Config.Id)
-	err = AttachFanCurveData(db, fan)
+	fanPwmData, err := LoadFanPwmData(db, fan)
 	if err != nil {
 		log.Printf("No fan curve data found for fan '%s', starting initialization sequence...", fan.Config.Id)
 		runInitializationSequence(db, fan)
+	} else {
+		AttachFanCurveData(&fanPwmData, fan)
 	}
 	log.Printf("Start PWM of %s (%s): %d", fan.Config.Id, fan.Name, fan.StartPwm)
 	log.Printf("Max PWM of %s (%s): %d", fan.Config.Id, fan.Name, fan.MaxPwm)
@@ -329,26 +331,80 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 }
 
 // AttachFanCurveData attaches fan curve data from persistence to a fan
-func AttachFanCurveData(db *bolt.DB, fan *Fan) error {
-	fanPwmData, err := LoadFanPwmData(db, fan)
-	if err != nil {
-		return err
+// Note: When the given data is incomplete, all values up until the highest
+// value in the given dataset will be interpolated linearly
+func AttachFanCurveData(curveData *map[int][]float64, fan *Fan) {
+	// convert the persisted map to arrays back to a moving window and attach it to the fan
+
+	if curveData == nil || len(*curveData) <= 0 {
+		// we have no data!
+		log.Fatalf("Cant attach empty fan curve data to fan %s", fan.Name)
 	}
 
-	// convert the persisted map to arrays back to a moving window and attach it to the fan
-	for key, value := range fanPwmData {
+	const limit = 255
+	var lastValueIdx int
+	var lastValueAvg float64
+	var nextValueIdx int
+	var nextValueAvg float64
+	for i := 0; i <= limit; i++ {
 		fanCurveMovingWindow := rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.RpmRollingWindowSize))
-		for _, rpm := range value {
+
+		pointValues, containsKey := (*curveData)[i]
+		if containsKey && len(pointValues) > 0 {
+			lastValueIdx = i
+			lastValueAvg = util.Avg(pointValues)
+		} else {
+			if pointValues == nil {
+				pointValues = []float64{lastValueAvg}
+			}
+			// find next value in curveData
+			nextValueIdx = i
+			for j := i; j <= limit; j++ {
+				pointValues, containsKey := (*curveData)[j]
+				if containsKey {
+					nextValueIdx = j
+					nextValueAvg = util.Avg(pointValues)
+				}
+			}
+			if nextValueIdx == i {
+				// we didn't find a next value in curveData, so we just copy the last point
+				var valuesCopy = []float64{}
+				copy(pointValues, valuesCopy)
+				pointValues = valuesCopy
+			} else {
+				// interpolate average value to the next existing key
+				ratio := (float64(i) - float64(lastValueIdx)) / (float64(nextValueIdx) - float64(lastValueIdx))
+				interpolation := lastValueAvg + ratio*(nextValueAvg-lastValueAvg)
+				pointValues = []float64{interpolation}
+			}
+		}
+
+		var currentAvg float64
+		for k := 0; k < CurrentConfig.RpmRollingWindowSize; k++ {
+			var rpm float64
+
+			if k < len(pointValues) {
+				rpm = pointValues[k]
+			} else {
+				// fill the rolling window with averages if given values are not sufficient
+				rpm = currentAvg
+			}
+
+			// update average
+			if k == 0 {
+				currentAvg = rpm
+			} else {
+				currentAvg = (currentAvg + rpm) / 2
+			}
+
+			// add value to window
 			fanCurveMovingWindow.Append(rpm)
 		}
-		(*fan.FanCurveData)[key] = fanCurveMovingWindow
+
+		(*fan.FanCurveData)[i] = fanCurveMovingWindow
 	}
 
-	startPwm, maxPwm := GetPwmBoundaries(fan)
-	fan.StartPwm = startPwm
-	fan.MaxPwm = maxPwm
-
-	return nil
+	fan.StartPwm, fan.MaxPwm = GetPwmBoundaries(fan)
 }
 
 func trySetManualPwm(fan *Fan) (err error) {
