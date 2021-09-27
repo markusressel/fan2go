@@ -301,10 +301,12 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 	// check if we have data for this fan in persistence,
 	// if not we need to run the initialization sequence
 	log.Printf("Loading fan curve data for fan '%s'...", fan.Config.Id)
-	err = AttachFanCurveData(db, fan)
+	fanPwmData, err := LoadFanPwmData(db, fan)
 	if err != nil {
 		log.Printf("No fan curve data found for fan '%s', starting initialization sequence...", fan.Config.Id)
 		runInitializationSequence(db, fan)
+	} else {
+		AttachFanCurveData(&fanPwmData, fan)
 	}
 	log.Printf("Start PWM of %s (%s): %d", fan.Config.Id, fan.Name, fan.StartPwm)
 	log.Printf("Max PWM of %s (%s): %d", fan.Config.Id, fan.Name, fan.MaxPwm)
@@ -315,7 +317,9 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 		case <-ctx.Done():
 			return nil
 		case <-tick:
-			err = setOptimalFanSpeed(fan)
+			current := GetPwm(fan)
+			target := calculateTargetPwm(fan, current, calculateOptimalPwm(fan))
+			err = setPwm(fan, target)
 			if err != nil {
 				log.Printf("Error setting %s (%s): %s", fan.Config.Id, fan.Name, err.Error())
 				err = trySetManualPwm(fan)
@@ -329,26 +333,80 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 }
 
 // AttachFanCurveData attaches fan curve data from persistence to a fan
-func AttachFanCurveData(db *bolt.DB, fan *Fan) error {
-	fanPwmData, err := LoadFanPwmData(db, fan)
-	if err != nil {
-		return err
+// Note: When the given data is incomplete, all values up until the highest
+// value in the given dataset will be interpolated linearly
+func AttachFanCurveData(curveData *map[int][]float64, fan *Fan) {
+	// convert the persisted map to arrays back to a moving window and attach it to the fan
+
+	if curveData == nil || len(*curveData) <= 0 {
+		// we have no data!
+		log.Fatalf("Cant attach empty fan curve data to fan %s", fan.Name)
 	}
 
-	// convert the persisted map to arrays back to a moving window and attach it to the fan
-	for key, value := range fanPwmData {
+	const limit = 255
+	var lastValueIdx int
+	var lastValueAvg float64
+	var nextValueIdx int
+	var nextValueAvg float64
+	for i := 0; i <= limit; i++ {
 		fanCurveMovingWindow := rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.RpmRollingWindowSize))
-		for _, rpm := range value {
+
+		pointValues, containsKey := (*curveData)[i]
+		if containsKey && len(pointValues) > 0 {
+			lastValueIdx = i
+			lastValueAvg = util.Avg(pointValues)
+		} else {
+			if pointValues == nil {
+				pointValues = []float64{lastValueAvg}
+			}
+			// find next value in curveData
+			nextValueIdx = i
+			for j := i; j <= limit; j++ {
+				pointValues, containsKey := (*curveData)[j]
+				if containsKey {
+					nextValueIdx = j
+					nextValueAvg = util.Avg(pointValues)
+				}
+			}
+			if nextValueIdx == i {
+				// we didn't find a next value in curveData, so we just copy the last point
+				var valuesCopy = []float64{}
+				copy(pointValues, valuesCopy)
+				pointValues = valuesCopy
+			} else {
+				// interpolate average value to the next existing key
+				ratio := (float64(i) - float64(lastValueIdx)) / (float64(nextValueIdx) - float64(lastValueIdx))
+				interpolation := lastValueAvg + ratio*(nextValueAvg-lastValueAvg)
+				pointValues = []float64{interpolation}
+			}
+		}
+
+		var currentAvg float64
+		for k := 0; k < CurrentConfig.RpmRollingWindowSize; k++ {
+			var rpm float64
+
+			if k < len(pointValues) {
+				rpm = pointValues[k]
+			} else {
+				// fill the rolling window with averages if given values are not sufficient
+				rpm = currentAvg
+			}
+
+			// update average
+			if k == 0 {
+				currentAvg = rpm
+			} else {
+				currentAvg = (currentAvg + rpm) / 2
+			}
+
+			// add value to window
 			fanCurveMovingWindow.Append(rpm)
 		}
-		(*fan.FanCurveData)[key] = fanCurveMovingWindow
+
+		(*fan.FanCurveData)[i] = fanCurveMovingWindow
 	}
 
-	startPwm, maxPwm := GetPwmBoundaries(fan)
-	fan.StartPwm = startPwm
-	fan.MaxPwm = maxPwm
-
-	return nil
+	fan.StartPwm, fan.MaxPwm = GetPwmBoundaries(fan)
 }
 
 func trySetManualPwm(fan *Fan) (err error) {
@@ -420,34 +478,6 @@ func findSensorConfig(controller *Controller, sensor *Sensor) (sensorConfig *Sen
 		}
 	}
 	return nil
-}
-
-// calculates optimal fan speeds for all given devices
-func setOptimalFanSpeed(fan *Fan) (err error) {
-	target := calculateTargetSpeed(fan)
-	return setPwm(fan, target)
-}
-
-// calculates the target speed for a given device output
-func calculateTargetSpeed(fan *Fan) int {
-	sensor := SensorMap[fan.Config.Sensor]
-	minTemp := sensor.Config.Min * 1000 // degree to milli-degree
-	maxTemp := sensor.Config.Max * 1000
-
-	var avgTemp = sensor.MovingAvg
-
-	//log.Printf("Avg temp of %s: %f", sensor.Config.Id, avgTemp)
-
-	if avgTemp >= maxTemp {
-		// full throttle if max temp is reached
-		return 255
-	} else if avgTemp <= minTemp {
-		// turn fan off if at/below min temp
-		return 0
-	}
-
-	ratio := (avgTemp - minTemp) / (maxTemp - minTemp)
-	return int(ratio * 255)
 }
 
 // FindControllers Finds controllers and fans
@@ -624,13 +654,41 @@ func GetPwm(fan *Fan) int {
 	return value
 }
 
-// set the pwm speed of a fan to the specified value (0..255)
-func setPwm(fan *Fan, pwm int) (err error) {
+// calculates the target speed for a given device output
+func calculateOptimalPwm(fan *Fan) int {
+	sensor := SensorMap[fan.Config.Sensor]
+	minTemp := sensor.Config.Min * 1000 // degree to milli-degree
+	maxTemp := sensor.Config.Max * 1000
+
+	var avgTemp = sensor.MovingAvg
+
+	//log.Printf("Avg temp of %s: %f", sensor.Config.Id, avgTemp)
+
+	if avgTemp >= maxTemp {
+		// full throttle if max temp is reached
+		return 255
+	} else if avgTemp <= minTemp {
+		// turn fan off if at/below min temp
+		return 0
+	}
+
+	ratio := (avgTemp - minTemp) / (maxTemp - minTemp)
+	return int(ratio * 255)
+}
+
+// calculates the optimal pwm for a fan with the given target
+// level.
+// returns -1 if no rpm is detected even at fan.maxPwm
+func calculateTargetPwm(fan *Fan, currentPwm int, pwm int) int {
+	target := pwm
+
 	// ensure target value is within bounds of possible values
-	if pwm > MaxPwmValue {
-		pwm = MaxPwmValue
-	} else if pwm < MinPwmValue {
-		pwm = MinPwmValue
+	if target > MaxPwmValue {
+		log.Printf("WARNING: Trying to set out-of-bounds PWM value %d on fan %s", pwm, fan.Config.Id)
+		target = MaxPwmValue
+	} else if target < MinPwmValue {
+		log.Printf("WARNING: Trying to set out-of-bounds PWM value %d on fan %s", pwm, fan.Config.Id)
+		target = MinPwmValue
 	}
 
 	// map the target value to the possible range of this fan
@@ -638,12 +696,11 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	minPwm := getMinPwmValue(fan)
 
 	// TODO: this assumes a linear curve, but it might be something else
-	target := minPwm + int((float64(pwm)/MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
+	target = minPwm + int((float64(target)/MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
 
-	current := GetPwm(fan)
-	if fan.LastSetPwm != InitialLastSetPwm && fan.LastSetPwm != current {
+	if fan.LastSetPwm != InitialLastSetPwm && fan.LastSetPwm != currentPwm {
 		log.Printf("WARNING: PWM of %s was changed by third party! Last set PWM value was: %d but is now: %d",
-			fan.Config.Id, fan.LastSetPwm, current)
+			fan.Config.Id, fan.LastSetPwm, currentPwm)
 	}
 
 	// make sure fans never stop by validating the current RPM
@@ -653,7 +710,7 @@ func setPwm(fan *Fan, pwm int) (err error) {
 		if avgRpm <= 0 {
 			if target >= maxPwm {
 				log.Printf("CRITICAL: Fan avg. RPM is %f, even at PWM value %d", avgRpm, target)
-				return nil
+				return -1
 			}
 			log.Printf("WARNING: Increasing startPWM of %s from %d to %d, which is supposed to never stop, but RPM is %f", fan.Config.Id, fan.StartPwm, fan.StartPwm+1, avgRpm)
 			fan.StartPwm++
@@ -665,11 +722,17 @@ func setPwm(fan *Fan, pwm int) (err error) {
 		}
 	}
 
+	return target
+}
+
+// set the pwm speed of a fan to the specified value (0..255)
+func setPwm(fan *Fan, target int) (err error) {
+	current := GetPwm(fan)
 	if target == current {
 		return nil
 	}
 	if Verbose {
-		log.Printf("Setting %s (%s) to %d (mapped: %d) ...", fan.Config.Id, fan.Name, pwm, target)
+		log.Printf("Setting %s (%s) to %d ...", fan.Config.Id, fan.Name, target)
 	}
 	err = util.WriteIntToFile(target, fan.PwmOutput)
 	if err == nil {

@@ -95,7 +95,9 @@ var curveCmd = &cobra.Command{
 
 			for idx, fan := range controller.Fans {
 				pwmData, fanCurveErr := internal.LoadFanPwmData(db, fan)
-				err = internal.AttachFanCurveData(db, fan)
+				if fanCurveErr == nil {
+					internal.AttachFanCurveData(&pwmData, fan)
+				}
 
 				if idx > 0 {
 					fmt.Println("")
