@@ -317,7 +317,9 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 		case <-ctx.Done():
 			return nil
 		case <-tick:
-			err = setOptimalFanSpeed(fan)
+			current := GetPwm(fan)
+			target := calculateTargetPwm(fan, current, calculateOptimalPwm(fan))
+			err = setPwm(fan, target)
 			if err != nil {
 				log.Printf("Error setting %s (%s): %s", fan.Config.Id, fan.Name, err.Error())
 				err = trySetManualPwm(fan)
@@ -476,34 +478,6 @@ func findSensorConfig(controller *Controller, sensor *Sensor) (sensorConfig *Sen
 		}
 	}
 	return nil
-}
-
-// calculates optimal fan speeds for all given devices
-func setOptimalFanSpeed(fan *Fan) (err error) {
-	target := calculateTargetSpeed(fan)
-	return setPwm(fan, target)
-}
-
-// calculates the target speed for a given device output
-func calculateTargetSpeed(fan *Fan) int {
-	sensor := SensorMap[fan.Config.Sensor]
-	minTemp := sensor.Config.Min * 1000 // degree to milli-degree
-	maxTemp := sensor.Config.Max * 1000
-
-	var avgTemp = sensor.MovingAvg
-
-	//log.Printf("Avg temp of %s: %f", sensor.Config.Id, avgTemp)
-
-	if avgTemp >= maxTemp {
-		// full throttle if max temp is reached
-		return 255
-	} else if avgTemp <= minTemp {
-		// turn fan off if at/below min temp
-		return 0
-	}
-
-	ratio := (avgTemp - minTemp) / (maxTemp - minTemp)
-	return int(ratio * 255)
 }
 
 // FindControllers Finds controllers and fans
@@ -680,13 +654,41 @@ func GetPwm(fan *Fan) int {
 	return value
 }
 
-// set the pwm speed of a fan to the specified value (0..255)
-func setPwm(fan *Fan, pwm int) (err error) {
+// calculates the target speed for a given device output
+func calculateOptimalPwm(fan *Fan) int {
+	sensor := SensorMap[fan.Config.Sensor]
+	minTemp := sensor.Config.Min * 1000 // degree to milli-degree
+	maxTemp := sensor.Config.Max * 1000
+
+	var avgTemp = sensor.MovingAvg
+
+	//log.Printf("Avg temp of %s: %f", sensor.Config.Id, avgTemp)
+
+	if avgTemp >= maxTemp {
+		// full throttle if max temp is reached
+		return 255
+	} else if avgTemp <= minTemp {
+		// turn fan off if at/below min temp
+		return 0
+	}
+
+	ratio := (avgTemp - minTemp) / (maxTemp - minTemp)
+	return int(ratio * 255)
+}
+
+// calculates the optimal pwm for a fan with the given target
+// level.
+// returns -1 if no rpm is detected even at fan.maxPwm
+func calculateTargetPwm(fan *Fan, currentPwm int, pwm int) int {
+	target := pwm
+
 	// ensure target value is within bounds of possible values
-	if pwm > MaxPwmValue {
-		pwm = MaxPwmValue
-	} else if pwm < MinPwmValue {
-		pwm = MinPwmValue
+	if target > MaxPwmValue {
+		log.Printf("WARNING: Trying to set out-of-bounds PWM value %d on fan %s", pwm, fan.Config.Id)
+		target = MaxPwmValue
+	} else if target < MinPwmValue {
+		log.Printf("WARNING: Trying to set out-of-bounds PWM value %d on fan %s", pwm, fan.Config.Id)
+		target = MinPwmValue
 	}
 
 	// map the target value to the possible range of this fan
@@ -694,12 +696,11 @@ func setPwm(fan *Fan, pwm int) (err error) {
 	minPwm := getMinPwmValue(fan)
 
 	// TODO: this assumes a linear curve, but it might be something else
-	target := minPwm + int((float64(pwm)/MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
+	target = minPwm + int((float64(target)/MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
 
-	current := GetPwm(fan)
-	if fan.LastSetPwm != InitialLastSetPwm && fan.LastSetPwm != current {
+	if fan.LastSetPwm != InitialLastSetPwm && fan.LastSetPwm != currentPwm {
 		log.Printf("WARNING: PWM of %s was changed by third party! Last set PWM value was: %d but is now: %d",
-			fan.Config.Id, fan.LastSetPwm, current)
+			fan.Config.Id, fan.LastSetPwm, currentPwm)
 	}
 
 	// make sure fans never stop by validating the current RPM
@@ -709,7 +710,7 @@ func setPwm(fan *Fan, pwm int) (err error) {
 		if avgRpm <= 0 {
 			if target >= maxPwm {
 				log.Printf("CRITICAL: Fan avg. RPM is %f, even at PWM value %d", avgRpm, target)
-				return nil
+				return -1
 			}
 			log.Printf("WARNING: Increasing startPWM of %s from %d to %d, which is supposed to never stop, but RPM is %f", fan.Config.Id, fan.StartPwm, fan.StartPwm+1, avgRpm)
 			fan.StartPwm++
@@ -721,11 +722,17 @@ func setPwm(fan *Fan, pwm int) (err error) {
 		}
 	}
 
+	return target
+}
+
+// set the pwm speed of a fan to the specified value (0..255)
+func setPwm(fan *Fan, target int) (err error) {
+	current := GetPwm(fan)
 	if target == current {
 		return nil
 	}
 	if Verbose {
-		log.Printf("Setting %s (%s) to %d (mapped: %d) ...", fan.Config.Id, fan.Name, pwm, target)
+		log.Printf("Setting %s (%s) to %d ...", fan.Config.Id, fan.Name, target)
 	}
 	err = util.WriteIntToFile(target, fan.PwmOutput)
 	if err == nil {

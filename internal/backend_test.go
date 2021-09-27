@@ -20,6 +20,12 @@ var (
 
 	cappedFan = map[int][]float64{
 		0:   {0.0},
+		1:   {0.0},
+		2:   {0.0},
+		3:   {0.0},
+		4:   {0.0},
+		5:   {0.0},
+		6:   {20.0},
 		200: {200.0},
 	}
 
@@ -30,7 +36,7 @@ var (
 	}
 )
 
-func createFan(curveData map[int][]float64) *Fan {
+func createFan(neverStop bool, curveData map[int][]float64) *Fan {
 	CurrentConfig.RpmRollingWindowSize = 10
 
 	fan := Fan{
@@ -38,7 +44,7 @@ func createFan(curveData map[int][]float64) *Fan {
 			Id:        "fan1",
 			Platform:  "platform",
 			Fan:       1,
-			NeverStop: false,
+			NeverStop: neverStop,
 			Sensor:    "sensor",
 		},
 		FanCurveData: &map[int]*rolling.PointPolicy{},
@@ -51,7 +57,7 @@ func createFan(curveData map[int][]float64) *Fan {
 
 func TestLinearFan(t *testing.T) {
 	// GIVEN
-	fan := createFan(linearFan)
+	fan := createFan(false, linearFan)
 
 	// WHEN
 	startPwm, maxPwm := GetPwmBoundaries(fan)
@@ -63,7 +69,7 @@ func TestLinearFan(t *testing.T) {
 
 func TestNeverStoppingFan(t *testing.T) {
 	// GIVEN
-	fan := createFan(neverStoppingFan)
+	fan := createFan(false, neverStoppingFan)
 
 	// WHEN
 	startPwm, maxPwm := GetPwmBoundaries(fan)
@@ -75,19 +81,19 @@ func TestNeverStoppingFan(t *testing.T) {
 
 func TestCappedFan(t *testing.T) {
 	// GIVEN
-	fan := createFan(cappedFan)
+	fan := createFan(false, cappedFan)
 
 	// WHEN
 	startPwm, maxPwm := GetPwmBoundaries(fan)
 
 	// THEN
-	assert.Equal(t, 1, startPwm)
+	assert.Equal(t, 6, startPwm)
 	assert.Equal(t, 200, maxPwm)
 }
 
 func TestCappedNeverStoppingFan(t *testing.T) {
 	// GIVEN
-	fan := createFan(cappedNeverStoppingFan)
+	fan := createFan(false, cappedNeverStoppingFan)
 
 	// WHEN
 	startPwm, maxPwm := GetPwmBoundaries(fan)
@@ -97,7 +103,7 @@ func TestCappedNeverStoppingFan(t *testing.T) {
 	assert.Equal(t, 200, maxPwm)
 }
 
-func TestCalculateTargetSpeed(t *testing.T) {
+func TestCalculateTargetSpeedLinear(t *testing.T) {
 	// GIVEN
 	avgTmp := 50000.0
 	SensorMap["sensor"] = &Sensor{
@@ -108,11 +114,33 @@ func TestCalculateTargetSpeed(t *testing.T) {
 		MovingAvg: avgTmp,
 	}
 
-	fan := createFan(linearFan)
+	fan := createFan(false, linearFan)
 
 	// WHEN
-	target := calculateTargetSpeed(fan)
+	optimal := calculateOptimalPwm(fan)
 
 	// THEN
-	assert.Equal(t, 127, target)
+	assert.Equal(t, 127, optimal)
+}
+
+func TestCalculateTargetSpeedNeverStop(t *testing.T) {
+	// GIVEN
+	avgTmp := 50000.0
+	SensorMap["sensor"] = &Sensor{
+		Config: &SensorConfig{
+			Min: 50,
+			Max: 100,
+		},
+		MovingAvg: avgTmp,
+	}
+
+	fan := createFan(true, cappedFan)
+
+	// WHEN
+	optimal := calculateOptimalPwm(fan)
+	target := calculateTargetPwm(fan, 0, optimal)
+
+	// THEN
+	assert.Equal(t, 0, optimal)
+	assert.Equal(t, fan.StartPwm, target)
 }
