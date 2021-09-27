@@ -15,8 +15,12 @@ jobs:
     steps:
       - name: Checkout the repository
         uses: actions/checkout@v2
+
       - name: Build
         run: go build -v ./...
+
+      - name: Test
+        run: go test -v ./...
 
       - name: Generate build files
         uses: thatisuday/go-cross-build@v1
