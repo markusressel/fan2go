@@ -31,10 +31,16 @@ var (
 )
 
 func createFan(curveData map[int][]float64) *Fan {
-	// GIVEN
 	CurrentConfig.RpmRollingWindowSize = 10
 
 	fan := Fan{
+		Config: &FanConfig{
+			Id:        "fan1",
+			Platform:  "platform",
+			Fan:       1,
+			NeverStop: false,
+			Sensor:    "sensor",
+		},
 		FanCurveData: &map[int]*rolling.PointPolicy{},
 	}
 
@@ -44,6 +50,7 @@ func createFan(curveData map[int][]float64) *Fan {
 }
 
 func TestLinearFan(t *testing.T) {
+	// GIVEN
 	fan := createFan(linearFan)
 
 	// WHEN
@@ -55,6 +62,7 @@ func TestLinearFan(t *testing.T) {
 }
 
 func TestNeverStoppingFan(t *testing.T) {
+	// GIVEN
 	fan := createFan(neverStoppingFan)
 
 	// WHEN
@@ -66,6 +74,7 @@ func TestNeverStoppingFan(t *testing.T) {
 }
 
 func TestCappedFan(t *testing.T) {
+	// GIVEN
 	fan := createFan(cappedFan)
 
 	// WHEN
@@ -77,6 +86,7 @@ func TestCappedFan(t *testing.T) {
 }
 
 func TestCappedNeverStoppingFan(t *testing.T) {
+	// GIVEN
 	fan := createFan(cappedNeverStoppingFan)
 
 	// WHEN
@@ -85,4 +95,24 @@ func TestCappedNeverStoppingFan(t *testing.T) {
 	// THEN
 	assert.Equal(t, 0, startPwm)
 	assert.Equal(t, 200, maxPwm)
+}
+
+func TestCalculateTargetSpeed(t *testing.T) {
+	// GIVEN
+	avgTmp := 50000.0
+	SensorMap["sensor"] = &Sensor{
+		Config: &SensorConfig{
+			Min: 0,
+			Max: 100,
+		},
+		MovingAvg: avgTmp,
+	}
+
+	fan := createFan(linearFan)
+
+	// WHEN
+	target := calculateTargetSpeed(fan)
+
+	// THEN
+	assert.Equal(t, 127, target)
 }
