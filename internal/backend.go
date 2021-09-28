@@ -229,8 +229,8 @@ func measureRpm(fan *Fan) {
 	fan.RpmMovingAvg = updateSimpleMovingAvg(fan.RpmMovingAvg, CurrentConfig.RpmRollingWindowSize, float64(rpm))
 
 	pwmRpmMap := fan.FanCurveData
-	pointWindow, ok := (*pwmRpmMap)[pwm]
-	if !ok {
+	pointWindow, exists := (*pwmRpmMap)[pwm]
+	if !exists {
 		// create rolling window for current pwm value
 		pointWindow = rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.RpmRollingWindowSize))
 		(*pwmRpmMap)[pwm] = pointWindow
@@ -239,9 +239,9 @@ func measureRpm(fan *Fan) {
 }
 
 // GetPwmBoundaries calculates the startPwm and maxPwm values for a fan based on its fan curve data
-func GetPwmBoundaries(fan *Fan) (int, int) {
-	startPwm := 255
-	maxPwm := 255
+func GetPwmBoundaries(fan *Fan) (startPwm int, maxPwm int) {
+	startPwm = 255
+	maxPwm = 255
 	pwmRpmMap := fan.FanCurveData
 
 	// get pwm keys that we have data for
@@ -552,9 +552,7 @@ func FindControllers() (controllers []*Controller, err error) {
 }
 
 // creates fan objects for the given device path
-func createFans(devicePath string) []*Fan {
-	var fans []*Fan
-
+func createFans(devicePath string) (fans []*Fan) {
 	inputs := util.FindFilesMatching(devicePath, "^fan[1-9]_input$")
 	outputs := util.FindFilesMatching(devicePath, "^pwm[1-9]$")
 
@@ -595,9 +593,7 @@ func createFans(devicePath string) []*Fan {
 }
 
 // creates sensor objects for the given device path
-func createSensors(devicePath string) []*Sensor {
-	var sensors []*Sensor
-
+func createSensors(devicePath string) (sensors []*Sensor) {
 	inputs := util.FindFilesMatching(devicePath, "^temp[1-9]_input$")
 
 	for _, input := range inputs {
@@ -678,10 +674,10 @@ func getMinPwmValue(fan *Fan) (result int) {
 }
 
 // GetPwm get the pwm speed of a fan (0..255)
-func GetPwm(fan *Fan) int {
+func GetPwm(fan *Fan) (value int) {
 	value, err := util.ReadIntFromFile(fan.PwmOutput)
 	if err != nil {
-		return MinPwmValue
+		value = MinPwmValue
 	}
 	return value
 }
@@ -774,10 +770,10 @@ func setPwm(fan *Fan, target int) (err error) {
 }
 
 // GetRpm get the rpm value of a fan
-func GetRpm(fan *Fan) int {
+func GetRpm(fan *Fan) (value int) {
 	value, err := util.ReadIntFromFile(fan.RpmInput)
 	if err != nil {
-		return 0
+		value = -1
 	}
 	return value
 }
