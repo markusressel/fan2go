@@ -5,14 +5,15 @@ import (
 )
 
 type Configuration struct {
-	DbPath                       string
-	TempSensorPollingRate        time.Duration
-	RpmPollingRate               time.Duration
-	ControllerAdjustmentTickRate time.Duration
-	TempRollingWindowSize        int
-	RpmRollingWindowSize         int
-	Sensors                      []SensorConfig
-	Fans                         []FanConfig
+	DbPath                         string
+	RunFanInitializationInParallel bool
+	TempSensorPollingRate          time.Duration
+	RpmPollingRate                 time.Duration
+	ControllerAdjustmentTickRate   time.Duration
+	TempRollingWindowSize          int
+	RpmRollingWindowSize           int
+	Sensors                        []SensorConfig
+	Fans                           []FanConfig
 }
 
 type SensorConfig struct {

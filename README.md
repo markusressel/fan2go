@@ -81,6 +81,8 @@ sudo mkdir /etc/fan2go
 ```yaml
 # The path of the database file.
 dbPath: "/etc/fan2go/fan2go.db"
+# Allow the fan initialization sequence to run in parallel for all configured fans
+runFanInitializationInParallel: false
 # The rate to poll temperature sensors at.
 tempSensorPollingRate: 200ms
 # The number of sensor items to keep in a rolling window array.

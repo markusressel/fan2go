@@ -213,6 +213,7 @@ func validateConfig() {
 
 func setDefaultValues() {
 	viper.SetDefault("dbpath", "/etc/fan2go/fan2go.db")
+	viper.SetDefault("RunFanInitializationInParallel", false)
 	viper.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
 	viper.SetDefault("TempRollingWindowSize", 50)
 	viper.SetDefault("RpmPollingRate", 1*time.Second)

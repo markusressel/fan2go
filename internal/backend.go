@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -28,8 +29,9 @@ const (
 )
 
 var (
-	SensorMap = map[string]*Sensor{}
-	Verbose   bool
+	InitializationSequenceMutex sync.Mutex
+	SensorMap                   = map[string]*Sensor{}
+	Verbose                     bool
 )
 
 func Run(verbose bool) {
@@ -291,25 +293,37 @@ func updateSensor(sensor *Sensor) (err error) {
 }
 
 // goroutine to continuously adjust the speed of a fan
-func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.Time) error {
-	err := trySetManualPwm(fan)
-	if err != nil {
-		log.Printf("Could not enable fan control on %s (%s)", fan.Config.Id, fan.Name)
-		return err
-	}
-
+func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.Time) (err error) {
 	// check if we have data for this fan in persistence,
 	// if not we need to run the initialization sequence
 	log.Printf("Loading fan curve data for fan '%s'...", fan.Config.Id)
 	fanPwmData, err := LoadFanPwmData(db, fan)
 	if err != nil {
 		log.Printf("No fan curve data found for fan '%s', starting initialization sequence...", fan.Config.Id)
-		runInitializationSequence(db, fan)
-	} else {
-		AttachFanCurveData(&fanPwmData, fan)
+		err = runInitializationSequence(db, fan)
+		if err != nil {
+			return err
+		}
 	}
+
+	fanPwmData, err = LoadFanPwmData(db, fan)
+	if err != nil {
+		return err
+	}
+
+	err = AttachFanCurveData(&fanPwmData, fan)
+	if err != nil {
+		return err
+	}
+
 	log.Printf("Start PWM of %s (%s): %d", fan.Config.Id, fan.Name, fan.StartPwm)
 	log.Printf("Max PWM of %s (%s): %d", fan.Config.Id, fan.Name, fan.MaxPwm)
+
+	err = trySetManualPwm(fan)
+	if err != nil {
+		log.Printf("Could not enable fan control on %s (%s)", fan.Config.Id, fan.Name)
+		return err
+	}
 
 	log.Printf("Starting controller loop for fan '%s'", fan.Config.Id)
 	for {
@@ -335,12 +349,13 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 // AttachFanCurveData attaches fan curve data from persistence to a fan
 // Note: When the given data is incomplete, all values up until the highest
 // value in the given dataset will be interpolated linearly
-func AttachFanCurveData(curveData *map[int][]float64, fan *Fan) {
+// returns os.ErrInvalid if curveData is void of any data
+func AttachFanCurveData(curveData *map[int][]float64, fan *Fan) (err error) {
 	// convert the persisted map to arrays back to a moving window and attach it to the fan
 
 	if curveData == nil || len(*curveData) <= 0 {
-		// we have no data!
-		log.Fatalf("Cant attach empty fan curve data to fan %s", fan.Name)
+		log.Printf("Cant attach empty fan curve data to fan %s", fan.Name)
+		return os.ErrInvalid
 	}
 
 	const limit = 255
@@ -407,27 +422,38 @@ func AttachFanCurveData(curveData *map[int][]float64, fan *Fan) {
 	}
 
 	fan.StartPwm, fan.MaxPwm = GetPwmBoundaries(fan)
+
+	return err
 }
 
 func trySetManualPwm(fan *Fan) (err error) {
 	err = setPwmEnabled(fan, 1)
 	if err != nil {
 		err = setPwmEnabled(fan, 0)
-		if err != nil {
-			return err
-		}
 	}
-	return nil
+	return err
 }
 
 // runs an initialization sequence for the given fan
 // to determine an estimation of its fan curve
-func runInitializationSequence(db *bolt.DB, fan *Fan) {
+func runInitializationSequence(db *bolt.DB, fan *Fan) (err error) {
+	if CurrentConfig.RunFanInitializationInParallel == false {
+		InitializationSequenceMutex.Lock()
+		defer InitializationSequenceMutex.Unlock()
+	}
+
+	err = trySetManualPwm(fan)
+	if err != nil {
+		log.Printf("Could not enable fan control on %s (%s)", fan.Config.Id, fan.Name)
+		return err
+	}
+
 	for pwm := 0; pwm < MaxPwmValue; pwm++ {
 		// set a pwm
-		err := util.WriteIntToFile(pwm, fan.PwmOutput)
+		err = util.WriteIntToFile(pwm, fan.PwmOutput)
 		if err != nil {
-			log.Fatalf("Unable to run initialization sequence on %s (%s): %s", fan.Config.Id, fan.Name, err.Error())
+			log.Printf("Unable to run initialization sequence on %s (%s): %s", fan.Config.Id, fan.Name, err.Error())
+			return err
 		}
 
 		if pwm == 0 {
@@ -440,6 +466,7 @@ func runInitializationSequence(db *bolt.DB, fan *Fan) {
 		// on some fans it is not possible to use the full pwm of 0..255
 		// so we try what values work and save them for later
 
+		// TODO: instead of waiting 2 seconds, check if fan speed is stagnating for a "long" time before continuing
 		// wait a bit to allow the fan speed to settle.
 		// since most sensors are update only each second,
 		// we wait double that to make sure we get
@@ -454,10 +481,11 @@ func runInitializationSequence(db *bolt.DB, fan *Fan) {
 	}
 
 	// save to database to restore it on restarts
-	err := SaveFanPwmData(db, fan)
+	err = SaveFanPwmData(db, fan)
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Printf("Failed to save fan PWM data for %s: %s", fan.Config.Id, err)
 	}
+	return err
 }
 
 func findFanConfig(controller *Controller, fan *Fan) (fanConfig *FanConfig) {
