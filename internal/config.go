@@ -14,6 +14,7 @@ type Configuration struct {
 	RpmRollingWindowSize           int
 	Sensors                        []SensorConfig
 	Fans                           []FanConfig
+	MaxRpmDiffForSettledFan        float64
 }
 
 type SensorConfig struct {

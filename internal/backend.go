@@ -9,6 +9,7 @@ import (
 	"github.com/oklog/run"
 	bolt "go.etcd.io/bbolt"
 	"log"
+	"math"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -81,7 +82,7 @@ func Run(verbose bool) {
 				fan := f
 				if fan.Config == nil {
 					// this fan is not configured, ignore it
-					log.Printf("Ignoring unconfigured fan %s/%s", controller.Name, fan.Name)
+					log.Printf("Ignoring unconfigured fan %s/%s (%s)", controller.Name, fan.Name, fan.Label)
 					continue
 				}
 
@@ -232,7 +233,7 @@ func measureRpm(fan *Fan) {
 	pointWindow, exists := (*pwmRpmMap)[pwm]
 	if !exists {
 		// create rolling window for current pwm value
-		pointWindow = rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.RpmRollingWindowSize))
+		pointWindow = createRollingWindow(CurrentConfig.RpmRollingWindowSize)
 		(*pwmRpmMap)[pwm] = pointWindow
 	}
 	pointWindow.Append(float64(rpm))
@@ -261,7 +262,7 @@ func GetPwmBoundaries(fan *Fan) (startPwm int, maxPwm int) {
 		maxRpm := 0
 		for _, pwm := range keys {
 			window := (*pwmRpmMap)[pwm]
-			avgRpm := int(window.Reduce(rolling.Avg))
+			avgRpm := int(getWindowAvg(window))
 
 			if avgRpm > maxRpm {
 				maxRpm = avgRpm
@@ -320,16 +321,16 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 		return err
 	}
 
-	log.Printf("Start PWM of %s (%s): %d", fan.Config.Id, fan.Name, fan.StartPwm)
-	log.Printf("Max PWM of %s (%s): %d", fan.Config.Id, fan.Name, fan.MaxPwm)
+	log.Printf("Start PWM of %s (%s, %s): %d", fan.Config.Id, fan.Label, fan.Name, fan.StartPwm)
+	log.Printf("Max PWM of %s (%s, %s): %d", fan.Config.Id, fan.Label, fan.Name, fan.MaxPwm)
 
 	err = trySetManualPwm(fan)
 	if err != nil {
-		log.Printf("Could not enable fan control on %s (%s)", fan.Config.Id, fan.Name)
+		log.Printf("Could not enable fan control on %s (%s, %s)", fan.Config.Id, fan.Label, fan.Name)
 		return err
 	}
 
-	log.Printf("Starting controller loop for fan '%s'", fan.Config.Id)
+	log.Printf("Starting controller loop for fan '%s' (%s, %s)", fan.Config.Id, fan.Label, fan.Name)
 	for {
 		select {
 		case <-ctx.Done():
@@ -339,10 +340,10 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 			target := calculateTargetPwm(fan, current, calculateOptimalPwm(fan))
 			err = setPwm(fan, target)
 			if err != nil {
-				log.Printf("Error setting %s (%s): %s", fan.Config.Id, fan.Name, err.Error())
+				log.Printf("Error setting %s (%s, %s): %s", fan.Config.Id, fan.Label, fan.Name, err.Error())
 				err = trySetManualPwm(fan)
 				if err != nil {
-					log.Printf("Could not enable fan control on %s (%s)", fan.Config.Id, fan.Name)
+					log.Printf("Could not enable fan control on %s (%s, %s)", fan.Config.Id, fan.Label, fan.Name)
 					return err
 				}
 			}
@@ -358,7 +359,7 @@ func AttachFanCurveData(curveData *map[int][]float64, fan *Fan) (err error) {
 	// convert the persisted map to arrays back to a moving window and attach it to the fan
 
 	if curveData == nil || len(*curveData) <= 0 {
-		log.Printf("Cant attach empty fan curve data to fan %s", fan.Name)
+		log.Printf("Cant attach empty fan curve data to fan %s, %s", fan.Label, fan.Name)
 		return os.ErrInvalid
 	}
 
@@ -368,7 +369,7 @@ func AttachFanCurveData(curveData *map[int][]float64, fan *Fan) (err error) {
 	var nextValueIdx int
 	var nextValueAvg float64
 	for i := 0; i <= limit; i++ {
-		fanCurveMovingWindow := rolling.NewPointPolicy(rolling.NewWindow(CurrentConfig.RpmRollingWindowSize))
+		fanCurveMovingWindow := createRollingWindow(CurrentConfig.RpmRollingWindowSize)
 
 		pointValues, containsKey := (*curveData)[i]
 		if containsKey && len(pointValues) > 0 {
@@ -448,36 +449,48 @@ func runInitializationSequence(db *bolt.DB, fan *Fan) (err error) {
 
 	err = trySetManualPwm(fan)
 	if err != nil {
-		log.Printf("Could not enable fan control on %s (%s)", fan.Config.Id, fan.Name)
+		log.Printf("Could not enable fan control on %s (%s, %s)", fan.Config.Id, fan.Label, fan.Name)
 		return err
 	}
 
-	for pwm := 0; pwm < MaxPwmValue; pwm++ {
+	for pwm := 0; pwm <= MaxPwmValue; pwm++ {
 		// set a pwm
 		err = util.WriteIntToFile(pwm, fan.PwmOutput)
 		if err != nil {
-			log.Printf("Unable to run initialization sequence on %s (%s): %s", fan.Config.Id, fan.Name, err.Error())
+			log.Printf("Unable to run initialization sequence on %s (%s, %s): %v", fan.Config.Id, fan.Label, fan.Name, err)
 			return err
 		}
 
 		if pwm == 0 {
-			// wait an additional 2 seconds, to make sure the fans
-			// have time to spin down even from max speed to 0
-			time.Sleep(3 * time.Second)
+			// TODO: this "waiting" logic could also be applied to the other measurements
+			diffThreshold := CurrentConfig.MaxRpmDiffForSettledFan
+
+			measuredRpmDiffWindow := createRollingWindow(10)
+			fillWindow(measuredRpmDiffWindow, 10, 2*diffThreshold)
+			measuredRpmDiffMax := 2 * diffThreshold
+			oldRpm := 0
+			for !(measuredRpmDiffMax < diffThreshold) {
+				log.Printf("Waiting for fan %s (%s, %s) to settle (current RPM max diff: %f)...", fan.Config.Id, fan.Label, fan.Name, measuredRpmDiffMax)
+				currentRpm := GetRpm(fan)
+				measuredRpmDiffWindow.Append(math.Abs(float64(currentRpm - oldRpm)))
+				oldRpm = currentRpm
+				measuredRpmDiffMax = math.Ceil(getWindowMax(measuredRpmDiffWindow))
+				time.Sleep(1 * time.Second)
+			}
+			log.Printf("Fan %s (%s, %s) has settled (current RPM max diff: %f)", fan.Config.Id, fan.Label, fan.Name, measuredRpmDiffMax)
+		} else {
+			// wait a bit to allow the fan speed to settle.
+			// since most sensors are update only each second,
+			// we wait double that to make sure we get
+			// the most recent measurement
+			time.Sleep(2 * time.Second)
 		}
 
 		// TODO:
 		// on some fans it is not possible to use the full pwm of 0..255
 		// so we try what values work and save them for later
 
-		// TODO: instead of waiting 2 seconds, check if fan speed is stagnating for a "long" time before continuing
-		// wait a bit to allow the fan speed to settle.
-		// since most sensors are update only each second,
-		// we wait double that to make sure we get
-		// the most recent measurement
-		time.Sleep(2 * time.Second)
-
-		log.Printf("Measuring RPM of %s (%s) at PWM: %d", fan.Config.Id, fan.Name, pwm)
+		log.Printf("Measuring RPM of %s (%s, %s) at PWM: %d", fan.Config.Id, fan.Label, fan.Name, pwm)
 		for i := 0; i < CurrentConfig.RpmRollingWindowSize; i++ {
 			// update rpm curve
 			measureRpm(fan)
@@ -760,7 +773,7 @@ func setPwm(fan *Fan, target int) (err error) {
 		return nil
 	}
 	if Verbose {
-		log.Printf("Setting %s (%s) to %d ...", fan.Config.Id, fan.Name, target)
+		log.Printf("Setting %s (%s, %s) to %d ...", fan.Config.Id, fan.Label, fan.Name, target)
 	}
 	err = util.WriteIntToFile(target, fan.PwmOutput)
 	if err == nil {
@@ -781,4 +794,25 @@ func GetRpm(fan *Fan) (value int) {
 // calculates the new moving average, based on an existing average and buffer size
 func updateSimpleMovingAvg(oldAvg float64, n int, newValue float64) float64 {
 	return oldAvg + (1/float64(n))*(newValue-oldAvg)
+}
+
+func createRollingWindow(size int) *rolling.PointPolicy {
+	return rolling.NewPointPolicy(rolling.NewWindow(size))
+}
+
+// completely fills the given window with the given value
+func fillWindow(window *rolling.PointPolicy, size int, value float64) {
+	for i := 0; i < size; i++ {
+		window.Append(value)
+	}
+}
+
+// returns the max value in the window
+func getWindowMax(window *rolling.PointPolicy) float64 {
+	return window.Reduce(rolling.Max)
+}
+
+// returns the average of all values in the window
+func getWindowAvg(window *rolling.PointPolicy) float64 {
+	return window.Reduce(rolling.Avg)
 }
