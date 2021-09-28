@@ -100,6 +100,10 @@ func Run(verbose bool) {
 					tick := time.Tick(CurrentConfig.ControllerAdjustmentTickRate)
 					return fanController(ctx, db, fan, tick)
 				}, func(err error) {
+					if err != nil {
+						log.Printf("Something went wrong: %v", err)
+					}
+
 					log.Printf("Trying to restore fan settings for %s...", fan.Config.Id)
 
 					// try to reset the pwm_enabled value
@@ -137,7 +141,7 @@ func Run(verbose bool) {
 	}
 
 	if err := g.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
