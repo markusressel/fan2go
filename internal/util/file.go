@@ -14,7 +14,7 @@ import (
 func ReadIntFromFile(path string) (value int, err error) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
-		ui.Error("File reading error", err)
+		ui.Error("File reading error: %v", err)
 		return -1, err
 	}
 	text := string(data)
