@@ -186,7 +186,11 @@ func setupUi() {
 
 // Print a large text with the LetterStyle from the standard theme.
 func printHeader() {
-	err := pterm.DefaultBigText.WithLetters(pterm.NewLettersFromString("fan2go")).Render()
+	err := pterm.DefaultBigText.WithLetters(
+		pterm.NewLettersFromStringWithStyle("fan", pterm.NewStyle(pterm.FgLightBlue)),
+		pterm.NewLettersFromStringWithStyle("2", pterm.NewStyle(pterm.FgWhite)),
+		pterm.NewLettersFromStringWithStyle("go", pterm.NewStyle(pterm.FgLightBlue)),
+	).Render()
 	if err != nil {
 		fmt.Println("fan2go")
 	}
