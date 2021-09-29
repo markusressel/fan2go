@@ -95,7 +95,7 @@ func Run(verbose bool) {
 				})
 
 				g.Add(func() error {
-					ui.Info("Gathering data...")
+					ui.Info("Gathering sensor data for %s...", fan.Config.Id)
 					// wait a bit to gather monitoring data
 					time.Sleep(2*time.Second + CurrentConfig.TempSensorPollingRate*2)
 
@@ -117,7 +117,7 @@ func Run(verbose bool) {
 					}
 					err = setPwm(fan, MaxPwmValue)
 					if err != nil {
-						ui.Warning("Unable to revert fan %s, make sure it is running!", fan.Config.Id)
+						ui.Warning("Unable to restore fan %s, make sure it is running!", fan.Config.Id)
 					}
 				})
 				count++
