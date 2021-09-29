@@ -192,11 +192,12 @@ func initConfig() {
 }
 
 func readConfigFile() {
-	log.Printf("Using configuration file at: %s", viper.ConfigFileUsed())
 	if err := viper.ReadInConfig(); err != nil {
 		// config file is required, so we fail here
 		log.Fatalf("Error reading config file, %s", err)
 	}
+	// this is only populated _after_ ReadInConfig()
+	log.Printf("Using configuration file at: %s", viper.ConfigFileUsed())
 
 	err := viper.Unmarshal(&internal.CurrentConfig)
 	if err != nil {
