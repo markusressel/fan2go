@@ -21,10 +21,10 @@ import (
 )
 
 var (
-	cfgFile   string
-	noColor   bool
-	noStyling bool
-	verbose   bool
+	cfgFile string
+	noColor bool
+	noStyle bool
+	verbose bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -179,7 +179,7 @@ func setupUi() {
 	if noColor {
 		pterm.DisableColor()
 	}
-	if noStyling {
+	if noStyle {
 		pterm.DisableStyling()
 	}
 }
@@ -243,7 +243,7 @@ func Execute() {
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")
 	rootCmd.PersistentFlags().BoolVarP(&noColor, "no-color", "", false, "Disable all terminal output coloration")
-	rootCmd.PersistentFlags().BoolVarP(&noStyling, "no-styling", "", false, "Disable all terminal output styling")
+	rootCmd.PersistentFlags().BoolVarP(&noStyle, "no-style", "", false, "Disable all terminal output styling")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "More verbose output")
 
 	if err := rootCmd.Execute(); err != nil {
