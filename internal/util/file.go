@@ -15,7 +15,7 @@ func ReadIntFromFile(path string) (value int, err error) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		log.Println("File reading error", err)
-		return -1, nil
+		return -1, err
 	}
 	text := string(data)
 	text = strings.TrimSpace(text)

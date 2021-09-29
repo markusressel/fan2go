@@ -107,7 +107,7 @@ func Run(verbose bool) {
 
 					log.Printf("Trying to restore fan settings for %s...", fan.Config.Id)
 
-					// try to reset the pwm_enabled value
+					// try to reset the pwm_enable value
 					if fan.OriginalPwmEnabled != 1 {
 						err := setPwmEnabled(fan, fan.OriginalPwmEnabled)
 						if err == nil {
@@ -592,10 +592,10 @@ func createFans(devicePath string) (fans []*Fan) {
 			LastSetPwm:   InitialLastSetPwm,
 		}
 
-		// store original pwm_enabled value
+		// store original pwm_enable value
 		pwmEnabled, err := getPwmEnabled(fan)
 		if err != nil {
-			log.Fatalf("Cannot read pwm_enabled value of %s", fan.Config.Id)
+			log.Fatalf("Cannot read pwm_enable value of %s", fan.Config.Id)
 		}
 		fan.OriginalPwmEnabled = pwmEnabled
 
@@ -664,7 +664,7 @@ func setPwmEnabled(fan *Fan, value int) (err error) {
 	return err
 }
 
-// get the pwmX_enabled value of a fan
+// get the pwmX_enable value of a fan
 func getPwmEnabled(fan *Fan) (int, error) {
 	pwmEnabledFilePath := fan.PwmOutput + "_enable"
 	return util.ReadIntFromFile(pwmEnabledFilePath)
