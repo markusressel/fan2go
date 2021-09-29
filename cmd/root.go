@@ -181,7 +181,6 @@ func initConfig() {
 			os.Exit(1)
 		}
 
-		// Search config in home directory with name ".system-control" (without extension).
 		viper.AddConfigPath(".")
 		viper.AddConfigPath(home)
 		viper.AddConfigPath("/etc/fan2go/")
@@ -197,6 +196,8 @@ func readConfigFile() {
 		// config file is required, so we fail here
 		log.Fatalf("Error reading config file, %s", err)
 	}
+	// this is only populated _after_ ReadInConfig()
+	log.Printf("Using configuration file at: %s", viper.ConfigFileUsed())
 
 	err := viper.Unmarshal(&internal.CurrentConfig)
 	if err != nil {
