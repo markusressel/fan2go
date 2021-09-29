@@ -170,7 +170,7 @@ After=lm-sensors.service
 
 [Service]
 LimitNOFILE=8192
-ExecStart=/usr/bin/fan2go
+ExecStart=/usr/bin/fan2go -c /etc/fan2go/fan2go.yaml --no-style
 Restart=always
 RestartSec=1s
 

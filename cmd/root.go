@@ -5,21 +5,26 @@ import (
 	"fmt"
 	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/internal"
+	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/mgutz/ansi"
 	"github.com/mitchellh/go-homedir"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tomlazar/table"
-	"log"
 	"os"
 	"sort"
 	"strconv"
 	"time"
 )
 
-var cfgFile string
-var verbose bool
+var (
+	cfgFile string
+	noColor bool
+	noStyle bool
+	verbose bool
+)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -29,6 +34,9 @@ var rootCmd = &cobra.Command{
 on your computer based on temperature sensors.`,
 	// this is the default command to run when no subcommand is specified
 	Run: func(cmd *cobra.Command, args []string) {
+		setupUi()
+		printHeader()
+
 		readConfigFile()
 		internal.Run(verbose)
 	},
@@ -42,33 +50,33 @@ var detectCmd = &cobra.Command{
 		// load default configuration values
 		err := viper.Unmarshal(&internal.CurrentConfig)
 		if err != nil {
-			log.Fatalf("unable to decode into struct, %v", err)
+			ui.Fatal("unable to decode into struct, %v", err)
 		}
 
 		controllers, err := internal.FindControllers()
 		if err != nil {
-			log.Fatalf("Error detecting devices: %s", err.Error())
+			ui.Fatal("Error detecting devices: %s", err.Error())
 		}
 
 		// === Print detected devices ===
-		fmt.Printf("Detected Devices:\n")
+		ui.Println("Detected Devices:")
 
 		for _, controller := range controllers {
 			if len(controller.Name) <= 0 {
 				continue
 			}
 
-			fmt.Printf("%s\n", controller.Name)
+			ui.Println("%s", controller.Name)
 			for _, fan := range controller.Fans {
 				pwm := internal.GetPwm(fan)
 				rpm := internal.GetRpm(fan)
 				isAuto, _ := internal.IsPwmAuto(controller.Path)
-				fmt.Printf("  %d: %s (%s): RPM: %d PWM: %d Auto: %v\n", fan.Index, fan.Label, fan.Name, rpm, pwm, isAuto)
+				ui.Println("  %d: %s (%s): RPM: %d PWM: %d Auto: %v", fan.Index, fan.Label, fan.Name, rpm, pwm, isAuto)
 			}
 
 			for _, sensor := range controller.Sensors {
 				value, _ := util.ReadIntFromFile(sensor.Input)
-				fmt.Printf("  %d: %s (%s): %d\n", sensor.Index, sensor.Label, sensor.Name, value)
+				ui.Println("  %d: %s (%s): %d", sensor.Index, sensor.Label, sensor.Name, value)
 			}
 		}
 	},
@@ -85,7 +93,7 @@ var curveCmd = &cobra.Command{
 
 		controllers, err := internal.FindControllers()
 		if err != nil {
-			log.Fatalf("Error detecting devices: %s", err.Error())
+			ui.Fatal("Error detecting devices: %s", err.Error())
 		}
 
 		for _, controller := range controllers {
@@ -100,12 +108,12 @@ var curveCmd = &cobra.Command{
 				}
 
 				if idx > 0 {
-					fmt.Println("")
-					fmt.Println("")
+					ui.Println("")
+					ui.Println("")
 				}
 
 				// print table
-				fmt.Println(controller.Name + " -> " + fan.Name)
+				ui.Println(controller.Name + " -> " + fan.Name)
 				tab := table.Table{
 					Headers: []string{"", ""},
 					Rows: [][]string{
@@ -128,11 +136,11 @@ var curveCmd = &cobra.Command{
 					panic(err)
 				}
 				tableString := buf.String()
-				fmt.Println(tableString)
+				ui.Println(tableString)
 
 				// print graph
 				if fanCurveErr != nil {
-					fmt.Println("No fan curve data yet...")
+					ui.Println("No fan curve data yet...")
 					continue
 				}
 
@@ -149,10 +157,10 @@ var curveCmd = &cobra.Command{
 
 				caption := "RPM / PWM"
 				graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(100), asciigraph.Caption(caption))
-				fmt.Println(graph)
+				ui.Println(graph)
 			}
 
-			fmt.Println("")
+			ui.Println("")
 		}
 	},
 }
@@ -162,46 +170,42 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number of fan2go",
 	Long:  `All software has versions. This is fan2go's`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("0.0.17")
+		ui.Println("0.0.17")
 	},
 }
 
-// initConfig reads in config file and ENV variables if set.
-func initConfig() {
-	viper.SetConfigName("fan2go")
-
-	if cfgFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
-	} else {
-		// Find home directory.
-		home, err := homedir.Dir()
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-
-		viper.AddConfigPath(".")
-		viper.AddConfigPath(home)
-		viper.AddConfigPath("/etc/fan2go/")
+func setupUi() {
+	if noColor {
+		pterm.DisableColor()
 	}
+	if noStyle {
+		pterm.DisableStyling()
+	}
+}
 
-	viper.AutomaticEnv() // read in environment variables that match
-
-	setDefaultValues()
+// Print a large text with the LetterStyle from the standard theme.
+func printHeader() {
+	err := pterm.DefaultBigText.WithLetters(
+		pterm.NewLettersFromStringWithStyle("fan", pterm.NewStyle(pterm.FgLightBlue)),
+		pterm.NewLettersFromStringWithStyle("2", pterm.NewStyle(pterm.FgWhite)),
+		pterm.NewLettersFromStringWithStyle("go", pterm.NewStyle(pterm.FgLightBlue)),
+	).Render()
+	if err != nil {
+		fmt.Println("fan2go")
+	}
 }
 
 func readConfigFile() {
 	if err := viper.ReadInConfig(); err != nil {
 		// config file is required, so we fail here
-		log.Fatalf("Error reading config file, %s", err)
+		ui.Fatal("Error reading config file, %s", err)
 	}
 	// this is only populated _after_ ReadInConfig()
-	log.Printf("Using configuration file at: %s", viper.ConfigFileUsed())
+	ui.Info("Using configuration file at: %s", viper.ConfigFileUsed())
 
 	err := viper.Unmarshal(&internal.CurrentConfig)
 	if err != nil {
-		log.Fatalf("unable to decode into struct, %v", err)
+		ui.Fatal("unable to decode into struct, %v", err)
 	}
 
 	validateConfig()
@@ -237,10 +241,37 @@ func Execute() {
 	rootCmd.AddCommand(versionCmd)
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")
+	rootCmd.PersistentFlags().BoolVarP(&noColor, "no-color", "", false, "Disable all terminal output coloration")
+	rootCmd.PersistentFlags().BoolVarP(&noStyle, "no-style", "", false, "Disable all terminal output styling")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "More verbose output")
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		ui.Error("%v", err)
 		os.Exit(1)
 	}
+}
+
+// initConfig reads in config file and ENV variables if set.
+func initConfig() {
+	viper.SetConfigName("fan2go")
+
+	if cfgFile != "" {
+		// Use config file from the flag.
+		viper.SetConfigFile(cfgFile)
+	} else {
+		// Find home directory.
+		home, err := homedir.Dir()
+		if err != nil {
+			ui.Error("Couldn't detect home directory: %v", err)
+			os.Exit(1)
+		}
+
+		viper.AddConfigPath(".")
+		viper.AddConfigPath(home)
+		viper.AddConfigPath("/etc/fan2go/")
+	}
+
+	viper.AutomaticEnv() // read in environment variables that match
+
+	setDefaultValues()
 }

@@ -2,8 +2,8 @@ package util
 
 import (
 	"fmt"
+	"github.com/markusressel/fan2go/internal/ui"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,7 +14,7 @@ import (
 func ReadIntFromFile(path string) (value int, err error) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
-		log.Println("File reading error", err)
+		ui.Error("File reading error: %v", err)
 		return -1, err
 	}
 	text := string(data)
@@ -40,13 +40,13 @@ func WriteIntToFile(value int, path string) (err error) {
 func FindFilesMatching(path string, expr string) []string {
 	r, err := regexp.Compile(expr)
 	if err != nil {
-		log.Fatalf("Cannot compile expr: %s", expr)
+		ui.Fatal("Cannot compile expr: %s", expr)
 	}
 
 	var result []string
 	err = filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			log.Fatalf(err.Error())
+			ui.Fatal("%v", err)
 		}
 
 		if !info.IsDir() && r.MatchString(info.Name()) {
@@ -65,7 +65,6 @@ func FindFilesMatching(path string, expr string) []string {
 				panic(err)
 			}
 
-			//fmt.Printf("File Name: %s\n", info.Name())
 			result = append(result, devicePath)
 		}
 		return nil
