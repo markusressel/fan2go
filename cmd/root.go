@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tomlazar/table"
-	"log"
 	"os"
 	"sort"
 	"strconv"
@@ -51,12 +50,12 @@ var detectCmd = &cobra.Command{
 		// load default configuration values
 		err := viper.Unmarshal(&internal.CurrentConfig)
 		if err != nil {
-			log.Fatalf("unable to decode into struct, %v", err)
+			ui.Fatal("unable to decode into struct, %v", err)
 		}
 
 		controllers, err := internal.FindControllers()
 		if err != nil {
-			log.Fatalf("Error detecting devices: %s", err.Error())
+			ui.Fatal("Error detecting devices: %s", err.Error())
 		}
 
 		// === Print detected devices ===
@@ -94,7 +93,7 @@ var curveCmd = &cobra.Command{
 
 		controllers, err := internal.FindControllers()
 		if err != nil {
-			log.Fatalf("Error detecting devices: %s", err.Error())
+			ui.Fatal("Error detecting devices: %s", err.Error())
 		}
 
 		for _, controller := range controllers {
@@ -199,14 +198,14 @@ func printHeader() {
 func readConfigFile() {
 	if err := viper.ReadInConfig(); err != nil {
 		// config file is required, so we fail here
-		log.Fatalf("Error reading config file, %s", err)
+		ui.Fatal("Error reading config file, %s", err)
 	}
 	// this is only populated _after_ ReadInConfig()
 	ui.Info("Using configuration file at: %s", viper.ConfigFileUsed())
 
 	err := viper.Unmarshal(&internal.CurrentConfig)
 	if err != nil {
-		log.Fatalf("unable to decode into struct, %v", err)
+		ui.Fatal("unable to decode into struct, %v", err)
 	}
 
 	validateConfig()

@@ -25,3 +25,7 @@ func Warning(format string, a ...interface{}) {
 func Error(format string, a ...interface{}) {
 	pterm.Error.Printfln(format, a...)
 }
+
+func Fatal(format string, a ...interface{}) {
+	pterm.Fatal.Printfln(format, a...)
+}

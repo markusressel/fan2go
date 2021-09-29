@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal/ui"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -41,13 +40,13 @@ func WriteIntToFile(value int, path string) (err error) {
 func FindFilesMatching(path string, expr string) []string {
 	r, err := regexp.Compile(expr)
 	if err != nil {
-		log.Fatalf("Cannot compile expr: %s", expr)
+		ui.Fatal("Cannot compile expr: %s", expr)
 	}
 
 	var result []string
 	err = filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			log.Fatalf(err.Error())
+			ui.Fatal("%v", err)
 		}
 
 		if !info.IsDir() && r.MatchString(info.Name()) {

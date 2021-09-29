@@ -9,7 +9,6 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
 	bolt "go.etcd.io/bbolt"
-	"log"
 	"math"
 	"os"
 	"os/exec"
@@ -40,7 +39,7 @@ func Run(verbose bool) {
 	Verbose = verbose
 	// TODO: maybe it is possible without root by providing permissions?
 	if getProcessOwner() != "root" {
-		log.Fatalf("Fan control requires root access, please run fan2go as root")
+		ui.Fatal("Fan control requires root access, please run fan2go as root")
 	}
 
 	db := OpenPersistence(CurrentConfig.DbPath)
@@ -48,7 +47,7 @@ func Run(verbose bool) {
 
 	controllers, err := FindControllers()
 	if err != nil {
-		log.Fatalf("Error detecting devices: %s", err.Error())
+		ui.Fatal("Error detecting devices: %s", err.Error())
 	}
 	mapConfigToControllers(controllers)
 
@@ -125,7 +124,7 @@ func Run(verbose bool) {
 		}
 
 		if count == 0 {
-			log.Fatal("No valid fan configurations, exiting.")
+			ui.Fatal("No valid fan configurations, exiting.")
 		}
 	}
 	{
@@ -167,7 +166,7 @@ func sensorMonitor(ctx context.Context, sensor *Sensor, tick <-chan time.Time) e
 		case <-tick:
 			err := updateSensor(sensor)
 			if err != nil {
-				log.Fatal(err)
+				ui.Fatal("%v", err)
 			}
 		}
 	}
@@ -211,7 +210,7 @@ func mapConfigToControllers(controllers []*Controller) {
 				// initialize arrays for storing temps
 				currentValue, err := util.ReadIntFromFile(sensor.Input)
 				if err != nil {
-					log.Fatalf("Error reading sensor %s: %s", sensorConfig.Id, err.Error())
+					ui.Fatal("Error reading sensor %s: %s", sensorConfig.Id, err.Error())
 				}
 				sensor.MovingAvg = float64(currentValue)
 			}
@@ -577,7 +576,7 @@ func createFans(devicePath string) (fans []*Fan) {
 
 		index, err := strconv.Atoi(file[len(file)-1:])
 		if err != nil {
-			log.Fatal(err)
+			ui.Fatal("%v", err)
 		}
 
 		fan := &Fan{
@@ -596,7 +595,7 @@ func createFans(devicePath string) (fans []*Fan) {
 		// store original pwm_enable value
 		pwmEnabled, err := getPwmEnabled(fan)
 		if err != nil {
-			log.Fatalf("Cannot read pwm_enable value of %s", fan.Config.Id)
+			ui.Fatal("Cannot read pwm_enable value of %s", fan.Config.Id)
 		}
 		fan.OriginalPwmEnabled = pwmEnabled
 
@@ -616,7 +615,7 @@ func createSensors(devicePath string) (sensors []*Sensor) {
 
 		index, err := strconv.Atoi(string(file[4]))
 		if err != nil {
-			log.Fatal(err)
+			ui.Fatal("%v", err)
 		}
 
 		sensors = append(sensors, &Sensor{
