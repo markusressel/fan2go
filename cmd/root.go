@@ -20,8 +20,12 @@ import (
 	"time"
 )
 
-var cfgFile string
-var verbose bool
+var (
+	cfgFile   string
+	noColor   bool
+	noStyling bool
+	verbose   bool
+)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -31,19 +35,12 @@ var rootCmd = &cobra.Command{
 on your computer based on temperature sensors.`,
 	// this is the default command to run when no subcommand is specified
 	Run: func(cmd *cobra.Command, args []string) {
+		setupUi()
 		printHeader()
 
 		readConfigFile()
 		internal.Run(verbose)
 	},
-}
-
-// Print a large text with the LetterStyle from the standard theme.
-func printHeader() {
-	err := pterm.DefaultBigText.WithLetters(pterm.NewLettersFromString("fan2go")).Render()
-	if err != nil {
-		fmt.Println("fan2go")
-	}
 }
 
 var detectCmd = &cobra.Command{
@@ -178,29 +175,21 @@ var versionCmd = &cobra.Command{
 	},
 }
 
-// initConfig reads in config file and ENV variables if set.
-func initConfig() {
-	viper.SetConfigName("fan2go")
-
-	if cfgFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
-	} else {
-		// Find home directory.
-		home, err := homedir.Dir()
-		if err != nil {
-			ui.Error("Couldn't detect home directory: %v", err)
-			os.Exit(1)
-		}
-
-		viper.AddConfigPath(".")
-		viper.AddConfigPath(home)
-		viper.AddConfigPath("/etc/fan2go/")
+func setupUi() {
+	if noColor {
+		pterm.DisableColor()
 	}
+	if noStyling {
+		pterm.DisableStyling()
+	}
+}
 
-	viper.AutomaticEnv() // read in environment variables that match
-
-	setDefaultValues()
+// Print a large text with the LetterStyle from the standard theme.
+func printHeader() {
+	err := pterm.DefaultBigText.WithLetters(pterm.NewLettersFromString("fan2go")).Render()
+	if err != nil {
+		fmt.Println("fan2go")
+	}
 }
 
 func readConfigFile() {
@@ -249,10 +238,37 @@ func Execute() {
 	rootCmd.AddCommand(versionCmd)
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")
+	rootCmd.PersistentFlags().BoolVarP(&noColor, "no-color", "", false, "Disable all terminal output coloration")
+	rootCmd.PersistentFlags().BoolVarP(&noStyling, "no-styling", "", false, "Disable all terminal output styling")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "More verbose output")
 
 	if err := rootCmd.Execute(); err != nil {
 		ui.Error("%v", err)
 		os.Exit(1)
 	}
+}
+
+// initConfig reads in config file and ENV variables if set.
+func initConfig() {
+	viper.SetConfigName("fan2go")
+
+	if cfgFile != "" {
+		// Use config file from the flag.
+		viper.SetConfigFile(cfgFile)
+	} else {
+		// Find home directory.
+		home, err := homedir.Dir()
+		if err != nil {
+			ui.Error("Couldn't detect home directory: %v", err)
+			os.Exit(1)
+		}
+
+		viper.AddConfigPath(".")
+		viper.AddConfigPath(home)
+		viper.AddConfigPath("/etc/fan2go/")
+	}
+
+	viper.AutomaticEnv() // read in environment variables that match
+
+	setDefaultValues()
 }
