@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/asecurityteam/rolling"
+	"github.com/markusressel/fan2go/internal/ui"
 	bolt "go.etcd.io/bbolt"
-	"log"
 	"os"
 	"time"
 )
@@ -17,7 +17,8 @@ const (
 func OpenPersistence(dbPath string) *bolt.DB {
 	db, err := bolt.Open(dbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
-		log.Fatalf("Could not open database file: %s", err.Error())
+		ui.Error("Could not open database file: %v", err)
+		os.Exit(1)
 	}
 	return db
 }
@@ -70,10 +71,10 @@ func LoadFanPwmData(db *bolt.DB, fan *Fan) (map[int][]float64, error) {
 		err := json.Unmarshal(v, &fanCurveDataMap)
 		if err != nil {
 			// if we cannot read the saved data, delete it
-			log.Printf("Unable to unmarshal saved fan data for %s: %s", key, err.Error())
+			ui.Warning("Unable to unmarshal saved fan data for %s: %v", key, err)
 			err := b.Delete([]byte(key))
 			if err != nil {
-				log.Printf("Unable to delete corrupt data key %s: %s", key, err.Error())
+				ui.Error("Unable to delete corrupt data key %s: %v", key, err)
 			}
 			return nil
 		}

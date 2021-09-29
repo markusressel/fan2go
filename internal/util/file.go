@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"github.com/markusressel/fan2go/internal/ui"
 	"io/ioutil"
 	"log"
 	"os"
@@ -14,7 +15,7 @@ import (
 func ReadIntFromFile(path string) (value int, err error) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
-		log.Println("File reading error", err)
+		ui.Error("File reading error", err)
 		return -1, err
 	}
 	text := string(data)
@@ -65,7 +66,6 @@ func FindFilesMatching(path string, expr string) []string {
 				panic(err)
 			}
 
-			//fmt.Printf("File Name: %s\n", info.Name())
 			result = append(result, devicePath)
 		}
 		return nil
