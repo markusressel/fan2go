@@ -36,10 +36,10 @@ var (
 	}
 )
 
-func createFan(neverStop bool, curveData map[int][]float64) *Fan {
+func createFan(neverStop bool, curveData map[int][]float64) (fan *Fan, err error) {
 	CurrentConfig.RpmRollingWindowSize = 10
 
-	fan := Fan{
+	fan = &Fan{
 		Config: &FanConfig{
 			Id:        "fan1",
 			Platform:  "platform",
@@ -48,16 +48,18 @@ func createFan(neverStop bool, curveData map[int][]float64) *Fan {
 			Sensor:    "sensor",
 		},
 		FanCurveData: &map[int]*rolling.PointPolicy{},
+		PwmOutput:    "fan1_output",
+		RpmInput:     "fan1_rpm",
 	}
 
-	AttachFanCurveData(&curveData, &fan)
+	err = AttachFanCurveData(&curveData, fan)
 
-	return &fan
+	return fan, err
 }
 
 func TestLinearFan(t *testing.T) {
 	// GIVEN
-	fan := createFan(false, linearFan)
+	fan, _ := createFan(false, linearFan)
 
 	// WHEN
 	startPwm, maxPwm := GetPwmBoundaries(fan)
@@ -69,7 +71,7 @@ func TestLinearFan(t *testing.T) {
 
 func TestNeverStoppingFan(t *testing.T) {
 	// GIVEN
-	fan := createFan(false, neverStoppingFan)
+	fan, _ := createFan(false, neverStoppingFan)
 
 	// WHEN
 	startPwm, maxPwm := GetPwmBoundaries(fan)
@@ -81,7 +83,7 @@ func TestNeverStoppingFan(t *testing.T) {
 
 func TestCappedFan(t *testing.T) {
 	// GIVEN
-	fan := createFan(false, cappedFan)
+	fan, _ := createFan(false, cappedFan)
 
 	// WHEN
 	startPwm, maxPwm := GetPwmBoundaries(fan)
@@ -93,7 +95,7 @@ func TestCappedFan(t *testing.T) {
 
 func TestCappedNeverStoppingFan(t *testing.T) {
 	// GIVEN
-	fan := createFan(false, cappedNeverStoppingFan)
+	fan, _ := createFan(false, cappedNeverStoppingFan)
 
 	// WHEN
 	startPwm, maxPwm := GetPwmBoundaries(fan)
@@ -114,7 +116,7 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 		MovingAvg: avgTmp,
 	}
 
-	fan := createFan(false, linearFan)
+	fan, _ := createFan(false, linearFan)
 
 	// WHEN
 	optimal := calculateOptimalPwm(fan)
@@ -134,7 +136,7 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 		MovingAvg: avgTmp,
 	}
 
-	fan := createFan(true, cappedFan)
+	fan, _ := createFan(true, cappedFan)
 
 	// WHEN
 	optimal := calculateOptimalPwm(fan)
@@ -142,5 +144,5 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, 0, optimal)
-	assert.Equal(t, fan.StartPwm, target)
+	assert.Equal(t, fan.MinPwm, target)
 }
