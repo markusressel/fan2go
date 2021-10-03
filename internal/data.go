@@ -22,7 +22,8 @@ type Fan struct {
 	RpmMovingAvg       float64                       `json:"rpmmovingavg"`
 	PwmOutput          string                        `json:"pwmoutput"`
 	Config             *FanConfig                    `json:"config"`
-	StartPwm           int                           `json:"startpwm"` // lowest PWM value where the fans are still spinning
+	StartPwm           int                           `json:"startpwm"` // the min PWM at which the fan starts to rotate from a stand still
+	MinPwm             int                           `json:"minpwm"`   // lowest PWM value where the fans are still spinning, when spinning previously
 	MaxPwm             int                           `json:"maxpwm"`   // highest PWM value that yields an RPM increase
 	FanCurveData       *map[int]*rolling.PointPolicy `json:"fancurvedata"`
 	OriginalPwmEnabled int                           `json:"originalpwmenabled"`

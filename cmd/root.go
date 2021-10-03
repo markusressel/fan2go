@@ -117,7 +117,7 @@ var curveCmd = &cobra.Command{
 				tab := table.Table{
 					Headers: []string{"", ""},
 					Rows: [][]string{
-						{"Start PWM", strconv.Itoa(fan.StartPwm)},
+						{"Start PWM", strconv.Itoa(fan.MinPwm)},
 						{"Max PWM", strconv.Itoa(fan.MaxPwm)},
 					},
 				}
