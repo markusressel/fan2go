@@ -18,11 +18,12 @@ type Configuration struct {
 }
 
 type SensorConfig struct {
-	Id       string
-	Platform string
-	Index    int
-	Min      float64
-	Max      float64
+	Id       string    `json:"id"`
+	Platform string    `json:"platform"`
+	Index    int       `json:"index"`
+	Min      float64   `json:"min"`
+	Max      float64   `json:"max"`
+	Sensors  []*Sensor `json:"sensors"`
 }
 
 type FanConfig struct {
@@ -31,6 +32,15 @@ type FanConfig struct {
 	Fan       int    `json:"fan"`
 	NeverStop bool   `json:"neverstop"`
 	Sensor    string `json:"sensor"`
+	Curve     string `json:"curve"`
+}
+
+type CurveConfig struct {
+	Id    string      `json:"id"`
+	Min   int         `json:"min"`
+	Max   int         `json:"max"`
+	Steps map[int]int `json:"steps"`
+	Type  string      `json:"type"`
 }
 
 var CurrentConfig Configuration

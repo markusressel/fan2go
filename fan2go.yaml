@@ -33,6 +33,12 @@ sensors:
     # for it will run at maximum PWM value.
     max: 75
 
+  - id: gpu_core
+    platform: gpu
+    index: 1
+    min: 50
+    max: 80
+
   - id: mainboard
     platform: it8620
     index: 3 # Intel PECI
@@ -44,6 +50,13 @@ sensors:
     index: 1
     min: 30
     max: 40
+
+  - id: combined_cpu_gpu
+    platform: virtual
+    type: avg
+    sensors:
+      - cpu_package
+      - gpu_core
 
 # A list of fans to control.
 fans:
@@ -65,10 +78,48 @@ fans:
     platform: it8620
     fan: 4 # Power Supply (Bottom)
     neverStop: yes
-    sensor: mainboard
+    curve: case_curve
 
   - id: in_top_double
     platform: it8620
     fan: 5 # Radiator (Top)
     neverStop: yes
     sensor: cpu_package
+
+  - id: cpu
+    platform: cpu
+    fan: 1
+    neverStop: yes
+    curve: cpu_curve
+    # The sensor to use
+    sensor: combined_cpu_gpu
+
+  - id: gpu
+    platform: gpu
+    fan: 1
+    neverStop: yes
+    sensor: gpu_core
+
+# A list of temperature/speed curve definitions.
+curves:
+  # A simple linear curve with a minimum and maximum temperature value
+  - id: cpu_curve
+    type: linear
+    # The minimum target temp for this sensor.
+    # If the sensor falls below this value, a fan configured
+    # for it will run at minimum PWM value.
+    min: 50
+    # The maximum target temp for this sensor.
+    # If the sensor falls below this value, a fan configured
+    # for it will run at maximum PWM value.
+    max: 75
+
+  - id: case_curve
+    type: linear
+    steps:
+      30: 0
+      40: 20
+      50: 40
+      60: 60
+      70: 80
+      80: 100
