@@ -16,6 +16,9 @@ func evaluateCurve(curve CurveConfig) (value int, err error) {
 	if curve.Type == LinearCurveType {
 		config := curve.Params.(LinearCurveConfig)
 		return evaluateLinearCurve(config)
+	} else if curve.Type == FunctionCurveType {
+		config := curve.Params.(FunctionCurveConfig)
+		return evaluateFunctionCurve(config)
 	}
 
 	return 0, UnknownCurveType
@@ -41,6 +44,28 @@ func evaluateLinearCurve(config LinearCurveConfig) (value int, err error) {
 	}
 
 	return value, nil
+}
+
+func evaluateFunctionCurve(config FunctionCurveConfig) (value int, err error) {
+	var curves []CurveConfig
+	for _, curveId := range config.Curves {
+		curves = append(curves, *CurveMap[curveId])
+	}
+
+	if config.Function == FunctionAverage {
+		var total = 0
+		for _, curve := range curves {
+			v, err := evaluateCurve(curve)
+			if err != nil {
+				return 0, err
+			}
+
+			total += v
+		}
+		value = total / len(curves)
+	}
+
+	return value, err
 }
 
 func FunctionCurve(

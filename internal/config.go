@@ -47,4 +47,16 @@ type LinearCurveConfig struct {
 	Steps   map[int]int `json:"steps"`
 }
 
+const (
+	FunctionCurveType = "function"
+	FunctionAverage   = "average"
+	FunctionMinimum   = "minimum"
+	FunctionMaximum   = "maximum"
+)
+
+type FunctionCurveConfig struct {
+	Function string   `json:"function"`
+	Curves   []string `json:"curves"`
+}
+
 var CurrentConfig Configuration
