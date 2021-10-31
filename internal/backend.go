@@ -51,7 +51,8 @@ func Run(verbose bool) {
 	}
 	mapConfigToControllers(controllers)
 	for _, curveConfig := range CurrentConfig.Curves {
-		CurveMap[curveConfig.Id] = &curveConfig
+		var config = curveConfig
+		CurveMap[curveConfig.Id] = &config
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
