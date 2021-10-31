@@ -1,7 +1,9 @@
 package internal
 
 import (
+	"encoding/json"
 	"errors"
+	"github.com/markusressel/fan2go/internal/ui"
 )
 
 var UnknownCurveType = errors.New("unknown curve type")
@@ -13,11 +15,26 @@ func evaluateCurve(curve CurveConfig) (value int, err error) {
 	// TODO: implement some kind of "rapid increase" when the upper
 	//  limit temperature limit is reached
 
+	// this manual marshalling isn't pretty, but afaik viper
+	// doesn't have a built in mechanism to parse config subtrees based on application logic
+	marshalled, err := json.Marshal(curve.Params)
+	if err != nil {
+		ui.Error("Couldn't marshal curve configuration: %v", err)
+	}
+
 	if curve.Type == LinearCurveType {
-		config := curve.Params.(LinearCurveConfig)
+		config := LinearCurveConfig{}
+		if err := json.Unmarshal(marshalled, &config); err != nil {
+			ui.Error("Couldn't unmarshal curve configuration: %v", err)
+		}
+
 		return evaluateLinearCurve(config)
 	} else if curve.Type == FunctionCurveType {
-		config := curve.Params.(FunctionCurveConfig)
+		config := FunctionCurveConfig{}
+		if err := json.Unmarshal(marshalled, &config); err != nil {
+			ui.Error("Couldn't unmarshal curve configuration: %v", err)
+		}
+
 		return evaluateFunctionCurve(config)
 	}
 

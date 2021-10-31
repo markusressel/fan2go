@@ -5,17 +5,17 @@ import (
 )
 
 type Configuration struct {
-	DbPath                         string
-	RunFanInitializationInParallel bool
-	TempSensorPollingRate          time.Duration
-	RpmPollingRate                 time.Duration
-	ControllerAdjustmentTickRate   time.Duration
-	TempRollingWindowSize          int
-	RpmRollingWindowSize           int
-	Sensors                        []SensorConfig
-	Curves                         []CurveConfig
-	Fans                           []FanConfig
-	MaxRpmDiffForSettledFan        float64
+	DbPath                         string         `json:"dbPath"`
+	RunFanInitializationInParallel bool           `json:"runFanInitializationInParallel"`
+	TempSensorPollingRate          time.Duration  `json:"tempSensorPollingRate"`
+	RpmPollingRate                 time.Duration  `json:"rpmPollingRate"`
+	ControllerAdjustmentTickRate   time.Duration  `json:"controllerAdjustmentTickRate"`
+	TempRollingWindowSize          int            `json:"tempRollingWindowSize"`
+	RpmRollingWindowSize           int            `json:"rpmRollingWindowSize"`
+	Sensors                        []SensorConfig `json:"sensors"`
+	Curves                         []CurveConfig  `json:"curves"`
+	Fans                           []FanConfig    `json:"fans"`
+	MaxRpmDiffForSettledFan        float64        `json:"maxRpmDiffForSettledFan"`
 }
 
 type SensorConfig struct {
@@ -33,17 +33,17 @@ type FanConfig struct {
 }
 
 type CurveConfig struct {
-	Id     string      `json:"id"`
-	Type   string      `json:"type"`
-	Params interface{} `json:"params"`
+	Id     string                 `json:"id"`
+	Type   string                 `json:"type"`
+	Params map[string]interface{} `json:"params"`
 }
 
 const LinearCurveType = "linear"
 
 type LinearCurveConfig struct {
 	Sensor  string      `json:"sensor"`
-	MinTemp int         `json:"min"`
-	MaxTemp int         `json:"max"`
+	MinTemp int         `json:"minTemp"`
+	MaxTemp int         `json:"maxTemp"`
 	Steps   map[int]int `json:"steps"`
 }
 
