@@ -117,10 +117,10 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 	CurveMap["curve"] = &CurveConfig{
 		Id:   "curve",
 		Type: LinearCurveType,
-		Params: LinearCurveConfig{
-			Sensor:  "sensor",
-			MinTemp: 40,
-			MaxTemp: 60,
+		Params: map[string]interface{}{
+			"Sensor":  "sensor",
+			"MinTemp": 40,
+			"MaxTemp": 60,
 		},
 	}
 
@@ -150,10 +150,10 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	CurveMap["curve"] = &CurveConfig{
 		Id:   "curve",
 		Type: LinearCurveType,
-		Params: LinearCurveConfig{
-			Sensor:  "sensor",
-			MinTemp: 40,
-			MaxTemp: 60,
+		Params: map[string]interface{}{
+			"Sensor":  "sensor",
+			"MinTemp": 40,
+			"MaxTemp": 60,
 		},
 	}
 
