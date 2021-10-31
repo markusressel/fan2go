@@ -32,14 +32,14 @@ const (
 var (
 	InitializationSequenceMutex sync.Mutex
 	SensorMap                   = map[string]*Sensor{}
+	CurveMap                    = map[string]*CurveConfig{}
 	Verbose                     bool
 )
 
 func Run(verbose bool) {
 	Verbose = verbose
-	// TODO: maybe it is possible without root by providing permissions?
 	if getProcessOwner() != "root" {
-		ui.Fatal("Fan control requires root access, please run fan2go as root")
+		ui.Fatal("Fan control requires root permissions to be able to modify fan speeds, please run fan2go as root")
 	}
 
 	db := OpenPersistence(CurrentConfig.DbPath)
@@ -50,6 +50,9 @@ func Run(verbose bool) {
 		ui.Fatal("Error detecting devices: %s", err.Error())
 	}
 	mapConfigToControllers(controllers)
+	for _, curveConfig := range CurrentConfig.Curves {
+		CurveMap[curveConfig.Id] = &curveConfig
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -287,12 +290,6 @@ func updateSensor(sensor *Sensor) (err error) {
 
 	var n = CurrentConfig.TempRollingWindowSize
 	sensor.MovingAvg = updateSimpleMovingAvg(sensor.MovingAvg, n, float64(value))
-	if value > int(sensor.Config.Max) {
-		// if the value is higher than the specified max temperature,
-		// insert the value twice into the moving window,
-		// to give it a bigger impact
-		sensor.MovingAvg = updateSimpleMovingAvg(sensor.MovingAvg, n, float64(value))
-	}
 
 	return nil
 }
@@ -337,7 +334,12 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 			return nil
 		case <-tick:
 			current := GetPwm(fan)
-			target := calculateTargetPwm(fan, current, calculateOptimalPwm(fan))
+			optimalPwm, err := calculateOptimalPwm(fan)
+			if err != nil {
+				ui.Error("Unable to calculate optimal PWM value for %s (%s, %s): %v", fan.Config.Id, fan.Label, fan.Name, err)
+				return err
+			}
+			target := calculateTargetPwm(fan, current, optimalPwm)
 			err = setPwm(fan, target)
 			if err != nil {
 				ui.Error("Error setting %s (%s, %s): %v", fan.Config.Id, fan.Label, fan.Name, err)
@@ -696,23 +698,9 @@ func GetPwm(fan *Fan) (value int) {
 }
 
 // calculates the target speed for a given device output
-func calculateOptimalPwm(fan *Fan) int {
-	sensor := SensorMap[fan.Config.Sensor]
-	minTemp := sensor.Config.Min * 1000 // degree to milli-degree
-	maxTemp := sensor.Config.Max * 1000
-
-	var avgTemp = sensor.MovingAvg
-
-	if avgTemp >= maxTemp {
-		// full throttle if max temp is reached
-		return 255
-	} else if avgTemp <= minTemp {
-		// turn fan off if at/below min temp
-		return 0
-	}
-
-	ratio := (avgTemp - minTemp) / (maxTemp - minTemp)
-	return int(ratio * 255)
+func calculateOptimalPwm(fan *Fan) (int, error) {
+	curve := CurveMap[fan.Config.Curve]
+	return evaluateCurve(*curve)
 }
 
 // calculates the optimal pwm for a fan with the given target

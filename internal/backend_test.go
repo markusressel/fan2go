@@ -45,7 +45,7 @@ func createFan(neverStop bool, curveData map[int][]float64) *Fan {
 			Platform:  "platform",
 			Fan:       1,
 			NeverStop: neverStop,
-			Sensor:    "sensor",
+			Curve:     "curve",
 		},
 		FanCurveData: &map[int]*rolling.PointPolicy{},
 	}
@@ -108,16 +108,29 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 	avgTmp := 50000.0
 	SensorMap["sensor"] = &Sensor{
 		Config: &SensorConfig{
-			Min: 0,
-			Max: 100,
+			Id:       "sensor",
+			Platform: "platform",
+			Index:    0,
 		},
 		MovingAvg: avgTmp,
+	}
+	CurveMap["curve"] = &CurveConfig{
+		Id:   "curve",
+		Type: LinearCurveType,
+		Params: LinearCurveConfig{
+			Sensor:  "sensor",
+			MinTemp: 40,
+			MaxTemp: 60,
+		},
 	}
 
 	fan := createFan(false, linearFan)
 
 	// WHEN
-	optimal := calculateOptimalPwm(fan)
+	optimal, err := calculateOptimalPwm(fan)
+	if err != nil {
+		assert.Fail(t, err.Error())
+	}
 
 	// THEN
 	assert.Equal(t, 127, optimal)
@@ -125,19 +138,32 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 
 func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	// GIVEN
-	avgTmp := 50000.0
+	avgTmp := 40000.0
 	SensorMap["sensor"] = &Sensor{
 		Config: &SensorConfig{
-			Min: 50,
-			Max: 100,
+			Id:       "sensor",
+			Platform: "platform",
+			Index:    0,
 		},
 		MovingAvg: avgTmp,
+	}
+	CurveMap["curve"] = &CurveConfig{
+		Id:   "curve",
+		Type: LinearCurveType,
+		Params: LinearCurveConfig{
+			Sensor:  "sensor",
+			MinTemp: 40,
+			MaxTemp: 60,
+		},
 	}
 
 	fan := createFan(true, cappedFan)
 
 	// WHEN
-	optimal := calculateOptimalPwm(fan)
+	optimal, err := calculateOptimalPwm(fan)
+	if err != nil {
+		assert.Fail(t, err.Error())
+	}
 	target := calculateTargetPwm(fan, 0, optimal)
 
 	// THEN

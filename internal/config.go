@@ -13,17 +13,15 @@ type Configuration struct {
 	TempRollingWindowSize          int
 	RpmRollingWindowSize           int
 	Sensors                        []SensorConfig
+	Curves                         []CurveConfig
 	Fans                           []FanConfig
 	MaxRpmDiffForSettledFan        float64
 }
 
 type SensorConfig struct {
-	Id       string    `json:"id"`
-	Platform string    `json:"platform"`
-	Index    int       `json:"index"`
-	Min      float64   `json:"min"`
-	Max      float64   `json:"max"`
-	Sensors  []*Sensor `json:"sensors"`
+	Id       string `json:"id"`
+	Platform string `json:"platform"`
+	Index    int    `json:"index"`
 }
 
 type FanConfig struct {
@@ -31,16 +29,22 @@ type FanConfig struct {
 	Platform  string `json:"platform"`
 	Fan       int    `json:"fan"`
 	NeverStop bool   `json:"neverstop"`
-	Sensor    string `json:"sensor"`
 	Curve     string `json:"curve"`
 }
 
 type CurveConfig struct {
-	Id    string      `json:"id"`
-	Min   int         `json:"min"`
-	Max   int         `json:"max"`
-	Steps map[int]int `json:"steps"`
-	Type  string      `json:"type"`
+	Id     string      `json:"id"`
+	Type   string      `json:"type"`
+	Params interface{} `json:"params"`
+}
+
+const LinearCurveType = "linear"
+
+type LinearCurveConfig struct {
+	Sensor  string      `json:"sensor"`
+	MinTemp int         `json:"min"`
+	MaxTemp int         `json:"max"`
+	Steps   map[int]int `json:"steps"`
 }
 
 var CurrentConfig Configuration

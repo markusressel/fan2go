@@ -24,39 +24,71 @@ sensors:
     platform: coretemp
     # The index of this sensor as displayed by `sensors`.
     index: 1
-    # The minimum target temp for this sensor.
-    # If the sensor falls below this value, a fan configured
-    # for it will run at minimum PWM value.
-    min: 50
-    # The maximum target temp for this sensor.
-    # If the sensor falls below this value, a fan configured
-    # for it will run at maximum PWM value.
-    max: 75
 
   - id: gpu_core
     platform: gpu
     index: 1
-    min: 50
-    max: 80
 
   - id: mainboard
     platform: it8620
     index: 3 # Intel PECI
-    min: 50
-    max: 80
 
   - id: sata_ssd
     platform: acpitz
     index: 1
-    min: 30
-    max: 40
 
-  - id: combined_cpu_gpu
-    platform: virtual
-    type: avg
-    sensors:
-      - cpu_package
-      - gpu_core
+# TODO: not sure whether this is a good idea
+#  - id: combined_cpu_gpu
+#    platform: virtual
+#    type: avg
+#    sensors:
+#      - cpu_package
+#      - gpu_core
+
+
+# A list of temperature/speed curve definitions.
+curves:
+  # A simple linear curve with a minimum and maximum temperature value
+  - id: cpu_curve
+    # The type of curve
+    type: linear
+    params:
+      # The sensor ID (defined above) to use as an input of this curve.
+      sensor: cpu_package
+      # The minimum target temp in °C for this sensor.
+      # If the sensor falls below this value, a fan configured
+      # for it will run at minimum PWM value.
+      minTemp: 50
+      # The maximum target temp in °C for this sensor.
+      # If the sensor falls below this value, a fan configured
+      # for it will run at maximum PWM value.
+      maxTemp: 75
+
+  - id: case_curve
+    type: linear
+    params:
+      steps:
+        30: 0
+        40: 20
+        50: 40
+        60: 60
+        70: 80
+        80: 100
+
+  - id: sata_ssd_curve
+    type: linear
+    params:
+      sensor: sata_ssd
+      minTemp: 30
+      maxTemp: 40
+
+  - id: gpu_curve
+    type: linear
+    params:
+      sensor: gpu_core
+      minTemp: 50
+      maxTemp: 80
+
 
 # A list of fans to control.
 fans:
@@ -70,9 +102,9 @@ fans:
     fan: 3 # HDD Cage (Front)
     # Indicates whether this fan is allowed to fully stop.
     neverStop: no
-    # The sensor ID (defined above) that should be used to determine the
+    # The curve ID (defined above) that should be used to determine the
     # speed of this fan.
-    sensor: sata_ssd
+    curve: sata_ssd_curve
 
   - id: in_bottom
     platform: it8620
@@ -99,27 +131,3 @@ fans:
     fan: 1
     neverStop: yes
     sensor: gpu_core
-
-# A list of temperature/speed curve definitions.
-curves:
-  # A simple linear curve with a minimum and maximum temperature value
-  - id: cpu_curve
-    type: linear
-    # The minimum target temp for this sensor.
-    # If the sensor falls below this value, a fan configured
-    # for it will run at minimum PWM value.
-    min: 50
-    # The maximum target temp for this sensor.
-    # If the sensor falls below this value, a fan configured
-    # for it will run at maximum PWM value.
-    max: 75
-
-  - id: case_curve
-    type: linear
-    steps:
-      30: 0
-      40: 20
-      50: 40
-      60: 60
-      70: 80
-      80: 100
