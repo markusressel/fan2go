@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/markusressel/fan2go/internal/ui"
+	"math"
 )
 
 var UnknownCurveType = errors.New("unknown curve type")
@@ -69,7 +70,29 @@ func evaluateFunctionCurve(config FunctionCurveConfig) (value int, err error) {
 		curves = append(curves, *CurveMap[curveId])
 	}
 
-	if config.Function == FunctionAverage {
+	if config.Function == FunctionMinimum {
+		var min int
+		for _, curve := range curves {
+			v, err := evaluateCurve(curve)
+			if err != nil {
+				return 0, err
+			}
+
+			min = int(math.Min(float64(min), float64(v)))
+		}
+		value = min
+	} else if config.Function == FunctionMaximum {
+		var max int
+		for _, curve := range curves {
+			v, err := evaluateCurve(curve)
+			if err != nil {
+				return 0, err
+			}
+
+			max = int(math.Max(float64(max), float64(v)))
+		}
+		value = max
+	} else if config.Function == FunctionAverage {
 		var total = 0
 		for _, curve := range curves {
 			v, err := evaluateCurve(curve)
@@ -80,6 +103,8 @@ func evaluateFunctionCurve(config FunctionCurveConfig) (value int, err error) {
 			total += v
 		}
 		value = total / len(curves)
+	} else {
+		ui.Fatal("Unknown curve function: %s", config.Function)
 	}
 
 	return value, err
