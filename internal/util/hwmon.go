@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -87,4 +88,26 @@ func FindHwmonDevicePaths() []string {
 	result := FindFilesMatching(basePath, "hwmon.*")
 
 	return result
+}
+
+func CreateShortPciIdentifier(path string) string {
+	splits := strings.Split(path, ":")
+
+	domain := splits[0]
+	bus := splits[1]
+
+	splits = strings.Split(splits[2], ".")
+
+	slot, channel := splits[0], splits[1]
+
+	name := fmt.Sprintf(
+		"%s%s%s%s",
+		HexString(domain),
+		HexString(bus),
+		HexString(slot),
+		HexString(channel),
+	)
+	name = strings.Trim(name, "-")
+	name = fmt.Sprintf("pci-%s", name)
+	return name
 }

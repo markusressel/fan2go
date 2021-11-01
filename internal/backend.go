@@ -535,9 +535,19 @@ func FindControllers() (controllers []*Controller, err error) {
 	allDevices := append(hwmonDevices, i2cDevices...)
 
 	platformRegex := regexp.MustCompile(".*/platform/{}/.*")
+	pciDeviceRegex := regexp.MustCompile("\\d{4}:\\d{2}:\\d{2}\\.\\d")
 
 	for _, devicePath := range allDevices {
-		name := util.GetDeviceName(devicePath)
+
+		var name = util.GetDeviceName(devicePath)
+		if strings.Contains(devicePath, "/pci") {
+			// add pci suffix to name
+			matches := pciDeviceRegex.FindAllString(devicePath, -1)
+			lastMatch := matches[len(matches)-1]
+			pciIdentifier := util.CreateShortPciIdentifier(lastMatch)
+			name = fmt.Sprintf("%s-%s", name, pciIdentifier)
+		}
+
 		dType := util.GetDeviceType(devicePath)
 		modalias := util.GetDeviceModalias(devicePath)
 		platform := platformRegex.FindString(devicePath)
