@@ -319,7 +319,7 @@ func fanController(ctx context.Context, db *bolt.DB, fan *Fan, tick <-chan time.
 		return err
 	}
 
-	ui.Info("Start PWM of %s (%s, %s): %d", fan.Config.Id, fan.Label, fan.Name, fan.StartPwm)
+	ui.Info("Start PWM of %s (%s, %s): %d", fan.Config.Id, fan.Label, fan.Name, fan.MinPwm)
 	ui.Info("Max PWM of %s (%s, %s): %d", fan.Config.Id, fan.Label, fan.Name, fan.MaxPwm)
 
 	err = trySetManualPwm(fan)
@@ -430,6 +430,8 @@ func AttachFanCurveData(curveData *map[int][]float64, fan *Fan) (err error) {
 	}
 
 	fan.StartPwm, fan.MaxPwm = GetPwmBoundaries(fan)
+	// TODO: we don't have a way to determine this yet
+	fan.MinPwm = fan.StartPwm
 
 	return err
 }
@@ -599,7 +601,7 @@ func createFans(devicePath string) (fans []*Fan) {
 			PwmOutput:    output,
 			RpmInput:     inputs[idx],
 			RpmMovingAvg: 0,
-			StartPwm:     MinPwmValue,
+			MinPwm:       MinPwmValue,
 			MaxPwm:       MaxPwmValue,
 			FanCurveData: &map[int]*rolling.PointPolicy{},
 			LastSetPwm:   InitialLastSetPwm,
@@ -693,7 +695,7 @@ func getMinPwmValue(fan *Fan) (result int) {
 	// if the fan is never supposed to stop,
 	// use the lowest pwm value where the fan is still spinning
 	if fan.Config.NeverStop {
-		return fan.StartPwm
+		return fan.MinPwm
 	}
 
 	return MinPwmValue
@@ -750,8 +752,8 @@ func calculateTargetPwm(fan *Fan, currentPwm int, pwm int) int {
 				ui.Error("CRITICAL: Fan avg. RPM is %f, even at PWM value %d", avgRpm, target)
 				return -1
 			}
-			ui.Warning("WARNING: Increasing startPWM of %s from %d to %d, which is supposed to never stop, but RPM is %f", fan.Config.Id, fan.StartPwm, fan.StartPwm+1, avgRpm)
-			fan.StartPwm++
+			ui.Warning("WARNING: Increasing startPWM of %s from %d to %d, which is supposed to never stop, but RPM is %f", fan.Config.Id, fan.MinPwm, fan.MinPwm+1, avgRpm)
+			fan.MinPwm++
 			target++
 
 			// set the moving avg to a value > 0 to prevent
