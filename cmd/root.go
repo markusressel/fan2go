@@ -55,28 +55,76 @@ var detectCmd = &cobra.Command{
 
 		controllers, err := internal.FindControllers()
 		if err != nil {
-			ui.Fatal("Error detecting devices: %s", err.Error())
+			ui.Fatal("Error detecting devices: %v", err)
 		}
 
 		// === Print detected devices ===
-		ui.Println("Detected Devices:")
+		tableConfig := &table.Config{
+			ShowIndex:       false,
+			Color:           true,
+			AlternateColors: true,
+			TitleColorCode:  ansi.ColorCode("white+buf"),
+			AltColorCodes: []string{
+				ansi.ColorCode("white"),
+				ansi.ColorCode("white:236"),
+			},
+		}
 
 		for _, controller := range controllers {
 			if len(controller.Name) <= 0 {
 				continue
 			}
 
-			ui.Println("%s", controller.Name)
+			ui.Println(controller.Name)
+
+			var fanRows [][]string
 			for _, fan := range controller.Fans {
 				pwm := internal.GetPwm(fan)
 				rpm := internal.GetRpm(fan)
 				isAuto, _ := internal.IsPwmAuto(controller.Path)
-				ui.Println("  %d: %s (%s): RPM: %d PWM: %d Auto: %v", fan.Index, fan.Label, fan.Name, rpm, pwm, isAuto)
+				fanRows = append(fanRows, []string{
+					"", strconv.Itoa(fan.Index), fan.Label, fan.Name, strconv.Itoa(rpm), strconv.Itoa(pwm), fmt.Sprintf("%v", isAuto),
+				})
+			}
+			var fanHeaders = []string{"Fans   ", "Index", "Label", "Name", "RPM", "PWM", "Auto"}
+
+			fanTable := table.Table{
+				Headers: fanHeaders,
+				Rows:    fanRows,
 			}
 
+			var sensorRows [][]string
 			for _, sensor := range controller.Sensors {
 				value, _ := util.ReadIntFromFile(sensor.Input)
-				ui.Println("  %d: %s (%s): %d", sensor.Index, sensor.Label, sensor.Name, value)
+				//ui.Println("  %d: %s (%s): %d", sensor.Index, sensor.Label, sensor.Name, value)
+				sensorRows = append(sensorRows, []string{
+					"", strconv.Itoa(sensor.Index), sensor.Label, sensor.Name, strconv.Itoa(value),
+				})
+			}
+			var sensorHeaders = []string{"Sensors", "Index", "Label", "Name", "Value"}
+
+			sensorTable := table.Table{
+				Headers: sensorHeaders,
+				Rows:    sensorRows,
+			}
+
+			tables := []table.Table{fanTable, sensorTable}
+
+			for idx, table := range tables {
+				if table.Rows == nil {
+					continue
+				}
+				var buf bytes.Buffer
+				tableErr := table.WriteTable(&buf, tableConfig)
+				if tableErr != nil {
+					ui.Fatal("Error printing table: %v", tableErr)
+				}
+				tableString := buf.String()
+				if idx < (len(tables) - 1) {
+					ui.Printf(tableString)
+				} else {
+					ui.Println(tableString)
+				}
 			}
 		}
 	},
