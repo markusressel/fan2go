@@ -25,47 +25,61 @@ Use `fan2go detect` to print a list of all usable devices:
 
 ```shell
 > fan2go detect
-Detected Devices:
-nvme
-  1: Composite (temp1_input): 51850
-  2: Sensor 1 (temp2_input): 51850
-  3: Sensor 2 (temp3_input): 52850
-nvme
-  1: Composite (temp1_input): 52850
-  2: Sensor 1 (temp2_input): 52850
-  3: Sensor 2 (temp3_input): 45850
-nvme
-  1: Composite (temp1_input): 52850
-  2: Sensor 1 (temp2_input): 52850
-  3: Sensor 2 (temp3_input): 53850
+nvme-pci-0400
+ Sensors   Index   Label       Name          Value  
+           1       Composite   temp1_input   53850  
+           2       Sensor 1    temp2_input   53850  
+           3       Sensor 2    temp3_input   56850  
+
+nvme-pci-0500
+ Sensors   Index   Label       Name          Value  
+           1       Composite   temp1_input   28850  
+           2       Sensor 1    temp2_input   28850  
+           3       Sensor 2    temp3_input   42850  
+
+nvme-pci-0100
+ Sensors   Index   Label       Name          Value  
+           1       Composite   temp1_input   55850  
+           2       Sensor 1    temp2_input   55850  
+           3       Sensor 2    temp3_input   57850  
+
 nct6798
-  1: hwmon5 (pwm1): RPM: 0 PWM: 142 Auto: false
-  2: hwmon5 (pwm2): RPM: 994 PWM: 68 Auto: false
-  3: hwmon5 (pwm3): RPM: 579 PWM: 96 Auto: false
-  4: hwmon5 (pwm4): RPM: 345 PWM: 58 Auto: false
-  5: hwmon5 (pwm5): RPM: 343 PWM: 57 Auto: false
-  6: hwmon5 (pwm6): RPM: 0 PWM: 255 Auto: false
-  7: hwmon5 (pwm7): RPM: 0 PWM: 255 Auto: false
-  1: SYSTIN (temp1_input): 43000
-  2: CPUTIN (temp2_input): 55500
-  3: AUXTIN0 (temp3_input): 22000
-  4: AUXTIN1 (temp4_input): 127000
-  5: AUXTIN2 (temp5_input): 100000
-  6: AUXTIN3 (temp6_input): 32000
-  7: PECI Agent 0 Calibration (temp7_input): 56500
-  8: PCH_CHIP_CPU_MAX_TEMP (temp8_input): 0
-  9: PCH_CHIP_TEMP (temp9_input): 0
-k10temp
-  1: Tctl (temp1_input): 75875
-  2: Tdie (temp2_input): 75875
-  3: Tccd1 (temp3_input): 69250
+ Fans      Index   Label    Name   RPM    PWM   Auto   
+           1       hwmon4   pwm1   0      153   false  
+           2       hwmon4   pwm2   1223   104   false  
+           3       hwmon4   pwm3   677    107   false  
+           4       hwmon4   pwm4   658    106   false  
+           5       hwmon4   pwm5   663    107   false  
+           6       hwmon4   pwm6   0      255   false  
+           7       hwmon4   pwm7   0      255   false  
+ Sensors   Index   Label                      Name          Value   
+           1       SYSTIN                     temp1_input   41000   
+           2       CPUTIN                     temp2_input   64000   
+           3       AUXTIN0                    temp3_input   22000   
+           4       AUXTIN1                    temp4_input   127000  
+           5       AUXTIN2                    temp5_input   98000   
+           6       AUXTIN3                    temp6_input   32000   
+           7       PECI Agent 0 Calibration   temp7_input   71500   
+           8       PCH_CHIP_CPU_MAX_TEMP      temp8_input   0       
+           9       PCH_CHIP_TEMP              temp9_input   0       
+
+k10temp-pci-00183
+ Sensors   Index   Label   Name          Value  
+           1       Tctl    temp1_input   82250  
+           2       Tdie    temp2_input   82250  
+           3       Tccd1   temp3_input   67250  
+
 iwlwifi_1
-  1: hwmon8 (temp1_input): 41000
-amdgpu
-  1: hwmon9 (pwm1): RPM: 561 PWM: 43 Auto: false
-  1: edge (temp1_input): 56000
-  2: junction (temp2_input): 59000
-  3: mem (temp3_input): 56000
+ Sensors   Index   Label    Name          Value  
+           1       hwmon7   temp1_input   43000  
+
+amdgpu-pci-0031
+ Fans      Index   Label    Name   RPM   PWM   Auto   
+           1       hwmon8   pwm1   561   43    false  
+ Sensors   Index   Label      Name          Value  
+           1       edge       temp1_input   58000  
+           2       junction   temp2_input   61000  
+           3       mem        temp3_input   56000  
 ```
 
 Then configure fan2go by creating a YAML configuration file in **one** of the following locations:
