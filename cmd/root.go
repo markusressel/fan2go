@@ -75,7 +75,7 @@ var detectCmd = &cobra.Command{
 				continue
 			}
 
-			ui.Println(controller.Name)
+			ui.Println("> %s", controller.Name)
 
 			var fanRows [][]string
 			for _, fan := range controller.Fans {
