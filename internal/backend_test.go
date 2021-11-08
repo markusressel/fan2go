@@ -170,5 +170,6 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, 0, optimal)
+	assert.Greater(t, fan.MinPwm, 0)
 	assert.Equal(t, fan.MinPwm, target)
 }
