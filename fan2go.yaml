@@ -31,13 +31,13 @@ fans:
     platform: it8620
     fan: 4
     neverStop: yes
-    curve: case_curve
+    curve: case_avg_curve
 
   - id: out_back
     platform: it8620
     fan: 5
     neverStop: yes
-    curve: case_curve
+    curve: case_avg_curve
 
 # A list of sensors to monitor.
 sensors:
@@ -49,26 +49,14 @@ sensors:
     platform: coretemp
     # The index of this sensor as displayed by `fan2go detect`.
     index: 1
-    # The minimum target temp for this sensor.
-    # If the sensor falls below this value, all fans referencing it
-    # will run at minimum PWM value.
-    min: 50
-    # The maximum target temp for this sensor.
-    # If the sensor is above this value, all fans referencing it
-    # will run at maximum PWM value.
-    max: 75
 
   - id: mainboard
     platform: it8620
     index: 3
-    min: 50
-    max: 80
 
   - id: sata_ssd
     platform: acpitz
     index: 1
-    min: 30
-    max: 40
 
 # A list of control curves which can be utilized by fans
 # or other curves.
@@ -76,13 +64,13 @@ curves:
   - id: cpu_curve
     # The type of the curve.
     type: linear
-    # Parameters needed for a specific curve type.
+    # Parameters needed for the given curve type.
     params:
       # The sensor ID to use as a temperature input.
       sensor: cpu_package
       # Steps to define a section-wise defined speed curve function.
       steps:
-        # Temperature -> Speed (in percent)
+        # Sensor value -> Speed (in percent)
         - 40: 0
         - 50: 30
         - 80: 100
@@ -91,10 +79,10 @@ curves:
     type: linear
     params:
       sensor: mainboard
-      # Temperature at which the curve is at minimum speed.
-      minTemp: 40
-      # Temperature at which the curve is at maximum speed.
-      maxTemp: 70
+      # Sensor input value at which the curve is at minimum speed.
+      min: 40
+      # Sensor input value at which the curve is at maximum speed.
+      max: 80
 
   - id: ssd_curve
     type: linear

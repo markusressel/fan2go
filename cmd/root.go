@@ -6,8 +6,8 @@ import (
 	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/markusressel/fan2go/internal/util"
 	"github.com/mgutz/ansi"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -89,10 +89,12 @@ var detectCmd = &cobra.Command{
 
 			var sensorRows [][]string
 			for _, sensor := range controller.Sensors {
-				value, _ := util.ReadIntFromFile(sensor.Input)
+				value, _ := sensor.GetValue()
 				//ui.Println("  %d: %s (%s): %d", sensor.Index, sensor.Label, sensor.Name, value)
+				hwSensor := sensor.(*sensors.HwmonSensor)
+
 				sensorRows = append(sensorRows, []string{
-					"", strconv.Itoa(sensor.Index), sensor.Label, sensor.Name, strconv.Itoa(value),
+					"", strconv.Itoa(hwSensor.Index), hwSensor.Label, hwSensor.Name, strconv.Itoa(int(value)),
 				})
 			}
 			var sensorHeaders = []string{"Sensors", "Index", "Label", "Name", "Value"}

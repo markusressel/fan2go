@@ -10,7 +10,7 @@ type FileSensor struct {
 	Label     string                      `json:"label"`
 	FilePath  string                      `json:"string"`
 	Config    *configuration.SensorConfig `json:"configuration"`
-	MovingAvg float64
+	MovingAvg float64                     `json:"moving_avg"`
 }
 
 func (sensor FileSensor) GetId() string {
@@ -23,6 +23,10 @@ func (sensor FileSensor) GetLabel() string {
 
 func (sensor FileSensor) GetConfig() *configuration.SensorConfig {
 	return sensor.Config
+}
+
+func (sensor *FileSensor) SetConfig(config *configuration.SensorConfig) {
+	sensor.Config = config
 }
 
 func (sensor FileSensor) GetValue() (result float64, err error) {
@@ -38,6 +42,6 @@ func (sensor FileSensor) GetMovingAvg() (avg float64) {
 	return sensor.MovingAvg
 }
 
-func (sensor FileSensor) SetMovingAvg(avg float64) {
+func (sensor *FileSensor) SetMovingAvg(avg float64) {
 	sensor.MovingAvg = avg
 }

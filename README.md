@@ -82,10 +82,10 @@ curves:
     params:
       # The sensor ID to use as a temperature input
       sensor: cpu_package
-      # Temperature at which the curve is at minimum speed
-      minTemp: 40
-      # Temperature at which the curve is at maximum speed
-      maxTemp: 80
+      # Sensor input value at which the curve is at minimum speed
+      min: 40
+      # Sensor input value at which the curve is at maximum speed
+      max: 80
 ```
 
 ```yaml
@@ -93,13 +93,13 @@ curves:
   - id: cpu_curve
     # The type of the curve
     type: linear
-    # Parameters needed for a specific curve type.
+    # Parameters needed for the given curve type.
     params:
       # The sensor ID to use as a temperature input
       sensor: cpu_package
       # Steps to define a section-wise defined speed curve function.
       steps:
-        # Temperature -> Speed (in percent)
+        # Sensor value -> Speed (in percent)
         - 40: 0
         - 50: 30
         - 80: 100

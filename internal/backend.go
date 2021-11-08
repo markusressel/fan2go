@@ -74,7 +74,7 @@ func Run(verbose bool) {
 				g.Add(func() error {
 					return sensorMonitor(ctx, s, tempTick)
 				}, func(err error) {
-					// nothing to do here
+					ui.Fatal("Error monitoring sensor: %v", err)
 				})
 			}
 		}
@@ -201,10 +201,10 @@ func mapConfigToControllers(controllers []*Controller) {
 		}
 		// match sensor and sensor config entries
 		for _, s := range controller.Sensors {
-			sensorConfig := findSensorConfig(controller, s)
+			sensorConfig := findSensorConfig(controller, s.(*sensors.HwmonSensor))
 			if sensorConfig != nil {
 				if Verbose {
-					ui.Debug("Mapping sensor config %s to %s", sensorConfig.Id, s.Input)
+					ui.Debug("Mapping sensor config %s to %s", sensorConfig.Id, s.(*sensors.HwmonSensor).Input)
 				}
 
 				s.SetConfig(sensorConfig)
@@ -213,11 +213,11 @@ func mapConfigToControllers(controllers []*Controller) {
 				SensorMap[sensorConfig.Id] = s
 
 				// initialize arrays for storing temps
-				currentValue, err := util.ReadIntFromFile(s.Input)
+				currentValue, err := s.GetValue()
 				if err != nil {
 					ui.Fatal("Error reading sensor %s: %s", sensorConfig.Id, err.Error())
 				}
-				s.MovingAvg = float64(currentValue)
+				s.SetMovingAvg(currentValue)
 			}
 		}
 	}
@@ -292,7 +292,8 @@ func updateSensor(sensor Sensor) (err error) {
 
 	var n = configuration.CurrentConfig.TempRollingWindowSize
 	// TODO: find a better place to store the sensors average
-	sensor.SetMovingAvg(updateSimpleMovingAvg(sensor.GetMovingAvg(), n, value))
+	avg := updateSimpleMovingAvg(sensor.GetMovingAvg(), n, value)
+	sensor.SetMovingAvg(avg)
 
 	return nil
 }
@@ -522,10 +523,10 @@ func findFanConfig(controller *Controller, fan *Fan) (fanConfig *configuration.F
 	return nil
 }
 
-func findSensorConfig(controller *Controller, sensor sensors.HwmonSensor) (sensorConfig *configuration.SensorConfig) {
+func findSensorConfig(controller *Controller, sensor Sensor) (sensorConfig *configuration.SensorConfig) {
 	for _, sensorConfig := range configuration.CurrentConfig.Sensors {
 		if controller.Platform == sensorConfig.Platform &&
-			sensor.Index == sensorConfig.Index {
+			sensor.(*sensors.HwmonSensor).Index == sensorConfig.Index {
 			return &sensorConfig
 		}
 	}
@@ -623,7 +624,7 @@ func createFans(devicePath string) (fans []*Fan) {
 }
 
 // creates sensor objects for the given device path
-func createSensors(devicePath string) (result []sensors.HwmonSensor) {
+func createSensors(devicePath string) (result []Sensor) {
 	inputs := util.FindFilesMatching(devicePath, "^temp[1-9]_input$")
 
 	for _, input := range inputs {
@@ -635,7 +636,9 @@ func createSensors(devicePath string) (result []sensors.HwmonSensor) {
 			ui.Fatal("%v", err)
 		}
 
-		result = append(result, sensors.HwmonSensor{
+		// NOTE: it is crucial to append pointers here,
+		//   otherwise changes to struct values are not permanent!
+		result = append(result, &sensors.HwmonSensor{
 			Name:  file,
 			Label: label,
 			Index: index,

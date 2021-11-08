@@ -11,7 +11,7 @@ type HwmonSensor struct {
 	Index     int                         `json:"index"`
 	Input     string                      `json:"string"`
 	Config    *configuration.SensorConfig `json:"configuration"`
-	MovingAvg float64
+	MovingAvg float64                     `json:"moving_avg"`
 }
 
 func (sensor HwmonSensor) GetId() string {
@@ -26,7 +26,7 @@ func (sensor HwmonSensor) GetConfig() *configuration.SensorConfig {
 	return sensor.Config
 }
 
-func (sensor HwmonSensor) SetConfig(config *configuration.SensorConfig) {
+func (sensor *HwmonSensor) SetConfig(config *configuration.SensorConfig) {
 	sensor.Config = config
 }
 
@@ -43,6 +43,6 @@ func (sensor HwmonSensor) GetMovingAvg() (avg float64) {
 	return sensor.MovingAvg
 }
 
-func (sensor HwmonSensor) SetMovingAvg(avg float64) {
+func (sensor *HwmonSensor) SetMovingAvg(avg float64) {
 	sensor.MovingAvg = avg
 }
