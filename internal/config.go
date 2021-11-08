@@ -38,7 +38,10 @@ type CurveConfig struct {
 	Params map[string]interface{} `json:"params"`
 }
 
-const LinearCurveType = "linear"
+const (
+	LinearCurveType   = "linear"
+	FunctionCurveType = "function"
+)
 
 type LinearCurveConfig struct {
 	Sensor  string      `json:"sensor"`
@@ -48,10 +51,9 @@ type LinearCurveConfig struct {
 }
 
 const (
-	FunctionCurveType = "function"
-	FunctionAverage   = "average"
-	FunctionMinimum   = "minimum"
-	FunctionMaximum   = "maximum"
+	FunctionAverage = "average"
+	FunctionMinimum = "minimum"
+	FunctionMaximum = "maximum"
 )
 
 type FunctionCurveConfig struct {
