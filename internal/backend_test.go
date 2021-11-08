@@ -116,15 +116,14 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 		},
 		MovingAvg: avgTmp,
 	}
-	CurveMap["curve"] = &CurveConfig{
-		Id:   "curve",
-		Type: LinearCurveType,
-		Params: map[string]interface{}{
-			"Sensor":  "sensor",
-			"MinTemp": 40,
-			"MaxTemp": 60,
-		},
-	}
+
+	curveConfig := createLinearCurveConfig(
+		"curve",
+		"sensor",
+		40,
+		60,
+	)
+	CurveMap["curve"] = &curveConfig
 
 	fan, _ := createFan(false, linearFan)
 
@@ -141,6 +140,7 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	// GIVEN
 	avgTmp := 40000.0
+
 	SensorMap["sensor"] = &Sensor{
 		Config: &SensorConfig{
 			Id:       "sensor",
@@ -149,15 +149,14 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 		},
 		MovingAvg: avgTmp,
 	}
-	CurveMap["curve"] = &CurveConfig{
-		Id:   "curve",
-		Type: LinearCurveType,
-		Params: map[string]interface{}{
-			"Sensor":  "sensor",
-			"MinTemp": 40,
-			"MaxTemp": 60,
-		},
-	}
+
+	curveConfig := createLinearCurveConfig(
+		"curve",
+		"sensor",
+		40,
+		60,
+	)
+	CurveMap["curve"] = &curveConfig
 
 	fan, _ := createFan(true, cappedFan)
 

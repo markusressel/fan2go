@@ -23,7 +23,7 @@ func evaluateCurve(curve CurveConfig) (value int, err error) {
 	//  limit temperature limit is reached
 
 	// this manual marshalling isn't pretty, but afaik viper
-	// doesn't have a built in mechanism to parse config subtrees based on application logic
+	// doesn't have a built-in mechanism to parse config subtrees based on application logic
 	marshalled, err := json.Marshal(curve.Params)
 	if err != nil {
 		ui.Error("Couldn't marshal curve configuration: %v", err)

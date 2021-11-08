@@ -8,15 +8,12 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/mgutz/ansi"
-	"github.com/mitchellh/go-homedir"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/tomlazar/table"
 	"os"
 	"sort"
 	"strconv"
-	"time"
 )
 
 var (
@@ -37,7 +34,7 @@ on your computer based on temperature sensors.`,
 		setupUi()
 		printHeader()
 
-		readConfigFile()
+		internal.ReadConfigFile()
 		internal.Run(verbose)
 	},
 }
@@ -47,11 +44,7 @@ var detectCmd = &cobra.Command{
 	Short: "Detect devices",
 	Long:  `Detects all fans and sensors and prints them as a list`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// load default configuration values
-		err := viper.Unmarshal(&internal.CurrentConfig)
-		if err != nil {
-			ui.Fatal("unable to decode into struct, %v", err)
-		}
+		internal.LoadConfig()
 
 		controllers, err := internal.FindControllers()
 		if err != nil {
@@ -135,7 +128,7 @@ var curveCmd = &cobra.Command{
 	Short: "Print the measured fan curve(s) to console",
 	//Long:  `All software has versions. This is fan2go's`,
 	Run: func(cmd *cobra.Command, args []string) {
-		readConfigFile()
+		internal.ReadConfigFile()
 		db := internal.OpenPersistence(internal.CurrentConfig.DbPath)
 		defer db.Close()
 
@@ -243,46 +236,12 @@ func printHeader() {
 	}
 }
 
-func readConfigFile() {
-	if err := viper.ReadInConfig(); err != nil {
-		// config file is required, so we fail here
-		ui.Fatal("Error reading config file, %s", err)
-	}
-	// this is only populated _after_ ReadInConfig()
-	ui.Info("Using configuration file at: %s", viper.ConfigFileUsed())
-
-	err := viper.Unmarshal(&internal.CurrentConfig)
-	if err != nil {
-		ui.Fatal("unable to decode into struct, %v", err)
-	}
-
-	validateConfig()
-}
-
-func validateConfig() {
-	//config := &internal.CurrentConfig
-	// nothing yet
-}
-
-func setDefaultValues() {
-	viper.SetDefault("dbpath", "/etc/fan2go/fan2go.db")
-	viper.SetDefault("RunFanInitializationInParallel", true)
-	viper.SetDefault("MaxRpmDiffForSettledFan", 10.0)
-	viper.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
-	viper.SetDefault("TempRollingWindowSize", 50)
-	viper.SetDefault("RpmPollingRate", 1*time.Second)
-	viper.SetDefault("RpmRollingWindowSize", 10)
-
-	viper.SetDefault("ControllerAdjustmentTickRate", 200*time.Millisecond)
-
-	viper.SetDefault("sensors", []internal.SensorConfig{})
-	viper.SetDefault("fans", []internal.FanConfig{})
-}
-
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	cobra.OnInitialize(initConfig)
+	cobra.OnInitialize(func() {
+		internal.InitConfig(cfgFile)
+	})
 
 	rootCmd.AddCommand(detectCmd)
 	rootCmd.AddCommand(curveCmd)
@@ -297,29 +256,4 @@ func Execute() {
 		ui.Error("%v", err)
 		os.Exit(1)
 	}
-}
-
-// initConfig reads in config file and ENV variables if set.
-func initConfig() {
-	viper.SetConfigName("fan2go")
-
-	if cfgFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
-	} else {
-		// Find home directory.
-		home, err := homedir.Dir()
-		if err != nil {
-			ui.Error("Couldn't detect home directory: %v", err)
-			os.Exit(1)
-		}
-
-		viper.AddConfigPath(".")
-		viper.AddConfigPath(home)
-		viper.AddConfigPath("/etc/fan2go/")
-	}
-
-	viper.AutomaticEnv() // read in environment variables that match
-
-	setDefaultValues()
 }
