@@ -109,26 +109,3 @@ func evaluateFunctionCurve(config FunctionCurveConfig) (value int, err error) {
 
 	return value, err
 }
-
-func FunctionCurve(
-	function string,
-	values []int,
-) (result int) {
-	result = 0
-	if function == "average" {
-		result = 0
-		var total = 0
-		for _, value := range values {
-			total += value
-		}
-		result = total / len(values)
-	}
-	return result
-}
-
-func LinearCurve(
-	config CurveConfig,
-	sensorValues []int,
-) (target int) {
-	return 0
-}
