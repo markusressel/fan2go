@@ -74,10 +74,15 @@ sensors:
 # or other curves.
 curves:
   - id: cpu_curve
+    # The type of the curve
     type: linear
+    # Parameters needed for a specific curve type.
     params:
+      # The sensor ID to use as a temperature input
       sensor: cpu_package
+      # Steps to define a section-wise defined speed curve function
       steps:
+        # Temperature -> Speed (in percent)
         - 40: 0
         - 50: 30
         - 80: 100
@@ -86,7 +91,9 @@ curves:
     type: linear
     params:
       sensor: mainboard
+      # Temperature at which the curve is at minimum speed
       minTemp: 40
+      # Temperature at which the curve is at maximum speed
       maxTemp: 70
 
   - id: ssd_curve
@@ -99,15 +106,10 @@ curves:
   - id: case_avg_curve
     type: function
     params:
+      # Type of aggregation function to use, on of: minimum | maximum | average
       function: average
+      # A list of curve IDs to use
       curves:
         - cpu_curve
         - mainboard_curve
         - ssd_curve
-
-#  - id: gpu_curve
-#    type: linear
-#    params:
-#      sensors: gpu_core
-#      minTemp: 50
-#      maxTemp: 80
