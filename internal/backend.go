@@ -398,7 +398,7 @@ func AttachFanCurveData(curveData *map[int][]float64, fan *Fan) (err error) {
 				pointValues = valuesCopy
 			} else {
 				// interpolate average value to the next existing key
-				ratio := (float64(i) - float64(lastValueIdx)) / (float64(nextValueIdx) - float64(lastValueIdx))
+				ratio := util.Ratio(float64(i), float64(lastValueIdx), float64(nextValueIdx))
 				interpolation := lastValueAvg + ratio*(nextValueAvg-lastValueAvg)
 				pointValues = []float64{interpolation}
 			}

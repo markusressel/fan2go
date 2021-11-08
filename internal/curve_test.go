@@ -23,6 +23,22 @@ func createLinearCurveConfig(
 	}
 }
 
+// helper function to create a linear curve configuration with steps
+func createLinearCurveConfigWithSteps(
+	id string,
+	sensorId string,
+	steps map[int]int,
+) CurveConfig {
+	return CurveConfig{
+		Id:   id,
+		Type: LinearCurveType,
+		Params: map[string]interface{}{
+			"Sensor": sensorId,
+			"Steps":  steps,
+		},
+	}
+}
+
 // helper function to create a function curve configuration
 func createFunctionCurveConfig(
 	id string,
@@ -39,7 +55,7 @@ func createFunctionCurveConfig(
 	}
 }
 
-func TestLinearCurve(t *testing.T) {
+func TestLinearCurveWithMinMax(t *testing.T) {
 	// GIVEN
 	avgTmp := 60000.0
 	sensor := Sensor{
@@ -71,6 +87,44 @@ func TestLinearCurve(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, 127, result)
+}
+
+func TestLinearCurveWithSteps(t *testing.T) {
+	// GIVEN
+	avgTmp := 60000.0
+	sensor := Sensor{
+		Name:  "sensor",
+		Label: "Test",
+		Index: 1,
+		Input: "test",
+		Config: &SensorConfig{
+			Id:       "sensor",
+			Platform: "platform",
+			Index:    1,
+		},
+		MovingAvg: avgTmp,
+	}
+	SensorMap[sensor.Config.Id] = &sensor
+
+	config := createLinearCurveConfigWithSteps(
+		"curve",
+		sensor.Config.Id,
+		map[int]int{
+			40: 0,
+			50: 30,
+			60: 100,
+			70: 255,
+		},
+	)
+
+	// WHEN
+	result, err := evaluateCurve(config)
+	if err != nil {
+		assert.Fail(t, err.Error())
+	}
+
+	// THEN
+	assert.Equal(t, 100, result)
 }
 
 func TestFunctionCurveAverage(t *testing.T) {
@@ -275,4 +329,30 @@ func TestFunctionCurveMaximum(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, 255, result)
+}
+
+func TestCalculateInterpolatedCurveValue(t *testing.T) {
+	// GIVEN
+	expectedInputOutput := map[float64]int{
+		-100.0: 0.0,
+		0:      0,
+		100.0:  100.0,
+		500.0:  500.0,
+		1000.0: 1000.0,
+		2000.0: 1000.0,
+	}
+	steps := map[int]int{
+		0:    0,
+		100:  100,
+		1000: 1000,
+	}
+	interpolationType := InterpolationTypeLinear
+
+	for input, output := range expectedInputOutput {
+		// WHEN
+		result := calculateInterpolatedCurveValue(steps, interpolationType, input)
+
+		// THEN
+		assert.Equal(t, output, result)
+	}
 }

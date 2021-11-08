@@ -25,3 +25,11 @@ func HexString(hex string) string {
 	}
 	return fmt.Sprintf("%X", value)
 }
+
+// Ratio calculates the ration that target has in comparison to rangeMin and rangeMax
+// Make sure that:
+// rangeMin <= target <= rangeMax
+// rangeMax - rangeMin != 0
+func Ratio(target float64, rangeMin float64, rangeMax float64) float64 {
+	return (target - rangeMin) / (rangeMax - rangeMin)
+}

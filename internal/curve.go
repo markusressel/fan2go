@@ -4,7 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 	"math"
+	"sort"
+)
+
+const (
+	InterpolationTypeLinear = "linear"
 )
 
 var UnknownCurveType = errors.New("unknown curve type")
@@ -44,24 +50,71 @@ func evaluateCurve(curve CurveConfig) (value int, err error) {
 
 func evaluateLinearCurve(config LinearCurveConfig) (value int, err error) {
 	sensor := SensorMap[config.Sensor]
-
-	minTemp := float64(config.MinTemp) * 1000 // degree to milli-degree
-	maxTemp := float64(config.MaxTemp) * 1000
-
 	var avgTemp = sensor.MovingAvg
 
-	if avgTemp >= maxTemp {
-		// full throttle if max temp is reached
-		value = 255
-	} else if avgTemp <= minTemp {
-		// turn fan off if at/below min temp
-		value = 0
+	steps := config.Steps
+	if steps != nil {
+		value = calculateInterpolatedCurveValue(steps, InterpolationTypeLinear, avgTemp/1000)
 	} else {
-		ratio := (avgTemp - minTemp) / (maxTemp - minTemp)
-		value = int(ratio * 255)
+		minTemp := float64(config.MinTemp) * 1000 // degree to milli-degree
+		maxTemp := float64(config.MaxTemp) * 1000
+
+		if avgTemp >= maxTemp {
+			// full throttle if max temp is reached
+			value = 255
+		} else if avgTemp <= minTemp {
+			// turn fan off if at/below min temp
+			value = 0
+		} else {
+			ratio := (avgTemp - minTemp) / (maxTemp - minTemp)
+			value = int(ratio * 255)
+		}
 	}
 
 	return value, nil
+}
+
+// Creates an interpolated function from the given map of x-values -> y-values
+// as specified by the interpolationType and returns the y-value for the given input
+func calculateInterpolatedCurveValue(steps map[int]int, interpolationType string, input float64) int {
+	xValues := make([]int, 0, len(steps))
+	for x, _ := range steps {
+		xValues = append(xValues, int(x))
+	}
+	// sort them increasing
+	sort.Ints(xValues)
+
+	// find value closest to input
+	for i := 0; i < len(xValues)-1; i++ {
+		currentX := xValues[i]
+		nextX := xValues[i+1]
+
+		if input <= float64(currentX) && i == 0 {
+			// input is below the smallest given step, so
+			// we fall back to the value of the smallest step
+			return steps[currentX]
+		}
+
+		if input >= float64(nextX) {
+			continue
+		}
+
+		if input == float64(currentX) {
+			return steps[currentX]
+		} else {
+			// input is somewhere in between currentX and nextX
+			currentY := float64(steps[currentX])
+			nextY := float64(steps[nextX])
+
+			ratio := util.Ratio(input, float64(currentX), float64(nextX))
+			interpolation := currentY + ratio*(nextY-currentY)
+			return int(math.Round(interpolation))
+		}
+	}
+
+	// input is above (or equal to) the largest given
+	// step, so we fall back to the value of the largest step
+	return steps[xValues[len(xValues)-1]]
 }
 
 func evaluateFunctionCurve(config FunctionCurveConfig) (value int, err error) {
