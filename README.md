@@ -92,79 +92,9 @@ Then configure fan2go by creating a YAML configuration file in **one** of the fo
 sudo mkdir /etc/fan2go
 ```
 
-```yaml
-# The path of the database file.
-dbPath: "/etc/fan2go/fan2go.db"
-# Allow the fan initialization sequence to run in parallel for all configured fans
-runFanInitializationInParallel: false
-# The rate to poll temperature sensors at.
-tempSensorPollingRate: 200ms
-# The number of sensor items to keep in a rolling window array.
-rollingWindowSize: 50
-# The rate to poll fan RPM input sensors at.
-rpmPollingRate: 1s
-# The rate to update fan speed targets at.
-controllerAdjustmentTickRate: 200ms
+#### Example
 
-# A list of sensors to monitor.
-sensors:
-  # A user defined ID, which is used to reference a
-  # a sensor in a fan configuration (see below)
-  - id: cpu_package
-    # The controller platform as displayed by `fan2go detect`, f.ex.:
-    # "nouveau", "coretemp" or "it8620" etc.
-    platform: coretemp
-    # The index of this sensor as displayed by `fan2go detect`.
-    index: 1
-    # The minimum target temp for this sensor.
-    # If the sensor falls below this value, all fans referencing it
-    # will run at minimum PWM value.
-    min: 50
-    # The maximum target temp for this sensor.
-    # If the sensor is above this value, all fans referencing it
-    # will run at maximum PWM value.
-    max: 75
-
-  - id: mainboard
-    platform: it8620
-    index: 3 # Intel PECI
-    min: 50
-    max: 80
-
-  - id: sata_ssd
-    platform: acpitz
-    index: 1
-    min: 30
-    max: 40
-
-# A list of fans to control.
-fans:
-  # An user defined ID.
-  # Used for logging only.
-  - id: in_front
-    # The platform of the controller which is
-    # connected to this fan (see sensor.platform above).
-    platform: it8620
-    # The index of this fan as displayed by `fan2go detect`.
-    fan: 3 # HDD Cage (Front)
-    # Indicates whether this fan is allowed to fully stop.
-    neverStop: no
-    # The sensor ID (defined above) that should be used to determine the
-    # speed of this fan.
-    sensor: sata_ssd
-
-  - id: in_bottom
-    platform: it8620
-    fan: 4 # Power Supply (Bottom)
-    neverStop: yes
-    sensor: mainboard
-
-  - id: in_top_double
-    platform: it8620
-    fan: 5 # Radiator (Top)
-    neverStop: yes
-    sensor: cpu_package
-```
+An example configuration file including documentation can be found in [fan2go.yaml](/fan2go.yaml).
 
 ### Run
 

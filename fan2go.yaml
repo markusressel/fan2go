@@ -2,8 +2,6 @@
 dbPath: "/etc/fan2go/fan2go.db"
 # Allow the fan initialization sequence to run in parallel for all configured fans
 runFanInitializationInParallel: false
-# Maximal RPM speed difference between 10 fan speed measurements to consider it "settled"
-maxRpmDiffForSettledFan: 10.0
 # The rate to poll temperature sensors at.
 tempSensorPollingRate: 200ms
 # The number of sensor items to keep in a rolling window array.
@@ -13,123 +11,103 @@ rpmPollingRate: 1s
 # The rate to update fan speed targets at.
 controllerAdjustmentTickRate: 200ms
 
+# A list of fans to control.
+fans:
+  # An user defined ID.
+  # Used for logging only.
+  - id: cpu
+    # The platform of the controller which is
+    # connected to this fan (see sensor.platform above).
+    platform: cpu
+    # The index of this fan as displayed by `sensors`.
+    fan: 1
+    # Indicates whether this fan is allowed to fully stop.
+    neverStop: yes
+    # The curve ID (defined above) that should be used to determine the
+    # speed of this fan.
+    curve: cpu_curve
+
+  - id: in_front
+    platform: it8620
+    fan: 4
+    neverStop: yes
+    curve: case_curve
+
+  - id: out_back
+    platform: it8620
+    fan: 5
+    neverStop: yes
+    curve: case_curve
+
 # A list of sensors to monitor.
 sensors:
-  # A user defined ID, which is used to reference a
-  # a sensor in a fan configuration (see below)
+  # A user defined ID, which is used to reference
+  # a sensor in a curve configuration (see below)
   - id: cpu_package
-    # The controller platform as displayed by `sensors`, f.ex.:
-    # If sensors displays a group with the title "nouveau-pci-0100",
-    # the platform would be "nouveau"
+    # The controller platform as displayed by `fan2go detect`, f.ex.:
+    # "nouveau", "coretemp" or "it8620" etc.
     platform: coretemp
-    # The index of this sensor as displayed by `sensors`.
+    # The index of this sensor as displayed by `fan2go detect`.
     index: 1
-
-  - id: gpu_core
-    platform: gpu
-    index: 1
+    # The minimum target temp for this sensor.
+    # If the sensor falls below this value, all fans referencing it
+    # will run at minimum PWM value.
+    min: 50
+    # The maximum target temp for this sensor.
+    # If the sensor is above this value, all fans referencing it
+    # will run at maximum PWM value.
+    max: 75
 
   - id: mainboard
     platform: it8620
     index: 3 # Intel PECI
+    min: 50
+    max: 80
 
   - id: sata_ssd
     platform: acpitz
     index: 1
+    min: 30
+    max: 40
 
-# TODO: not sure whether this is a good idea
-#  - id: combined_cpu_gpu
-#    platform: virtual
-#    type: avg
-#    sensors:
-#      - cpu_package
-#      - gpu_core
-
-
-# A list of temperature/speed curve definitions.
+# A list of control curves which can be utilized by fans
+# or other curves.
 curves:
-  # A simple linear curve with a minimum and maximum temperature value
   - id: cpu_curve
-    # The type of curve
     type: linear
     params:
-      # The sensor ID (defined above) to use as an input of this curve.
       sensor: cpu_package
-      # The minimum target temp in °C for this sensor.
-      # If the sensor falls below this value, a fan configured
-      # for it will run at minimum PWM value.
-      minTemp: 50
-      # The maximum target temp in °C for this sensor.
-      # If the sensor falls below this value, a fan configured
-      # for it will run at maximum PWM value.
-      maxTemp: 75
-
-  - id: case_curve
-    type: function
-    params:
-      function: average
-      curves:
-        - mainboard_curve
-        - sata_ssd_curve
+      steps:
+        - 40: 0
+        - 50: 30
+        - 80: 100
 
   - id: mainboard_curve
     type: linear
     params:
       sensor: mainboard
       minTemp: 40
-      maxTemp: 60
+      maxTemp: 70
 
-  - id: sata_ssd_curve
+  - id: ssd_curve
     type: linear
     params:
       sensor: sata_ssd
-      minTemp: 30
-      maxTemp: 40
+      minTemp: 40
+      maxTemp: 70
 
-  - id: gpu_curve
-    type: linear
+  - id: case_avg_curve
+    type: function
     params:
-      sensor: gpu_core
-      minTemp: 50
-      maxTemp: 80
+      function: average
+      curves:
+        - cpu_curve
+        - mainboard_curve
+        - ssd_curve
 
-
-# A list of fans to control.
-fans:
-  # An user defined ID.
-  # Used for logging only.
-  - id: in_front
-    # The platform of the controller which is
-    # connected to this fan (see sensor.platform above).
-    platform: it8620
-    # The index of this fan as displayed by `sensors`.
-    fan: 3 # HDD Cage (Front)
-    # Indicates whether this fan is allowed to fully stop.
-    neverStop: no
-    # The curve ID (defined above) that should be used to determine the
-    # speed of this fan.
-    curve: sata_ssd_curve
-
-  - id: in_bottom
-    platform: it8620
-    fan: 4 # Power Supply (Bottom)
-    neverStop: yes
-    curve: case_curve
-
-  - id: in_top_double
-    platform: it8620
-    fan: 5 # Radiator (Top)
-    neverStop: yes
-    curve: case_curve
-
-  - id: cpu
-    platform: cpu
-    fan: 1
-    neverStop: yes
-    curve: cpu_curve
-
-  - id: gpu
-    platform: gpu
-    fan: 1
-    neverStop: yes
-    curve: gpu_curve
+#  - id: gpu_curve
+#    type: linear
+#    params:
+#      sensors: gpu_core
+#      minTemp: 50
+#      maxTemp: 80
