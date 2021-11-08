@@ -71,8 +71,10 @@ func Run(verbose bool) {
 					continue
 				}
 
+				sensorId := s.GetConfig().Id
+
 				g.Add(func() error {
-					return sensorMonitor(ctx, s, tempTick)
+					return sensorMonitor(ctx, sensorId, tempTick)
 				}, func(err error) {
 					ui.Fatal("Error monitoring sensor: %v", err)
 				})
@@ -163,13 +165,13 @@ func rpmMonitor(ctx context.Context, fan *Fan, tick <-chan time.Time) error {
 	}
 }
 
-func sensorMonitor(ctx context.Context, sensor Sensor, tick <-chan time.Time) error {
+func sensorMonitor(ctx context.Context, sensorId string, tick <-chan time.Time) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-tick:
-			err := updateSensor(sensor)
+			err := updateSensor(sensorId)
 			if err != nil {
 				ui.Fatal("%v", err)
 			}
@@ -284,16 +286,18 @@ func GetPwmBoundaries(fan *Fan) (startPwm int, maxPwm int) {
 }
 
 // read the current value of a sensors and append it to the moving window
-func updateSensor(sensor Sensor) (err error) {
-	value, err := sensor.GetValue()
+func updateSensor(sensorId string) (err error) {
+	s := SensorMap[sensorId]
+
+	value, err := s.GetValue()
 	if err != nil {
 		return err
 	}
 
 	var n = configuration.CurrentConfig.TempRollingWindowSize
-	// TODO: find a better place to store the sensors average
-	avg := updateSimpleMovingAvg(sensor.GetMovingAvg(), n, value)
-	sensor.SetMovingAvg(avg)
+	lastAvg := s.GetMovingAvg()
+	newAvg := updateSimpleMovingAvg(lastAvg, n, value)
+	s.SetMovingAvg(newAvg)
 
 	return nil
 }
@@ -636,14 +640,13 @@ func createSensors(devicePath string) (result []Sensor) {
 			ui.Fatal("%v", err)
 		}
 
-		// NOTE: it is crucial to append pointers here,
-		//   otherwise changes to struct values are not permanent!
-		result = append(result, &sensors.HwmonSensor{
+		sensor := &sensors.HwmonSensor{
 			Name:  file,
 			Label: label,
 			Index: index,
 			Input: input,
-		})
+		}
+		result = append(result, sensor)
 	}
 
 	return result
