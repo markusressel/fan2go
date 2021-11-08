@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/internal"
+	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/mgutz/ansi"
@@ -34,7 +35,7 @@ on your computer based on temperature sensors.`,
 		setupUi()
 		printHeader()
 
-		internal.ReadConfigFile()
+		configuration.ReadConfigFile()
 		internal.Run(verbose)
 	},
 }
@@ -44,7 +45,7 @@ var detectCmd = &cobra.Command{
 	Short: "Detect devices",
 	Long:  `Detects all fans and sensors and prints them as a list`,
 	Run: func(cmd *cobra.Command, args []string) {
-		internal.LoadConfig()
+		configuration.LoadConfig()
 
 		controllers, err := internal.FindControllers()
 		if err != nil {
@@ -128,8 +129,8 @@ var curveCmd = &cobra.Command{
 	Short: "Print the measured fan curve(s) to console",
 	//Long:  `All software has versions. This is fan2go's`,
 	Run: func(cmd *cobra.Command, args []string) {
-		internal.ReadConfigFile()
-		db := internal.OpenPersistence(internal.CurrentConfig.DbPath)
+		configuration.ReadConfigFile()
+		db := internal.OpenPersistence(configuration.CurrentConfig.DbPath)
 		defer db.Close()
 
 		controllers, err := internal.FindControllers()
@@ -240,7 +241,7 @@ func printHeader() {
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	cobra.OnInitialize(func() {
-		internal.InitConfig(cfgFile)
+		configuration.InitConfig(cfgFile)
 	})
 
 	rootCmd.AddCommand(detectCmd)

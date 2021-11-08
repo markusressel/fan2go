@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/asecurityteam/rolling"
+	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
@@ -31,8 +33,8 @@ const (
 
 var (
 	InitializationSequenceMutex sync.Mutex
-	SensorMap                   = map[string]*Sensor{}
-	CurveMap                    = map[string]*CurveConfig{}
+	SensorMap                   = map[string]Sensor{}
+	CurveMap                    = map[string]*configuration.CurveConfig{}
 	Verbose                     bool
 )
 
@@ -42,7 +44,7 @@ func Run(verbose bool) {
 		ui.Fatal("Fan control requires root permissions to be able to modify fan speeds, please run fan2go as root")
 	}
 
-	db := OpenPersistence(CurrentConfig.DbPath)
+	db := OpenPersistence(configuration.CurrentConfig.DbPath)
 	defer db.Close()
 
 	controllers, err := FindControllers()
@@ -50,7 +52,7 @@ func Run(verbose bool) {
 		ui.Fatal("Error detecting devices: %s", err.Error())
 	}
 	mapConfigToControllers(controllers)
-	for _, curveConfig := range CurrentConfig.Curves {
+	for _, curveConfig := range configuration.CurrentConfig.Curves {
 		var config = curveConfig
 		CurveMap[curveConfig.Id] = &config
 	}
@@ -60,18 +62,17 @@ func Run(verbose bool) {
 	var g run.Group
 	{
 		// === sensor monitoring
-		tempTick := time.Tick(CurrentConfig.TempSensorPollingRate)
+		tempTick := time.Tick(configuration.CurrentConfig.TempSensorPollingRate)
 
 		for _, controller := range controllers {
 			for _, s := range controller.Sensors {
-				sensor := s
-				if sensor.Config == nil {
-					ui.Info("Ignoring unconfigured sensor %s/%s", controller.Name, sensor.Name)
+				if s.GetConfig() == nil {
+					ui.Info("Ignoring unconfigured sensor %s/%s", controller.Name, s.GetLabel())
 					continue
 				}
 
 				g.Add(func() error {
-					return sensorMonitor(ctx, sensor, tempTick)
+					return sensorMonitor(ctx, s, tempTick)
 				}, func(err error) {
 					// nothing to do here
 				})
@@ -91,7 +92,7 @@ func Run(verbose bool) {
 				}
 
 				g.Add(func() error {
-					rpmTick := time.Tick(CurrentConfig.RpmPollingRate)
+					rpmTick := time.Tick(configuration.CurrentConfig.RpmPollingRate)
 					return rpmMonitor(ctx, fan, rpmTick)
 				}, func(err error) {
 					// nothing to do here
@@ -100,9 +101,9 @@ func Run(verbose bool) {
 				g.Add(func() error {
 					ui.Info("Gathering sensor data for %s...", fan.Config.Id)
 					// wait a bit to gather monitoring data
-					time.Sleep(2*time.Second + CurrentConfig.TempSensorPollingRate*2)
+					time.Sleep(2*time.Second + configuration.CurrentConfig.TempSensorPollingRate*2)
 
-					tick := time.Tick(CurrentConfig.ControllerAdjustmentTickRate)
+					tick := time.Tick(configuration.CurrentConfig.ControllerAdjustmentTickRate)
 					return fanController(ctx, db, fan, tick)
 				}, func(err error) {
 					if err != nil {
@@ -162,7 +163,7 @@ func rpmMonitor(ctx context.Context, fan *Fan, tick <-chan time.Time) error {
 	}
 }
 
-func sensorMonitor(ctx context.Context, sensor *Sensor, tick <-chan time.Time) error {
+func sensorMonitor(ctx context.Context, sensor Sensor, tick <-chan time.Time) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -199,24 +200,24 @@ func mapConfigToControllers(controllers []*Controller) {
 			}
 		}
 		// match sensor and sensor config entries
-		for _, sensor := range controller.Sensors {
-			sensorConfig := findSensorConfig(controller, sensor)
+		for _, s := range controller.Sensors {
+			sensorConfig := findSensorConfig(controller, s)
 			if sensorConfig != nil {
 				if Verbose {
-					ui.Debug("Mapping sensor config %s to %s", sensorConfig.Id, sensor.Input)
+					ui.Debug("Mapping sensor config %s to %s", sensorConfig.Id, s.Input)
 				}
 
-				sensor.Config = sensorConfig
+				s.SetConfig(sensorConfig)
 
 				// remember ID -> Sensor association for later
-				SensorMap[sensorConfig.Id] = sensor
+				SensorMap[sensorConfig.Id] = s
 
 				// initialize arrays for storing temps
-				currentValue, err := util.ReadIntFromFile(sensor.Input)
+				currentValue, err := util.ReadIntFromFile(s.Input)
 				if err != nil {
 					ui.Fatal("Error reading sensor %s: %s", sensorConfig.Id, err.Error())
 				}
-				sensor.MovingAvg = float64(currentValue)
+				s.MovingAvg = float64(currentValue)
 			}
 		}
 	}
@@ -231,13 +232,13 @@ func measureRpm(fan *Fan) {
 		ui.Debug("Measured RPM of %d at PWM %d for fan %s", rpm, pwm, fan.Config.Id)
 	}
 
-	fan.RpmMovingAvg = updateSimpleMovingAvg(fan.RpmMovingAvg, CurrentConfig.RpmRollingWindowSize, float64(rpm))
+	fan.RpmMovingAvg = updateSimpleMovingAvg(fan.RpmMovingAvg, configuration.CurrentConfig.RpmRollingWindowSize, float64(rpm))
 
 	pwmRpmMap := fan.FanCurveData
 	pointWindow, exists := (*pwmRpmMap)[pwm]
 	if !exists {
 		// create rolling window for current pwm value
-		pointWindow = createRollingWindow(CurrentConfig.RpmRollingWindowSize)
+		pointWindow = createRollingWindow(configuration.CurrentConfig.RpmRollingWindowSize)
 		(*pwmRpmMap)[pwm] = pointWindow
 	}
 	pointWindow.Append(float64(rpm))
@@ -282,15 +283,16 @@ func GetPwmBoundaries(fan *Fan) (startPwm int, maxPwm int) {
 	return startPwm, maxPwm
 }
 
-// read the current value of a sensor and append it to the moving window
-func updateSensor(sensor *Sensor) (err error) {
-	value, err := util.ReadIntFromFile(sensor.Input)
+// read the current value of a sensors and append it to the moving window
+func updateSensor(sensor Sensor) (err error) {
+	value, err := sensor.GetValue()
 	if err != nil {
 		return err
 	}
 
-	var n = CurrentConfig.TempRollingWindowSize
-	sensor.MovingAvg = updateSimpleMovingAvg(sensor.MovingAvg, n, float64(value))
+	var n = configuration.CurrentConfig.TempRollingWindowSize
+	// TODO: find a better place to store the sensors average
+	sensor.SetMovingAvg(updateSimpleMovingAvg(sensor.GetMovingAvg(), n, value))
 
 	return nil
 }
@@ -372,7 +374,7 @@ func AttachFanCurveData(curveData *map[int][]float64, fan *Fan) (err error) {
 	var nextValueIdx int
 	var nextValueAvg float64
 	for i := 0; i <= limit; i++ {
-		fanCurveMovingWindow := createRollingWindow(CurrentConfig.RpmRollingWindowSize)
+		fanCurveMovingWindow := createRollingWindow(configuration.CurrentConfig.RpmRollingWindowSize)
 
 		pointValues, containsKey := (*curveData)[i]
 		if containsKey && len(pointValues) > 0 {
@@ -405,7 +407,7 @@ func AttachFanCurveData(curveData *map[int][]float64, fan *Fan) (err error) {
 		}
 
 		var currentAvg float64
-		for k := 0; k < CurrentConfig.RpmRollingWindowSize; k++ {
+		for k := 0; k < configuration.CurrentConfig.RpmRollingWindowSize; k++ {
 			var rpm float64
 
 			if k < len(pointValues) {
@@ -447,7 +449,7 @@ func trySetManualPwm(fan *Fan) (err error) {
 // runs an initialization sequence for the given fan
 // to determine an estimation of its fan curve
 func runInitializationSequence(db *bolt.DB, fan *Fan) (err error) {
-	if CurrentConfig.RunFanInitializationInParallel == false {
+	if configuration.CurrentConfig.RunFanInitializationInParallel == false {
 		InitializationSequenceMutex.Lock()
 		defer InitializationSequenceMutex.Unlock()
 	}
@@ -468,7 +470,7 @@ func runInitializationSequence(db *bolt.DB, fan *Fan) (err error) {
 
 		if pwm == 0 {
 			// TODO: this "waiting" logic could also be applied to the other measurements
-			diffThreshold := CurrentConfig.MaxRpmDiffForSettledFan
+			diffThreshold := configuration.CurrentConfig.MaxRpmDiffForSettledFan
 
 			measuredRpmDiffWindow := createRollingWindow(10)
 			fillWindow(measuredRpmDiffWindow, 10, 2*diffThreshold)
@@ -496,7 +498,7 @@ func runInitializationSequence(db *bolt.DB, fan *Fan) (err error) {
 		// so we try what values work and save them for later
 
 		ui.Debug("Measuring RPM of %s (%s, %s) at PWM: %d", fan.Config.Id, fan.Label, fan.Name, pwm)
-		for i := 0; i < CurrentConfig.RpmRollingWindowSize; i++ {
+		for i := 0; i < configuration.CurrentConfig.RpmRollingWindowSize; i++ {
 			// update rpm curve
 			measureRpm(fan)
 		}
@@ -510,8 +512,8 @@ func runInitializationSequence(db *bolt.DB, fan *Fan) (err error) {
 	return err
 }
 
-func findFanConfig(controller *Controller, fan *Fan) (fanConfig *FanConfig) {
-	for _, fanConfig := range CurrentConfig.Fans {
+func findFanConfig(controller *Controller, fan *Fan) (fanConfig *configuration.FanConfig) {
+	for _, fanConfig := range configuration.CurrentConfig.Fans {
 		if controller.Platform == fanConfig.Platform &&
 			fan.Index == fanConfig.Fan {
 			return &fanConfig
@@ -520,8 +522,8 @@ func findFanConfig(controller *Controller, fan *Fan) (fanConfig *FanConfig) {
 	return nil
 }
 
-func findSensorConfig(controller *Controller, sensor *Sensor) (sensorConfig *SensorConfig) {
-	for _, sensorConfig := range CurrentConfig.Sensors {
+func findSensorConfig(controller *Controller, sensor sensors.HwmonSensor) (sensorConfig *configuration.SensorConfig) {
+	for _, sensorConfig := range configuration.CurrentConfig.Sensors {
 		if controller.Platform == sensorConfig.Platform &&
 			sensor.Index == sensorConfig.Index {
 			return &sensorConfig
@@ -558,9 +560,9 @@ func FindControllers() (controllers []*Controller, err error) {
 		}
 
 		fans := createFans(devicePath)
-		sensors := createSensors(devicePath)
+		sensorList := createSensors(devicePath)
 
-		if len(fans) <= 0 && len(sensors) <= 0 {
+		if len(fans) <= 0 && len(sensorList) <= 0 {
 			continue
 		}
 
@@ -571,7 +573,7 @@ func FindControllers() (controllers []*Controller, err error) {
 			Platform: platform,
 			Path:     devicePath,
 			Fans:     fans,
-			Sensors:  sensors,
+			Sensors:  sensorList,
 		}
 		controllers = append(controllers, &controller)
 	}
@@ -621,7 +623,7 @@ func createFans(devicePath string) (fans []*Fan) {
 }
 
 // creates sensor objects for the given device path
-func createSensors(devicePath string) (sensors []*Sensor) {
+func createSensors(devicePath string) (result []sensors.HwmonSensor) {
 	inputs := util.FindFilesMatching(devicePath, "^temp[1-9]_input$")
 
 	for _, input := range inputs {
@@ -633,7 +635,7 @@ func createSensors(devicePath string) (sensors []*Sensor) {
 			ui.Fatal("%v", err)
 		}
 
-		sensors = append(sensors, &Sensor{
+		result = append(result, sensors.HwmonSensor{
 			Name:  file,
 			Label: label,
 			Index: index,
@@ -641,7 +643,7 @@ func createSensors(devicePath string) (sensors []*Sensor) {
 		})
 	}
 
-	return sensors
+	return result
 }
 
 // IsPwmAuto checks if the given output is in auto mode

@@ -2,6 +2,8 @@ package internal
 
 import (
 	"github.com/asecurityteam/rolling"
+	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -37,10 +39,10 @@ var (
 )
 
 func createFan(neverStop bool, curveData map[int][]float64) (fan *Fan, err error) {
-	CurrentConfig.RpmRollingWindowSize = 10
+	configuration.CurrentConfig.RpmRollingWindowSize = 10
 
 	fan = &Fan{
-		Config: &FanConfig{
+		Config: &configuration.FanConfig{
 			Id:        "fan1",
 			Platform:  "platform",
 			Fan:       1,
@@ -108,22 +110,23 @@ func TestCappedNeverStoppingFan(t *testing.T) {
 func TestCalculateTargetSpeedLinear(t *testing.T) {
 	// GIVEN
 	avgTmp := 50000.0
-	SensorMap["sensor"] = &Sensor{
-		Config: &SensorConfig{
+	s := sensors.HwmonSensor{
+		Config: &configuration.SensorConfig{
 			Id:       "sensor",
 			Platform: "platform",
 			Index:    0,
 		},
 		MovingAvg: avgTmp,
 	}
+	SensorMap[s.Config.Id] = &s
 
 	curveConfig := createLinearCurveConfig(
 		"curve",
-		"sensor",
+		s.Config.Id,
 		40,
 		60,
 	)
-	CurveMap["curve"] = &curveConfig
+	CurveMap[curveConfig.Id] = &curveConfig
 
 	fan, _ := createFan(false, linearFan)
 
@@ -141,22 +144,23 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	// GIVEN
 	avgTmp := 40000.0
 
-	SensorMap["sensor"] = &Sensor{
-		Config: &SensorConfig{
+	s := sensors.HwmonSensor{
+		Config: &configuration.SensorConfig{
 			Id:       "sensor",
 			Platform: "platform",
 			Index:    0,
 		},
 		MovingAvg: avgTmp,
 	}
+	SensorMap[s.Config.Id] = &s
 
 	curveConfig := createLinearCurveConfig(
 		"curve",
-		"sensor",
+		s.Config.Id,
 		40,
 		60,
 	)
-	CurveMap["curve"] = &curveConfig
+	CurveMap[curveConfig.Id] = &curveConfig
 
 	fan, _ := createFan(true, cappedFan)
 

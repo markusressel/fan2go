@@ -3,6 +3,7 @@ package internal
 import (
 	"encoding/json"
 	"errors"
+	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"math"
@@ -17,47 +18,47 @@ var UnknownCurveType = errors.New("unknown curve type")
 
 // Calculates the current value of the given curve
 // returns a value in [0..255]
-func evaluateCurve(curve CurveConfig) (value int, err error) {
+func evaluateCurve(curve configuration.CurveConfig) (value int, err error) {
 	// TODO: implement response delay
 	// TODO: implement some kind of "rapid increase" when the upper
 	//  limit temperature limit is reached
 
 	// this manual marshalling isn't pretty, but afaik viper
-	// doesn't have a built-in mechanism to parse config subtrees based on application logic
+	// doesn't have a built-in mechanism to parse configuration subtrees based on application logic
 	marshalled, err := json.Marshal(curve.Params)
 	if err != nil {
 		ui.Error("Couldn't marshal curve configuration: %v", err)
 	}
 
-	if curve.Type == LinearCurveType {
-		config := LinearCurveConfig{}
-		if err := json.Unmarshal(marshalled, &config); err != nil {
+	if curve.Type == configuration.LinearCurveType {
+		c := configuration.LinearCurveConfig{}
+		if err := json.Unmarshal(marshalled, &c); err != nil {
+			ui.Fatal("Couldn't unmarshal curve configuration: %v", err)
+		}
+
+		return evaluateLinearCurve(c)
+	} else if curve.Type == configuration.FunctionCurveType {
+		c := configuration.FunctionCurveConfig{}
+		if err := json.Unmarshal(marshalled, &c); err != nil {
 			ui.Error("Couldn't unmarshal curve configuration: %v", err)
 		}
 
-		return evaluateLinearCurve(config)
-	} else if curve.Type == FunctionCurveType {
-		config := FunctionCurveConfig{}
-		if err := json.Unmarshal(marshalled, &config); err != nil {
-			ui.Error("Couldn't unmarshal curve configuration: %v", err)
-		}
-
-		return evaluateFunctionCurve(config)
+		return evaluateFunctionCurve(c)
 	}
 
 	return 0, UnknownCurveType
 }
 
-func evaluateLinearCurve(config LinearCurveConfig) (value int, err error) {
-	sensor := SensorMap[config.Sensor]
-	var avgTemp = sensor.MovingAvg
+func evaluateLinearCurve(c configuration.LinearCurveConfig) (value int, err error) {
+	sensor := SensorMap[c.Sensor]
+	var avgTemp = sensor.GetMovingAvg()
 
-	steps := config.Steps
+	steps := c.Steps
 	if steps != nil {
 		value = calculateInterpolatedCurveValue(steps, InterpolationTypeLinear, avgTemp/1000)
 	} else {
-		minTemp := float64(config.MinTemp) * 1000 // degree to milli-degree
-		maxTemp := float64(config.MaxTemp) * 1000
+		minTemp := float64(c.MinTemp) * 1000 // degree to milli-degree
+		maxTemp := float64(c.MaxTemp) * 1000
 
 		if avgTemp >= maxTemp {
 			// full throttle if max temp is reached
@@ -117,13 +118,13 @@ func calculateInterpolatedCurveValue(steps map[int]int, interpolationType string
 	return steps[xValues[len(xValues)-1]]
 }
 
-func evaluateFunctionCurve(config FunctionCurveConfig) (value int, err error) {
-	var curves []CurveConfig
-	for _, curveId := range config.Curves {
+func evaluateFunctionCurve(c configuration.FunctionCurveConfig) (value int, err error) {
+	var curves []configuration.CurveConfig
+	for _, curveId := range c.Curves {
 		curves = append(curves, *CurveMap[curveId])
 	}
 
-	if config.Function == FunctionMinimum {
+	if c.Function == configuration.FunctionMinimum {
 		var min int
 		for _, curve := range curves {
 			v, err := evaluateCurve(curve)
@@ -134,7 +135,7 @@ func evaluateFunctionCurve(config FunctionCurveConfig) (value int, err error) {
 			min = int(math.Min(float64(min), float64(v)))
 		}
 		value = min
-	} else if config.Function == FunctionMaximum {
+	} else if c.Function == configuration.FunctionMaximum {
 		var max int
 		for _, curve := range curves {
 			v, err := evaluateCurve(curve)
@@ -145,7 +146,7 @@ func evaluateFunctionCurve(config FunctionCurveConfig) (value int, err error) {
 			max = int(math.Max(float64(max), float64(v)))
 		}
 		value = max
-	} else if config.Function == FunctionAverage {
+	} else if c.Function == configuration.FunctionAverage {
 		var total = 0
 		for _, curve := range curves {
 			v, err := evaluateCurve(curve)
@@ -157,7 +158,7 @@ func evaluateFunctionCurve(config FunctionCurveConfig) (value int, err error) {
 		}
 		value = total / len(curves)
 	} else {
-		ui.Fatal("Unknown curve function: %s", config.Function)
+		ui.Fatal("Unknown curve function: %s", c.Function)
 	}
 
 	return value, err
