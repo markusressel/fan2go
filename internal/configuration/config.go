@@ -9,17 +9,22 @@ import (
 )
 
 type Configuration struct {
-	DbPath                         string         `json:"dbPath"`
-	RunFanInitializationInParallel bool           `json:"runFanInitializationInParallel"`
-	TempSensorPollingRate          time.Duration  `json:"tempSensorPollingRate"`
-	RpmPollingRate                 time.Duration  `json:"rpmPollingRate"`
-	ControllerAdjustmentTickRate   time.Duration  `json:"controllerAdjustmentTickRate"`
-	TempRollingWindowSize          int            `json:"tempRollingWindowSize"`
-	RpmRollingWindowSize           int            `json:"rpmRollingWindowSize"`
-	Sensors                        []SensorConfig `json:"sensors"`
-	Curves                         []CurveConfig  `json:"curves"`
-	Fans                           []FanConfig    `json:"fans"`
-	MaxRpmDiffForSettledFan        float64        `json:"maxRpmDiffForSettledFan"`
+	DbPath string `json:"dbPath"`
+
+	RunFanInitializationInParallel bool    `json:"runFanInitializationInParallel"`
+	MaxRpmDiffForSettledFan        float64 `json:"maxRpmDiffForSettledFan"`
+
+	TempSensorPollingRate time.Duration `json:"tempSensorPollingRate"`
+	TempRollingWindowSize int           `json:"tempRollingWindowSize"`
+
+	RpmPollingRate       time.Duration `json:"rpmPollingRate"`
+	RpmRollingWindowSize int           `json:"rpmRollingWindowSize"`
+
+	ControllerAdjustmentTickRate time.Duration `json:"controllerAdjustmentTickRate"`
+
+	Fans    []FanConfig    `json:"fans"`
+	Sensors []SensorConfig `json:"sensors"`
+	Curves  []CurveConfig  `json:"curves"`
 }
 
 type SensorConfig struct {

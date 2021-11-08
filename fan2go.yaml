@@ -1,13 +1,22 @@
 # The path of the database file.
 dbPath: "/etc/fan2go/fan2go.db"
+
 # Allow the fan initialization sequence to run in parallel for all configured fans
 runFanInitializationInParallel: false
+# The maximum difference between consecutive RPM measurements to
+# consider a fan speed "settled"
+maxRpmDiffForSettledFan: 10
+
 # The rate to poll temperature sensors at.
 tempSensorPollingRate: 200ms
-# The number of sensor items to keep in a rolling window array.
-rollingWindowSize: 50
+# The number of temp sensor values to keep in a rolling window array.
+tempRollingWindowSize: 10
+
 # The rate to poll fan RPM input sensors at.
 rpmPollingRate: 1s
+# The number of rpm sensor values to keep in a rolling window array.
+rpmRollingWindowSize: 10
+
 # The rate to update fan speed targets at.
 controllerAdjustmentTickRate: 200ms
 
