@@ -18,9 +18,9 @@ func createLinearCurveConfig(
 		Id:   id,
 		Type: configuration.LinearCurveType,
 		Params: map[string]interface{}{
-			"Sensor":  sensorId,
-			"MinTemp": minTemp,
-			"MaxTemp": maxTemp,
+			"Sensor": sensorId,
+			"Min":    minTemp,
+			"Max":    maxTemp,
 		},
 	}
 }

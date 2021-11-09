@@ -57,8 +57,8 @@ func evaluateLinearCurve(c configuration.LinearCurveConfig) (value int, err erro
 	if steps != nil {
 		value = calculateInterpolatedCurveValue(steps, InterpolationTypeLinear, avgTemp/1000)
 	} else {
-		minTemp := float64(c.MinTemp) * 1000 // degree to milli-degree
-		maxTemp := float64(c.MaxTemp) * 1000
+		minTemp := float64(c.Min) * 1000 // degree to milli-degree
+		maxTemp := float64(c.Max) * 1000
 
 		if avgTemp >= maxTemp {
 			// full throttle if max temp is reached

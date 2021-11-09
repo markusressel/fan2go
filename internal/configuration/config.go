@@ -27,20 +27,6 @@ type Configuration struct {
 	Curves  []CurveConfig  `json:"curves"`
 }
 
-type SensorConfig struct {
-	Id       string `json:"id"`
-	Platform string `json:"platform"`
-	Index    int    `json:"index"`
-}
-
-type FanConfig struct {
-	Id        string `json:"id"`
-	Platform  string `json:"platform"`
-	Fan       int    `json:"fan"`
-	NeverStop bool   `json:"neverstop"`
-	Curve     string `json:"curve"`
-}
-
 var CurrentConfig Configuration
 
 // InitConfig reads in config file and ENV variables if set.
