@@ -1,4 +1,4 @@
-# The path of the database file.
+# The path of the database file
 dbPath: "/etc/fan2go/fan2go.db"
 
 # Allow the fan initialization sequence to run in parallel for all configured fans
@@ -7,77 +7,94 @@ runFanInitializationInParallel: false
 # consider a fan speed "settled"
 maxRpmDiffForSettledFan: 10
 
-# The rate to poll temperature sensors at.
+# The rate to poll temperature sensors at
 tempSensorPollingRate: 200ms
-# The number of temp sensor values to keep in a rolling window array.
+# The number of temp sensor values to keep in a rolling window array
 tempRollingWindowSize: 10
 
-# The rate to poll fan RPM input sensors at.
+# The rate to poll fan RPM input sensors at
 rpmPollingRate: 1s
-# The number of rpm sensor values to keep in a rolling window array.
+# The number of rpm sensor values to keep in a rolling window array
 rpmRollingWindowSize: 10
 
-# The rate to update fan speed targets at.
+# The rate to update fan speed targets at
 controllerAdjustmentTickRate: 200ms
 
-# A list of fans to control.
+# A list of fans to control
 fans:
   # An user defined ID.
-  # Used for logging only.
+  # Used for logging only
   - id: cpu
-    # The platform of the controller which is
-    # connected to this fan (see sensor.platform above).
-    platform: cpu
-    # The index of this fan as displayed by `sensors`.
-    fan: 1
-    # Indicates whether this fan is allowed to fully stop.
+    # The type of fan configuration
+    type: hwmon
+    params:
+      # The platform of the controller which is
+      # connected to this fan (see sensor.platform above)
+      platform: cpu
+      # The index of this fan as displayed by `sensors`
+      index: 1
+    # Indicates whether this fan should never stop rotating, regardless of
+    # how low the curve value is
     neverStop: yes
     # The curve ID (defined above) that should be used to determine the
-    # speed of this fan.
+    # speed of this fan
     curve: cpu_curve
 
   - id: in_front
-    platform: it8620
-    fan: 4
+    type: hwmon
+    params:
+      platform: it8620
+      index: 4
     neverStop: yes
     curve: case_avg_curve
 
   - id: out_back
-    platform: it8620
-    fan: 5
+    type: hwmon
+    params:
+      platform: it8620
+      index: 5
     neverStop: yes
     curve: case_avg_curve
 
-# A list of sensors to monitor.
+# A list of sensors to monitor
 sensors:
   # A user defined ID, which is used to reference
   # a sensor in a curve configuration (see below)
   - id: cpu_package
-    # The controller platform as displayed by `fan2go detect`, f.ex.:
-    # "nouveau", "coretemp" or "it8620" etc.
-    platform: coretemp
-    # The index of this sensor as displayed by `fan2go detect`.
-    index: 1
+    # The type of sensor configuration
+    type: hwmon
+    params:
+      # The controller platform as displayed by `fan2go detect`, f.ex.:
+      # "nouveau", "coretemp" or "it8620" etc.
+      platform: coretemp
+      # The index of this sensor as displayed by `fan2go detect`
+      index: 1
 
   - id: mainboard
-    platform: it8620
-    index: 3
+    type: hwmon
+    params:
+      platform: it8620
+      index: 3
 
   - id: sata_ssd
-    platform: acpitz
-    index: 1
+    type: hwmon
+    params:
+      platform: acpitz
+      index: 1
 
 # A list of control curves which can be utilized by fans
-# or other curves.
+# or other curves
 curves:
+  # A user defined ID, which is used to reference
+  # a curve in a fan configuration (see above)
   - id: cpu_curve
-    # The type of the curve.
+    # The type of curve configuration
     type: linear
-    # Parameters needed for the given curve type.
+    # Parameters needed for the given curve type
     params:
-      # The sensor ID to use as a temperature input.
+      # The sensor ID to use as a temperature input
       sensor: cpu_package
-      # Steps to define a section-wise defined speed curve function.
+      # Steps to define a section-wise defined speed curve function
       steps:
         # Sensor value -> Speed (in percent)
         - 40: 0
@@ -88,9 +105,9 @@ curves:
     type: linear
     params:
       sensor: mainboard
-      # Sensor input value at which the curve is at minimum speed.
+      # Sensor input value at which the curve is at minimum speed
       min: 40
-      # Sensor input value at which the curve is at maximum speed.
+      # Sensor input value at which the curve is at maximum speed
       max: 80
 
   - id: ssd_curve
@@ -103,9 +120,9 @@ curves:
   - id: case_avg_curve
     type: function
     params:
-      # Type of aggregation function to use, on of: minimum | maximum | average .
+      # Type of aggregation function to use, on of: minimum | maximum | average
       function: average
-      # A list of curve IDs to use.
+      # A list of curve IDs to use
       curves:
         - cpu_curve
         - mainboard_curve

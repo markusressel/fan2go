@@ -3,6 +3,7 @@ package internal
 import (
 	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -38,14 +39,17 @@ var (
 	}
 )
 
-func createFan(neverStop bool, curveData map[int][]float64) (fan *Fan, err error) {
+func createFan(neverStop bool, curveData map[int][]float64) (fan Fan, err error) {
 	configuration.CurrentConfig.RpmRollingWindowSize = 10
 
-	fan = &Fan{
+	fan = &fans.HwMonFan{
 		Config: &configuration.FanConfig{
-			Id:        "fan1",
-			Platform:  "platform",
-			Fan:       1,
+			Id:   "fan1",
+			Type: "hwmon",
+			Params: map[string]interface{}{
+				"platform": "platform",
+				"index":    1,
+			},
 			NeverStop: neverStop,
 			Curve:     "curve",
 		},
@@ -53,10 +57,29 @@ func createFan(neverStop bool, curveData map[int][]float64) (fan *Fan, err error
 		PwmOutput:    "fan1_output",
 		RpmInput:     "fan1_rpm",
 	}
+	FanMap[fan.GetConfig().Id] = fan
 
-	err = AttachFanCurveData(&curveData, fan)
+	err = AttachFanCurveData(&curveData, fan.GetConfig().Id)
 
 	return fan, err
+}
+
+func createSensor(
+	id string,
+	_type string,
+	params map[string]interface{},
+	avgTmp float64,
+) (sensor Sensor) {
+	sensor = &sensors.HwmonSensor{
+		Config: &configuration.SensorConfig{
+			Id:     id,
+			Type:   _type,
+			Params: params,
+		},
+		MovingAvg: avgTmp,
+	}
+	SensorMap[sensor.GetConfig().Id] = sensor
+	return sensor
 }
 
 func TestLinearFan(t *testing.T) {
@@ -110,19 +133,19 @@ func TestCappedNeverStoppingFan(t *testing.T) {
 func TestCalculateTargetSpeedLinear(t *testing.T) {
 	// GIVEN
 	avgTmp := 50000.0
-	s := sensors.HwmonSensor{
-		Config: &configuration.SensorConfig{
-			Id:       "sensor",
-			Platform: "platform",
-			Index:    0,
+	s := createSensor(
+		"sensor",
+		configuration.SensorTypeHwMon,
+		map[string]interface{}{
+			"platform": "platform",
+			"index":    0,
 		},
-		MovingAvg: avgTmp,
-	}
-	SensorMap[s.Config.Id] = &s
+		avgTmp,
+	)
 
 	curveConfig := createLinearCurveConfig(
 		"curve",
-		s.Config.Id,
+		s.GetConfig().Id,
 		40,
 		60,
 	)
@@ -144,19 +167,19 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	// GIVEN
 	avgTmp := 40000.0
 
-	s := sensors.HwmonSensor{
-		Config: &configuration.SensorConfig{
-			Id:       "sensor",
-			Platform: "platform",
-			Index:    0,
+	s := createSensor(
+		"sensor",
+		configuration.SensorTypeHwMon,
+		map[string]interface{}{
+			"platform": "platform",
+			"index":    0,
 		},
-		MovingAvg: avgTmp,
-	}
-	SensorMap[s.Config.Id] = &s
+		avgTmp,
+	)
 
 	curveConfig := createLinearCurveConfig(
 		"curve",
-		s.Config.Id,
+		s.GetConfig().Id,
 		40,
 		60,
 	)
@@ -173,6 +196,6 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, 0, optimal)
-	assert.Greater(t, fan.MinPwm, 0)
-	assert.Equal(t, fan.MinPwm, target)
+	assert.Greater(t, fan.GetMinPwm(), 0)
+	assert.Equal(t, fan.GetMinPwm(), target)
 }

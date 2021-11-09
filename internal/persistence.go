@@ -24,12 +24,12 @@ func OpenPersistence(dbPath string) *bolt.DB {
 }
 
 // SaveFanPwmData saves the fan curve data of the given fan to persistence
-func SaveFanPwmData(db *bolt.DB, fan *Fan) (err error) {
-	key := fan.PwmOutput
+func SaveFanPwmData(db *bolt.DB, fan Fan) (err error) {
+	key := fan.GetId()
 
 	// convert the curve data moving window to a map to arrays, so we can persist them
 	fanCurveDataMap := map[int][]float64{}
-	for key, value := range *fan.FanCurveData {
+	for key, value := range *fan.GetFanCurveData() {
 		var pwmValues []float64
 		value.Reduce(func(window rolling.Window) float64 {
 			pwmValues = append(pwmValues, window[0][0])
@@ -54,8 +54,8 @@ func SaveFanPwmData(db *bolt.DB, fan *Fan) (err error) {
 }
 
 // LoadFanPwmData loads the fan curve data from persistence
-func LoadFanPwmData(db *bolt.DB, fan *Fan) (map[int][]float64, error) {
-	key := fan.PwmOutput
+func LoadFanPwmData(db *bolt.DB, fan Fan) (map[int][]float64, error) {
+	key := fan.GetId()
 
 	fanCurveDataMap := map[int][]float64{}
 	err := db.Update(func(tx *bolt.Tx) error {

@@ -6,6 +6,7 @@ import (
 	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/mgutz/ansi"
@@ -73,11 +74,13 @@ var detectCmd = &cobra.Command{
 
 			var fanRows [][]string
 			for _, fan := range controller.Fans {
-				pwm := internal.GetPwm(fan)
-				rpm := internal.GetRpm(fan)
+				hwMonFan := fan.(*fans.HwMonFan)
+
+				pwm := fan.GetPwm()
+				rpm := fan.GetRpm()
 				isAuto, _ := internal.IsPwmAuto(controller.Path)
 				fanRows = append(fanRows, []string{
-					"", strconv.Itoa(fan.Index), fan.Label, fan.Name, strconv.Itoa(rpm), strconv.Itoa(pwm), fmt.Sprintf("%v", isAuto),
+					"", strconv.Itoa(hwMonFan.Index), hwMonFan.Label, hwMonFan.Name, strconv.Itoa(rpm), strconv.Itoa(pwm), fmt.Sprintf("%v", isAuto),
 				})
 			}
 			var fanHeaders = []string{"Fans   ", "Index", "Label", "Name", "RPM", "PWM", "Auto"}
@@ -148,7 +151,7 @@ var curveCmd = &cobra.Command{
 			for idx, fan := range controller.Fans {
 				pwmData, fanCurveErr := internal.LoadFanPwmData(db, fan)
 				if fanCurveErr == nil {
-					internal.AttachFanCurveData(&pwmData, fan)
+					internal.AttachFanCurveData(&pwmData, fan.GetConfig().Id)
 				}
 
 				if idx > 0 {
@@ -157,12 +160,12 @@ var curveCmd = &cobra.Command{
 				}
 
 				// print table
-				ui.Println(controller.Name + " -> " + fan.Name)
+				ui.Println(controller.Name + " -> " + fan.GetName())
 				tab := table.Table{
 					Headers: []string{"", ""},
 					Rows: [][]string{
-						{"Start PWM", strconv.Itoa(fan.MinPwm)},
-						{"Max PWM", strconv.Itoa(fan.MaxPwm)},
+						{"Start PWM", strconv.Itoa(fan.GetMinPwm())},
+						{"Max PWM", strconv.Itoa(fan.GetMaxPwm())},
 					},
 				}
 				var buf bytes.Buffer
