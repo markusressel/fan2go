@@ -35,9 +35,9 @@ fan2go -h
 
 Then configure fan2go by creating a YAML configuration file in **one** of the following locations:
 
-* `./fan2go.yaml`
 * `/etc/fan2go/fan2go.yaml` (recommended)
 * `/root/.fan2go/fan2go.yaml`
+* `./fan2go.yaml`
 
 ```shell
 sudo mkdir /etc/fan2go
