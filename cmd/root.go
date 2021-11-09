@@ -56,7 +56,7 @@ var detectCmd = &cobra.Command{
 		// === Print detected devices ===
 		tableConfig := &table.Config{
 			ShowIndex:       false,
-			Color:           true,
+			Color:           !noColor,
 			AlternateColors: true,
 			TitleColorCode:  ansi.ColorCode("white+buf"),
 			AltColorCodes: []string{
@@ -171,7 +171,7 @@ var curveCmd = &cobra.Command{
 				var buf bytes.Buffer
 				tableErr := tab.WriteTable(&buf, &table.Config{
 					ShowIndex:       false,
-					Color:           true,
+					Color:           !noColor,
 					AlternateColors: true,
 					TitleColorCode:  ansi.ColorCode("white+buf"),
 					AltColorCodes: []string{
