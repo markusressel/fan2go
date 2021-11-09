@@ -4,15 +4,15 @@ A daemon to control the fans of a computer.
 
 ![graph](screenshots/graph.png)
 
-## How to use
+# How to use
 
 fan2go relies on [lm-sensors](https://github.com/lm-sensors/lm-sensors) to get both temperature and RPM sensor readings,
 as well as PWM controls, so you will have
 to [set it up first](https://wiki.archlinux.org/index.php/Lm_sensors#Installation).
 
-### Installation
+## Installation
 
-#### AUR
+### AUR
 
 A third-party maintained AUR package has been created by [manvari](https://github.com/manvari).
 
@@ -20,7 +20,7 @@ A third-party maintained AUR package has been created by [manvari](https://githu
 yay -S fan2go-git
 ```
 
-#### Manual
+### Manual
 
 Download the latest release from GitHub:
 
@@ -31,7 +31,7 @@ sudo cp ./fan2go /usr/bin/fan2go
 fan2go -h
 ```
 
-### Configuration
+## Configuration
 
 Then configure fan2go by creating a YAML configuration file in **one** of the following locations:
 
@@ -46,7 +46,7 @@ sudo nano /etc/fan2go/fan2go.yaml
 
 The most important configuration options you need to define are the `fans:`, `sensors:` and `curves:` sections.
 
-#### Fans
+### Fans
 
 Under `fans:` you need to define a list of fan devices that you want to control using fan2go. To detect fans on your
 system run `fan2go detect`, which will print a list of devices exposed by the hwmon filesystem backend:
@@ -95,7 +95,7 @@ fans:
     curve: cpu_curve
 ```
 
-#### Sensors
+### Sensors
 
 Under `sensors:` you need to define a list of temperature sensor devices that you want to monitor and use to adjust
 fanspeeds. Like with fans, you can find usable devices using `fan2go detect`.
@@ -116,12 +116,12 @@ sensors:
       index: 1
 ```
 
-#### Curves
+### Curves
 
 Under `curves:` you need to define a list of fan speed curves, which represent the speed of a fan based on one or more
 temperature sensors.
 
-##### Linear
+#### Linear
 
 To create a simple, linear speed curve, use a curve of type `linear`.
 
@@ -162,7 +162,7 @@ curves:
         - 80: 100
 ```
 
-##### Function
+#### Function
 
 To create more complex curves you can combine exising curves using a curve of type `function`:
 
@@ -180,19 +180,19 @@ curves:
         - ssd_curve
 ```
 
-#### Example
+### Example
 
 An example configuration file including more detailed documentation can be found in [fan2go.yaml](/fan2go.yaml).
 
-### Run
+## Run
 
 ```shell
 sudo fan2go
 ```
 
-### As a Service
+## As a Service
 
-#### Systemd
+### Systemd
 
 When installing fan2go using a package, it comes with a [systemd unit file](./fan2go.service). To enable it simply run:
 
@@ -203,7 +203,7 @@ sudo systemctl enable --now fan2go
 journalctl -u fan2go -f
 ```
 
-### Print fan curve data
+## Print fan curve data
 
 For each newly configured fan **fan2go** measures its fan curve and stores it in a db for future reference. You can take
 a look at this measurement using the following command:
@@ -242,9 +242,9 @@ nct6798 -> pwm2
                                                     RPM / PWM
 ```
 
-## How it works
+# How it works
 
-### Device detection
+## Device detection
 
 fan2go scans the `/sys/class/hwmon` directory for hardware monitor paths. All of these paths are then scanned for
 
@@ -254,7 +254,7 @@ fan2go scans the `/sys/class/hwmon` directory for hardware monitor paths. All of
 
 files, which represent temperature sensors, RPM sensors and PWM outputs.
 
-### Initialization
+## Initialization
 
 When a fan is added to the configuration that fan2go has not seen before, its fan curve will first be analyzed before it
 is controlled properly. This means
@@ -268,13 +268,13 @@ fan is still running, as well as the highest PWM value that still yields a chang
 
 All of this is saved to a local database, so it is only needed once per fan configuration.
 
-### Monitoring
+## Monitoring
 
 To monitor changes in temperature sensor values, a goroutine is started which continuously reads the `tempX_input` files
 of all sensors specified in the config. Sensor values are stored as a moving average of size `rollingWindowSize` (
 see [configuration](#configuration)).
 
-### Fan Controllers
+## Fan Controllers
 
 To update the fan speed, one goroutine is started **per fan**, which continuously adjusts the PWM value of a given fan
 based on the sensor data measured by the monitor. This means:
