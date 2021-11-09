@@ -22,7 +22,7 @@ controllerAdjustmentTickRate: 200ms
 
 # A list of fans to control
 fans:
-  # An user defined ID.
+  # A user defined ID.
   # Used for logging only
   - id: cpu
     # The type of fan configuration

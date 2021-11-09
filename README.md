@@ -71,10 +71,50 @@ amdgpu-pci-0031
            3       mem        temp3_input   56000  
 ```
 
+To use detected devices in your configuration, use the `hwmon` fan type:
+
+```yaml
+# A list of fans to control
+fans:
+  # A user defined ID.
+  # Used for logging only
+  - id: cpu
+    # The type of fan configuration
+    type: hwmon
+    params:
+      # The platform of the controller which is
+      # connected to this fan (see sensor.platform above)
+      platform: cpu
+      # The index of this fan as displayed by `sensors`
+      index: 1
+    # Indicates whether this fan should never stop rotating, regardless of
+    # how low the curve value is
+    neverStop: yes
+    # The curve ID that should be used to determine the
+    # speed of this fan
+    curve: cpu_curve
+```
+
 #### Sensors
 
 Under `sensors:` you need to define a list of temperature sensor devices that you want to monitor and use to adjust
 fanspeeds. Like with fans, you can find usable devices using `fan2go detect`.
+
+```yaml
+# A list of sensors to monitor
+sensors:
+  # A user defined ID, which is used to reference
+  # a sensor in a curve configuration (see below)
+  - id: cpu_package
+    # The type of sensor configuration
+    type: hwmon
+    params:
+      # The controller platform as displayed by `fan2go detect`, f.ex.:
+      # "nouveau", "coretemp" or "it8620" etc.
+      platform: coretemp
+      # The index of this sensor as displayed by `fan2go detect`
+      index: 1
+```
 
 #### Curves
 
