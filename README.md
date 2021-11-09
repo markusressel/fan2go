@@ -6,9 +6,21 @@ A daemon to control the fans of a computer.
 
 ## How to use
 
-fan2go relies on [lm-sensors](https://github.com/lm-sensors/lm-sensors) to both get temperature and RPM sensor readings,
+fan2go relies on [lm-sensors](https://github.com/lm-sensors/lm-sensors) to get both temperature and RPM sensor readings,
 as well as PWM controls, so you will have
 to [set it up first](https://wiki.archlinux.org/index.php/Lm_sensors#Installation).
+
+### Installation
+
+#### AUR
+
+A third-party maintained AUR package has been created by [manvari](https://github.com/manvari).
+
+```shell
+yay -S fan2go-git
+```
+
+#### Manual
 
 Download the latest release from GitHub:
 
@@ -61,8 +73,8 @@ amdgpu-pci-0031
 
 #### Sensors
 
-Under `sensors:` you need to define a list of temperature sensor devices that you want to monitor and use to adjust fan
-speeds. Like with fans, you can find usable devices using `fan2go detect`.
+Under `sensors:` you need to define a list of temperature sensor devices that you want to monitor and use to adjust
+fanspeeds. Like with fans, you can find usable devices using `fan2go detect`.
 
 #### Curves
 
@@ -71,7 +83,10 @@ temperature sensors.
 
 ##### Linear
 
-Using simple min/max temp:
+To create a simple, linear speed curve, use a curve of type `linear`.
+
+This curve type can be used with a min/max sensor value, where the min temp will result in a curve value of 0 and the
+max temp will result in a curve value of 100:
 
 ```yaml
 curves:
@@ -87,6 +102,8 @@ curves:
       # Sensor input value at which the curve is at maximum speed
       max: 80
 ```
+
+You can also define the curve in multiple, linear sections using the `steps` parameter:
 
 ```yaml
 curves:
@@ -106,6 +123,8 @@ curves:
 ```
 
 ##### Function
+
+To create more complex curves you can combine exising curves using a curve of type `function`:
 
 ```yaml
 curves:

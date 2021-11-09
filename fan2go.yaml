@@ -97,8 +97,8 @@ curves:
     type: linear
     params:
       sensor: sata_ssd
-      minTemp: 40
-      maxTemp: 70
+      min: 40
+      max: 70
 
   - id: case_avg_curve
     type: function
