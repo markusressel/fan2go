@@ -194,22 +194,7 @@ sudo fan2go
 
 #### Systemd
 
-```
-sudo tee /usr/lib/systemd/system/fan2go.service <<- 'EOF'
-[Unit]
-Description=Advanced Fan Control program
-After=lm-sensors.service
-
-[Service]
-LimitNOFILE=8192
-ExecStart=/usr/bin/fan2go -c /etc/fan2go/fan2go.yaml --no-style
-Restart=always
-RestartSec=1s
-
-[Install]
-WantedBy=multi-user.target
-EOF
-```
+When installing fan2go using a package, it comes with a [systemd unit file](./fan2go.service). To enable it simply run:
 
 ```shell
 sudo systemctl daemon-reload
