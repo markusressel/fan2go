@@ -50,7 +50,13 @@ func (fan *HwMonFan) SetStartPwm(pwm int) {
 }
 
 func (fan HwMonFan) GetMinPwm() int {
-	return fan.MinPwm
+	// if the fan is never supposed to stop,
+	// use the lowest pwm value where the fan is still spinning
+	if fan.GetConfig().NeverStop {
+		return fan.MinPwm
+	}
+
+	return MinPwmValue
 }
 
 func (fan *HwMonFan) SetMinPwm(pwm int) {

@@ -718,17 +718,6 @@ func IsPwmAuto(outputPath string) (bool, error) {
 	return value > 1, nil
 }
 
-// get the minimum valid pwm value of a fan
-func getMinPwmValue(fan Fan) (result int) {
-	// if the fan is never supposed to stop,
-	// use the lowest pwm value where the fan is still spinning
-	if fan.GetConfig().NeverStop {
-		return fan.GetMinPwm()
-	}
-
-	return MinPwmValue
-}
-
 // calculates the target speed for a given device output
 func calculateOptimalPwm(fan Fan) (int, error) {
 	curve := CurveMap[fan.GetConfig().Curve]
@@ -752,7 +741,7 @@ func calculateTargetPwm(fan Fan, currentPwm int, pwm int) int {
 
 	// map the target value to the possible range of this fan
 	maxPwm := fan.GetMaxPwm()
-	minPwm := getMinPwmValue(fan)
+	minPwm := fan.GetMinPwm()
 
 	// TODO: this assumes a linear curve, but it might be something else
 	target = minPwm + int((float64(target)/MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
