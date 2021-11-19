@@ -96,10 +96,10 @@ curves:
       sensor: cpu_package
       # Steps to define a section-wise defined speed curve function
       steps:
-        # Sensor value -> Speed (in percent)
+        # Sensor value -> Speed (0-255)
         - 40: 0
-        - 50: 30
-        - 80: 100
+        - 50: 50
+        - 80: 255
 
   - id: mainboard_curve
     type: linear
