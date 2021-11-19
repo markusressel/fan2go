@@ -26,6 +26,7 @@ func ReadIntFromFile(path string) (value int, err error) {
 func WriteIntToFile(value int, path string) (err error) {
 	f, err := os.OpenFile(path, os.O_SYNC|os.O_WRONLY, 644)
 	if err != nil {
+		ui.Error("File opening file %s in write mode: %v", path, err)
 		return err
 	}
 	//goland:noinspection GoUnhandledErrorResult

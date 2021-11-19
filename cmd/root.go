@@ -222,6 +222,8 @@ var versionCmd = &cobra.Command{
 }
 
 func setupUi() {
+	ui.SetDebugEnabled(verbose)
+
 	if noColor {
 		pterm.DisableColor()
 	}

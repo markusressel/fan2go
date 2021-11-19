@@ -4,6 +4,10 @@ import (
 	"github.com/pterm/pterm"
 )
 
+func SetDebugEnabled(enabled bool) {
+	pterm.PrintDebugMessages = enabled
+}
+
 func Printf(format string, a ...interface{}) {
 	pterm.Printf(format, a...)
 }
@@ -13,8 +17,6 @@ func Println(format string, a ...interface{}) {
 }
 
 func Debug(format string, a ...interface{}) {
-	// TODO: set this based on --verbose flag
-	pterm.PrintDebugMessages = true
 	pterm.Debug.Printfln(format, a...)
 }
 

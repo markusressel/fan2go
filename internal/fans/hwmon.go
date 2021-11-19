@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 )
 
@@ -89,9 +90,7 @@ func (fan HwMonFan) GetPwm() int {
 }
 
 func (fan *HwMonFan) SetPwm(pwm int) (err error) {
-	//if Verbose {
-	//	ui.Debug("Setting %s (%s, %s) to %d ...", fan.Config.Id, fan.Label, fan.Name, pwm)
-	//}
+	ui.Debug("Setting %s (%s, %s) to %d ...", fan.Config.Id, fan.Label, fan.Name, pwm)
 
 	err = util.WriteIntToFile(pwm, fan.PwmOutput)
 	if err == nil {
