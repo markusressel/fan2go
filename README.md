@@ -125,8 +125,8 @@ temperature sensors.
 
 To create a simple, linear speed curve, use a curve of type `linear`.
 
-This curve type can be used with a min/max sensor value, where the min temp will result in a curve value of 0 and the
-max temp will result in a curve value of 100:
+This curve type can be used with a min/max sensor value, where the min temp will result in a curve value of `0` and the
+max temp will result in a curve value of `255`:
 
 ```yaml
 curves:
@@ -158,8 +158,8 @@ curves:
       steps:
         # Sensor value -> Speed (in percent)
         - 40: 0
-        - 50: 30
-        - 80: 100
+        - 50: 50
+        - 80: 255
 ```
 
 #### Function
