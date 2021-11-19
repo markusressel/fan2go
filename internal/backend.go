@@ -612,10 +612,10 @@ func FindControllers() (controllers []*Controller, err error) {
 			platform = name
 		}
 
-		fans := createFans(devicePath)
+		fanList := createFans(devicePath)
 		sensorList := createSensors(devicePath)
 
-		if len(fans) <= 0 && len(sensorList) <= 0 {
+		if len(fanList) <= 0 && len(sensorList) <= 0 {
 			continue
 		}
 
@@ -625,7 +625,7 @@ func FindControllers() (controllers []*Controller, err error) {
 			Modalias: modalias,
 			Platform: platform,
 			Path:     devicePath,
-			Fans:     fans,
+			Fans:     fanList,
 			Sensors:  sensorList,
 		}
 		controllers = append(controllers, &controller)
