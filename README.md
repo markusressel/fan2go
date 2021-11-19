@@ -256,8 +256,7 @@ files, which represent temperature sensors, RPM sensors and PWM outputs.
 
 ## Initialization
 
-When a fan is added to the configuration that fan2go has not seen before, its fan curve will first be analyzed before it
-is controlled properly. This means
+To properly control a fan which fan2go has not seen before, its speed curve is analyzed. This means
 
 * spinning down the fans to 0
 * slowly ramping up the speed and monitoring RPM changes along the way
@@ -270,18 +269,13 @@ All of this is saved to a local database, so it is only needed once per fan conf
 
 ## Monitoring
 
-To monitor changes in temperature sensor values, a goroutine is started which continuously reads the `tempX_input` files
-of all sensors specified in the config. Sensor values are stored as a moving average of size `rollingWindowSize` (
+To monitor temperature sensors, a goroutine is started which continuously reads the `tempX_input` files of all sensors
+specified in the config. Sensor values are stored as a moving average of size `tempRollingWindowSize` (
 see [configuration](#configuration)).
 
 ## Fan Controllers
 
-To update the fan speed, one goroutine is started **per fan**, which continuously adjusts the PWM value of a given fan
-based on the sensor data measured by the monitor. This means:
-
-* calculating the ratio between the average temp and the max/min values defined in the config
-* calculating the target PWM of a fan using the previous ratio, taking its startPWM and maxPWM into account
-* applying the calculated target PWM to the fan
+Fan speeds are continuously adjusted based on the value of the associated curve.
 
 # Dependencies
 
