@@ -13,9 +13,6 @@ func GetDeviceName(devicePath string) string {
 	namePath := devicePath + "/name"
 	content, _ := ioutil.ReadFile(namePath)
 	name := string(content)
-	if len(name) <= 0 {
-		_, name = filepath.Split(devicePath)
-	}
 	return strings.TrimSpace(name)
 }
 

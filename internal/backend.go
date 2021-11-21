@@ -598,13 +598,14 @@ func FindControllers() (controllers []*Controller, err error) {
 
 	for _, devicePath := range allDevices {
 
-		var name = findDeviceName(devicePath)
+		var deviceName = util.GetDeviceName(devicePath)
+		var identifier = computeIdentifier(devicePath, deviceName)
 
 		dType := util.GetDeviceType(devicePath)
 		modalias := util.GetDeviceModalias(devicePath)
 		platform := findPlatform(devicePath)
 		if len(platform) <= 0 {
-			platform = name
+			platform = identifier
 		}
 
 		fanList := createFans(devicePath)
@@ -615,7 +616,7 @@ func FindControllers() (controllers []*Controller, err error) {
 		}
 
 		controller := Controller{
-			Name:     name,
+			Name:     identifier,
 			DType:    dType,
 			Modalias: modalias,
 			Platform: platform,
@@ -629,10 +630,17 @@ func FindControllers() (controllers []*Controller, err error) {
 	return controllers, err
 }
 
-func findDeviceName(devicePath string) (name string) {
+func computeIdentifier(devicePath string, deviceName string) (name string) {
 	pciDeviceRegex := regexp.MustCompile("\\w+:\\w{2}:\\w{2}\\.\\d")
 
-	name = util.GetDeviceName(devicePath)
+	if len(name) <= 0 {
+		name = deviceName
+	}
+
+	if len(name) <= 0 {
+		_, name = filepath.Split(devicePath)
+	}
+
 	if strings.Contains(devicePath, "/pci") {
 		// add pci suffix to name
 		matches := pciDeviceRegex.FindAllString(devicePath, -1)
