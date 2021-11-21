@@ -199,3 +199,25 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	assert.Greater(t, fan.GetMinPwm(), 0)
 	assert.Equal(t, fan.GetMinPwm(), target)
 }
+
+func TestFindDeviceName(t *testing.T) {
+	// GIVEN
+	devicePath := "/sys/devices/pci0000:00/0000:00:0e.0/pci10000:e0/10000:e0:06.0/10000:e1:00.0/nvme/nvme0/hwmon3"
+
+	// WHEN
+	platform := findDeviceName(devicePath)
+
+	// THEN
+	assert.Equal(t, "nvme-pci-10000E100", platform)
+}
+
+func TestFindPlatform(t *testing.T) {
+	// GIVEN
+	devicePath := "/sys/devices/pci0000:00/0000:00:0e.0/pci10000:e0/10000:e0:06.0/10000:e1:00.0/nvme/nvme0/hwmon3"
+
+	// WHEN
+	platform := findPlatform(devicePath)
+
+	// THEN
+	assert.Equal(t, "", platform)
+}

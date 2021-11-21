@@ -585,29 +585,24 @@ func findSensorConfig(controller *Controller, sensor Sensor) (sensorConfig *conf
 	return nil
 }
 
+func findPlatform(devicePath string) string {
+	platformRegex := regexp.MustCompile(".*/platform/{}/.*")
+	return platformRegex.FindString(devicePath)
+}
+
 // FindControllers Finds controllers and fans
 func FindControllers() (controllers []*Controller, err error) {
 	hwmonDevices := util.FindHwmonDevicePaths()
 	i2cDevices := util.FindI2cDevicePaths()
 	allDevices := append(hwmonDevices, i2cDevices...)
 
-	platformRegex := regexp.MustCompile(".*/platform/{}/.*")
-	pciDeviceRegex := regexp.MustCompile("\\d{4}:\\d{2}:\\d{2}\\.\\d")
-
 	for _, devicePath := range allDevices {
 
-		var name = util.GetDeviceName(devicePath)
-		if strings.Contains(devicePath, "/pci") {
-			// add pci suffix to name
-			matches := pciDeviceRegex.FindAllString(devicePath, -1)
-			lastMatch := matches[len(matches)-1]
-			pciIdentifier := util.CreateShortPciIdentifier(lastMatch)
-			name = fmt.Sprintf("%s-%s", name, pciIdentifier)
-		}
+		var name = findDeviceName(devicePath)
 
 		dType := util.GetDeviceType(devicePath)
 		modalias := util.GetDeviceModalias(devicePath)
-		platform := platformRegex.FindString(devicePath)
+		platform := findPlatform(devicePath)
 		if len(platform) <= 0 {
 			platform = name
 		}
@@ -632,6 +627,23 @@ func FindControllers() (controllers []*Controller, err error) {
 	}
 
 	return controllers, err
+}
+
+func findDeviceName(devicePath string) (name string) {
+	pciDeviceRegex := regexp.MustCompile("\\w+:\\w{2}:\\w{2}\\.\\d")
+
+	name = util.GetDeviceName(devicePath)
+	if strings.Contains(devicePath, "/pci") {
+		// add pci suffix to name
+		matches := pciDeviceRegex.FindAllString(devicePath, -1)
+		if len(matches) > 0 {
+			lastMatch := matches[len(matches)-1]
+			pciIdentifier := util.CreateShortPciIdentifier(lastMatch)
+			name = fmt.Sprintf("%s-%s", name, pciIdentifier)
+		}
+	}
+
+	return name
 }
 
 // creates fan objects for the given device path
