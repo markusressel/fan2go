@@ -78,7 +78,7 @@ var detectCmd = &cobra.Command{
 
 				pwm := fan.GetPwm()
 				rpm := fan.GetRpm()
-				isAuto, _ := internal.IsPwmAuto(controller.Path)
+				isAuto, _ := fan.IsPwmAuto()
 				fanRows = append(fanRows, []string{
 					"", strconv.Itoa(hwMonFan.Index), hwMonFan.Label, hwMonFan.Name, strconv.Itoa(rpm), strconv.Itoa(pwm), fmt.Sprintf("%v", isAuto),
 				})

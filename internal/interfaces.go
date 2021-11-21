@@ -57,6 +57,8 @@ type Fan interface {
 	// GetPwmEnabled returns the current "pwm_enabled" value of this fan
 	GetPwmEnabled() (int, error)
 	SetPwmEnabled(value int) (err error)
+	// IsPwmAuto indicates whether this fan is in "Auto" mode
+	IsPwmAuto() (bool, error)
 
 	// GetOriginalPwmEnabled  remembers the "pwm_enabled" state before fan2go took over control
 	GetOriginalPwmEnabled() int

@@ -118,6 +118,14 @@ func (fan HwMonFan) GetPwmEnabled() (int, error) {
 	return util.ReadIntFromFile(pwmEnabledFilePath)
 }
 
+func (fan HwMonFan) IsPwmAuto() (bool, error) {
+	value, err := fan.GetPwmEnabled()
+	if err != nil {
+		return false, err
+	}
+	return value > 1, nil
+}
+
 // SetPwmEnabled writes the given value to pwmX_enable
 // Possible values (unsure if these are true for all scenarios):
 // 0 - no control (results in max speed)

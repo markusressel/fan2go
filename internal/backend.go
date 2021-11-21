@@ -712,24 +712,6 @@ func createSensors(devicePath string) (result []Sensor) {
 	return result
 }
 
-// IsPwmAuto checks if the given output is in auto mode
-func IsPwmAuto(outputPath string) (bool, error) {
-	pwmEnabledFilePath := outputPath + "_enable"
-
-	if _, err := os.Stat(pwmEnabledFilePath); err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		panic(err)
-	}
-
-	value, err := util.ReadIntFromFile(pwmEnabledFilePath)
-	if err != nil {
-		return false, err
-	}
-	return value > 1, nil
-}
-
 // calculates the target speed for a given device output
 func calculateOptimalPwm(fan Fan) (int, error) {
 	curve := CurveMap[fan.GetConfig().Curve]
