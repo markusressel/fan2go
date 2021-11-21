@@ -207,24 +207,24 @@ func mapConfigToControllers(controllers []*Controller) {
 			}
 		}
 		// match sensor and sensor config entries
-		for _, s := range controller.Sensors {
-			sensorConfig := findSensorConfig(controller, s.(*sensors.HwmonSensor))
+		for _, ssensor := range controller.Sensors {
+			sensorConfig := findSensorConfig(controller, ssensor)
 			if sensorConfig != nil {
 				if Verbose {
-					ui.Debug("Mapping sensor config %s to %s", sensorConfig.Id, s.(*sensors.HwmonSensor).Input)
+					ui.Debug("Mapping sensor config %s to %s", sensorConfig.Id, ssensor.(*sensors.HwmonSensor).Input)
 				}
 
-				s.SetConfig(sensorConfig)
+				ssensor.SetConfig(sensorConfig)
 
 				// remember ID -> Sensor association for later
-				SensorMap[sensorConfig.Id] = s
+				SensorMap[sensorConfig.Id] = ssensor
 
 				// initialize arrays for storing temps
-				currentValue, err := s.GetValue()
+				currentValue, err := ssensor.GetValue()
 				if err != nil {
-					ui.Fatal("Error reading sensor %s: %s", sensorConfig.Id, err.Error())
+					ui.Fatal("Error reading sensor %s: %v", sensorConfig.Id, err)
 				}
-				s.SetMovingAvg(currentValue)
+				ssensor.SetMovingAvg(currentValue)
 			}
 		}
 	}
@@ -718,8 +718,7 @@ func calculateOptimalPwm(fan Fan) (int, error) {
 	return evaluateCurve(*curve)
 }
 
-// calculates the optimal pwm for a fan with the given target
-// level.
+// calculates the optimal pwm for a fan with the given target level.
 // returns -1 if no rpm is detected even at fan.maxPwm
 func calculateTargetPwm(fan Fan, currentPwm int, pwm int) int {
 	target := pwm
