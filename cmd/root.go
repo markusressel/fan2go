@@ -1,21 +1,13 @@
 package cmd
 
 import (
-	"bytes"
 	"fmt"
-	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/fans"
-	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/mgutz/ansi"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"github.com/tomlazar/table"
 	"os"
-	"sort"
-	"strconv"
 )
 
 var (
@@ -38,186 +30,6 @@ on your computer based on temperature sensors.`,
 
 		configuration.ReadConfigFile()
 		internal.Run(verbose)
-	},
-}
-
-var detectCmd = &cobra.Command{
-	Use:   "detect",
-	Short: "Detect devices",
-	Long:  `Detects all fans and sensors and prints them as a list`,
-	Run: func(cmd *cobra.Command, args []string) {
-		configuration.LoadConfig()
-
-		controllers, err := internal.FindControllers()
-		if err != nil {
-			ui.Fatal("Error detecting devices: %v", err)
-		}
-
-		// === Print detected devices ===
-		tableConfig := &table.Config{
-			ShowIndex:       false,
-			Color:           !noColor,
-			AlternateColors: true,
-			TitleColorCode:  ansi.ColorCode("white+buf"),
-			AltColorCodes: []string{
-				ansi.ColorCode("white"),
-				ansi.ColorCode("white:236"),
-			},
-		}
-
-		for _, controller := range controllers {
-			if len(controller.Name) <= 0 {
-				continue
-			}
-
-			ui.Println("> %s", controller.Name)
-
-			var fanRows [][]string
-			for _, fan := range controller.Fans {
-				hwMonFan := fan.(*fans.HwMonFan)
-
-				pwm := fan.GetPwm()
-				rpm := fan.GetRpm()
-				isAuto, _ := fan.IsPwmAuto()
-				fanRows = append(fanRows, []string{
-					"", strconv.Itoa(hwMonFan.Index), hwMonFan.Label, hwMonFan.Name, strconv.Itoa(rpm), strconv.Itoa(pwm), fmt.Sprintf("%v", isAuto),
-				})
-			}
-			var fanHeaders = []string{"Fans   ", "Index", "Label", "Name", "RPM", "PWM", "Auto"}
-
-			fanTable := table.Table{
-				Headers: fanHeaders,
-				Rows:    fanRows,
-			}
-
-			var sensorRows [][]string
-			for _, sensor := range controller.Sensors {
-				value, _ := sensor.GetValue()
-				//ui.Println("  %d: %s (%s): %d", sensor.Index, sensor.Label, sensor.Name, value)
-				hwSensor := sensor.(*sensors.HwmonSensor)
-
-				sensorRows = append(sensorRows, []string{
-					"", strconv.Itoa(hwSensor.Index), hwSensor.Label, hwSensor.Name, strconv.Itoa(int(value)),
-				})
-			}
-			var sensorHeaders = []string{"Sensors", "Index", "Label", "Name", "Value"}
-
-			sensorTable := table.Table{
-				Headers: sensorHeaders,
-				Rows:    sensorRows,
-			}
-
-			tables := []table.Table{fanTable, sensorTable}
-
-			for idx, table := range tables {
-				if table.Rows == nil {
-					continue
-				}
-				var buf bytes.Buffer
-				tableErr := table.WriteTable(&buf, tableConfig)
-				if tableErr != nil {
-					ui.Fatal("Error printing table: %v", tableErr)
-				}
-				tableString := buf.String()
-				if idx < (len(tables) - 1) {
-					ui.Printf(tableString)
-				} else {
-					ui.Println(tableString)
-				}
-			}
-		}
-	},
-}
-
-var curveCmd = &cobra.Command{
-	Use:   "curve",
-	Short: "Print the measured fan curve(s) to console",
-	//Long:  `All software has versions. This is fan2go's`,
-	Run: func(cmd *cobra.Command, args []string) {
-		configuration.ReadConfigFile()
-		db := internal.OpenPersistence(configuration.CurrentConfig.DbPath)
-		defer db.Close()
-
-		controllers, err := internal.FindControllers()
-		if err != nil {
-			ui.Fatal("Error detecting devices: %s", err.Error())
-		}
-
-		for _, controller := range controllers {
-			if len(controller.Name) <= 0 || len(controller.Fans) <= 0 {
-				continue
-			}
-
-			for idx, fan := range controller.Fans {
-				pwmData, fanCurveErr := internal.LoadFanPwmData(db, fan)
-				if fanCurveErr == nil {
-					internal.AttachFanCurveData(&pwmData, fan.GetConfig().Id)
-				}
-
-				if idx > 0 {
-					ui.Println("")
-					ui.Println("")
-				}
-
-				// print table
-				ui.Println(controller.Name + " -> " + fan.GetName())
-				tab := table.Table{
-					Headers: []string{"", ""},
-					Rows: [][]string{
-						{"Start PWM", strconv.Itoa(fan.GetMinPwm())},
-						{"Max PWM", strconv.Itoa(fan.GetMaxPwm())},
-					},
-				}
-				var buf bytes.Buffer
-				tableErr := tab.WriteTable(&buf, &table.Config{
-					ShowIndex:       false,
-					Color:           !noColor,
-					AlternateColors: true,
-					TitleColorCode:  ansi.ColorCode("white+buf"),
-					AltColorCodes: []string{
-						ansi.ColorCode("white"),
-						ansi.ColorCode("white:236"),
-					},
-				})
-				if tableErr != nil {
-					panic(err)
-				}
-				tableString := buf.String()
-				ui.Println(tableString)
-
-				// print graph
-				if fanCurveErr != nil {
-					ui.Println("No fan curve data yet...")
-					continue
-				}
-
-				keys := make([]int, 0, len(pwmData))
-				for k := range pwmData {
-					keys = append(keys, k)
-				}
-				sort.Ints(keys)
-
-				values := make([]float64, 0, len(keys))
-				for _, k := range keys {
-					values = append(values, pwmData[k][0])
-				}
-
-				caption := "RPM / PWM"
-				graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(100), asciigraph.Caption(caption))
-				ui.Println(graph)
-			}
-
-			ui.Println("")
-		}
-	},
-}
-
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print the version number of fan2go",
-	Long:  `All software has versions. This is fan2go's`,
-	Run: func(cmd *cobra.Command, args []string) {
-		ui.Println("0.0.18")
 	},
 }
 
@@ -250,10 +62,6 @@ func Execute() {
 	cobra.OnInitialize(func() {
 		configuration.InitConfig(cfgFile)
 	})
-
-	rootCmd.AddCommand(detectCmd)
-	rootCmd.AddCommand(curveCmd)
-	rootCmd.AddCommand(versionCmd)
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")
 	rootCmd.PersistentFlags().BoolVarP(&noColor, "no-color", "", false, "Disable all terminal output coloration")
