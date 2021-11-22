@@ -25,6 +25,7 @@ var curveCmd = &cobra.Command{
 		if err != nil {
 			ui.Fatal("Error detecting devices: %s", err.Error())
 		}
+		internal.MapConfigToControllers(controllers)
 
 		for _, controller := range controllers {
 			if len(controller.Name) <= 0 || len(controller.Fans) <= 0 {
@@ -32,6 +33,9 @@ var curveCmd = &cobra.Command{
 			}
 
 			for idx, fan := range controller.Fans {
+				if fan.GetConfig() == nil {
+					continue
+				}
 				pwmData, fanCurveErr := persistence.LoadFanPwmData(fan)
 				if fanCurveErr == nil {
 					_ = internal.AttachFanCurveData(&pwmData, fan)

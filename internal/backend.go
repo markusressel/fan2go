@@ -45,7 +45,7 @@ func Run() {
 	if err != nil {
 		ui.Fatal("Error detecting devices: %s", err.Error())
 	}
-	mapConfigToControllers(controllers)
+	MapConfigToControllers(controllers)
 	for _, curveConfig := range configuration.CurrentConfig.Curves {
 		NewSpeedCurve(curveConfig)
 	}
@@ -169,7 +169,7 @@ func getProcessOwner() string {
 }
 
 // Map detect devices to configuration values
-func mapConfigToControllers(controllers []*HwMonController) {
+func MapConfigToControllers(controllers []*HwMonController) {
 	for _, controller := range controllers {
 		// match fan and fan config entries
 		for _, fan := range controller.Fans {
@@ -433,7 +433,7 @@ func FindControllers() (controllers []*HwMonController, err error) {
 			continue
 		}
 
-		controller := HwMonController{
+		controller := &HwMonController{
 			Name:     identifier,
 			DType:    dType,
 			Modalias: modalias,
@@ -442,7 +442,7 @@ func FindControllers() (controllers []*HwMonController, err error) {
 			Fans:     fanList,
 			Sensors:  sensorList,
 		}
-		controllers = append(controllers, &controller)
+		controllers = append(controllers, controller)
 	}
 
 	return controllers, err
