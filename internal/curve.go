@@ -14,51 +14,78 @@ const (
 	InterpolationTypeLinear = "linear"
 )
 
-var UnknownCurveType = errors.New("unknown curve type")
+type SpeedCurve interface {
+	// Evaluate calculates the current value of the given curve,
+	// returns a value in [0..255]
+	Evaluate() (value int, err error)
+}
 
-// Calculates the current value of the given curve
-// returns a value in [0..255]
-func evaluateCurve(curve configuration.CurveConfig) (value int, err error) {
-	// TODO: implement response delay
-	// TODO: implement some kind of "rapid increase" when the upper
-	//  limit temperature limit is reached
+type functionSpeedCurve struct {
+	function string
+	curveIds []string
+}
 
-	// this manual marshalling isn't pretty, but afaik viper
-	// doesn't have a built-in mechanism to parse configuration subtrees based on application logic
-	marshalled, err := json.Marshal(curve.Params)
+type linearSpeedCurve struct {
+	sensorId string
+	min      int
+	max      int
+	steps    map[int]int
+}
+
+var (
+	SpeedCurveMap = map[string]SpeedCurve{}
+
+	UnknownCurveType = errors.New("unknown curve type")
+)
+
+func NewSpeedCurve(curveConfig configuration.CurveConfig) SpeedCurve {
+	marshalled, err := json.Marshal(curveConfig.Params)
 	if err != nil {
 		ui.Error("Couldn't marshal curve configuration: %v", err)
 	}
 
-	if curve.Type == configuration.LinearCurveType {
+	var speedCurve SpeedCurve
+	if curveConfig.Type == configuration.LinearCurveType {
 		c := configuration.LinearCurveConfig{}
 		if err := json.Unmarshal(marshalled, &c); err != nil {
 			ui.Fatal("Couldn't unmarshal curve configuration: %v", err)
 		}
 
-		return evaluateLinearCurve(c)
-	} else if curve.Type == configuration.FunctionCurveType {
+		speedCurve = &linearSpeedCurve{
+			sensorId: c.Sensor,
+			min:      c.Min,
+			max:      c.Max,
+			steps:    c.Steps,
+		}
+	} else if curveConfig.Type == configuration.FunctionCurveType {
 		c := configuration.FunctionCurveConfig{}
 		if err := json.Unmarshal(marshalled, &c); err != nil {
 			ui.Error("Couldn't unmarshal curve configuration: %v", err)
 		}
 
-		return evaluateFunctionCurve(c)
+		// TODO: what about loops?
+		speedCurve = &functionSpeedCurve{
+			function: c.Function,
+			curveIds: c.Curves,
+		}
+	} else {
+		panic(UnknownCurveType)
 	}
 
-	return 0, UnknownCurveType
+	SpeedCurveMap[curveConfig.Id] = speedCurve
+	return speedCurve
 }
 
-func evaluateLinearCurve(c configuration.LinearCurveConfig) (value int, err error) {
-	sensor := SensorMap[c.Sensor]
+func (c linearSpeedCurve) Evaluate() (value int, err error) {
+	sensor := SensorMap[c.sensorId]
 	var avgTemp = sensor.GetMovingAvg()
 
-	steps := c.Steps
+	steps := c.steps
 	if steps != nil {
 		value = calculateInterpolatedCurveValue(steps, InterpolationTypeLinear, avgTemp/1000)
 	} else {
-		minTemp := float64(c.Min) * 1000 // degree to milli-degree
-		maxTemp := float64(c.Max) * 1000
+		minTemp := float64(c.min) * 1000 // degree to milli-degree
+		maxTemp := float64(c.max) * 1000
 
 		if avgTemp >= maxTemp {
 			// full throttle if max temp is reached
@@ -73,6 +100,52 @@ func evaluateLinearCurve(c configuration.LinearCurveConfig) (value int, err erro
 	}
 
 	return value, nil
+}
+
+func (c functionSpeedCurve) Evaluate() (value int, err error) {
+	var curves []SpeedCurve
+	for _, curveId := range c.curveIds {
+		curves = append(curves, SpeedCurveMap[curveId])
+	}
+
+	if c.function == configuration.FunctionMinimum {
+		var min int
+		for _, curve := range curves {
+			v, err := curve.Evaluate()
+			if err != nil {
+				return 0, err
+			}
+
+			min = int(math.Min(float64(min), float64(v)))
+		}
+		value = min
+	} else if c.function == configuration.FunctionMaximum {
+		var max int
+		for _, curve := range curves {
+			v, err := curve.Evaluate()
+			if err != nil {
+				return 0, err
+			}
+
+			max = int(math.Max(float64(max), float64(v)))
+		}
+		value = max
+	} else if c.function == configuration.FunctionAverage {
+		var total = 0
+		for _, curve := range curves {
+			v, err := curve.Evaluate()
+			if err != nil {
+				return 0, err
+			}
+
+			total += v
+		}
+		value = total / len(curves)
+	} else {
+		ui.Fatal("Unknown curve function: %s", c.function)
+	}
+
+	return value, err
 }
 
 // Creates an interpolated function from the given map of x-values -> y-values
@@ -116,50 +189,4 @@ func calculateInterpolatedCurveValue(steps map[int]int, interpolationType string
 	// input is above (or equal to) the largest given
 	// step, so we fall back to the value of the largest step
 	return steps[xValues[len(xValues)-1]]
-}
-
-func evaluateFunctionCurve(c configuration.FunctionCurveConfig) (value int, err error) {
-	var curves []configuration.CurveConfig
-	for _, curveId := range c.Curves {
-		curves = append(curves, *CurveMap[curveId])
-	}
-
-	if c.Function == configuration.FunctionMinimum {
-		var min int
-		for _, curve := range curves {
-			v, err := evaluateCurve(curve)
-			if err != nil {
-				return 0, err
-			}
-
-			min = int(math.Min(float64(min), float64(v)))
-		}
-		value = min
-	} else if c.Function == configuration.FunctionMaximum {
-		var max int
-		for _, curve := range curves {
-			v, err := evaluateCurve(curve)
-			if err != nil {
-				return 0, err
-			}
-
-			max = int(math.Max(float64(max), float64(v)))
-		}
-		value = max
-	} else if c.Function == configuration.FunctionAverage {
-		var total = 0
-		for _, curve := range curves {
-			v, err := evaluateCurve(curve)
-			if err != nil {
-				return 0, err
-			}
-
-			total += v
-		}
-		value = total / len(curves)
-	} else {
-		ui.Fatal("Unknown curve function: %s", c.Function)
-	}
-
-	return value, err
 }

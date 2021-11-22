@@ -1,6 +1,6 @@
 package internal
 
-type Controller struct {
+type HwMonController struct {
 	Name     string   `json:"name"`
 	DType    string   `json:"dtype"`
 	Modalias string   `json:"modalias"`

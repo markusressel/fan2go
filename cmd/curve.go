@@ -19,8 +19,7 @@ var curveCmd = &cobra.Command{
 	//Long:  `All software has versions. This is fan2go's`,
 	Run: func(cmd *cobra.Command, args []string) {
 		configuration.ReadConfigFile()
-		db := internal.OpenPersistence(configuration.CurrentConfig.DbPath)
-		defer db.Close()
+		persistence := internal.NewPersistence(configuration.CurrentConfig.DbPath)
 
 		controllers, err := internal.FindControllers()
 		if err != nil {
@@ -33,9 +32,9 @@ var curveCmd = &cobra.Command{
 			}
 
 			for idx, fan := range controller.Fans {
-				pwmData, fanCurveErr := internal.LoadFanPwmData(db, fan)
+				pwmData, fanCurveErr := persistence.LoadFanPwmData(fan)
 				if fanCurveErr == nil {
-					internal.AttachFanCurveData(&pwmData, fan.GetConfig().Id)
+					_ = internal.AttachFanCurveData(&pwmData, fan)
 				}
 
 				if idx > 0 {

@@ -11,13 +11,12 @@ const (
 
 func TestWriteFan(t *testing.T) {
 	// GIVEN
-	db := OpenPersistence(dbTestingPath)
-	defer db.Close()
+	persistence := NewPersistence(dbTestingPath)
 
 	fan, _ := createFan(false, linearFan)
 
 	// WHEN
-	err := SaveFanPwmData(db, fan)
+	err := persistence.SaveFanPwmData(fan)
 
 	// THEN
 	assert.Nil(t, err)
@@ -25,16 +24,15 @@ func TestWriteFan(t *testing.T) {
 
 func TestReadFan(t *testing.T) {
 	// GIVEN
-	db := OpenPersistence(dbTestingPath)
-	defer db.Close()
+	persistence := NewPersistence(dbTestingPath)
 
 	fan, _ := createFan(false, neverStoppingFan)
-	err := SaveFanPwmData(db, fan)
+	err := persistence.SaveFanPwmData(fan)
 
 	fan, _ = createFan(false, linearFan)
 
 	// WHEN
-	fanData, err := LoadFanPwmData(db, fan)
+	fanData, err := persistence.LoadFanPwmData(fan)
 
 	// THEN
 	assert.Nil(t, err)

@@ -22,7 +22,6 @@ func createLinearCurveConfig(
 			"Max":    maxTemp,
 		},
 	}
-	CurveMap[curve.Id] = &curve
 	return curve
 }
 
@@ -40,7 +39,6 @@ func createLinearCurveConfigWithSteps(
 			"Steps":  steps,
 		},
 	}
-	CurveMap[curve.Id] = &curve
 	return curve
 }
 
@@ -58,7 +56,6 @@ func createFunctionCurveConfig(
 			"curves":   curveIds,
 		},
 	}
-	CurveMap[curve.Id] = &curve
 	return curve
 }
 
@@ -82,9 +79,10 @@ func TestLinearCurveWithMinMax(t *testing.T) {
 		40,
 		80,
 	)
+	curve := NewSpeedCurve(curveConfig)
 
 	// WHEN
-	result, err := evaluateCurve(curveConfig)
+	result, err := curve.Evaluate()
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
@@ -116,9 +114,10 @@ func TestLinearCurveWithSteps(t *testing.T) {
 			70: 255,
 		},
 	)
+	curve := NewSpeedCurve(curveConfig)
 
 	// WHEN
-	result, err := evaluateCurve(curveConfig)
+	result, err := curve.Evaluate()
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
@@ -156,15 +155,17 @@ func TestFunctionCurveAverage(t *testing.T) {
 		40,
 		80,
 	)
+	NewSpeedCurve(curve1)
 	curve2 := createLinearCurveConfig(
 		"case_fan_back",
 		sensor2.GetConfig().Id,
 		40,
 		80,
 	)
+	NewSpeedCurve(curve2)
 
 	function := configuration.FunctionAverage
-	functionCurve := createFunctionCurveConfig(
+	functionCurveConfig := createFunctionCurveConfig(
 		"avg_function_curve",
 		function,
 		[]string{
@@ -172,9 +173,10 @@ func TestFunctionCurveAverage(t *testing.T) {
 			curve2.Id,
 		},
 	)
+	functionCurve := NewSpeedCurve(functionCurveConfig)
 
 	// WHEN
-	result, err := evaluateCurve(functionCurve)
+	result, err := functionCurve.Evaluate()
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
@@ -212,15 +214,17 @@ func TestFunctionCurveMinimum(t *testing.T) {
 		40,
 		80,
 	)
+	NewSpeedCurve(curve1)
 	curve2 := createLinearCurveConfig(
 		"case_fan_back",
 		sensor2.GetConfig().Id,
 		40,
 		80,
 	)
+	NewSpeedCurve(curve2)
 
 	function := configuration.FunctionMinimum
-	functionCurve := createFunctionCurveConfig(
+	functionCurveConfig := createFunctionCurveConfig(
 		"max_function_curve",
 		function,
 		[]string{
@@ -228,9 +232,10 @@ func TestFunctionCurveMinimum(t *testing.T) {
 			curve2.Id,
 		},
 	)
+	functionCurve := NewSpeedCurve(functionCurveConfig)
 
 	// WHEN
-	result, err := evaluateCurve(functionCurve)
+	result, err := functionCurve.Evaluate()
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
@@ -267,15 +272,17 @@ func TestFunctionCurveMaximum(t *testing.T) {
 		40,
 		80,
 	)
+	NewSpeedCurve(curve1)
 	curve2 := createLinearCurveConfig(
 		"case_fan_back",
 		sensor2.GetConfig().Id,
 		40,
 		80,
 	)
+	NewSpeedCurve(curve2)
 
 	function := configuration.FunctionMaximum
-	functionCurve := createFunctionCurveConfig(
+	functionCurveConfig := createFunctionCurveConfig(
 		"max_function_curve",
 		function,
 		[]string{
@@ -283,9 +290,10 @@ func TestFunctionCurveMaximum(t *testing.T) {
 			curve2.Id,
 		},
 	)
+	functionCurve := NewSpeedCurve(functionCurveConfig)
 
 	// WHEN
-	result, err := evaluateCurve(functionCurve)
+	result, err := functionCurve.Evaluate()
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}

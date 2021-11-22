@@ -60,7 +60,7 @@ func createFan(neverStop bool, curveData map[int][]float64) (fan Fan, err error)
 	}
 	FanMap[fan.GetConfig().Id] = fan
 
-	err = AttachFanCurveData(&curveData, fan.GetConfig().Id)
+	err = AttachFanCurveData(&curveData, fan)
 
 	return fan, err
 }
@@ -150,7 +150,7 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 		40,
 		60,
 	)
-	CurveMap[curveConfig.Id] = &curveConfig
+	NewSpeedCurve(curveConfig)
 
 	fan, _ := createFan(false, linearFan)
 
@@ -184,7 +184,7 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 		40,
 		60,
 	)
-	CurveMap[curveConfig.Id] = &curveConfig
+	NewSpeedCurve(curveConfig)
 
 	fan, _ := createFan(true, cappedFan)
 

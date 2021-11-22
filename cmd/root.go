@@ -29,7 +29,7 @@ on your computer based on temperature sensors.`,
 		printHeader()
 
 		configuration.ReadConfigFile()
-		internal.Run(verbose)
+		internal.Run()
 	},
 }
 
