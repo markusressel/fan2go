@@ -30,9 +30,8 @@ const (
 )
 
 var (
-	SensorMonitorMap = map[string]SensorMonitor{}
-	SensorMap        = map[string]Sensor{}
-	FanMap           = map[string]Fan{}
+	SensorMap = map[string]Sensor{}
+	FanMap    = map[string]Fan{}
 )
 
 func Run() {
