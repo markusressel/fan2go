@@ -4,12 +4,12 @@ import (
 	"os"
 )
 
-func TestPrintln(t *testing.T) {
-	msg := "This is a test: %d"
+func ExamplePrintln() {
+	msg := "This is a test "
 	a := 5
 	Printfln(msg, a)
 	// Output:
-	// This is a test: 5
+	// This is a test 5
 }
 
 func ExampleDebug() {

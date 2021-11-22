@@ -33,46 +33,30 @@ type linearSpeedCurve struct {
 
 var (
 	SpeedCurveMap = map[string]SpeedCurve{}
-
-	UnknownCurveType = errors.New("unknown curve type")
 )
 
-func NewSpeedCurve(curveConfig configuration.CurveConfig) SpeedCurve {
-	marshalled, err := json.Marshal(curveConfig.Params)
-	if err != nil {
-		ui.Error("Couldn't marshal curve configuration: %v", err)
+func NewSpeedCurve(curveConfig configuration.CurveConfig) (SpeedCurve, error) {
+	if curveConfig.Linear != nil {
+		c := &linearSpeedCurve{
+			sensorId: curveConfig.Linear.Sensor,
+			min:      curveConfig.Linear.Min,
+			max:      curveConfig.Linear.Max,
+			steps:    curveConfig.Linear.Steps,
+		}
+		SpeedCurveMap[curveConfig.ID] = c
+		return c, nil
 	}
 
-	var speedCurve SpeedCurve
-	if curveConfig.Type == configuration.LinearCurveType {
-		c := configuration.LinearCurveConfig{}
-		if err := json.Unmarshal(marshalled, &c); err != nil {
-			ui.Fatal("Couldn't unmarshal curve configuration: %v", err)
+	if curveConfig.Function != nil {
+		c := &functionSpeedCurve{
+			function: curveConfig.Function.Type,
+			curveIds: curveConfig.Function.Curves,
 		}
-
-		speedCurve = &linearSpeedCurve{
-			sensorId: c.Sensor,
-			min:      c.Min,
-			max:      c.Max,
-			steps:    c.Steps,
-		}
-	} else if curveConfig.Type == configuration.FunctionCurveType {
-		c := configuration.FunctionCurveConfig{}
-		if err := json.Unmarshal(marshalled, &c); err != nil {
-			ui.Error("Couldn't unmarshal curve configuration: %v", err)
-		}
-
-		// TODO: what about loops?
-		speedCurve = &functionSpeedCurve{
-			function: c.Function,
-			curveIds: c.Curves,
-		}
-	} else {
-		panic(UnknownCurveType)
+		SpeedCurveMap[curveConfig.ID] = c
+		return c, nil
 	}
 
-	SpeedCurveMap[curveConfig.Id] = speedCurve
-	return speedCurve
+	return nil, fmt.Errorf("curve not found")
 }
 
 func (c linearSpeedCurve) Evaluate() (value int, err error) {

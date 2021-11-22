@@ -1,15 +1,10 @@
 package configuration
 
 type CurveConfig struct {
-	Id     string                 `json:"id"`
-	Type   string                 `json:"type"`
-	Params map[string]interface{} `json:"params"`
+	ID       string               `json:"id"`
+	Linear   *LinearCurveConfig   `json:"linear,omitempty"`
+	Function *FunctionCurveConfig `json:"function,omitempty"`
 }
-
-const (
-	LinearCurveType   = "linear"
-	FunctionCurveType = "function"
-)
 
 type LinearCurveConfig struct {
 	Sensor string      `json:"sensor"`

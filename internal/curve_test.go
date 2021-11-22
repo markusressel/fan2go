@@ -14,12 +14,11 @@ func createLinearCurveConfig(
 	maxTemp int,
 ) (curve configuration.CurveConfig) {
 	curve = configuration.CurveConfig{
-		Id:   id,
-		Type: configuration.LinearCurveType,
-		Params: map[string]interface{}{
-			"Sensor": sensorId,
-			"Min":    minTemp,
-			"Max":    maxTemp,
+		ID: id,
+		Linear: &configuration.LinearCurveConfig{
+			Sensor: sensorId,
+			Min:    minTemp,
+			Max:    maxTemp,
 		},
 	}
 	return curve
@@ -32,11 +31,10 @@ func createLinearCurveConfigWithSteps(
 	steps map[int]int,
 ) (curve configuration.CurveConfig) {
 	curve = configuration.CurveConfig{
-		Id:   id,
-		Type: configuration.LinearCurveType,
-		Params: map[string]interface{}{
-			"Sensor": sensorId,
-			"Steps":  steps,
+		ID: id,
+		Linear: &configuration.LinearCurveConfig{
+			Sensor: sensorId,
+			Steps:  steps,
 		},
 	}
 	return curve
@@ -164,8 +162,8 @@ func TestFunctionCurveAverage(t *testing.T) {
 		"avg_function_curve",
 		function,
 		[]string{
-			curve1.Id,
-			curve2.Id,
+			curve1.ID,
+			curve2.ID,
 		},
 	)
 	functionCurve, err := NewSpeedCurve(functionCurveConfig)
@@ -221,8 +219,8 @@ func TestFunctionCurveMinimum(t *testing.T) {
 		"max_function_curve",
 		function,
 		[]string{
-			curve1.Id,
-			curve2.Id,
+			curve1.ID,
+			curve2.ID,
 		},
 	)
 	functionCurve, err := NewSpeedCurve(functionCurveConfig)
@@ -277,8 +275,8 @@ func TestFunctionCurveMaximum(t *testing.T) {
 		"max_function_curve",
 		function,
 		[]string{
-			curve1.Id,
-			curve2.Id,
+			curve1.ID,
+			curve2.ID,
 		},
 	)
 	functionCurve, err := NewSpeedCurve(functionCurveConfig)
