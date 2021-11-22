@@ -49,11 +49,10 @@ func createFunctionCurveConfig(
 	curveIds []string,
 ) (curve configuration.CurveConfig) {
 	curve = configuration.CurveConfig{
-		Id:   id,
-		Type: configuration.FunctionCurveType,
-		Params: map[string]interface{}{
-			"function": function,
-			"curves":   curveIds,
+		ID: id,
+		Function: &configuration.FunctionCurveConfig{
+			Type:   function,
+			Curves: curveIds,
 		},
 	}
 	return curve
@@ -65,21 +64,20 @@ func TestLinearCurveWithMinMax(t *testing.T) {
 
 	s := createSensor(
 		"sensor",
-		configuration.SensorTypeHwMon,
-		map[string]interface{}{
-			"platform": "platform",
-			"index":    0,
+		configuration.HwMonSensorConfig{
+			Platform: "platform",
+			Index:    0,
 		},
 		avgTmp,
 	)
 
 	curveConfig := createLinearCurveConfig(
 		"curve",
-		s.GetConfig().Id,
+		s.GetConfig().ID,
 		40,
 		80,
 	)
-	curve := NewSpeedCurve(curveConfig)
+	curve, err := NewSpeedCurve(curveConfig)
 
 	// WHEN
 	result, err := curve.Evaluate()
@@ -96,17 +94,16 @@ func TestLinearCurveWithSteps(t *testing.T) {
 	avgTmp := 60000.0
 	s := createSensor(
 		"sensor",
-		configuration.SensorTypeHwMon,
-		map[string]interface{}{
-			"platform": "platform",
-			"index":    0,
+		configuration.HwMonSensorConfig{
+			Platform: "platform",
+			Index:    0,
 		},
 		avgTmp,
 	)
 
 	curveConfig := createLinearCurveConfigWithSteps(
 		"curve",
-		s.GetConfig().Id,
+		s.GetConfig().ID,
 		map[int]int{
 			40: 0,
 			50: 30,
@@ -114,7 +111,7 @@ func TestLinearCurveWithSteps(t *testing.T) {
 			70: 255,
 		},
 	)
-	curve := NewSpeedCurve(curveConfig)
+	curve, err := NewSpeedCurve(curveConfig)
 
 	// WHEN
 	result, err := curve.Evaluate()
@@ -132,33 +129,31 @@ func TestFunctionCurveAverage(t *testing.T) {
 	temp2 := 80000.0
 	sensor1 := createSensor(
 		"sensor1",
-		configuration.SensorTypeHwMon,
-		map[string]interface{}{
-			"platform": "platform",
-			"index":    1,
+		configuration.HwMonSensorConfig{
+			Platform: "platform",
+			Index:    1,
 		},
 		temp1,
 	)
 	sensor2 := createSensor(
 		"sensor2",
-		configuration.SensorTypeHwMon,
-		map[string]interface{}{
-			"platform": "platform",
-			"index":    2,
+		configuration.HwMonSensorConfig{
+			Platform: "platform",
+			Index:    2,
 		},
 		temp2,
 	)
 
 	curve1 := createLinearCurveConfig(
 		"case_fan_front",
-		sensor1.GetConfig().Id,
+		sensor1.GetConfig().ID,
 		40,
 		80,
 	)
 	NewSpeedCurve(curve1)
 	curve2 := createLinearCurveConfig(
 		"case_fan_back",
-		sensor2.GetConfig().Id,
+		sensor2.GetConfig().ID,
 		40,
 		80,
 	)
@@ -173,7 +168,7 @@ func TestFunctionCurveAverage(t *testing.T) {
 			curve2.Id,
 		},
 	)
-	functionCurve := NewSpeedCurve(functionCurveConfig)
+	functionCurve, err := NewSpeedCurve(functionCurveConfig)
 
 	// WHEN
 	result, err := functionCurve.Evaluate()
@@ -191,33 +186,31 @@ func TestFunctionCurveMinimum(t *testing.T) {
 	temp2 := 80000.0
 	sensor1 := createSensor(
 		"sensor1",
-		configuration.SensorTypeHwMon,
-		map[string]interface{}{
-			"platform": "platform",
-			"index":    1,
+		configuration.HwMonSensorConfig{
+			Platform: "platform",
+			Index:    1,
 		},
 		temp1,
 	)
 	sensor2 := createSensor(
 		"sensor2",
-		configuration.SensorTypeHwMon,
-		map[string]interface{}{
-			"platform": "platform",
-			"index":    2,
+		configuration.HwMonSensorConfig{
+			Platform: "platform",
+			Index:    2,
 		},
 		temp2,
 	)
 
 	curve1 := createLinearCurveConfig(
 		"case_fan_front",
-		sensor1.GetConfig().Id,
+		sensor1.GetConfig().ID,
 		40,
 		80,
 	)
 	NewSpeedCurve(curve1)
 	curve2 := createLinearCurveConfig(
 		"case_fan_back",
-		sensor2.GetConfig().Id,
+		sensor2.GetConfig().ID,
 		40,
 		80,
 	)
@@ -232,7 +225,7 @@ func TestFunctionCurveMinimum(t *testing.T) {
 			curve2.Id,
 		},
 	)
-	functionCurve := NewSpeedCurve(functionCurveConfig)
+	functionCurve, err := NewSpeedCurve(functionCurveConfig)
 
 	// WHEN
 	result, err := functionCurve.Evaluate()
@@ -250,32 +243,30 @@ func TestFunctionCurveMaximum(t *testing.T) {
 	temp2 := 80000.0
 	sensor1 := createSensor(
 		"sensor1",
-		configuration.SensorTypeHwMon,
-		map[string]interface{}{
-			"platform": "platform",
-			"index":    1,
+		configuration.HwMonSensorConfig{
+			Platform: "platform",
+			Index:    1,
 		},
 		temp1,
 	)
 	sensor2 := createSensor(
 		"sensor2",
-		configuration.SensorTypeHwMon,
-		map[string]interface{}{
-			"platform": "platform",
-			"index":    2,
+		configuration.HwMonSensorConfig{
+			Platform: "platform",
+			Index:    2,
 		},
 		temp2,
 	)
 	curve1 := createLinearCurveConfig(
 		"case_fan_front",
-		sensor1.GetConfig().Id,
+		sensor1.GetConfig().ID,
 		40,
 		80,
 	)
 	NewSpeedCurve(curve1)
 	curve2 := createLinearCurveConfig(
 		"case_fan_back",
-		sensor2.GetConfig().Id,
+		sensor2.GetConfig().ID,
 		40,
 		80,
 	)
@@ -290,7 +281,7 @@ func TestFunctionCurveMaximum(t *testing.T) {
 			curve2.Id,
 		},
 	)
-	functionCurve := NewSpeedCurve(functionCurveConfig)
+	functionCurve, err := NewSpeedCurve(functionCurveConfig)
 
 	// WHEN
 	result, err := functionCurve.Evaluate()

@@ -12,7 +12,7 @@ func Printf(format string, a ...interface{}) {
 	pterm.Printf(format, a...)
 }
 
-func Println(format string, a ...interface{}) {
+func Printfln(format string, a ...interface{}) {
 	pterm.Printfln(format, a...)
 }
 

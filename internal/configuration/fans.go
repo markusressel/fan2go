@@ -1,19 +1,18 @@
 package configuration
 
 type FanConfig struct {
-	Id        string                 `json:"id"`
-	Type      string                 `json:"type"`
-	Params    map[string]interface{} `json:"params"`
-	NeverStop bool                   `json:"neverstop"`
-	Curve     string                 `json:"curve"`
+	ID        string          `json:"id"`
+	NeverStop bool            `json:"neverStop"`
+	Curve     string          `json:"curve"`
+	HwMon     *HwMonFanConfig `json:"hwMon,omitempty"`
+	File      *FileFanConfig  `json:"file,omitempty"`
 }
 
-const (
-	FanTypeHwMon = "hwmon"
-	FanTypeFile  = "file"
-)
-
-type HwMonFanParams struct {
+type HwMonFanConfig struct {
 	Platform string `json:"platform"`
 	Index    int    `json:"index"`
+}
+
+type FileFanConfig struct {
+	Path string `json:"path"`
 }

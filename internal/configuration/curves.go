@@ -25,6 +25,6 @@ const (
 )
 
 type FunctionCurveConfig struct {
-	Function string   `json:"function"`
-	Curves   []string `json:"curves"`
+	Type   string   `json:"type"`
+	Curves []string `json:"curves"`
 }

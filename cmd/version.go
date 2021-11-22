@@ -10,7 +10,7 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number of fan2go",
 	Long:  `All software has versions. This is fan2go's`,
 	Run: func(cmd *cobra.Command, args []string) {
-		ui.Println("0.0.18")
+		ui.Printfln("0.0.18")
 	},
 }
 

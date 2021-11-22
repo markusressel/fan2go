@@ -45,11 +45,10 @@ func createFan(neverStop bool, curveData map[int][]float64) (fan Fan, err error)
 
 	fan = &fans.HwMonFan{
 		Config: &configuration.FanConfig{
-			Id:   "fan1",
-			Type: "hwmon",
-			Params: map[string]interface{}{
-				"platform": "platform",
-				"index":    1,
+			ID: "fan1",
+			HwMon: &configuration.HwMonFanConfig{
+				Platform: "platform",
+				Index:    1,
 			},
 			NeverStop: neverStop,
 			Curve:     "curve",
@@ -58,7 +57,7 @@ func createFan(neverStop bool, curveData map[int][]float64) (fan Fan, err error)
 		PwmOutput:    "fan1_output",
 		RpmInput:     "fan1_rpm",
 	}
-	FanMap[fan.GetConfig().Id] = fan
+	FanMap[fan.GetConfig().ID] = fan
 
 	err = AttachFanCurveData(&curveData, fan)
 
@@ -67,19 +66,17 @@ func createFan(neverStop bool, curveData map[int][]float64) (fan Fan, err error)
 
 func createSensor(
 	id string,
-	_type string,
-	params map[string]interface{},
+	hwMonConfig configuration.HwMonSensorConfig,
 	avgTmp float64,
 ) (sensor Sensor) {
 	sensor = &sensors.HwmonSensor{
 		Config: &configuration.SensorConfig{
-			Id:     id,
-			Type:   _type,
-			Params: params,
+			ID:    id,
+			HwMon: &hwMonConfig,
 		},
 		MovingAvg: avgTmp,
 	}
-	SensorMap[sensor.GetConfig().Id] = sensor
+	SensorMap[sensor.GetConfig().ID] = sensor
 	return sensor
 }
 
@@ -136,17 +133,16 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 	avgTmp := 50000.0
 	s := createSensor(
 		"sensor",
-		configuration.SensorTypeHwMon,
-		map[string]interface{}{
-			"platform": "platform",
-			"index":    0,
+		configuration.HwMonSensorConfig{
+			Platform: "platform",
+			Index:    0,
 		},
 		avgTmp,
 	)
 
 	curveConfig := createLinearCurveConfig(
 		"curve",
-		s.GetConfig().Id,
+		s.GetConfig().ID,
 		40,
 		60,
 	)
@@ -170,17 +166,16 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 
 	s := createSensor(
 		"sensor",
-		configuration.SensorTypeHwMon,
-		map[string]interface{}{
-			"platform": "platform",
-			"index":    0,
+		configuration.HwMonSensorConfig{
+			Platform: "platform",
+			Index:    0,
 		},
 		avgTmp,
 	)
 
 	curveConfig := createLinearCurveConfig(
 		"curve",
-		s.GetConfig().Id,
+		s.GetConfig().ID,
 		40,
 		60,
 	)

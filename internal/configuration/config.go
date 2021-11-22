@@ -90,6 +90,35 @@ func LoadConfig() {
 }
 
 func validateConfig() {
-	//config := &CurrentConfig
-	// nothing yet
+	config := &CurrentConfig
+
+	for _, fanConfig := range config.Fans {
+		if fanConfig.HwMon != nil && fanConfig.File != nil {
+			ui.Fatal("Fans %s: only one fan type can be used per fan definition block", fanConfig.ID)
+		}
+
+		if fanConfig.HwMon == nil && fanConfig.File == nil {
+			ui.Fatal("Fans %s: sub-configuration for fan is missing, use one of: hwmon | file", fanConfig.ID)
+		}
+	}
+
+	for _, sensorConfig := range config.Sensors {
+		if sensorConfig.HwMon != nil && sensorConfig.File != nil {
+			ui.Fatal("Sensor %s: only one sensor type can be used per sensor definition block", sensorConfig.ID)
+		}
+
+		if sensorConfig.HwMon == nil && sensorConfig.File == nil {
+			ui.Fatal("Sensor %s: sub-configuration for sensor is missing, use one of: hwmon | file", sensorConfig.ID)
+		}
+	}
+
+	for _, curveConfig := range config.Curves {
+		if curveConfig.Linear != nil && curveConfig.Function != nil {
+			ui.Fatal("Curve %s: only one curve type can be used per curve definition block", curveConfig.ID)
+		}
+
+		if curveConfig.Linear == nil && curveConfig.Function == nil {
+			ui.Fatal("Curve %s: sub-configuration for curve is missing, use one of: linear | function", curveConfig.ID)
+		}
+	}
 }

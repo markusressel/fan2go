@@ -43,7 +43,7 @@ var detectCmd = &cobra.Command{
 				continue
 			}
 
-			ui.Println("> %s", controller.Name)
+			ui.Printfln("> %s", controller.Name)
 
 			var fanRows [][]string
 			for _, fan := range controller.Fans {
@@ -66,7 +66,7 @@ var detectCmd = &cobra.Command{
 			var sensorRows [][]string
 			for _, sensor := range controller.Sensors {
 				value, _ := sensor.GetValue()
-				//ui.Println("  %d: %s (%s): %d", sensor.Index, sensor.Label, sensor.Name, value)
+				//ui.Printfln("  %d: %s (%s): %d", sensor.Index, sensor.Label, sensor.Name, value)
 				hwSensor := sensor.(*sensors.HwmonSensor)
 
 				sensorRows = append(sensorRows, []string{
@@ -95,7 +95,7 @@ var detectCmd = &cobra.Command{
 				if idx < (len(tables) - 1) {
 					ui.Printf(tableString)
 				} else {
-					ui.Println(tableString)
+					ui.Printfln(tableString)
 				}
 			}
 		}

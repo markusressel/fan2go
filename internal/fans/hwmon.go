@@ -96,7 +96,7 @@ func (fan HwMonFan) GetPwm() int {
 }
 
 func (fan *HwMonFan) SetPwm(pwm int) (err error) {
-	ui.Debug("Setting %s (%s, %s) to %d ...", fan.Config.Id, fan.Label, fan.Name, pwm)
+	ui.Debug("Setting %s (%s, %s) to %d ...", fan.Config.ID, fan.Label, fan.Name, pwm)
 
 	err = util.WriteIntToFile(pwm, fan.PwmOutput)
 	if err == nil {

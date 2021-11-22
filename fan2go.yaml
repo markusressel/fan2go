@@ -26,8 +26,7 @@ fans:
   # Used for logging only
   - id: cpu
     # The type of fan configuration
-    type: hwmon
-    params:
+    hwmon:
       # The platform of the controller which is
       # connected to this fan (see sensor.platform above)
       platform: cpu
@@ -41,16 +40,14 @@ fans:
     curve: cpu_curve
 
   - id: in_front
-    type: hwmon
-    params:
+    hwmon:
       platform: it8620
       index: 4
     neverStop: yes
     curve: case_avg_curve
 
   - id: out_back
-    type: hwmon
-    params:
+    hwmon:
       platform: it8620
       index: 5
     neverStop: yes
@@ -62,8 +59,7 @@ sensors:
   # a sensor in a curve configuration (see below)
   - id: cpu_package
     # The type of sensor configuration
-    type: hwmon
-    params:
+    hwmon:
       # The controller platform as displayed by `fan2go detect`, f.ex.:
       # "nouveau", "coretemp" or "it8620" etc.
       platform: coretemp
@@ -71,14 +67,12 @@ sensors:
       index: 1
 
   - id: mainboard
-    type: hwmon
-    params:
+    hwmon:
       platform: it8620
       index: 3
 
   - id: sata_ssd
-    type: hwmon
-    params:
+    hwmon:
       platform: acpitz
       index: 1
 
@@ -88,10 +82,8 @@ curves:
   # A user defined ID, which is used to reference
   # a curve in a fan configuration (see above)
   - id: cpu_curve
-    # The type of curve configuration
-    type: linear
-    # Parameters needed for the given curve type
-    params:
+    # The type of curve configuration, one of: linear | function
+    linear:
       # The sensor ID to use as a temperature input
       sensor: cpu_package
       # Steps to define a section-wise defined speed curve function
@@ -102,8 +94,7 @@ curves:
         - 80: 255
 
   - id: mainboard_curve
-    type: linear
-    params:
+    linear:
       sensor: mainboard
       # Sensor input value at which the curve is at minimum speed
       min: 40
@@ -111,17 +102,15 @@ curves:
       max: 80
 
   - id: ssd_curve
-    type: linear
-    params:
+    linear:
       sensor: sata_ssd
       min: 40
       max: 70
 
   - id: case_avg_curve
-    type: function
-    params:
+    function:
       # Type of aggregation function to use, on of: minimum | maximum | average
-      function: average
+      type: average
       # A list of curve IDs to use
       curves:
         - cpu_curve

@@ -79,9 +79,8 @@ fans:
   # A user defined ID.
   # Used for logging only
   - id: cpu
-    # The type of fan configuration
-    type: hwmon
-    params:
+    # The type of fan configuration, one of: hwmon | file
+    hwmon:
       # The platform of the controller which is
       # connected to this fan (see sensor.platform above)
       platform: cpu
@@ -106,9 +105,8 @@ sensors:
   # A user defined ID, which is used to reference
   # a sensor in a curve configuration (see below)
   - id: cpu_package
-    # The type of sensor configuration
-    type: hwmon
-    params:
+    # The type of sensor configuration, one of: hwmon | file
+    hwmon:
       # The controller platform as displayed by `fan2go detect`, f.ex.:
       # "nouveau", "coretemp" or "it8620" etc.
       platform: coretemp
@@ -131,10 +129,8 @@ max temp will result in a curve value of `255`:
 ```yaml
 curves:
   - id: cpu_curve
-    # The type of the curve
-    type: linear
-    # Parameters needed for a specific curve type.
-    params:
+    # The type of the curve, one of: linear | function
+    linear:
       # The sensor ID to use as a temperature input
       sensor: cpu_package
       # Sensor input value at which the curve is at minimum speed
@@ -149,9 +145,7 @@ You can also define the curve in multiple, linear sections using the `steps` par
 curves:
   - id: cpu_curve
     # The type of the curve
-    type: linear
-    # Parameters needed for the given curve type.
-    params:
+    linear:
       # The sensor ID to use as a temperature input
       sensor: cpu_package
       # Steps to define a section-wise defined speed curve function.
@@ -169,10 +163,9 @@ To create more complex curves you can combine exising curves using a curve of ty
 ```yaml
 curves:
   - id: case_avg_curve
-    type: function
-    params:
+    function:
       # Type of aggregation function to use, on of: minimum | maximum | average
-      function: average
+      type: average
       # A list of curve IDs to use
       curves:
         - cpu_curve

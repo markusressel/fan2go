@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -33,6 +32,16 @@ var (
 	SensorMap = map[string]Sensor{}
 	FanMap    = map[string]Fan{}
 )
+
+type HwMonController struct {
+	Name     string   `json:"name"`
+	DType    string   `json:"dtype"`
+	Modalias string   `json:"modalias"`
+	Platform string   `json:"platform"`
+	Path     string   `json:"path"`
+	Fans     []Fan    `json:"fans"`
+	Sensors  []Sensor `json:"sensors"`
+}
 
 func Run() {
 	if getProcessOwner() != "root" {
@@ -85,7 +94,7 @@ func Run() {
 					continue
 				}
 
-				fanId := fan.GetConfig().Id
+				fanId := fan.GetConfig().ID
 
 				updateRate := configuration.CurrentConfig.ControllerAdjustmentTickRate
 				fanController := NewFanController(persistence, fan, updateRate)
@@ -117,7 +126,7 @@ func Run() {
 					}
 					err = setPwm(fan, MaxPwmValue)
 					if err != nil {
-						ui.Warning("Unable to restore fan %s, make sure it is running!", fan.GetConfig().Id)
+						ui.Warning("Unable to restore fan %s, make sure it is running!", fan.GetConfig().ID)
 					}
 				})
 				count++
@@ -175,9 +184,9 @@ func MapConfigToControllers(controllers []*HwMonController) {
 		for _, fan := range controller.Fans {
 			fanConfig := findFanConfig(controller, fan)
 			if fanConfig != nil {
-				ui.Debug("Mapping fan config %s to %s", fanConfig.Id, fan.(*fans.HwMonFan).PwmOutput)
+				ui.Debug("Mapping fan config %s to %s", fanConfig.ID, fan.(*fans.HwMonFan).PwmOutput)
 				fan.SetConfig(fanConfig)
-				FanMap[fanConfig.Id] = fan
+				FanMap[fanConfig.ID] = fan
 			}
 		}
 		// match sensor and sensor config entries
@@ -187,16 +196,16 @@ func MapConfigToControllers(controllers []*HwMonController) {
 				continue
 			}
 
-			ui.Debug("Mapping sensor config %s to %s", sensorConfig.Id, sensor.(*sensors.HwmonSensor).Input)
+			ui.Debug("Mapping sensor config %s to %s", sensorConfig.ID, sensor.(*sensors.HwmonSensor).Input)
 
 			sensor.SetConfig(sensorConfig)
 			// remember ID -> Sensor association for later
-			SensorMap[sensorConfig.Id] = sensor
+			SensorMap[sensorConfig.ID] = sensor
 
 			// initialize arrays for storing temps
 			currentValue, err := sensor.GetValue()
 			if err != nil {
-				ui.Fatal("Error reading sensor %s: %v", sensorConfig.Id, err)
+				ui.Fatal("Error reading sensor %s: %v", sensorConfig.ID, err)
 			}
 			sensor.SetMovingAvg(currentValue)
 		}
@@ -210,7 +219,7 @@ func measureRpm(fanId string) {
 	pwm := fan.GetPwm()
 	rpm := fan.GetRpm()
 
-	ui.Debug("Measured RPM of %d at PWM %d for fan %s", rpm, pwm, fan.GetConfig().Id)
+	ui.Debug("Measured RPM of %d at PWM %d for fan %s", rpm, pwm, fan.GetConfig().ID)
 
 	updatedRpmAvg := updateSimpleMovingAvg(fan.GetRpmAvg(), configuration.CurrentConfig.RpmRollingWindowSize, float64(rpm))
 	fan.SetRpmAvg(updatedRpmAvg)
@@ -272,7 +281,7 @@ func AttachFanCurveData(curveData *map[int][]float64, fan Fan) (err error) {
 	// convert the persisted map to arrays back to a moving window and attach it to the fan
 
 	if curveData == nil || len(*curveData) <= 0 {
-		ui.Error("Cant attach empty fan curve data to fan %s", fan.GetConfig().Id)
+		ui.Error("Cant attach empty fan curve data to fan %s", fan.GetConfig().ID)
 		return os.ErrInvalid
 	}
 
@@ -354,23 +363,15 @@ func AttachFanCurveData(curveData *map[int][]float64, fan Fan) (err error) {
 func findFanConfig(controller *HwMonController, fan Fan) (fanConfig *configuration.FanConfig) {
 	for _, fanConfig := range configuration.CurrentConfig.Fans {
 
-		marshalled, err := json.Marshal(fanConfig.Params)
-		if err != nil {
-			ui.Error("Couldn't marshal curve configuration: %v", err)
-		}
-
-		if fanConfig.Type == configuration.FanTypeHwMon {
-			c := configuration.HwMonFanParams{}
-			if err := json.Unmarshal(marshalled, &c); err != nil {
-				ui.Fatal("Couldn't unmarshal fan parameter configuration: %v", err)
-			}
+		if fanConfig.HwMon != nil {
+			c := fanConfig.HwMon
 			hwmonFan := fan.(*fans.HwMonFan)
 
 			if controller.Platform == c.Platform &&
 				hwmonFan.Index == c.Index {
 				return &fanConfig
 			}
-		} else if fanConfig.Type == configuration.FanTypeFile {
+		} else if fanConfig.File != nil {
 			// TODO
 		}
 	}
@@ -380,25 +381,18 @@ func findFanConfig(controller *HwMonController, fan Fan) (fanConfig *configurati
 func findSensorConfig(controller *HwMonController, sensor Sensor) (sensorConfig *configuration.SensorConfig) {
 	for _, sensorConfig := range configuration.CurrentConfig.Sensors {
 
-		// TODO: find a way around this marshaling, or move it to a central place
-		marshalled, err := json.Marshal(sensorConfig.Params)
-		if err != nil {
-			ui.Error("Couldn't marshal curve configuration: %v", err)
-		}
-
-		if sensorConfig.Type == configuration.SensorTypeHwMon {
-			c := configuration.HwMonSensor{}
-			if err := json.Unmarshal(marshalled, &c); err != nil {
-				ui.Fatal("Couldn't unmarshal sensor parameter configuration: %v", err)
-			}
+		if sensorConfig.HwMon != nil {
+			c := sensorConfig.HwMon
+			hwmonFan := sensor.(*sensors.HwmonSensor)
 
 			if controller.Platform == c.Platform &&
-				sensor.(*sensors.HwmonSensor).Index == c.Index {
+				hwmonFan.Index == c.Index {
 				return &sensorConfig
 			}
-		} else if sensorConfig.Type == configuration.SensorTypeFile {
+		} else if sensorConfig.File != nil {
 			// TODO
 		}
+
 	}
 	return nil
 }
@@ -503,7 +497,7 @@ func createFans(devicePath string) (fanList []Fan) {
 		// store original pwm_enable value
 		pwmEnabled, err := fan.GetPwmEnabled()
 		if err != nil {
-			ui.Fatal("Cannot read pwm_enable value of %s", fan.GetConfig().Id)
+			ui.Fatal("Cannot read pwm_enable value of %s", fan.GetConfig().ID)
 		}
 		fan.OriginalPwmEnabled = pwmEnabled
 

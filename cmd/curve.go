@@ -42,12 +42,12 @@ var curveCmd = &cobra.Command{
 				}
 
 				if idx > 0 {
-					ui.Println("")
-					ui.Println("")
+					ui.Printfln("")
+					ui.Printfln("")
 				}
 
 				// print table
-				ui.Println(controller.Name + " -> " + fan.GetName())
+				ui.Printfln(controller.Name + " -> " + fan.GetName())
 				tab := table.Table{
 					Headers: []string{"", ""},
 					Rows: [][]string{
@@ -70,11 +70,11 @@ var curveCmd = &cobra.Command{
 					panic(err)
 				}
 				tableString := buf.String()
-				ui.Println(tableString)
+				ui.Printfln(tableString)
 
 				// print graph
 				if fanCurveErr != nil {
-					ui.Println("No fan curve data yet...")
+					ui.Printfln("No fan curve data yet...")
 					continue
 				}
 
@@ -91,10 +91,10 @@ var curveCmd = &cobra.Command{
 
 				caption := "RPM / PWM"
 				graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(100), asciigraph.Caption(caption))
-				ui.Println(graph)
+				ui.Printfln(graph)
 			}
 
-			ui.Println("")
+			ui.Printfln("")
 		}
 	},
 }

@@ -9,7 +9,6 @@ import (
 
 type SensorMonitor interface {
 	Run(ctx context.Context) error
-	GetLast() (float64, error)
 }
 
 type sensorMonitor struct {
@@ -57,8 +56,4 @@ func updateSensor(s Sensor) (err error) {
 // calculates the new moving average, based on an existing average and buffer size
 func updateSimpleMovingAvg(oldAvg float64, n int, newValue float64) float64 {
 	return oldAvg + (1/float64(n))*(newValue-oldAvg)
-}
-
-func (s sensorMonitor) GetLast() (float64, error) {
-	return s.sensor.GetValue()
 }

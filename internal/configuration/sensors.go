@@ -1,17 +1,16 @@
 package configuration
 
 type SensorConfig struct {
-	Id     string                 `json:"id"`
-	Type   string                 `json:"type"`
-	Params map[string]interface{} `json:"params"`
+	ID    string             `json:"id"`
+	HwMon *HwMonSensorConfig `json:"hwMon,omitempty"`
+	File  *FileSensorConfig  `json:"file,omitempty"`
 }
 
-const (
-	SensorTypeHwMon = "hwmon"
-	SensorTypeFile  = "file"
-)
-
-type HwMonSensor struct {
+type HwMonSensorConfig struct {
 	Platform string `json:"platform"`
 	Index    int    `json:"index"`
+}
+
+type FileSensorConfig struct {
+	Path string `json:"path"`
 }

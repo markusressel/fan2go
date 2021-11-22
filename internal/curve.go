@@ -1,8 +1,7 @@
 package internal
 
 import (
-	"encoding/json"
-	"errors"
+	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
@@ -108,43 +107,38 @@ func (c functionSpeedCurve) Evaluate() (value int, err error) {
 		curves = append(curves, SpeedCurveMap[curveId])
 	}
 
-	if c.function == configuration.FunctionMinimum {
-		var min int
-		for _, curve := range curves {
-			v, err := curve.Evaluate()
-			if err != nil {
-				return 0, err
-			}
-
-			min = int(math.Min(float64(min), float64(v)))
+	var values []int
+	for _, curve := range curves {
+		v, err := curve.Evaluate()
+		if err != nil {
+			return 0, err
 		}
-		value = min
-	} else if c.function == configuration.FunctionMaximum {
-		var max int
-		for _, curve := range curves {
-			v, err := curve.Evaluate()
-			if err != nil {
-				return 0, err
-			}
-
-			max = int(math.Max(float64(max), float64(v)))
-		}
-		value = max
-	} else if c.function == configuration.FunctionAverage {
-		var total = 0
-		for _, curve := range curves {
-			v, err := curve.Evaluate()
-			if err != nil {
-				return 0, err
-			}
-
-			total += v
-		}
-		value = total / len(curves)
-	} else {
-		ui.Fatal("Unknown curve function: %s", c.function)
+		values = append(values, v)
 	}
 
+	switch c.function {
+	case configuration.FunctionMinimum:
+		var min float64
+		for _, v := range values {
+			min = math.Min(min, float64(v))
+		}
+		return int(min), nil
+	case configuration.FunctionMaximum:
+		var max float64
+		for _, v := range values {
+			max = math.Max(max, float64(v))
+		}
+		return int(max), nil
+	case configuration.FunctionAverage:
+		var total = 0
+		for _, v := range values {
+			total += v
+		}
+		avg := total / len(curves)
+		return avg, nil
+	}
+
+	ui.Fatal("Unknown curve function: %s", c.function)
 	return value, err
 }
 
@@ -152,7 +146,7 @@ func (c functionSpeedCurve) Evaluate() (value int, err error) {
 // as specified by the interpolationType and returns the y-value for the given input
 func calculateInterpolatedCurveValue(steps map[int]int, interpolationType string, input float64) int {
 	xValues := make([]int, 0, len(steps))
-	for x, _ := range steps {
+	for x := range steps {
 		xValues = append(xValues, int(x))
 	}
 	// sort them increasing
