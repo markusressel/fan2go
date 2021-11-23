@@ -85,7 +85,7 @@ func TestLinearFan(t *testing.T) {
 	fan, _ := createFan(false, linearFan)
 
 	// WHEN
-	startPwm, maxPwm := GetPwmBoundaries(fan)
+	startPwm, maxPwm := ComputePwmBoundaries(fan)
 
 	// THEN
 	assert.Equal(t, 1, startPwm)
@@ -97,7 +97,7 @@ func TestNeverStoppingFan(t *testing.T) {
 	fan, _ := createFan(false, neverStoppingFan)
 
 	// WHEN
-	startPwm, maxPwm := GetPwmBoundaries(fan)
+	startPwm, maxPwm := ComputePwmBoundaries(fan)
 
 	// THEN
 	assert.Equal(t, 0, startPwm)
@@ -109,7 +109,7 @@ func TestCappedFan(t *testing.T) {
 	fan, _ := createFan(false, cappedFan)
 
 	// WHEN
-	startPwm, maxPwm := GetPwmBoundaries(fan)
+	startPwm, maxPwm := ComputePwmBoundaries(fan)
 
 	// THEN
 	assert.Equal(t, 6, startPwm)
@@ -121,7 +121,7 @@ func TestCappedNeverStoppingFan(t *testing.T) {
 	fan, _ := createFan(false, cappedNeverStoppingFan)
 
 	// WHEN
-	startPwm, maxPwm := GetPwmBoundaries(fan)
+	startPwm, maxPwm := ComputePwmBoundaries(fan)
 
 	// THEN
 	assert.Equal(t, 0, startPwm)

@@ -110,6 +110,8 @@ func validateConfig() {
 		if sensorConfig.HwMon == nil && sensorConfig.File == nil {
 			ui.Fatal("Sensor %s: sub-configuration for sensor is missing, use one of: hwmon | file", sensorConfig.ID)
 		}
+
+		// TODO: find unused sensor configs
 	}
 
 	for _, curveConfig := range config.Curves {
@@ -120,5 +122,7 @@ func validateConfig() {
 		if curveConfig.Linear == nil && curveConfig.Function == nil {
 			ui.Fatal("Curve %s: sub-configuration for curve is missing, use one of: linear | function", curveConfig.ID)
 		}
+
+		// TODO: find unused curve configs
 	}
 }
