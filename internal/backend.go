@@ -108,25 +108,7 @@ func Run() {
 				g.Add(func() error {
 					return fanController.Run(ctx)
 				}, func(err error) {
-					if err != nil {
-						ui.Error("Something went wrong: %v", err)
-					}
-
-					ui.Info("Trying to restore fan settings for %s...", fanId)
-
-					// TODO: move this error handling to the FanController implementation
-
-					// try to reset the pwm_enable value
-					if fan.GetOriginalPwmEnabled() != 1 {
-						err := fan.SetPwmEnabled(fan.GetOriginalPwmEnabled())
-						if err == nil {
-							return
-						}
-					}
-					err = setPwm(fan, MaxPwmValue)
-					if err != nil {
-						ui.Warning("Unable to restore fan %s, make sure it is running!", fan.GetConfig().ID)
-					}
+					ui.Error("Something went wrong: %v", err)
 				})
 				count++
 			}

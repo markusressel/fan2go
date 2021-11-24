@@ -87,6 +87,22 @@ func (f fanController) Run(ctx context.Context) error {
 		case <-tick:
 			err = f.UpdateFanSpeed()
 			if err != nil {
+				ui.Error("Error in FanController for fan %s: %v", fan.GetConfig().ID, err)
+				ui.Info("Trying to restore fan settings for %s...", f.fan.GetConfig().ID)
+
+				// try to reset the pwm_enable value
+				if fan.GetOriginalPwmEnabled() != 1 {
+					err1 := fan.SetPwmEnabled(fan.GetOriginalPwmEnabled())
+					if err1 == nil {
+						return err
+					}
+				}
+				// if this fails, try to set it to max speed instead
+				err1 := setPwm(fan, MaxPwmValue)
+				if err1 != nil {
+					ui.Warning("Unable to restore fan %s, make sure it is running!", fan.GetConfig().ID)
+				}
+
 				return err
 			}
 		}
