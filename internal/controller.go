@@ -17,6 +17,7 @@ var InitializationSequenceMutex sync.Mutex
 
 type FanController interface {
 	Run(ctx context.Context) error
+	UpdateFanSpeed() error
 }
 
 type fanController struct {
@@ -84,24 +85,31 @@ func (f fanController) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-tick:
-			current := fan.GetPwm()
-			optimalPwm, err := calculateOptimalPwm(fan)
-			if err != nil {
-				ui.Error("Unable to calculate optimal PWM value for %s: %v", fan.GetConfig().ID, err)
-				return err
-			}
-			target := calculateTargetPwm(fan, current, optimalPwm)
-			err = setPwm(fan, target)
-			if err != nil {
-				ui.Error("Error setting %s: %v", fan.GetConfig().ID, err)
-				err = trySetManualPwm(fan)
-				if err != nil {
-					ui.Error("Could not enable fan control on %s", fan.GetConfig().ID)
-					return err
-				}
-			}
+			return f.UpdateFanSpeed()
 		}
 	}
+}
+
+func (f fanController) UpdateFanSpeed() error {
+	fan := f.fan
+	current := fan.GetPwm()
+	optimalPwm, err := f.calculateOptimalPwm(fan)
+	if err != nil {
+		ui.Error("Unable to calculate optimal PWM value for %s: %v", fan.GetConfig().ID, err)
+		return err
+	}
+	target := calculateTargetPwm(fan, current, optimalPwm)
+	err = setPwm(fan, target)
+	if err != nil {
+		ui.Error("Error setting %s: %v", fan.GetConfig().ID, err)
+		err = trySetManualPwm(fan)
+		if err != nil {
+			ui.Error("Could not enable fan control on %s", fan.GetConfig().ID)
+			return err
+		}
+	}
+
+	return nil
 }
 
 // AttachFanCurveData attaches fan curve data from persistence to a fan
@@ -308,7 +316,7 @@ func trySetManualPwm(fan Fan) (err error) {
 }
 
 // calculates the target speed for a given device output
-func calculateOptimalPwm(fan Fan) (int, error) {
+func (f fanController) calculateOptimalPwm(fan Fan) (int, error) {
 	curveConfigId := fan.GetConfig().Curve
 	speedCurve := SpeedCurveMap[curveConfigId]
 	return speedCurve.Evaluate()
