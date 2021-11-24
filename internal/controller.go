@@ -85,7 +85,10 @@ func (f fanController) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-tick:
-			return f.UpdateFanSpeed()
+			err = f.UpdateFanSpeed()
+			if err != nil {
+				return err
+			}
 		}
 	}
 }
