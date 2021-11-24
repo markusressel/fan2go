@@ -7,6 +7,14 @@ import (
 	"time"
 )
 
+type mockPersistence struct{}
+
+func (p mockPersistence) SaveFanPwmData(fan Fan) (err error) { return nil }
+func (p mockPersistence) LoadFanPwmData(fan Fan) (map[int][]float64, error) {
+	fanCurveDataMap := map[int][]float64{}
+	return fanCurveDataMap, nil
+}
+
 func TestLinearFan(t *testing.T) {
 	// GIVEN
 	fan, _ := createFan(false, linearFan)

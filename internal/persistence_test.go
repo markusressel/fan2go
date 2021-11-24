@@ -9,14 +9,6 @@ const (
 	dbTestingPath = "./test.db"
 )
 
-type mockPersistence struct{}
-
-func (p mockPersistence) SaveFanPwmData(fan Fan) (err error) { return nil }
-func (p mockPersistence) LoadFanPwmData(fan Fan) (map[int][]float64, error) {
-	fanCurveDataMap := map[int][]float64{}
-	return fanCurveDataMap, nil
-}
-
 func TestWriteFan(t *testing.T) {
 	// GIVEN
 	persistence := NewPersistence(dbTestingPath)

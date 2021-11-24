@@ -82,9 +82,9 @@ fans:
     # The type of fan configuration, one of: hwmon | file
     hwmon:
       # The platform of the controller which is
-      # connected to this fan (see sensor.platform above)
-      platform: cpu
-      # The index of this fan as displayed by `sensors`
+      # connected to this fan (see sensor.platform below)
+      platform: nct6798
+      # The index of this fan as displayed by `fan2go detect`
       index: 1
     # Indicates whether this fan should never stop rotating, regardless of
     # how low the curve value is
