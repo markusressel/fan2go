@@ -1,11 +1,15 @@
 package ui
 
 import (
+	"github.com/pterm/pterm"
 	"os"
 )
 
 func ExamplePrintln() {
-	msg := "This is a test "
+	pterm.SetDefaultOutput(os.Stdout)
+	pterm.DisableStyling()
+
+	msg := "This is a test %d"
 	a := 5
 	Printfln(msg, a)
 	// Output:
@@ -13,6 +17,10 @@ func ExamplePrintln() {
 }
 
 func ExampleDebug() {
+	pterm.SetDefaultOutput(os.Stdout)
+	pterm.DisableStyling()
+	pterm.PrintDebugMessages = true
+
 	msg := "This is a test: %d"
 	a := 5
 	Debug(msg, a)
@@ -21,6 +29,9 @@ func ExampleDebug() {
 }
 
 func ExampleInfo() {
+	pterm.SetDefaultOutput(os.Stdout)
+	pterm.DisableStyling()
+
 	msg := "This is a test: %d"
 	a := 5
 	Info(msg, a)
@@ -29,6 +40,9 @@ func ExampleInfo() {
 }
 
 func ExampleWarning() {
+	pterm.SetDefaultOutput(os.Stdout)
+	pterm.DisableStyling()
+
 	msg := "This is a test: %d"
 	a := 5
 	Warning(msg, a)
@@ -37,6 +51,9 @@ func ExampleWarning() {
 }
 
 func ExampleError() {
+	pterm.SetDefaultOutput(os.Stdout)
+	pterm.DisableStyling()
+
 	msg := "This is a test: %v"
 	a := os.ErrClosed
 	Error(msg, a)
