@@ -3,7 +3,9 @@ package internal
 import (
 	"context"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 	"time"
 )
 
@@ -12,11 +14,11 @@ type SensorMonitor interface {
 }
 
 type sensorMonitor struct {
-	sensor      Sensor
+	sensor      sensors.Sensor
 	pollingRate time.Duration
 }
 
-func NewSensorMonitor(sensor Sensor, pollingRate time.Duration) SensorMonitor {
+func NewSensorMonitor(sensor sensors.Sensor, pollingRate time.Duration) SensorMonitor {
 	return sensorMonitor{
 		sensor:      sensor,
 		pollingRate: pollingRate,
@@ -39,7 +41,7 @@ func (s sensorMonitor) Run(ctx context.Context) error {
 }
 
 // read the current value of a sensors and append it to the moving window
-func updateSensor(s Sensor) (err error) {
+func updateSensor(s sensors.Sensor) (err error) {
 	value, err := s.GetValue()
 	if err != nil {
 		return err
@@ -47,13 +49,8 @@ func updateSensor(s Sensor) (err error) {
 
 	var n = configuration.CurrentConfig.TempRollingWindowSize
 	lastAvg := s.GetMovingAvg()
-	newAvg := updateSimpleMovingAvg(lastAvg, n, value)
+	newAvg := util.UpdateSimpleMovingAvg(lastAvg, n, value)
 	s.SetMovingAvg(newAvg)
 
 	return nil
-}
-
-// calculates the new moving average, based on an existing average and buffer size
-func updateSimpleMovingAvg(oldAvg float64, n int, newValue float64) float64 {
-	return oldAvg + (1/float64(n))*(newValue-oldAvg)
 }

@@ -3,14 +3,17 @@ package sensors
 import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/util"
+	"os/user"
+	"path/filepath"
+	"strings"
 )
 
 type FileSensor struct {
-	Name      string                      `json:"name"`
-	Label     string                      `json:"label"`
-	FilePath  string                      `json:"string"`
-	Config    *configuration.SensorConfig `json:"configuration"`
-	MovingAvg float64                     `json:"moving_avg"`
+	Name      string                     `json:"name"`
+	Label     string                     `json:"label"`
+	FilePath  string                     `json:"string"`
+	Config    configuration.SensorConfig `json:"configuration"`
+	MovingAvg float64                    `json:"moving_avg"`
 }
 
 func (sensor FileSensor) GetId() string {
@@ -21,16 +24,23 @@ func (sensor FileSensor) GetLabel() string {
 	return sensor.Label
 }
 
-func (sensor FileSensor) GetConfig() *configuration.SensorConfig {
+func (sensor FileSensor) GetConfig() configuration.SensorConfig {
 	return sensor.Config
 }
 
-func (sensor *FileSensor) SetConfig(config *configuration.SensorConfig) {
-	sensor.Config = config
-}
-
 func (sensor FileSensor) GetValue() (result float64, err error) {
-	integer, err := util.ReadIntFromFile(sensor.FilePath)
+	filePath := sensor.FilePath
+	// resolve home dir path
+	if strings.HasPrefix(filePath, "~") {
+		currentUser, err := user.Current()
+		if err != nil {
+			return result, err
+		}
+
+		filePath = filepath.Join(currentUser.HomeDir, filePath[1:])
+	}
+
+	integer, err := util.ReadIntFromFile(filePath)
 	if err != nil {
 		return 0, err
 	}

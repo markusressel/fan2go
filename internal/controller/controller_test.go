@@ -1,7 +1,11 @@
-package internal
+package controller
 
 import (
+	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/curves"
+	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/testingutils"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
@@ -9,15 +13,15 @@ import (
 
 type mockPersistence struct{}
 
-func (p mockPersistence) SaveFanPwmData(fan Fan) (err error) { return nil }
-func (p mockPersistence) LoadFanPwmData(fan Fan) (map[int][]float64, error) {
+func (p mockPersistence) SaveFanPwmData(fan fans.Fan) (err error) { return nil }
+func (p mockPersistence) LoadFanPwmData(fan fans.Fan) (map[int][]float64, error) {
 	fanCurveDataMap := map[int][]float64{}
 	return fanCurveDataMap, nil
 }
 
 func TestLinearFan(t *testing.T) {
 	// GIVEN
-	fan, _ := createFan(false, linearFan)
+	fan, _ := testingutils.CreateFan(false, testingutils.LinearFan)
 
 	// WHEN
 	startPwm, maxPwm := ComputePwmBoundaries(fan)
@@ -29,7 +33,7 @@ func TestLinearFan(t *testing.T) {
 
 func TestNeverStoppingFan(t *testing.T) {
 	// GIVEN
-	fan, _ := createFan(false, neverStoppingFan)
+	fan, _ := testingutils.CreateFan(false, testingutils.NeverStoppingFan)
 
 	// WHEN
 	startPwm, maxPwm := ComputePwmBoundaries(fan)
@@ -41,7 +45,7 @@ func TestNeverStoppingFan(t *testing.T) {
 
 func TestCappedFan(t *testing.T) {
 	// GIVEN
-	fan, _ := createFan(false, cappedFan)
+	fan, _ := testingutils.CreateFan(false, testingutils.CappedFan)
 
 	// WHEN
 	startPwm, maxPwm := ComputePwmBoundaries(fan)
@@ -53,7 +57,7 @@ func TestCappedFan(t *testing.T) {
 
 func TestCappedNeverStoppingFan(t *testing.T) {
 	// GIVEN
-	fan, _ := createFan(false, cappedNeverStoppingFan)
+	fan, _ := testingutils.CreateFan(false, testingutils.CappedNeverStoppingFan)
 
 	// WHEN
 	startPwm, maxPwm := ComputePwmBoundaries(fan)
@@ -66,7 +70,7 @@ func TestCappedNeverStoppingFan(t *testing.T) {
 func TestCalculateTargetSpeedLinear(t *testing.T) {
 	// GIVEN
 	avgTmp := 50000.0
-	s := createSensor(
+	s := testingutils.CreateSensor(
 		"sensor",
 		configuration.HwMonSensorConfig{
 			Platform: "platform",
@@ -75,15 +79,15 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 		avgTmp,
 	)
 
-	curveConfig := createLinearCurveConfig(
+	curveConfig := curves.createLinearCurveConfig(
 		"curve",
 		s.GetConfig().ID,
 		40,
 		60,
 	)
-	curve, _ := NewSpeedCurve(curveConfig)
+	curve, _ := curves.NewSpeedCurve(curveConfig)
 
-	fan, _ := createFan(false, linearFan)
+	fan, _ := internal.createFan(false, linearFan)
 
 	controller := fanController{
 		mockPersistence{},
@@ -105,7 +109,7 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	// GIVEN
 	avgTmp := 40000.0
 
-	s := createSensor(
+	s := internal.createSensor(
 		"sensor",
 		configuration.HwMonSensorConfig{
 			Platform: "platform",
@@ -114,15 +118,15 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 		avgTmp,
 	)
 
-	curveConfig := createLinearCurveConfig(
+	curveConfig := curves.createLinearCurveConfig(
 		"curve",
 		s.GetConfig().ID,
 		40,
 		60,
 	)
-	curve, _ := NewSpeedCurve(curveConfig)
+	curve, _ := curves.NewSpeedCurve(curveConfig)
 
-	fan, _ := createFan(true, cappedFan)
+	fan, _ := internal.createFan(true, cappedFan)
 
 	controller := fanController{
 		mockPersistence{},
@@ -136,7 +140,7 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
-	target := calculateTargetPwm(fan, 0, optimal)
+	target := controller.calculateTargetPwm(fan, 0, optimal)
 
 	// THEN
 	assert.Equal(t, 0, optimal)

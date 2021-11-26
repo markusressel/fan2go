@@ -1,8 +1,9 @@
-package internal
+package curves
 
 import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"math"
@@ -35,32 +36,28 @@ var (
 	SpeedCurveMap = map[string]SpeedCurve{}
 )
 
-func NewSpeedCurve(curveConfig configuration.CurveConfig) (SpeedCurve, error) {
-	if curveConfig.Linear != nil {
-		c := &linearSpeedCurve{
-			sensorId: curveConfig.Linear.Sensor,
-			min:      curveConfig.Linear.Min,
-			max:      curveConfig.Linear.Max,
-			steps:    curveConfig.Linear.Steps,
-		}
-		SpeedCurveMap[curveConfig.ID] = c
-		return c, nil
+func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
+	if config.Linear != nil {
+		return &linearSpeedCurve{
+			sensorId: config.Linear.Sensor,
+			min:      config.Linear.Min,
+			max:      config.Linear.Max,
+			steps:    config.Linear.Steps,
+		}, nil
 	}
 
-	if curveConfig.Function != nil {
-		c := &functionSpeedCurve{
-			function: curveConfig.Function.Type,
-			curveIds: curveConfig.Function.Curves,
-		}
-		SpeedCurveMap[curveConfig.ID] = c
-		return c, nil
+	if config.Function != nil {
+		return &functionSpeedCurve{
+			function: config.Function.Type,
+			curveIds: config.Function.Curves,
+		}, nil
 	}
 
-	return nil, fmt.Errorf("curve not found")
+	return nil, fmt.Errorf("no matching curve type for curve: %s", config.ID)
 }
 
 func (c linearSpeedCurve) Evaluate() (value int, err error) {
-	sensor := SensorMap[c.sensorId]
+	sensor := sensors.SensorMap[c.sensorId]
 	var avgTemp = sensor.GetMovingAvg()
 
 	steps := c.steps

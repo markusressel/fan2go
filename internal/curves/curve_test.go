@@ -1,6 +1,7 @@
-package internal
+package curves
 
 import (
+	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -60,7 +61,7 @@ func TestLinearCurveWithMinMax(t *testing.T) {
 	// GIVEN
 	avgTmp := 60000.0
 
-	s := createSensor(
+	s := internal.createSensor(
 		"sensor",
 		configuration.HwMonSensorConfig{
 			Platform: "platform",
@@ -90,7 +91,7 @@ func TestLinearCurveWithMinMax(t *testing.T) {
 func TestLinearCurveWithSteps(t *testing.T) {
 	// GIVEN
 	avgTmp := 60000.0
-	s := createSensor(
+	s := internal.createSensor(
 		"sensor",
 		configuration.HwMonSensorConfig{
 			Platform: "platform",
@@ -125,7 +126,7 @@ func TestFunctionCurveAverage(t *testing.T) {
 	// GIVEN
 	temp1 := 40000.0
 	temp2 := 80000.0
-	sensor1 := createSensor(
+	sensor1 := internal.createSensor(
 		"sensor1",
 		configuration.HwMonSensorConfig{
 			Platform: "platform",
@@ -133,7 +134,7 @@ func TestFunctionCurveAverage(t *testing.T) {
 		},
 		temp1,
 	)
-	sensor2 := createSensor(
+	sensor2 := internal.createSensor(
 		"sensor2",
 		configuration.HwMonSensorConfig{
 			Platform: "platform",
@@ -182,7 +183,7 @@ func TestFunctionCurveMinimum(t *testing.T) {
 	// GIVEN
 	temp1 := 40000.0
 	temp2 := 80000.0
-	sensor1 := createSensor(
+	sensor1 := internal.createSensor(
 		"sensor1",
 		configuration.HwMonSensorConfig{
 			Platform: "platform",
@@ -190,7 +191,7 @@ func TestFunctionCurveMinimum(t *testing.T) {
 		},
 		temp1,
 	)
-	sensor2 := createSensor(
+	sensor2 := internal.createSensor(
 		"sensor2",
 		configuration.HwMonSensorConfig{
 			Platform: "platform",
@@ -239,7 +240,7 @@ func TestFunctionCurveMaximum(t *testing.T) {
 	// GIVEN
 	temp1 := 40000.0
 	temp2 := 80000.0
-	sensor1 := createSensor(
+	sensor1 := internal.createSensor(
 		"sensor1",
 		configuration.HwMonSensorConfig{
 			Platform: "platform",
@@ -247,7 +248,7 @@ func TestFunctionCurveMaximum(t *testing.T) {
 		},
 		temp1,
 	)
-	sensor2 := createSensor(
+	sensor2 := internal.createSensor(
 		"sensor2",
 		configuration.HwMonSensorConfig{
 			Platform: "platform",

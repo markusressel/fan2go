@@ -1,9 +1,10 @@
-package internal
+package persistence
 
 import (
 	"encoding/json"
 	"fmt"
 	"github.com/asecurityteam/rolling"
+	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/ui"
 	bolt "go.etcd.io/bbolt"
 	"os"
@@ -15,8 +16,8 @@ const (
 )
 
 type Persistence interface {
-	LoadFanPwmData(fan Fan) (map[int][]float64, error)
-	SaveFanPwmData(fan Fan) (err error)
+	LoadFanPwmData(fan fans.Fan) (map[int][]float64, error)
+	SaveFanPwmData(fan fans.Fan) (err error)
 }
 
 type persistence struct {
@@ -40,7 +41,7 @@ func (p persistence) openPersistence() *bolt.DB {
 }
 
 // SaveFanPwmData saves the fan curve data of the given fan to persistence
-func (p persistence) SaveFanPwmData(fan Fan) (err error) {
+func (p persistence) SaveFanPwmData(fan fans.Fan) (err error) {
 	db := p.openPersistence()
 	defer db.Close()
 
@@ -74,7 +75,7 @@ func (p persistence) SaveFanPwmData(fan Fan) (err error) {
 }
 
 // LoadFanPwmData loads the fan curve data from persistence
-func (p persistence) LoadFanPwmData(fan Fan) (map[int][]float64, error) {
+func (p persistence) LoadFanPwmData(fan fans.Fan) (map[int][]float64, error) {
 	db := p.openPersistence()
 	defer db.Close()
 

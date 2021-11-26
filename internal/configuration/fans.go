@@ -9,8 +9,10 @@ type FanConfig struct {
 }
 
 type HwMonFanConfig struct {
-	Platform string `json:"platform"`
-	Index    int    `json:"index"`
+	Platform  string `json:"platform"`
+	Index     int    `json:"index"`
+	PwmOutput string
+	RpmInput  string
 }
 
 type FileFanConfig struct {

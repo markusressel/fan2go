@@ -6,12 +6,12 @@ import (
 )
 
 type HwmonSensor struct {
-	Name      string                      `json:"name"`
-	Label     string                      `json:"label"`
-	Index     int                         `json:"index"`
-	Input     string                      `json:"string"`
-	Config    *configuration.SensorConfig `json:"configuration"`
-	MovingAvg float64                     `json:"moving_avg"`
+	Name      string                     `json:"name"`
+	Label     string                     `json:"label"`
+	Index     int                        `json:"index"`
+	Input     string                     `json:"string"`
+	Config    configuration.SensorConfig `json:"configuration"`
+	MovingAvg float64                    `json:"moving_avg"`
 }
 
 func (sensor HwmonSensor) GetId() string {
@@ -22,12 +22,8 @@ func (sensor HwmonSensor) GetLabel() string {
 	return sensor.Label
 }
 
-func (sensor HwmonSensor) GetConfig() *configuration.SensorConfig {
+func (sensor HwmonSensor) GetConfig() configuration.SensorConfig {
 	return sensor.Config
-}
-
-func (sensor *HwmonSensor) SetConfig(config *configuration.SensorConfig) {
-	sensor.Config = config
 }
 
 func (sensor HwmonSensor) GetValue() (result float64, err error) {

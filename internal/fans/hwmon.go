@@ -16,7 +16,7 @@ type HwMonFan struct {
 	RpmInput           string                        `json:"rpminput"`
 	RpmMovingAvg       float64                       `json:"rpmmovingavg"`
 	PwmOutput          string                        `json:"pwmoutput"`
-	Config             *configuration.FanConfig      `json:"config"`
+	Config             configuration.FanConfig       `json:"config"`
 	StartPwm           int                           `json:"startpwm"` // the min PWM at which the fan starts to rotate from a stand still
 	MinPwm             int                           `json:"minpwm"`   // lowest PWM value where the fans are still spinning, when spinning previously
 	MaxPwm             int                           `json:"maxpwm"`   // highest PWM value that yields an RPM increase
@@ -33,12 +33,8 @@ func (fan HwMonFan) GetName() string {
 	return fan.Name
 }
 
-func (fan HwMonFan) GetConfig() *configuration.FanConfig {
+func (fan HwMonFan) GetConfig() configuration.FanConfig {
 	return fan.Config
-}
-
-func (fan *HwMonFan) SetConfig(config *configuration.FanConfig) {
-	fan.Config = config
 }
 
 func (fan HwMonFan) GetStartPwm() int {
@@ -141,6 +137,10 @@ func (fan *HwMonFan) SetPwmEnabled(value int) (err error) {
 		}
 	}
 	return err
+}
+
+func (fan *HwMonFan) SetOriginalPwmEnabled(value int) {
+	fan.OriginalPwmEnabled = value
 }
 
 func (fan HwMonFan) GetOriginalPwmEnabled() int {

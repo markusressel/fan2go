@@ -1,33 +1,27 @@
-package internal
+package fans
 
 import (
+	"fmt"
 	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/configuration"
 )
 
-type Sensor interface {
-	GetId() string
-	GetLabel() string
+const (
+	MaxPwmValue       = 255
+	MinPwmValue       = 0
+	InitialLastSetPwm = -10
+)
 
-	GetConfig() *configuration.SensorConfig
-	SetConfig(*configuration.SensorConfig)
-
-	// GetValue returns the current value of this sensor
-	GetValue() (float64, error)
-
-	// GetMovingAvg returns the moving average of this sensor's value
-	GetMovingAvg() float64
-	SetMovingAvg(avg float64)
-	//Matches(config configuration.SensorConfig) bool
-}
+var (
+	FanMap = map[string]Fan{}
+)
 
 type Fan interface {
 	GetId() string
 
 	GetName() string
 
-	GetConfig() *configuration.FanConfig
-	SetConfig(config *configuration.FanConfig)
+	GetConfig() configuration.FanConfig
 
 	// GetStartPwm returns the min PWM at which the fan starts to rotate from a stand still
 	GetStartPwm() int
@@ -60,8 +54,32 @@ type Fan interface {
 	// IsPwmAuto indicates whether this fan is in "Auto" mode
 	IsPwmAuto() (bool, error)
 
+	SetOriginalPwmEnabled(int)
 	// GetOriginalPwmEnabled  remembers the "pwm_enabled" state before fan2go took over control
 	GetOriginalPwmEnabled() int
 	// GetLastSetPwm remembers the last PWM value that has been set for this fan by fan2go
 	GetLastSetPwm() int
+}
+
+func NewFan(config configuration.FanConfig) (Fan, error) {
+	if config.HwMon != nil {
+		return &HwMonFan{
+			Name:         config.HwMon.Platform,
+			Label:        config.ID,
+			Index:        config.HwMon.Index,
+			PwmOutput:    config.HwMon.PwmOutput,
+			RpmInput:     config.HwMon.RpmInput,
+			MinPwm:       MinPwmValue,
+			MaxPwm:       MaxPwmValue,
+			FanCurveData: &map[int]*rolling.PointPolicy{},
+			LastSetPwm:   InitialLastSetPwm,
+			Config:       config,
+		}, nil
+	}
+
+	if config.File != nil {
+		return &FileFan{}, nil
+	}
+
+	return nil, fmt.Errorf("no matching fan type for fan: %s", config.ID)
 }

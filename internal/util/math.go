@@ -33,3 +33,8 @@ func HexString(hex string) string {
 func Ratio(target float64, rangeMin float64, rangeMax float64) float64 {
 	return (target - rangeMin) / (rangeMax - rangeMin)
 }
+
+// UpdateSimpleMovingAvg calculates the new moving average, based on an existing average and buffer size
+func UpdateSimpleMovingAvg(oldAvg float64, n int, newValue float64) float64 {
+	return oldAvg + (1/float64(n))*(newValue-oldAvg)
+}

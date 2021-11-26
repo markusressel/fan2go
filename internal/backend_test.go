@@ -2,83 +2,9 @@ package internal
 
 import (
 	"fmt"
-	"github.com/asecurityteam/rolling"
-	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/fans"
-	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
-
-var (
-	linearFan = map[int][]float64{
-		0:   {0.0},
-		255: {255.0},
-	}
-
-	neverStoppingFan = map[int][]float64{
-		0:   {50.0},
-		50:  {50.0},
-		255: {255.0},
-	}
-
-	cappedFan = map[int][]float64{
-		0:   {0.0},
-		1:   {0.0},
-		2:   {0.0},
-		3:   {0.0},
-		4:   {0.0},
-		5:   {0.0},
-		6:   {20.0},
-		200: {200.0},
-	}
-
-	cappedNeverStoppingFan = map[int][]float64{
-		0:   {50.0},
-		50:  {50.0},
-		200: {200.0},
-	}
-)
-
-func createFan(neverStop bool, curveData map[int][]float64) (fan Fan, err error) {
-	configuration.CurrentConfig.RpmRollingWindowSize = 10
-
-	fan = &fans.HwMonFan{
-		Config: &configuration.FanConfig{
-			ID: "fan1",
-			HwMon: &configuration.HwMonFanConfig{
-				Platform: "platform",
-				Index:    1,
-			},
-			NeverStop: neverStop,
-			Curve:     "curve",
-		},
-		FanCurveData: &map[int]*rolling.PointPolicy{},
-		PwmOutput:    "fan1_output",
-		RpmInput:     "fan1_rpm",
-	}
-	FanMap[fan.GetConfig().ID] = fan
-
-	err = AttachFanCurveData(&curveData, fan)
-
-	return fan, err
-}
-
-func createSensor(
-	id string,
-	hwMonConfig configuration.HwMonSensorConfig,
-	avgTmp float64,
-) (sensor Sensor) {
-	sensor = &sensors.HwmonSensor{
-		Config: &configuration.SensorConfig{
-			ID:    id,
-			HwMon: &hwMonConfig,
-		},
-		MovingAvg: avgTmp,
-	}
-	SensorMap[sensor.GetConfig().ID] = sensor
-	return sensor
-}
 
 func TestFindDeviceName(t *testing.T) {
 	// GIVEN
