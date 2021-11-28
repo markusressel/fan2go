@@ -10,6 +10,7 @@ import (
 )
 
 type FileFan struct {
+	ID                 string
 	Name               string
 	Label              string
 	FilePath           string
@@ -17,6 +18,18 @@ type FileFan struct {
 	MovingAvg          float64
 	OriginalPwmEnabled int
 	LastSetPwm         int
+}
+
+func (fan FileFan) GetId() string {
+	return fan.ID
+}
+
+func (fan FileFan) GetName() string {
+	return fan.Label
+}
+
+func (fan FileFan) GetConfig() configuration.FanConfig {
+	return fan.Config
 }
 
 func (fan FileFan) GetStartPwm() int {
@@ -125,16 +138,4 @@ func (fan *FileFan) SetOriginalPwmEnabled(value int) {
 
 func (fan FileFan) GetLastSetPwm() int {
 	return fan.LastSetPwm
-}
-
-func (fan FileFan) GetId() string {
-	return fan.Name
-}
-
-func (fan FileFan) GetName() string {
-	return fan.Label
-}
-
-func (fan FileFan) GetConfig() configuration.FanConfig {
-	return fan.Config
 }

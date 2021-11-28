@@ -26,7 +26,7 @@ type HwMonFan struct {
 }
 
 func (fan HwMonFan) GetId() string {
-	return fan.PwmOutput
+	return fan.Config.ID
 }
 
 func (fan HwMonFan) GetName() string {

@@ -140,7 +140,7 @@ func createFans(devicePath string) (fanList []fans.Fan) {
 		// store original pwm_enable value
 		pwmEnabled, err := fan.GetPwmEnabled()
 		if err != nil {
-			ui.Fatal("Cannot read pwm_enable value of %s", fan.GetConfig().ID)
+			ui.Fatal("Cannot read pwm_enable value of %s", fan.GetId())
 		}
 		fan.OriginalPwmEnabled = pwmEnabled
 

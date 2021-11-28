@@ -98,7 +98,7 @@ func (fan *HwMonFan) AttachFanCurveData(curveData *map[int][]float64) (err error
 	// convert the persisted map to arrays back to a moving window and attach it to the fan
 
 	if curveData == nil || len(*curveData) <= 0 {
-		ui.Error("Cant attach empty fan curve data to fan %s", fan.GetConfig().ID)
+		ui.Error("Cant attach empty fan curve data to fan %s", fan.GetId())
 		return os.ErrInvalid
 	}
 

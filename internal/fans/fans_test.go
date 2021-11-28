@@ -52,7 +52,7 @@ func CreateFan(neverStop bool, curveData map[int][]float64) (fan Fan, err error)
 		PwmOutput:    "fan1_output",
 		RpmInput:     "fan1_rpm",
 	}
-	FanMap[fan.GetConfig().ID] = fan
+	FanMap[fan.GetId()] = fan
 
 	err = fan.AttachFanCurveData(&curveData)
 

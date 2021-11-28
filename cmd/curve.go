@@ -59,7 +59,7 @@ var curveCmd = &cobra.Command{
 			}
 
 			// print table
-			ui.Printfln(fan.GetConfig().ID)
+			ui.Printfln(fan.GetId())
 			tab := table.Table{
 				Headers: []string{"", ""},
 				Rows: [][]string{
