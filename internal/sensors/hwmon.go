@@ -6,7 +6,6 @@ import (
 )
 
 type HwmonSensor struct {
-	Name      string                     `json:"name"`
 	Label     string                     `json:"label"`
 	Index     int                        `json:"index"`
 	Input     string                     `json:"string"`
@@ -16,10 +15,6 @@ type HwmonSensor struct {
 
 func (sensor HwmonSensor) GetId() string {
 	return sensor.Config.ID
-}
-
-func (sensor HwmonSensor) GetLabel() string {
-	return sensor.Label
 }
 
 func (sensor HwmonSensor) GetConfig() configuration.SensorConfig {

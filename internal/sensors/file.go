@@ -10,7 +10,6 @@ import (
 
 type FileSensor struct {
 	Name      string                     `json:"name"`
-	Label     string                     `json:"label"`
 	FilePath  string                     `json:"string"`
 	Config    configuration.SensorConfig `json:"configuration"`
 	MovingAvg float64                    `json:"moving_avg"`
@@ -18,10 +17,6 @@ type FileSensor struct {
 
 func (sensor FileSensor) GetId() string {
 	return sensor.Config.ID
-}
-
-func (sensor FileSensor) GetLabel() string {
-	return sensor.Label
 }
 
 func (sensor FileSensor) GetConfig() configuration.SensorConfig {

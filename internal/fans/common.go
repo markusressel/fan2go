@@ -23,8 +23,6 @@ var (
 type Fan interface {
 	GetId() string
 
-	GetName() string
-
 	// GetStartPwm returns the min PWM at which the fan starts to rotate from a stand still
 	GetStartPwm() int
 	SetStartPwm(pwm int)
@@ -74,7 +72,6 @@ type Fan interface {
 func NewFan(config configuration.FanConfig) (Fan, error) {
 	if config.HwMon != nil {
 		return &HwMonFan{
-			Name:         config.HwMon.Platform,
 			Label:        config.ID,
 			Index:        config.HwMon.Index,
 			PwmOutput:    config.HwMon.PwmOutput,

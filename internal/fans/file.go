@@ -11,7 +11,6 @@ import (
 
 type FileFan struct {
 	ID                 string
-	Name               string
 	Label              string
 	FilePath           string
 	Config             configuration.FanConfig
@@ -22,10 +21,6 @@ type FileFan struct {
 
 func (fan FileFan) GetId() string {
 	return fan.ID
-}
-
-func (fan FileFan) GetName() string {
-	return fan.Label
 }
 
 func (fan FileFan) GetStartPwm() int {

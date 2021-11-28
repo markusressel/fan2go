@@ -13,7 +13,6 @@ var (
 
 type Sensor interface {
 	GetId() string
-	GetLabel() string
 
 	GetConfig() configuration.SensorConfig
 
@@ -31,8 +30,6 @@ func NewSensor(config configuration.SensorConfig, controllers []*hwmon.HwMonCont
 		for _, controller := range controllers {
 			if controller.Platform == config.HwMon.Platform {
 				return &HwmonSensor{
-					Name:   config.HwMon.Platform,
-					Label:  config.ID,
 					Index:  config.HwMon.Index,
 					Input:  controller.TempInputs[config.HwMon.Index-1],
 					Config: config,
@@ -45,7 +42,6 @@ func NewSensor(config configuration.SensorConfig, controllers []*hwmon.HwMonCont
 	if config.File != nil {
 		return &FileSensor{
 			Name:     config.ID,
-			Label:    config.ID,
 			FilePath: config.File.Path,
 			Config:   config,
 		}, nil

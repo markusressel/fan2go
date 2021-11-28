@@ -10,7 +10,6 @@ import (
 )
 
 type HwMonFan struct {
-	Name               string                        `json:"name"`
 	Label              string                        `json:"label"`
 	Index              int                           `json:"index"`
 	RpmInput           string                        `json:"rpminput"`
@@ -27,10 +26,6 @@ type HwMonFan struct {
 
 func (fan HwMonFan) GetId() string {
 	return fan.Config.ID
-}
-
-func (fan HwMonFan) GetName() string {
-	return fan.Name
 }
 
 func (fan HwMonFan) GetStartPwm() int {
@@ -88,7 +83,7 @@ func (fan HwMonFan) GetPwm() int {
 }
 
 func (fan *HwMonFan) SetPwm(pwm int) (err error) {
-	ui.Debug("Setting %s (%s, %s) to %d ...", fan.Config.ID, fan.Label, fan.Name, pwm)
+	ui.Debug("Setting %s (%s) to %d ...", fan.GetId(), fan.Label, pwm)
 
 	err = util.WriteIntToFile(pwm, fan.PwmOutput)
 	if err == nil {
