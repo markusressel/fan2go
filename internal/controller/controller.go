@@ -10,8 +10,6 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"math"
-	"os"
-	"sort"
 	"sync"
 	"time"
 )
@@ -73,7 +71,7 @@ func (f fanController) Run(ctx context.Context) error {
 		return err
 	}
 
-	err = AttachFanCurveData(&fanPwmData, fan)
+	err = fan.AttachFanCurveData(&fanPwmData)
 	if err != nil {
 		return err
 	}
@@ -139,132 +137,6 @@ func (f fanController) UpdateFanSpeed() error {
 	}
 
 	return nil
-}
-
-// AttachFanCurveData attaches fan curve data from persistence to a fan
-// Note: When the given data is incomplete, all values up until the highest
-// value in the given dataset will be interpolated linearly
-// returns os.ErrInvalid if curveData is void of any data
-func AttachFanCurveData(curveData *map[int][]float64, fan fans.Fan) (err error) {
-	// convert the persisted map to arrays back to a moving window and attach it to the fan
-
-	if curveData == nil || len(*curveData) <= 0 {
-		ui.Error("Cant attach empty fan curve data to fan %s", fan.GetConfig().ID)
-		return os.ErrInvalid
-	}
-
-	const limit = 255
-	var lastValueIdx int
-	var lastValueAvg float64
-	var nextValueIdx int
-	var nextValueAvg float64
-	for i := 0; i <= limit; i++ {
-		fanCurveMovingWindow := util.CreateRollingWindow(configuration.CurrentConfig.RpmRollingWindowSize)
-
-		pointValues, containsKey := (*curveData)[i]
-		if containsKey && len(pointValues) > 0 {
-			lastValueIdx = i
-			lastValueAvg = util.Avg(pointValues)
-		} else {
-			if pointValues == nil {
-				pointValues = []float64{lastValueAvg}
-			}
-			// find next value in curveData
-			nextValueIdx = i
-			for j := i; j <= limit; j++ {
-				pointValues, containsKey := (*curveData)[j]
-				if containsKey {
-					nextValueIdx = j
-					nextValueAvg = util.Avg(pointValues)
-				}
-			}
-			if nextValueIdx == i {
-				// we didn't find a next value in curveData, so we just copy the last point
-				var valuesCopy = []float64{}
-				copy(pointValues, valuesCopy)
-				pointValues = valuesCopy
-			} else {
-				// interpolate average value to the next existing key
-				ratio := util.Ratio(float64(i), float64(lastValueIdx), float64(nextValueIdx))
-				interpolation := lastValueAvg + ratio*(nextValueAvg-lastValueAvg)
-				pointValues = []float64{interpolation}
-			}
-		}
-
-		var currentAvg float64
-		for k := 0; k < configuration.CurrentConfig.RpmRollingWindowSize; k++ {
-			var rpm float64
-
-			if k < len(pointValues) {
-				rpm = pointValues[k]
-			} else {
-				// fill the rolling window with averages if given values are not sufficient
-				rpm = currentAvg
-			}
-
-			// update average
-			if k == 0 {
-				currentAvg = rpm
-			} else {
-				currentAvg = (currentAvg + rpm) / 2
-			}
-
-			// add value to window
-			fanCurveMovingWindow.Append(rpm)
-		}
-
-		data := fan.GetFanCurveData()
-		(*data)[i] = fanCurveMovingWindow
-	}
-
-	startPwm, maxPwm := ComputePwmBoundaries(fan)
-
-	fan.SetStartPwm(startPwm)
-	fan.SetMaxPwm(maxPwm)
-
-	// TODO: we don't have a way to determine this yet
-	fan.SetMinPwm(startPwm)
-
-	return err
-}
-
-// ComputePwmBoundaries calculates the startPwm and maxPwm values for a fan based on its fan curve data
-func ComputePwmBoundaries(fan fans.Fan) (startPwm int, maxPwm int) {
-	startPwm = 255
-	maxPwm = 255
-	pwmRpmMap := fan.GetFanCurveData()
-
-	// get pwm keys that we have data for
-	keys := make([]int, len(*pwmRpmMap))
-	if pwmRpmMap == nil || len(keys) <= 0 {
-		// we have no data yet
-		startPwm = 0
-	} else {
-		i := 0
-		for k := range *pwmRpmMap {
-			keys[i] = k
-			i++
-		}
-		// sort them increasing
-		sort.Ints(keys)
-
-		maxRpm := 0
-		for _, pwm := range keys {
-			window := (*pwmRpmMap)[pwm]
-			avgRpm := int(getWindowAvg(window))
-
-			if avgRpm > maxRpm {
-				maxRpm = avgRpm
-				maxPwm = pwm
-			}
-
-			if avgRpm > 0 && pwm < startPwm {
-				startPwm = pwm
-			}
-		}
-	}
-
-	return startPwm, maxPwm
 }
 
 // runs an initialization sequence for the given fan
@@ -443,9 +315,4 @@ func fillWindow(window *rolling.PointPolicy, size int, value float64) {
 // returns the max value in the window
 func getWindowMax(window *rolling.PointPolicy) float64 {
 	return window.Reduce(rolling.Max)
-}
-
-// returns the average of all values in the window
-func getWindowAvg(window *rolling.PointPolicy) float64 {
-	return window.Reduce(rolling.Avg)
 }

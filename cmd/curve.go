@@ -5,7 +5,6 @@ import (
 	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/controller"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -51,7 +50,7 @@ var curveCmd = &cobra.Command{
 		for idx, fan := range fanList {
 			pwmData, fanCurveErr := persistence.LoadFanPwmData(fan)
 			if fanCurveErr == nil {
-				_ = controller.AttachFanCurveData(&pwmData, fan)
+				_ = fan.AttachFanCurveData(&pwmData)
 			}
 
 			if idx > 0 {
