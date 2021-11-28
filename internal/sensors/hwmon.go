@@ -15,7 +15,7 @@ type HwmonSensor struct {
 }
 
 func (sensor HwmonSensor) GetId() string {
-	return sensor.Name
+	return sensor.Config.ID
 }
 
 func (sensor HwmonSensor) GetLabel() string {

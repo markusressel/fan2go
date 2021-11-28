@@ -1,8 +1,8 @@
 package curves
 
 import (
-	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -23,6 +23,36 @@ func createLinearCurveConfig(
 		},
 	}
 	return curve
+}
+
+type MockSensor struct {
+	ID        string
+	Name      string
+	MovingAvg float64
+}
+
+func (sensor MockSensor) GetId() string {
+	return sensor.ID
+}
+
+func (sensor MockSensor) GetLabel() string {
+	return sensor.Name
+}
+
+func (sensor MockSensor) GetConfig() configuration.SensorConfig {
+	panic("not implemented")
+}
+
+func (sensor MockSensor) GetValue() (result float64, err error) {
+	return sensor.MovingAvg, nil
+}
+
+func (sensor MockSensor) GetMovingAvg() (avg float64) {
+	return sensor.MovingAvg
+}
+
+func (sensor *MockSensor) SetMovingAvg(avg float64) {
+	sensor.MovingAvg = avg
 }
 
 // helper function to create a linear curve configuration with steps
@@ -61,18 +91,15 @@ func TestLinearCurveWithMinMax(t *testing.T) {
 	// GIVEN
 	avgTmp := 60000.0
 
-	s := internal.createSensor(
-		"sensor",
-		configuration.HwMonSensorConfig{
-			Platform: "platform",
-			Index:    0,
-		},
-		avgTmp,
-	)
+	s := MockSensor{
+		Name:      "sensor",
+		MovingAvg: avgTmp,
+	}
+	sensors.SensorMap[s.GetId()] = &s
 
 	curveConfig := createLinearCurveConfig(
 		"curve",
-		s.GetConfig().ID,
+		s.GetId(),
 		40,
 		80,
 	)
@@ -91,18 +118,15 @@ func TestLinearCurveWithMinMax(t *testing.T) {
 func TestLinearCurveWithSteps(t *testing.T) {
 	// GIVEN
 	avgTmp := 60000.0
-	s := internal.createSensor(
-		"sensor",
-		configuration.HwMonSensorConfig{
-			Platform: "platform",
-			Index:    0,
-		},
-		avgTmp,
-	)
+	s := MockSensor{
+		Name:      "sensor",
+		MovingAvg: avgTmp,
+	}
+	sensors.SensorMap[s.GetId()] = &s
 
 	curveConfig := createLinearCurveConfigWithSteps(
 		"curve",
-		s.GetConfig().ID,
+		s.GetId(),
 		map[int]int{
 			40: 0,
 			50: 30,
@@ -126,48 +150,50 @@ func TestFunctionCurveAverage(t *testing.T) {
 	// GIVEN
 	temp1 := 40000.0
 	temp2 := 80000.0
-	sensor1 := internal.createSensor(
-		"sensor1",
-		configuration.HwMonSensorConfig{
-			Platform: "platform",
-			Index:    1,
-		},
-		temp1,
-	)
-	sensor2 := internal.createSensor(
-		"sensor2",
-		configuration.HwMonSensorConfig{
-			Platform: "platform",
-			Index:    2,
-		},
-		temp2,
-	)
+
+	s1 := MockSensor{
+		ID:        "cpu_sensor",
+		Name:      "sensor1",
+		MovingAvg: temp1,
+	}
+	sensors.SensorMap[s1.GetId()] = &s1
+
+	s2 := MockSensor{
+		ID:        "mainboard_sensor",
+		Name:      "sensor2",
+		MovingAvg: temp2,
+	}
+	sensors.SensorMap[s2.GetId()] = &s2
 
 	curve1 := createLinearCurveConfig(
 		"case_fan_front",
-		sensor1.GetConfig().ID,
+		s1.GetId(),
 		40,
 		80,
 	)
-	NewSpeedCurve(curve1)
+	c1, err := NewSpeedCurve(curve1)
+	SpeedCurveMap[c1.GetId()] = c1
+
 	curve2 := createLinearCurveConfig(
 		"case_fan_back",
-		sensor2.GetConfig().ID,
+		s2.GetId(),
 		40,
 		80,
 	)
-	NewSpeedCurve(curve2)
+	c2, err := NewSpeedCurve(curve2)
+	SpeedCurveMap[c2.GetId()] = c2
 
 	function := configuration.FunctionAverage
 	functionCurveConfig := createFunctionCurveConfig(
 		"avg_function_curve",
 		function,
 		[]string{
-			curve1.ID,
-			curve2.ID,
+			c1.GetId(),
+			c2.GetId(),
 		},
 	)
 	functionCurve, err := NewSpeedCurve(functionCurveConfig)
+	SpeedCurveMap[functionCurve.GetId()] = functionCurve
 
 	// WHEN
 	result, err := functionCurve.Evaluate()
@@ -183,33 +209,29 @@ func TestFunctionCurveMinimum(t *testing.T) {
 	// GIVEN
 	temp1 := 40000.0
 	temp2 := 80000.0
-	sensor1 := internal.createSensor(
-		"sensor1",
-		configuration.HwMonSensorConfig{
-			Platform: "platform",
-			Index:    1,
-		},
-		temp1,
-	)
-	sensor2 := internal.createSensor(
-		"sensor2",
-		configuration.HwMonSensorConfig{
-			Platform: "platform",
-			Index:    2,
-		},
-		temp2,
-	)
+
+	s1 := MockSensor{
+		Name:      "sensor1",
+		MovingAvg: temp1,
+	}
+	sensors.SensorMap[s1.GetId()] = &s1
+
+	s2 := MockSensor{
+		Name:      "sensor2",
+		MovingAvg: temp2,
+	}
+	sensors.SensorMap[s2.GetId()] = &s2
 
 	curve1 := createLinearCurveConfig(
 		"case_fan_front",
-		sensor1.GetConfig().ID,
+		s1.GetId(),
 		40,
 		80,
 	)
 	NewSpeedCurve(curve1)
 	curve2 := createLinearCurveConfig(
 		"case_fan_back",
-		sensor2.GetConfig().ID,
+		s2.GetId(),
 		40,
 		80,
 	)
@@ -240,32 +262,29 @@ func TestFunctionCurveMaximum(t *testing.T) {
 	// GIVEN
 	temp1 := 40000.0
 	temp2 := 80000.0
-	sensor1 := internal.createSensor(
-		"sensor1",
-		configuration.HwMonSensorConfig{
-			Platform: "platform",
-			Index:    1,
-		},
-		temp1,
-	)
-	sensor2 := internal.createSensor(
-		"sensor2",
-		configuration.HwMonSensorConfig{
-			Platform: "platform",
-			Index:    2,
-		},
-		temp2,
-	)
+
+	s1 := MockSensor{
+		Name:      "sensor1",
+		MovingAvg: temp1,
+	}
+	sensors.SensorMap[s1.GetId()] = &s1
+
+	s2 := MockSensor{
+		Name:      "sensor2",
+		MovingAvg: temp2,
+	}
+	sensors.SensorMap[s2.GetId()] = &s2
+
 	curve1 := createLinearCurveConfig(
 		"case_fan_front",
-		sensor1.GetConfig().ID,
+		s1.GetId(),
 		40,
 		80,
 	)
 	NewSpeedCurve(curve1)
 	curve2 := createLinearCurveConfig(
 		"case_fan_back",
-		sensor2.GetConfig().ID,
+		s2.GetId(),
 		40,
 		80,
 	)

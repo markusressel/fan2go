@@ -2,14 +2,158 @@ package controller
 
 import (
 	"github.com/asecurityteam/rolling"
-	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 )
+
+type MockSensor struct {
+	ID        string
+	Name      string
+	MovingAvg float64
+}
+
+func (sensor MockSensor) GetId() string {
+	return sensor.ID
+}
+
+func (sensor MockSensor) GetLabel() string {
+	return sensor.Name
+}
+
+func (sensor MockSensor) GetConfig() configuration.SensorConfig {
+	panic("not implemented")
+}
+
+func (sensor MockSensor) GetValue() (result float64, err error) {
+	return sensor.MovingAvg, nil
+}
+
+func (sensor MockSensor) GetMovingAvg() (avg float64) {
+	return sensor.MovingAvg
+}
+
+func (sensor *MockSensor) SetMovingAvg(avg float64) {
+	sensor.MovingAvg = avg
+}
+
+type MockCurve struct {
+	ID    string
+	Value int
+}
+
+func (c MockCurve) GetId() string {
+	return c.ID
+}
+
+func (c MockCurve) Evaluate() (value int, err error) {
+	return c.Value, nil
+}
+
+type MockFan struct {
+	ID     string
+	PWM    int
+	MinPWM int
+	RPM    int
+	Config configuration.FanConfig
+}
+
+func (fan MockFan) GetStartPwm() int {
+	return 0
+}
+
+func (fan *MockFan) SetStartPwm(pwm int) {
+	panic("not supported")
+}
+
+func (fan MockFan) GetMinPwm() int {
+	return fan.MinPWM
+}
+
+func (fan *MockFan) SetMinPwm(pwm int) {
+	fan.MinPWM = pwm
+}
+
+func (fan MockFan) GetMaxPwm() int {
+	return fans.MaxPwmValue
+}
+
+func (fan *MockFan) SetMaxPwm(pwm int) {
+	panic("not supported")
+}
+
+func (fan MockFan) GetRpm() int {
+	return fan.RPM
+}
+
+func (fan MockFan) GetRpmAvg() float64 {
+	return float64(fan.RPM)
+}
+
+func (fan *MockFan) SetRpmAvg(rpm float64) {
+	panic("not supported")
+}
+
+func (fan MockFan) GetPwm() (result int) {
+	return fan.PWM
+}
+
+func (fan *MockFan) SetPwm(pwm int) (err error) {
+	fan.PWM = pwm
+	return nil
+}
+
+func (fan MockFan) GetFanCurveData() *map[int]*rolling.PointPolicy {
+	panic("implement me")
+}
+
+func (fan *MockFan) SetFanCurveData(data *map[int]*rolling.PointPolicy) {
+	panic("implement me")
+}
+
+func (fan *MockFan) AttachFanCurveData(curveData *map[int][]float64) (err error) {
+	panic("implement me")
+}
+
+func (fan MockFan) GetPwmEnabled() (int, error) {
+	panic("implement me")
+}
+
+func (fan *MockFan) SetPwmEnabled(value int) (err error) {
+	panic("implement me")
+}
+
+func (fan MockFan) IsPwmAuto() (bool, error) {
+	panic("implement me")
+}
+
+func (fan MockFan) GetOriginalPwmEnabled() int {
+	panic("implement me")
+}
+
+func (fan *MockFan) SetOriginalPwmEnabled(value int) {
+	panic("implement me")
+}
+
+func (fan MockFan) GetLastSetPwm() int {
+	return fan.PWM
+}
+
+func (fan MockFan) GetId() string {
+	return fan.ID
+}
+
+func (fan MockFan) GetName() string {
+	return fan.ID
+}
+
+func (fan MockFan) GetConfig() configuration.FanConfig {
+	return fan.Config
+}
 
 var (
 	LinearFan = map[int][]float64{
@@ -99,7 +243,7 @@ func TestNeverStoppingFan(t *testing.T) {
 
 func TestCappedFan(t *testing.T) {
 	// GIVEN
-	fan, _ := testingutils.CreateFan(false, CappedFan)
+	fan, _ := CreateFan(false, CappedFan)
 
 	// WHEN
 	startPwm, maxPwm := fans.ComputePwmBoundaries(fan)
@@ -124,24 +268,32 @@ func TestCappedNeverStoppingFan(t *testing.T) {
 func TestCalculateTargetSpeedLinear(t *testing.T) {
 	// GIVEN
 	avgTmp := 50000.0
-	s := CreateSensor(
-		"sensor",
-		configuration.HwMonSensorConfig{
-			Platform: "platform",
-			Index:    0,
+	s := MockSensor{
+		ID:        "sensor",
+		Name:      "sensor",
+		MovingAvg: avgTmp,
+	}
+	sensors.SensorMap[s.GetId()] = &s
+
+	curveValue := 127
+	curve := MockCurve{
+		ID:    "curve",
+		Value: curveValue,
+	}
+	curves.SpeedCurveMap[curve.GetId()] = &curve
+
+	fan := &MockFan{
+		ID:  "fan",
+		PWM: 0,
+		Config: configuration.FanConfig{
+			ID:        "fan",
+			NeverStop: false,
+			Curve:     curve.GetId(),
+			HwMon:     nil,
+			File:      nil,
 		},
-		avgTmp,
-	)
-
-	curveConfig := curves.createLinearCurveConfig(
-		"curve",
-		s.GetConfig().ID,
-		40,
-		60,
-	)
-	curve, _ := curves.NewSpeedCurve(curveConfig)
-
-	fan, _ := CreateFan(false, linearFan)
+	}
+	fans.FanMap[fan.GetId()] = fan
 
 	controller := fanController{
 		mockPersistence{},
@@ -163,24 +315,34 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	// GIVEN
 	avgTmp := 40000.0
 
-	s := internal.createSensor(
-		"sensor",
-		configuration.HwMonSensorConfig{
-			Platform: "platform",
-			Index:    0,
+	s := MockSensor{
+		ID:        "sensor",
+		Name:      "sensor",
+		MovingAvg: avgTmp,
+	}
+	sensors.SensorMap[s.GetId()] = &s
+
+	curveValue := 0
+	curve := &MockCurve{
+		ID:    "curve",
+		Value: curveValue,
+	}
+	curves.SpeedCurveMap[curve.GetId()] = curve
+
+	fan := &MockFan{
+		ID:     "fan",
+		PWM:    0,
+		RPM:    100,
+		MinPWM: 10,
+		Config: configuration.FanConfig{
+			ID:        "fan",
+			NeverStop: true,
+			Curve:     curve.GetId(),
+			HwMon:     nil,
+			File:      nil,
 		},
-		avgTmp,
-	)
-
-	curveConfig := curves.createLinearCurveConfig(
-		"curve",
-		s.GetConfig().ID,
-		40,
-		60,
-	)
-	curve, _ := curves.NewSpeedCurve(curveConfig)
-
-	fan, _ := CreateFan(true, cappedFan)
+	}
+	fans.FanMap[fan.GetId()] = fan
 
 	controller := fanController{
 		mockPersistence{},

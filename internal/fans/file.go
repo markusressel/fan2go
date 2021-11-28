@@ -10,56 +10,85 @@ import (
 )
 
 type FileFan struct {
-	Name               string                  `json:"name"`
-	Label              string                  `json:"label"`
-	FilePath           string                  `json:"string"`
-	Config             configuration.FanConfig `json:"configuration"`
-	MovingAvg          float64                 `json:"moving_avg"`
+	Name               string
+	Label              string
+	FilePath           string
+	Config             configuration.FanConfig
+	MovingAvg          float64
 	OriginalPwmEnabled int
+	LastSetPwm         int
 }
 
 func (fan FileFan) GetStartPwm() int {
-	panic("implement me")
+	return 0
 }
 
 func (fan *FileFan) SetStartPwm(pwm int) {
-	panic("implement me")
+	panic("not supported")
 }
 
 func (fan FileFan) GetMinPwm() int {
-	panic("implement me")
+	return MinPwmValue
 }
 
 func (fan *FileFan) SetMinPwm(pwm int) {
-	panic("implement me")
+	panic("not supported")
 }
 
 func (fan FileFan) GetMaxPwm() int {
-	panic("implement me")
+	return MaxPwmValue
 }
 
 func (fan *FileFan) SetMaxPwm(pwm int) {
-	panic("implement me")
+	panic("not supported")
 }
 
 func (fan FileFan) GetRpm() int {
-	panic("implement me")
+	return 0
 }
 
 func (fan FileFan) GetRpmAvg() float64 {
-	panic("implement me")
+	return 0
 }
 
 func (fan *FileFan) SetRpmAvg(rpm float64) {
-	panic("implement me")
+	panic("not supported")
 }
 
-func (fan FileFan) GetPwm() int {
-	panic("implement me")
+func (fan FileFan) GetPwm() (result int) {
+	filePath := fan.FilePath
+	// resolve home dir path
+	if strings.HasPrefix(filePath, "~") {
+		currentUser, err := user.Current()
+		if err != nil {
+			return result
+		}
+
+		filePath = filepath.Join(currentUser.HomeDir, filePath[1:])
+	}
+
+	integer, err := util.ReadIntFromFile(filePath)
+	if err != nil {
+		return MinPwmValue
+	}
+	result = integer
+	return result
 }
 
 func (fan *FileFan) SetPwm(pwm int) (err error) {
-	panic("implement me")
+	filePath := fan.FilePath
+	// resolve home dir path
+	if strings.HasPrefix(filePath, "~") {
+		currentUser, err := user.Current()
+		if err != nil {
+			return err
+		}
+
+		filePath = filepath.Join(currentUser.HomeDir, filePath[1:])
+	}
+
+	err = util.WriteIntToFile(pwm, filePath)
+	return err
 }
 
 func (fan FileFan) GetFanCurveData() *map[int]*rolling.PointPolicy {
@@ -95,7 +124,7 @@ func (fan *FileFan) SetOriginalPwmEnabled(value int) {
 }
 
 func (fan FileFan) GetLastSetPwm() int {
-	panic("implement me")
+	return fan.LastSetPwm
 }
 
 func (fan FileFan) GetId() string {
@@ -108,32 +137,4 @@ func (fan FileFan) GetName() string {
 
 func (fan FileFan) GetConfig() configuration.FanConfig {
 	return fan.Config
-}
-
-func (fan FileFan) GetValue() (result float64, err error) {
-	filePath := fan.FilePath
-	// resolve home dir path
-	if strings.HasPrefix(filePath, "~") {
-		currentUser, err := user.Current()
-		if err != nil {
-			return result, err
-		}
-
-		filePath = filepath.Join(currentUser.HomeDir, filePath[1:])
-	}
-
-	integer, err := util.ReadIntFromFile(filePath)
-	if err != nil {
-		return MinPwmValue, err
-	}
-	result = float64(integer)
-	return result, err
-}
-
-func (fan FileFan) GetMovingAvg() (avg float64) {
-	return fan.MovingAvg
-}
-
-func (fan *FileFan) SetMovingAvg(avg float64) {
-	fan.MovingAvg = avg
 }

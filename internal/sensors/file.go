@@ -17,7 +17,7 @@ type FileSensor struct {
 }
 
 func (sensor FileSensor) GetId() string {
-	return sensor.Name
+	return sensor.Config.ID
 }
 
 func (sensor FileSensor) GetLabel() string {

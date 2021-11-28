@@ -15,17 +15,20 @@ const (
 )
 
 type SpeedCurve interface {
+	GetId() string
 	// Evaluate calculates the current value of the given curve,
 	// returns a value in [0..255]
 	Evaluate() (value int, err error)
 }
 
 type functionSpeedCurve struct {
+	ID       string
 	function string
 	curveIds []string
 }
 
 type linearSpeedCurve struct {
+	ID       string
 	sensorId string
 	min      int
 	max      int
@@ -39,6 +42,7 @@ var (
 func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
 	if config.Linear != nil {
 		return &linearSpeedCurve{
+			ID:       config.ID,
 			sensorId: config.Linear.Sensor,
 			min:      config.Linear.Min,
 			max:      config.Linear.Max,
@@ -48,12 +52,17 @@ func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
 
 	if config.Function != nil {
 		return &functionSpeedCurve{
+			ID:       config.ID,
 			function: config.Function.Type,
 			curveIds: config.Function.Curves,
 		}, nil
 	}
 
 	return nil, fmt.Errorf("no matching curve type for curve: %s", config.ID)
+}
+
+func (c linearSpeedCurve) GetId() string {
+	return c.ID
 }
 
 func (c linearSpeedCurve) Evaluate() (value int, err error) {
@@ -80,6 +89,10 @@ func (c linearSpeedCurve) Evaluate() (value int, err error) {
 	}
 
 	return value, nil
+}
+
+func (c functionSpeedCurve) GetId() string {
+	return c.ID
 }
 
 func (c functionSpeedCurve) Evaluate() (value int, err error) {

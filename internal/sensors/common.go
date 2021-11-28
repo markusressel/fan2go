@@ -23,7 +23,6 @@ type Sensor interface {
 	// GetMovingAvg returns the moving average of this sensor's value
 	GetMovingAvg() float64
 	SetMovingAvg(avg float64)
-	//Matches(config configuration.SensorConfig) bool
 }
 
 func NewSensor(config configuration.SensorConfig, controllers []*hwmon.HwMonController) (Sensor, error) {
