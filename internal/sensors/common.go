@@ -3,8 +3,6 @@ package sensors
 import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/hwmon"
-	"github.com/markusressel/fan2go/internal/ui"
 )
 
 var (
@@ -24,19 +22,13 @@ type Sensor interface {
 	SetMovingAvg(avg float64)
 }
 
-func NewSensor(config configuration.SensorConfig, controllers []*hwmon.HwMonController) (Sensor, error) {
+func NewSensor(config configuration.SensorConfig) (Sensor, error) {
 	if config.HwMon != nil {
-
-		for _, controller := range controllers {
-			if controller.Platform == config.HwMon.Platform {
-				return &HwmonSensor{
-					Index:  config.HwMon.Index,
-					Input:  controller.TempInputs[config.HwMon.Index-1],
-					Config: config,
-				}, nil
-			}
-		}
-		ui.Fatal("No hwmon controller found for sensor config: %s", config.ID)
+		return &HwmonSensor{
+			Index:  config.HwMon.Index,
+			Input:  config.HwMon.TempInput,
+			Config: config,
+		}, nil
 	}
 
 	if config.File != nil {

@@ -24,7 +24,7 @@ import (
 	"time"
 )
 
-func Run() {
+func RunDaemon() {
 	if getProcessOwner() != "root" {
 		ui.Fatal("Fan control requires root permissions to be able to modify fan speeds, please run fan2go as root")
 	}
@@ -100,7 +100,20 @@ func InitializeObjects() {
 	}
 
 	for _, config := range configuration.CurrentConfig.Sensors {
-		sensor, err := sensors.NewSensor(config, controllers)
+		if config.HwMon != nil {
+			found := false
+			for _, c := range controllers {
+				if c.Platform == config.HwMon.Platform {
+					found = true
+					config.HwMon.TempInput = c.TempInputs[config.HwMon.Index-1]
+				}
+			}
+			if !found {
+				ui.Fatal("Couldn't find hwmon device for sensor: %s", config.ID)
+			}
+		}
+
+		sensor, err := sensors.NewSensor(config)
 		if err != nil {
 			ui.Fatal("Unable to process curve configuration: %s", config.ID)
 		}
@@ -124,12 +137,17 @@ func InitializeObjects() {
 
 	for _, config := range configuration.CurrentConfig.Fans {
 		if config.HwMon != nil {
+			found := false
 			for _, c := range controllers {
 				if c.Platform == config.HwMon.Platform {
+					found = true
 					config.HwMon.PwmOutput = c.PwmInputs[config.HwMon.Index]
 					config.HwMon.RpmInput = c.FanInputs[config.HwMon.Index]
 					break
 				}
+			}
+			if !found {
+				ui.Fatal("Couldn't find hwmon device for fan: %s", config.ID)
 			}
 		}
 

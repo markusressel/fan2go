@@ -7,8 +7,9 @@ type SensorConfig struct {
 }
 
 type HwMonSensorConfig struct {
-	Platform string `json:"platform"`
-	Index    int    `json:"index"`
+	Platform  string `json:"platform"`
+	Index     int    `json:"index"`
+	TempInput string
 }
 
 type FileSensorConfig struct {
