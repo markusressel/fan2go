@@ -25,8 +25,6 @@ type Fan interface {
 
 	GetName() string
 
-	GetConfig() configuration.FanConfig
-
 	// GetStartPwm returns the min PWM at which the fan starts to rotate from a stand still
 	GetStartPwm() int
 	SetStartPwm(pwm int)
@@ -53,6 +51,12 @@ type Fan interface {
 	SetFanCurveData(data *map[int]*rolling.PointPolicy)
 	// TODO: whats the difference?
 	AttachFanCurveData(curveData *map[int][]float64) (err error)
+
+	// GetCurveId returns the id of the speed curve associated with this fan
+	GetCurveId() string
+
+	// ShouldNeverStop indicated whether this fan should never stop rotating
+	ShouldNeverStop() bool
 
 	// GetPwmEnabled returns the current "pwm_enabled" value of this fan
 	GetPwmEnabled() (int, error)

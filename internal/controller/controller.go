@@ -240,7 +240,7 @@ func trySetManualPwm(fan fans.Fan) (err error) {
 
 // calculates the target speed for a given device output
 func (f fanController) calculateOptimalPwm(fan fans.Fan) (int, error) {
-	curveConfigId := fan.GetConfig().Curve
+	curveConfigId := fan.GetCurveId()
 	speedCurve := curves.SpeedCurveMap[curveConfigId]
 	return speedCurve.Evaluate()
 }
@@ -274,7 +274,7 @@ func calculateTargetPwm(fan fans.Fan, currentPwm int, pwm int) int {
 
 	// make sure fans never stop by validating the current RPM
 	// and adjusting the target PWM value upwards if necessary
-	if fan.GetConfig().NeverStop && lastSetPwm == target {
+	if fan.ShouldNeverStop() && lastSetPwm == target {
 		avgRpm := fan.GetRpmAvg()
 		if avgRpm <= 0 {
 			if target >= maxPwm {

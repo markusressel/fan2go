@@ -28,10 +28,6 @@ func (fan FileFan) GetName() string {
 	return fan.Label
 }
 
-func (fan FileFan) GetConfig() configuration.FanConfig {
-	return fan.Config
-}
-
 func (fan FileFan) GetStartPwm() int {
 	return 0
 }
@@ -114,6 +110,14 @@ func (fan *FileFan) SetFanCurveData(data *map[int]*rolling.PointPolicy) {
 
 func (fan *FileFan) AttachFanCurveData(curveData *map[int][]float64) (err error) {
 	panic("implement me")
+}
+
+func (fan FileFan) GetCurveId() string {
+	return fan.Config.Curve
+}
+
+func (fan FileFan) ShouldNeverStop() bool {
+	return fan.Config.NeverStop
 }
 
 func (fan FileFan) GetPwmEnabled() (int, error) {

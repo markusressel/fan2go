@@ -33,10 +33,6 @@ func (fan HwMonFan) GetName() string {
 	return fan.Name
 }
 
-func (fan HwMonFan) GetConfig() configuration.FanConfig {
-	return fan.Config
-}
-
 func (fan HwMonFan) GetStartPwm() int {
 	return fan.StartPwm
 }
@@ -48,7 +44,7 @@ func (fan *HwMonFan) SetStartPwm(pwm int) {
 func (fan HwMonFan) GetMinPwm() int {
 	// if the fan is never supposed to stop,
 	// use the lowest pwm value where the fan is still spinning
-	if fan.GetConfig().NeverStop {
+	if fan.ShouldNeverStop() {
 		return fan.MinPwm
 	}
 
@@ -107,6 +103,14 @@ func (fan HwMonFan) GetFanCurveData() *map[int]*rolling.PointPolicy {
 
 func (fan *HwMonFan) SetFanCurveData(data *map[int]*rolling.PointPolicy) {
 	fan.FanCurveData = data
+}
+
+func (fan HwMonFan) GetCurveId() string {
+	return fan.Config.Curve
+}
+
+func (fan HwMonFan) ShouldNeverStop() bool {
+	return fan.Config.NeverStop
 }
 
 func (fan HwMonFan) GetPwmEnabled() (int, error) {

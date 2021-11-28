@@ -55,11 +55,12 @@ func (c MockCurve) Evaluate() (value int, err error) {
 }
 
 type MockFan struct {
-	ID     string
-	PWM    int
-	MinPWM int
-	RPM    int
-	Config configuration.FanConfig
+	ID              string
+	PWM             int
+	MinPWM          int
+	RPM             int
+	curveId         string
+	shouldNeverStop bool
 }
 
 func (fan MockFan) GetStartPwm() int {
@@ -151,8 +152,12 @@ func (fan MockFan) GetName() string {
 	return fan.ID
 }
 
-func (fan MockFan) GetConfig() configuration.FanConfig {
-	return fan.Config
+func (fan MockFan) GetCurveId() string {
+	return fan.curveId
+}
+
+func (fan MockFan) ShouldNeverStop() bool {
+	return fan.shouldNeverStop
 }
 
 var (
@@ -283,15 +288,10 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 	curves.SpeedCurveMap[curve.GetId()] = &curve
 
 	fan := &MockFan{
-		ID:  "fan",
-		PWM: 0,
-		Config: configuration.FanConfig{
-			ID:        "fan",
-			NeverStop: false,
-			Curve:     curve.GetId(),
-			HwMon:     nil,
-			File:      nil,
-		},
+		ID:              "fan",
+		PWM:             0,
+		shouldNeverStop: false,
+		curveId:         curve.GetId(),
 	}
 	fans.FanMap[fan.GetId()] = fan
 
@@ -330,17 +330,12 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	curves.SpeedCurveMap[curve.GetId()] = curve
 
 	fan := &MockFan{
-		ID:     "fan",
-		PWM:    0,
-		RPM:    100,
-		MinPWM: 10,
-		Config: configuration.FanConfig{
-			ID:        "fan",
-			NeverStop: true,
-			Curve:     curve.GetId(),
-			HwMon:     nil,
-			File:      nil,
-		},
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          10,
+		curveId:         curve.GetId(),
+		shouldNeverStop: true,
 	}
 	fans.FanMap[fan.GetId()] = fan
 
