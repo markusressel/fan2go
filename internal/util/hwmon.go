@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -54,7 +55,8 @@ func FindI2cDevicePaths() []string {
 		return []string{}
 	}
 
-	return FindFilesMatching(basePath, ".+-.+")
+	regex := regexp.MustCompile(".+-.+")
+	return FindFilesMatching(basePath, regex)
 
 	//	# Find available fan control outputs
 	//	MATCH=$device/'pwm[1-9]'
@@ -82,7 +84,8 @@ func FindHwmonDevicePaths() []string {
 		return []string{}
 	}
 
-	result := FindFilesMatching(basePath, "hwmon.*")
+	regex := regexp.MustCompile("hwmon.*")
+	result := FindFilesMatching(basePath, regex)
 
 	return result
 }

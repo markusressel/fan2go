@@ -181,9 +181,9 @@ func FindControllers() (controllers []*hwmon.HwMonController, err error) {
 			platform = identifier
 		}
 
-		fanInputs := util.FindFilesMatching(devicePath, "^fan[1-9]_input$")
-		pwmInputs := util.FindFilesMatching(devicePath, "^pwm[1-9]$")
-		tempInputs := util.FindFilesMatching(devicePath, "^temp[1-9]_input$")
+		fanInputs := util.FindFilesMatching(devicePath, hwmon.FanInputRegex)
+		pwmInputs := util.FindFilesMatching(devicePath, hwmon.PwmRegex)
+		tempInputs := util.FindFilesMatching(devicePath, hwmon.TempInputRegex)
 
 		if len(fanInputs) <= 0 && len(pwmInputs) <= 0 && len(tempInputs) <= 0 {
 			continue

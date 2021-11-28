@@ -7,6 +7,7 @@ import (
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/hwmon"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
@@ -14,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tomlazar/table"
 	"path/filepath"
+	"regexp"
 	"strconv"
 )
 
@@ -47,18 +49,21 @@ var detectCmd = &cobra.Command{
 			}
 
 			fanList := createFans(controller.Path)
+			sensorList := createSensors(controller.Path)
+
+			if len(fanList) <= 0 && len(sensorList) <= 0 {
+				continue
+			}
 
 			ui.Printfln("> %s", controller.Name)
 
 			var fanRows [][]string
 			for _, fan := range fanList {
-				hwMonFan := fan
-
 				pwm := fan.GetPwm()
 				rpm := fan.GetRpm()
 				isAuto, _ := fan.IsPwmAuto()
 				fanRows = append(fanRows, []string{
-					"", strconv.Itoa(hwMonFan.Index), hwMonFan.Label, strconv.Itoa(rpm), strconv.Itoa(pwm), fmt.Sprintf("%v", isAuto),
+					"", strconv.Itoa(fan.Index), fan.Label, strconv.Itoa(rpm), strconv.Itoa(pwm), fmt.Sprintf("%v", isAuto),
 				})
 			}
 			var fanHeaders = []string{"Fans   ", "Index", "Label", "RPM", "PWM", "Auto"}
@@ -67,8 +72,6 @@ var detectCmd = &cobra.Command{
 				Headers: fanHeaders,
 				Rows:    fanRows,
 			}
-
-			sensorList := createSensors(controller.Path)
 
 			var sensorRows [][]string
 			for _, sensor := range sensorList {
@@ -109,24 +112,43 @@ var detectCmd = &cobra.Command{
 
 // creates fan objects for the given device path
 func createFans(devicePath string) (fanList []*fans.HwMonFan) {
-	inputs := util.FindFilesMatching(devicePath, "^fan[1-9]_input$")
-	outputs := util.FindFilesMatching(devicePath, "^pwm[1-9]$")
+	rpmInputs := map[int]string{}
+	pwmOutputs := map[int]string{}
 
-	for idx, output := range outputs {
-		_, file := filepath.Split(output)
+	numbersRegex := regexp.MustCompile("\\d+")
 
-		label := util.GetLabel(devicePath, output)
-
-		index, err := strconv.Atoi(file[len(file)-1:])
+	inputPaths := util.FindFilesMatching(devicePath, hwmon.FanInputRegex)
+	for _, path := range inputPaths {
+		_, fileName := filepath.Split(path)
+		index, err := strconv.Atoi(numbersRegex.FindString(fileName))
 		if err != nil {
-			ui.Fatal("%v", err)
+			continue
 		}
+		rpmInputs[index] = path
+	}
+
+	pwmPaths := util.FindFilesMatching(devicePath, hwmon.PwmRegex)
+	for _, path := range pwmPaths {
+		_, fileName := filepath.Split(path)
+		index, err := strconv.Atoi(numbersRegex.FindString(fileName))
+		if err != nil {
+			continue
+		}
+		pwmOutputs[index] = path
+	}
+
+	for idx, output := range pwmOutputs {
+		_, inputFile := filepath.Split(output)
+
+		input, _ := rpmInputs[idx]
+
+		label := util.GetLabel(devicePath, inputFile)
 
 		fan := &fans.HwMonFan{
 			Label:        label,
-			Index:        index,
+			Index:        idx,
 			PwmOutput:    output,
-			RpmInput:     inputs[idx],
+			RpmInput:     input,
 			RpmMovingAvg: 0,
 			MinPwm:       fans.MinPwmValue,
 			MaxPwm:       fans.MaxPwmValue,
@@ -149,7 +171,7 @@ func createFans(devicePath string) (fanList []*fans.HwMonFan) {
 
 // creates sensor objects for the given device path
 func createSensors(devicePath string) (result []*sensors.HwmonSensor) {
-	inputs := util.FindFilesMatching(devicePath, "^temp[1-9]_input$")
+	inputs := util.FindFilesMatching(devicePath, hwmon.TempInputRegex)
 
 	for _, input := range inputs {
 		_, file := filepath.Split(input)
