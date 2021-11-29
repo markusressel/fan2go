@@ -100,7 +100,9 @@ func (f fanController) Run(ctx context.Context) error {
 				}
 			}
 		}, func(err error) {
-			ui.Fatal("Error monitoring fan rpm: %v", err)
+			if err != nil {
+				ui.Fatal("Error monitoring fan rpm: %v", err)
+			}
 		})
 	}
 	{
@@ -135,7 +137,9 @@ func (f fanController) Run(ctx context.Context) error {
 				}
 			}
 		}, func(err error) {
-			ui.Fatal("Error monitoring fan rpm: %v", err)
+			if err != nil {
+				ui.Fatal("Error monitoring fan rpm: %v", err)
+			}
 		})
 	}
 

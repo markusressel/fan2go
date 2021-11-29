@@ -59,7 +59,9 @@ func Run() {
 			g.Add(func() error {
 				return fanController.Run(ctx)
 			}, func(err error) {
-				ui.Error("Something went wrong: %v", err)
+				if err != nil {
+					ui.Error("Something went wrong: %v", err)
+				}
 			})
 		}
 
