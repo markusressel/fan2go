@@ -21,7 +21,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 )
 
 func Run() {
@@ -51,16 +50,9 @@ func Run() {
 	}
 	{
 		// === fan controllers
-		for fanId, fan := range fans.FanMap {
+		for _, fan := range fans.FanMap {
 			updateRate := configuration.CurrentConfig.ControllerAdjustmentTickRate
 			fanController := controller.NewFanController(pers, fan, updateRate)
-
-			g.Add(func() error {
-				rpmTick := time.Tick(configuration.CurrentConfig.RpmPollingRate)
-				return rpmMonitor(ctx, fanId, rpmTick)
-			}, func(err error) {
-				ui.Error("Something went wrong: %v", err)
-			})
 
 			g.Add(func() error {
 				return fanController.Run(ctx)
@@ -140,18 +132,6 @@ func InitializeObjects() {
 		fans.FanMap[config.ID] = fan
 	}
 
-}
-
-func rpmMonitor(ctx context.Context, fanId string, tick <-chan time.Time) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-tick:
-			// TODO:
-			//measureRpm(fanId)
-		}
-	}
 }
 
 func getProcessOwner() string {
