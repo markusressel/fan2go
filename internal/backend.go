@@ -44,7 +44,9 @@ func Run() {
 			g.Add(func() error {
 				return mon.Run(ctx)
 			}, func(err error) {
-				ui.Fatal("Error monitoring sensor: %v", err)
+				if err != nil {
+					ui.Error("Error monitoring sensor: %v", err)
+				}
 			})
 		}
 	}
@@ -118,8 +120,8 @@ func InitializeObjects() {
 		if config.HwMon != nil {
 			for _, c := range controllers {
 				if c.Platform == config.HwMon.Platform {
-					config.HwMon.PwmOutput = c.PwmInputs[config.HwMon.Index]
-					config.HwMon.RpmInput = c.FanInputs[config.HwMon.Index]
+					config.HwMon.PwmOutput = c.PwmInputs[config.HwMon.Index-1]
+					config.HwMon.RpmInput = c.FanInputs[config.HwMon.Index-1]
 					break
 				}
 			}

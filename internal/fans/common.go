@@ -80,6 +80,7 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 			MaxPwm:       MaxPwmValue,
 			FanCurveData: &map[int]*rolling.PointPolicy{},
 			LastSetPwm:   InitialLastSetPwm,
+			StartPwm:     config.StartPwm,
 			Config:       config,
 		}, nil
 	}
