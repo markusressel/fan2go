@@ -112,10 +112,6 @@ func (fan MockFan) GetFanCurveData() *map[int]*rolling.PointPolicy {
 	panic("implement me")
 }
 
-func (fan *MockFan) SetFanCurveData(data *map[int]*rolling.PointPolicy) {
-	panic("implement me")
-}
-
 func (fan *MockFan) AttachFanCurveData(curveData *map[int][]float64) (err error) {
 	panic("implement me")
 }

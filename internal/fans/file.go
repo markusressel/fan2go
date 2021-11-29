@@ -99,10 +99,6 @@ func (fan FileFan) GetFanCurveData() *map[int]*rolling.PointPolicy {
 	panic("implement me")
 }
 
-func (fan *FileFan) SetFanCurveData(data *map[int]*rolling.PointPolicy) {
-	panic("implement me")
-}
-
 func (fan *FileFan) AttachFanCurveData(curveData *map[int][]float64) (err error) {
 	panic("implement me")
 }
