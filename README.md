@@ -54,21 +54,21 @@ system run `fan2go detect`, which will print a list of devices exposed by the hw
 ```shell
 > fan2go detect
 nct6798
- Fans      Index   Label    Name   RPM    PWM   Auto   
-           1       hwmon4   pwm1   0      153   false  
-           2       hwmon4   pwm2   1223   104   false  
-           3       hwmon4   pwm3   677    107   false  
- Sensors   Index   Label    Name          Value   
-           1       SYSTIN   temp1_input   41000   
-           2       CPUTIN   temp2_input   64000   
+ Fans      Index   Label    RPM    PWM   Auto   
+           1       hwmon4   0      153   false  
+           2       hwmon4   1223   104   false  
+           3       hwmon4   677    107   false  
+ Sensors   Index   Label    Value   
+           1       SYSTIN   41000   
+           2       CPUTIN   64000   
  
 amdgpu-pci-0031
- Fans      Index   Label    Name   RPM   PWM   Auto   
-           1       hwmon8   pwm1   561   43    false  
- Sensors   Index   Label      Name          Value  
-           1       edge       temp1_input   58000  
-           2       junction   temp2_input   61000  
-           3       mem        temp3_input   56000  
+ Fans      Index   Label    RPM   PWM   Auto   
+           1       hwmon8   561   43    false  
+ Sensors   Index   Label      Value  
+           1       edge       58000  
+           2       junction   61000  
+           3       mem        56000  
 ```
 
 To use detected devices in your configuration, use the `hwmon` fan type:
