@@ -47,10 +47,6 @@ func (f fanController) Run(ctx context.Context) error {
 	}
 	fan.SetOriginalPwmEnabled(pwmEnabled)
 
-	// TODO: start RPM measuring
-	// TODO: wait for SensorMonitors to gather data
-	// TODO: THEN start controller loop
-
 	ui.Info("Gathering sensor data for %s...", fan.GetId())
 	// wait a bit to gather monitoring data
 	time.Sleep(2*time.Second + configuration.CurrentConfig.TempSensorPollingRate*2)
@@ -109,6 +105,7 @@ func (f fanController) Run(ctx context.Context) error {
 	}
 	{
 		g.Add(func() error {
+			time.Sleep(1 * time.Second)
 			tick := time.Tick(f.updateRate)
 			for {
 				select {
