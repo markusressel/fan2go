@@ -230,7 +230,7 @@ func computeIdentifier(chip gosensors.Chip) (name string) {
 	case BusTypeIsa:
 		identifier = fmt.Sprintf("%s-isa-%d", identifier, chip.Bus.Nr)
 	case BusTypePci:
-		identifier = fmt.Sprintf("%s-pci-%d", identifier, chip.Bus.Nr)
+		identifier = fmt.Sprintf("%s-pci-%d%x", identifier, chip.Bus.Nr, chip.Addr)
 	case BusTypeVirtual:
 		identifier = fmt.Sprintf("%s-virtual-%d", identifier, chip.Bus.Nr)
 	case BusTypeAcpi:
