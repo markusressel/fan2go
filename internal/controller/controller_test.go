@@ -128,18 +128,6 @@ func (fan MockFan) IsPwmAuto() (bool, error) {
 	panic("implement me")
 }
 
-func (fan MockFan) GetOriginalPwmEnabled() int {
-	panic("implement me")
-}
-
-func (fan *MockFan) SetOriginalPwmEnabled(value int) {
-	panic("implement me")
-}
-
-func (fan MockFan) GetLastSetPwm() int {
-	return fan.PWM
-}
-
 func (fan MockFan) GetId() string {
 	return fan.ID
 }
@@ -296,10 +284,10 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 	fans.FanMap[fan.GetId()] = fan
 
 	controller := fanController{
-		mockPersistence{},
-		fan,
-		curve,
-		time.Duration(100),
+		persistence: mockPersistence{},
+		fan:         fan,
+		curve:       curve,
+		updateRate:  time.Duration(100),
 	}
 	// WHEN
 	optimal, err := controller.calculateOptimalPwm(fan)
@@ -340,10 +328,9 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	fans.FanMap[fan.GetId()] = fan
 
 	controller := fanController{
-		mockPersistence{},
-		fan,
-		curve,
-		time.Duration(100),
+		persistence: mockPersistence{}, fan: fan,
+		curve:      curve,
+		updateRate: time.Duration(100),
 	}
 
 	// WHEN
@@ -351,7 +338,7 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
-	target := calculateTargetPwm(fan, 0, optimal)
+	target := controller.calculateTargetPwm(fan, 0, optimal)
 
 	// THEN
 	assert.Equal(t, 0, optimal)

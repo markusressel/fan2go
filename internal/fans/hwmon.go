@@ -10,18 +10,16 @@ import (
 )
 
 type HwMonFan struct {
-	Label              string                        `json:"label"`
-	Index              int                           `json:"index"`
-	RpmInput           string                        `json:"rpminput"`
-	RpmMovingAvg       float64                       `json:"rpmmovingavg"`
-	PwmOutput          string                        `json:"pwmoutput"`
-	Config             configuration.FanConfig       `json:"config"`
-	StartPwm           int                           `json:"startpwm"` // the min PWM at which the fan starts to rotate from a stand still
-	MinPwm             int                           `json:"minpwm"`   // lowest PWM value where the fans are still spinning, when spinning previously
-	MaxPwm             int                           `json:"maxpwm"`   // highest PWM value that yields an RPM increase
-	FanCurveData       *map[int]*rolling.PointPolicy `json:"fancurvedata"`
-	OriginalPwmEnabled int                           `json:"originalpwmenabled"`
-	LastSetPwm         int                           `json:"lastsetpwm"`
+	Label        string                        `json:"label"`
+	Index        int                           `json:"index"`
+	RpmInput     string                        `json:"rpminput"`
+	RpmMovingAvg float64                       `json:"rpmmovingavg"`
+	PwmOutput    string                        `json:"pwmoutput"`
+	Config       configuration.FanConfig       `json:"config"`
+	StartPwm     int                           `json:"startpwm"` // the min PWM at which the fan starts to rotate from a stand still
+	MinPwm       int                           `json:"minpwm"`   // lowest PWM value where the fans are still spinning, when spinning previously
+	MaxPwm       int                           `json:"maxpwm"`   // highest PWM value that yields an RPM increase
+	FanCurveData *map[int]*rolling.PointPolicy `json:"fancurvedata"`
 }
 
 func (fan HwMonFan) GetId() string {
@@ -84,11 +82,7 @@ func (fan HwMonFan) GetPwm() int {
 
 func (fan *HwMonFan) SetPwm(pwm int) (err error) {
 	ui.Debug("Setting %s (%s) to %d ...", fan.GetId(), fan.Label, pwm)
-
 	err = util.WriteIntToFile(pwm, fan.PwmOutput)
-	if err == nil {
-		fan.LastSetPwm = pwm
-	}
 	return err
 }
 
@@ -132,18 +126,6 @@ func (fan *HwMonFan) SetPwmEnabled(value int) (err error) {
 		}
 	}
 	return err
-}
-
-func (fan *HwMonFan) SetOriginalPwmEnabled(value int) {
-	fan.OriginalPwmEnabled = value
-}
-
-func (fan HwMonFan) GetOriginalPwmEnabled() int {
-	return fan.OriginalPwmEnabled
-}
-
-func (fan HwMonFan) GetLastSetPwm() int {
-	return fan.LastSetPwm
 }
 
 func (fan HwMonFan) Supports(feature int) bool {

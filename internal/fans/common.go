@@ -11,9 +11,8 @@ import (
 )
 
 const (
-	MaxPwmValue       = 255
-	MinPwmValue       = 0
-	InitialLastSetPwm = -10
+	MaxPwmValue = 255
+	MinPwmValue = 0
 )
 
 const (
@@ -64,11 +63,6 @@ type Fan interface {
 	// IsPwmAuto indicates whether this fan is in "Auto" mode
 	IsPwmAuto() (bool, error)
 
-	SetOriginalPwmEnabled(int)
-	// GetOriginalPwmEnabled  remembers the "pwm_enabled" state before fan2go took over control
-	GetOriginalPwmEnabled() int
-	// GetLastSetPwm remembers the last PWM value that has been set for this fan by fan2go
-	GetLastSetPwm() int
 	Supports(feature int) bool
 }
 
@@ -82,7 +76,6 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 			MinPwm:       MinPwmValue,
 			MaxPwm:       MaxPwmValue,
 			FanCurveData: &map[int]*rolling.PointPolicy{},
-			LastSetPwm:   InitialLastSetPwm,
 			StartPwm:     config.StartPwm,
 			Config:       config,
 		}, nil

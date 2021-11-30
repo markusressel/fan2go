@@ -6,7 +6,6 @@ import (
 	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/sensors"
-	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/md14454/gosensors"
 	"io/ioutil"
@@ -158,6 +157,10 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 				pwmOutput = fmt.Sprintf("%s/%s", chip.Path, pulsesSubFeature.Name)
 			}
 
+			if len(pwmOutput) <= 0 {
+				continue
+			}
+
 			label := getLabel(chip.Path, inputSubFeature.Name)
 
 			fan := &fans.HwMonFan{
@@ -169,15 +172,7 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 				MinPwm:       min,
 				MaxPwm:       max,
 				FanCurveData: &map[int]*rolling.PointPolicy{},
-				LastSetPwm:   fans.InitialLastSetPwm,
 			}
-
-			// store original pwm_enable value
-			pwmEnabled, err := fan.GetPwmEnabled()
-			if err != nil {
-				ui.Warning("Cannot read pwm_enable value of %s", fan.GetId())
-			}
-			fan.OriginalPwmEnabled = pwmEnabled
 
 			fanList = append(fanList, fan)
 		}

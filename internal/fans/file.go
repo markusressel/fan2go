@@ -10,13 +10,11 @@ import (
 )
 
 type FileFan struct {
-	ID                 string
-	Label              string
-	FilePath           string
-	Config             configuration.FanConfig
-	MovingAvg          float64
-	OriginalPwmEnabled int
-	LastSetPwm         int
+	ID        string
+	Label     string
+	FilePath  string
+	Config    configuration.FanConfig
+	MovingAvg float64
 }
 
 func (fan FileFan) GetId() string {
@@ -112,7 +110,7 @@ func (fan FileFan) ShouldNeverStop() bool {
 }
 
 func (fan FileFan) GetPwmEnabled() (int, error) {
-	panic("implement me")
+	return 1, nil
 }
 
 func (fan *FileFan) SetPwmEnabled(value int) (err error) {
@@ -121,18 +119,6 @@ func (fan *FileFan) SetPwmEnabled(value int) (err error) {
 
 func (fan FileFan) IsPwmAuto() (bool, error) {
 	panic("implement me")
-}
-
-func (fan FileFan) GetOriginalPwmEnabled() int {
-	return fan.OriginalPwmEnabled
-}
-
-func (fan *FileFan) SetOriginalPwmEnabled(value int) {
-	fan.OriginalPwmEnabled = value
-}
-
-func (fan FileFan) GetLastSetPwm() int {
-	return fan.LastSetPwm
 }
 
 func (fan FileFan) Supports(feature int) bool {
