@@ -7,6 +7,7 @@ import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
+	"path/filepath"
 )
 
 type HwMonFan struct {
@@ -73,7 +74,9 @@ func (fan *HwMonFan) SetRpmAvg(rpm float64) {
 }
 
 func (fan HwMonFan) GetPwm() int {
-	value, err := util.ReadIntFromFile(fan.PwmOutput)
+	folder, _ := filepath.Split(fan.PwmOutput)
+	pwmPath := fmt.Sprintf("%s/pwm%d", folder, fan.Index)
+	value, err := util.ReadIntFromFile(pwmPath)
 	if err != nil {
 		value = MinPwmValue
 	}
@@ -82,7 +85,9 @@ func (fan HwMonFan) GetPwm() int {
 
 func (fan *HwMonFan) SetPwm(pwm int) (err error) {
 	ui.Debug("Setting %s (%s) to %d ...", fan.GetId(), fan.Label, pwm)
-	err = util.WriteIntToFile(pwm, fan.PwmOutput)
+	folder, _ := filepath.Split(fan.PwmOutput)
+	pwmPath := fmt.Sprintf("%s/pwm%d", folder, fan.Index)
+	err = util.WriteIntToFile(pwm, pwmPath)
 	return err
 }
 
@@ -99,7 +104,8 @@ func (fan HwMonFan) ShouldNeverStop() bool {
 }
 
 func (fan HwMonFan) GetPwmEnabled() (int, error) {
-	pwmEnabledFilePath := fan.PwmOutput + "_enable"
+	folder, _ := filepath.Split(fan.PwmOutput)
+	pwmEnabledFilePath := fmt.Sprintf("%s/pwm%d_enable", folder, fan.Index)
 	return util.ReadIntFromFile(pwmEnabledFilePath)
 }
 
@@ -117,7 +123,11 @@ func (fan HwMonFan) IsPwmAuto() (bool, error) {
 // 1 - manual pwm control
 // 2 - motherboard pwm control
 func (fan *HwMonFan) SetPwmEnabled(value int) (err error) {
-	pwmEnabledFilePath := fan.PwmOutput + "_enable"
+	folder, _ := filepath.Split(fan.PwmOutput)
+	pwmEnabledFilePath := fmt.Sprintf("%s/pwm%d_enable", folder, fan.Index)
+
+	// /hwmon4/pwm1_enable
+
 	err = util.WriteIntToFile(value, pwmEnabledFilePath)
 	if err == nil {
 		currentValue, err := util.ReadIntFromFile(pwmEnabledFilePath)

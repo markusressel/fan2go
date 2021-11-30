@@ -83,10 +83,7 @@ func (f fanController) Run(ctx context.Context) error {
 	ui.Info("Start PWM of %s: %d", fan.GetId(), fan.GetMinPwm())
 	ui.Info("Max PWM of %s: %d", fan.GetId(), fan.GetMaxPwm())
 
-	err = trySetManualPwm(fan)
-	if err != nil {
-		ui.Warning("Could not enable fan control on %s, trying to continue anyway...", fan.GetId())
-	}
+	trySetManualPwm(fan)
 
 	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
 
@@ -166,10 +163,7 @@ func (f fanController) UpdateFanSpeed() error {
 		err = f.setPwm(fan, target)
 		if err != nil {
 			ui.Error("Error setting %s: %v", fan.GetId(), err)
-			err = trySetManualPwm(fan)
-			if err != nil {
-				ui.Warning("Could not enable fan control on %s, trying to continue anyway...", fan.GetId())
-			}
+			trySetManualPwm(fan)
 		}
 	}
 
@@ -186,10 +180,7 @@ func (f fanController) runInitializationSequence() (err error) {
 		defer InitializationSequenceMutex.Unlock()
 	}
 
-	err = trySetManualPwm(fan)
-	if err != nil {
-		ui.Warning("Could not enable fan control on %s, trying to continue anyway...", fan.GetId())
-	}
+	trySetManualPwm(fan)
 
 	for pwm := 0; pwm <= fans.MaxPwmValue; pwm++ {
 		// set a pwm
@@ -263,12 +254,14 @@ func measureRpm(fan fans.Fan) {
 	pointWindow.Append(float64(rpm))
 }
 
-func trySetManualPwm(fan fans.Fan) (err error) {
-	err = fan.SetPwmEnabled(1)
+func trySetManualPwm(fan fans.Fan) {
+	err := fan.SetPwmEnabled(1)
 	if err != nil {
 		err = fan.SetPwmEnabled(0)
 	}
-	return err
+	if err != nil {
+		ui.Warning("Could not enable fan control on %s, trying to continue anyway...", fan.GetId())
+	}
 }
 
 // calculates the target speed for a given device output
