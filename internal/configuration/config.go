@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 	"os"
@@ -92,16 +93,12 @@ func LoadConfig() {
 func validateConfig() {
 	config := &CurrentConfig
 
-	for _, fanConfig := range config.Fans {
-		if fanConfig.HwMon != nil && fanConfig.File != nil {
-			ui.Fatal("Fans %s: only one fan type can be used per fan definition block", fanConfig.ID)
-		}
+	validateSensors(config)
+	validateCurves(config)
+	validateFans(config)
+}
 
-		if fanConfig.HwMon == nil && fanConfig.File == nil {
-			ui.Fatal("Fans %s: sub-configuration for fan is missing, use one of: hwmon | file", fanConfig.ID)
-		}
-	}
-
+func validateSensors(config *Configuration) {
 	for _, sensorConfig := range config.Sensors {
 		if sensorConfig.HwMon != nil && sensorConfig.File != nil {
 			ui.Fatal("Sensor %s: only one sensor type can be used per sensor definition block", sensorConfig.ID)
@@ -111,9 +108,27 @@ func validateConfig() {
 			ui.Fatal("Sensor %s: sub-configuration for sensor is missing, use one of: hwmon | file", sensorConfig.ID)
 		}
 
-		// TODO: find unused sensor configs
+		if !isSensorConfigInUse(sensorConfig, config.Curves) {
+			ui.Warning("Unused sensor configuration: %s", sensorConfig.ID)
+		}
+	}
+}
+
+func isSensorConfigInUse(config SensorConfig, curves []CurveConfig) bool {
+	for _, curveConfig := range curves {
+		if curveConfig.Function != nil {
+			// function curves cannot reference sensors
+			continue
+		}
+		if curveConfig.Linear.Sensor == config.ID {
+			return true
+		}
 	}
 
+	return false
+}
+
+func validateCurves(config *Configuration) {
 	for _, curveConfig := range config.Curves {
 		if curveConfig.Linear != nil && curveConfig.Function != nil {
 			ui.Fatal("Curve %s: only one curve type can be used per curve definition block", curveConfig.ID)
@@ -123,6 +138,41 @@ func validateConfig() {
 			ui.Fatal("Curve %s: sub-configuration for curve is missing, use one of: linear | function", curveConfig.ID)
 		}
 
-		// TODO: find unused curve configs
+		if !isCurveConfigInUse(curveConfig, config.Curves, config.Fans) {
+			ui.Warning("Unused curve configuration: %s", curveConfig.ID)
+		}
+	}
+}
+
+func isCurveConfigInUse(config CurveConfig, curves []CurveConfig, fans []FanConfig) bool {
+	for _, curveConfig := range curves {
+		if curveConfig.Linear != nil {
+			// linear curves cannot reference curves
+			continue
+		}
+
+		if util.ContainsString(curveConfig.Function.Curves, config.ID) {
+			return true
+		}
+	}
+
+	for _, fanConfig := range fans {
+		if fanConfig.Curve == config.ID {
+			return true
+		}
+	}
+
+	return false
+}
+
+func validateFans(config *Configuration) {
+	for _, fanConfig := range config.Fans {
+		if fanConfig.HwMon != nil && fanConfig.File != nil {
+			ui.Fatal("Fans %s: only one fan type can be used per fan definition block", fanConfig.ID)
+		}
+
+		if fanConfig.HwMon == nil && fanConfig.File == nil {
+			ui.Fatal("Fans %s: sub-configuration for fan is missing, use one of: hwmon | file", fanConfig.ID)
+		}
 	}
 }

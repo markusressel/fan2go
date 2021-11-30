@@ -46,8 +46,6 @@ type Fan interface {
 
 	// GetFanCurveData returns the fan curve data for this fan
 	GetFanCurveData() *map[int]*rolling.PointPolicy
-	SetFanCurveData(data *map[int]*rolling.PointPolicy)
-	// TODO: whats the difference?
 	AttachFanCurveData(curveData *map[int][]float64) (err error)
 
 	// GetCurveId returns the id of the speed curve associated with this fan
@@ -80,6 +78,7 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 			MaxPwm:       MaxPwmValue,
 			FanCurveData: &map[int]*rolling.PointPolicy{},
 			LastSetPwm:   InitialLastSetPwm,
+			StartPwm:     config.StartPwm,
 			Config:       config,
 		}, nil
 	}

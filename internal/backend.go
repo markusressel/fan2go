@@ -21,7 +21,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 )
 
 func RunDaemon() {
@@ -45,27 +44,24 @@ func RunDaemon() {
 			g.Add(func() error {
 				return mon.Run(ctx)
 			}, func(err error) {
-				ui.Fatal("Error monitoring sensor: %v", err)
+				if err != nil {
+					ui.Error("Error monitoring sensor: %v", err)
+				}
 			})
 		}
 	}
 	{
 		// === fan controllers
-		for fanId, fan := range fans.FanMap {
+		for _, fan := range fans.FanMap {
 			updateRate := configuration.CurrentConfig.ControllerAdjustmentTickRate
 			fanController := controller.NewFanController(pers, fan, updateRate)
 
 			g.Add(func() error {
-				rpmTick := time.Tick(configuration.CurrentConfig.RpmPollingRate)
-				return rpmMonitor(ctx, fanId, rpmTick)
-			}, func(err error) {
-				ui.Error("Something went wrong: %v", err)
-			})
-
-			g.Add(func() error {
 				return fanController.Run(ctx)
 			}, func(err error) {
-				ui.Error("Something went wrong: %v", err)
+				if err != nil {
+					ui.Error("Something went wrong: %v", err)
+				}
 			})
 		}
 
@@ -141,8 +137,8 @@ func InitializeObjects() {
 			for _, c := range controllers {
 				if c.Platform == config.HwMon.Platform {
 					found = true
-					config.HwMon.PwmOutput = c.PwmInputs[config.HwMon.Index]
-					config.HwMon.RpmInput = c.FanInputs[config.HwMon.Index]
+					config.HwMon.PwmOutput = c.PwmInputs[config.HwMon.Index-1]
+					config.HwMon.RpmInput = c.FanInputs[config.HwMon.Index-1]
 					break
 				}
 			}
@@ -158,18 +154,6 @@ func InitializeObjects() {
 		fans.FanMap[config.ID] = fan
 	}
 
-}
-
-func rpmMonitor(ctx context.Context, fanId string, tick <-chan time.Time) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-tick:
-			// TODO:
-			//measureRpm(fanId)
-		}
-	}
 }
 
 func getProcessOwner() string {

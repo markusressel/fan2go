@@ -96,10 +96,6 @@ func (fan HwMonFan) GetFanCurveData() *map[int]*rolling.PointPolicy {
 	return fan.FanCurveData
 }
 
-func (fan *HwMonFan) SetFanCurveData(data *map[int]*rolling.PointPolicy) {
-	fan.FanCurveData = data
-}
-
 func (fan HwMonFan) GetCurveId() string {
 	return fan.Config.Curve
 }
