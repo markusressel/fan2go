@@ -15,9 +15,11 @@ import (
 )
 
 const (
-	BusTypeIsa  = 1
-	BusTypePci  = 2
-	BusTypeAcpi = 5
+	BusTypeIsa     = 1
+	BusTypePci     = 2
+	BusTypeVirtual = 4
+	BusTypeAcpi    = 5
+	BusTypeHid     = 6
 )
 
 type HwMonController struct {
@@ -229,8 +231,12 @@ func computeIdentifier(chip gosensors.Chip) (name string) {
 		identifier = fmt.Sprintf("%s-isa-%d", identifier, chip.Bus.Nr)
 	case BusTypePci:
 		identifier = fmt.Sprintf("%s-pci-%d", identifier, chip.Bus.Nr)
+	case BusTypeVirtual:
+		identifier = fmt.Sprintf("%s-virtual-%d", identifier, chip.Bus.Nr)
 	case BusTypeAcpi:
 		identifier = fmt.Sprintf("%s-acpi-%d", identifier, chip.Bus.Nr)
+	case BusTypeHid:
+		identifier = fmt.Sprintf("%s-hid-%d-%d", identifier, chip.Bus.Nr, chip.Addr)
 	}
 
 	return identifier
