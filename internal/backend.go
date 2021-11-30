@@ -11,13 +11,10 @@ import (
 	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -90,10 +87,7 @@ func RunDaemon() {
 }
 
 func InitializeObjects() {
-	controllers, err := FindControllers()
-	if err != nil {
-		ui.Fatal("Error detecting devices: %s", err.Error())
-	}
+	controllers := hwmon.GetChips()
 
 	for _, config := range configuration.CurrentConfig.Sensors {
 		if config.HwMon != nil {
@@ -163,75 +157,4 @@ func getProcessOwner() string {
 		os.Exit(1)
 	}
 	return strings.TrimSpace(string(stdout))
-}
-
-// FindControllers finds hwmon controllers
-func FindControllers() (controllers []*hwmon.HwMonController, err error) {
-	hwmonDevices := util.FindHwmonDevicePaths()
-	i2cDevices := util.FindI2cDevicePaths()
-	allDevices := append(hwmonDevices, i2cDevices...)
-
-	for _, devicePath := range allDevices {
-
-		var deviceName = util.GetDeviceName(devicePath)
-		var identifier = computeIdentifier(devicePath, deviceName)
-
-		dType := util.GetDeviceType(devicePath)
-		modalias := util.GetDeviceModalias(devicePath)
-		platform := findPlatform(devicePath)
-		if len(platform) <= 0 {
-			platform = identifier
-		}
-
-		fanInputs := util.FindFilesMatching(devicePath, hwmon.FanInputRegex)
-		pwmInputs := util.FindFilesMatching(devicePath, hwmon.PwmRegex)
-		tempInputs := util.FindFilesMatching(devicePath, hwmon.TempInputRegex)
-
-		if len(fanInputs) <= 0 && len(pwmInputs) <= 0 && len(tempInputs) <= 0 {
-			continue
-		}
-
-		c := &hwmon.HwMonController{
-			Name:       identifier,
-			DType:      dType,
-			Modalias:   modalias,
-			Platform:   platform,
-			Path:       devicePath,
-			TempInputs: tempInputs,
-			PwmInputs:  pwmInputs,
-			FanInputs:  fanInputs,
-		}
-		controllers = append(controllers, c)
-	}
-
-	return controllers, err
-}
-
-func findPlatform(devicePath string) string {
-	platformRegex := regexp.MustCompile(".*/platform/{}/.*")
-	return platformRegex.FindString(devicePath)
-}
-
-func computeIdentifier(devicePath string, deviceName string) (name string) {
-	pciDeviceRegex := regexp.MustCompile("\\w+:\\w{2}:\\w{2}\\.\\d")
-
-	if len(name) <= 0 {
-		name = deviceName
-	}
-
-	if len(name) <= 0 {
-		_, name = filepath.Split(devicePath)
-	}
-
-	if strings.Contains(devicePath, "/pci") {
-		// add pci suffix to name
-		matches := pciDeviceRegex.FindAllString(devicePath, -1)
-		if len(matches) > 0 {
-			lastMatch := matches[len(matches)-1]
-			pciIdentifier := util.CreateShortPciIdentifier(lastMatch)
-			name = fmt.Sprintf("%s-%s", name, pciIdentifier)
-		}
-	}
-
-	return name
 }

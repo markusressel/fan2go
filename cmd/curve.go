@@ -3,9 +3,9 @@ package cmd
 import (
 	"bytes"
 	"github.com/guptarohit/asciigraph"
-	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/hwmon"
 	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/mgutz/ansi"
@@ -23,10 +23,7 @@ var curveCmd = &cobra.Command{
 		configuration.ReadConfigFile()
 		persistence := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
 
-		controllers, err := internal.FindControllers()
-		if err != nil {
-			ui.Fatal("Error detecting devices: %s", err.Error())
-		}
+		controllers := hwmon.GetChips()
 
 		var fanList []fans.Fan
 		for _, config := range configuration.CurrentConfig.Fans {
@@ -79,7 +76,7 @@ var curveCmd = &cobra.Command{
 				},
 			})
 			if tableErr != nil {
-				panic(err)
+				panic(tableErr)
 			}
 			tableString := buf.String()
 			ui.Printfln(tableString)
