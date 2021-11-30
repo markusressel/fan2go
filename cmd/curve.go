@@ -30,8 +30,8 @@ var curveCmd = &cobra.Command{
 			if config.HwMon != nil {
 				for _, controller := range controllers {
 					if controller.Platform == config.HwMon.Platform {
-						config.HwMon.PwmOutput = controller.PwmInputs[config.HwMon.Index-1]
-						config.HwMon.RpmInput = controller.FanInputs[config.HwMon.Index-1]
+						config.HwMon.PwmOutput = controller.Fans[config.HwMon.Index-1].PwmOutput
+						config.HwMon.RpmInput = controller.Fans[config.HwMon.Index-1].RpmInput
 						break
 					}
 				}

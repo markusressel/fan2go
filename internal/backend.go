@@ -95,7 +95,7 @@ func InitializeObjects() {
 			for _, c := range controllers {
 				if c.Platform == config.HwMon.Platform {
 					found = true
-					config.HwMon.TempInput = c.TempInputs[config.HwMon.Index-1]
+					config.HwMon.TempInput = c.Sensors[config.HwMon.Index-1].Input
 				}
 			}
 			if !found {
@@ -131,8 +131,8 @@ func InitializeObjects() {
 			for _, c := range controllers {
 				if c.Platform == config.HwMon.Platform {
 					found = true
-					config.HwMon.PwmOutput = c.PwmInputs[config.HwMon.Index-1]
-					config.HwMon.RpmInput = c.FanInputs[config.HwMon.Index-1]
+					config.HwMon.PwmOutput = c.Fans[config.HwMon.Index-1].PwmOutput
+					config.HwMon.RpmInput = c.Fans[config.HwMon.Index-1].RpmInput
 					break
 				}
 			}

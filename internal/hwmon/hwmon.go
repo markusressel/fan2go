@@ -30,10 +30,6 @@ type HwMonController struct {
 
 	Fans    []*fans.HwMonFan
 	Sensors []*sensors.HwmonSensor
-
-	FanInputs  []string
-	PwmInputs  []string
-	TempInputs []string
 }
 
 func GetChips() []*HwMonController {
@@ -111,7 +107,7 @@ func GetTempSensors(chip gosensors.Chip) []*sensors.HwmonSensor {
 				sensorList,
 				&sensors.HwmonSensor{
 					Label:     label,
-					Index:     int(inputSubFeature.Number) + 1,
+					Index:     len(sensorList) + 1,
 					Input:     sensorInputPath,
 					Max:       max,
 					Min:       min,
@@ -166,7 +162,7 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 
 			fan := &fans.HwMonFan{
 				Label:        label,
-				Index:        int(inputSubFeature.Number) + 1,
+				Index:        len(fanList) + 1,
 				PwmOutput:    pwmOutput,
 				RpmInput:     rpmInput,
 				RpmMovingAvg: inputSubFeature.GetValue(),
