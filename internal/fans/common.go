@@ -16,6 +16,10 @@ const (
 	InitialLastSetPwm = -10
 )
 
+const (
+	FeatureRpmSensor = 0
+)
+
 var (
 	FanMap = map[string]Fan{}
 )
@@ -65,6 +69,7 @@ type Fan interface {
 	GetOriginalPwmEnabled() int
 	// GetLastSetPwm remembers the last PWM value that has been set for this fan by fan2go
 	GetLastSetPwm() int
+	Supports(feature int) bool
 }
 
 func NewFan(config configuration.FanConfig) (Fan, error) {

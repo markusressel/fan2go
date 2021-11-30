@@ -301,23 +301,26 @@ func calculateTargetPwm(fan fans.Fan, currentPwm int, pwm int) int {
 			fan.GetId(), lastSetPwm, currentPwm)
 	}
 
-	// make sure fans never stop by validating the current RPM
-	// and adjusting the target PWM value upwards if necessary
-	if fan.ShouldNeverStop() && lastSetPwm == target {
-		avgRpm := fan.GetRpmAvg()
-		if avgRpm <= 0 {
-			if target >= maxPwm {
-				ui.Error("CRITICAL: Fan %s avg. RPM is %f, even at PWM value %d", fan.GetId(), avgRpm, target)
-				return -1
-			}
-			ui.Warning("WARNING: Increasing startPWM of %s from %d to %d, which is supposed to never stop, but RPM is %f",
-				fan.GetId(), fan.GetMinPwm(), fan.GetMinPwm()+1, avgRpm)
-			fan.SetMinPwm(fan.GetMinPwm() + 1)
-			target++
+	if fan.Supports(fans.FeatureRpmSensor) {
+		// make sure fans never stop by validating the current RPM
+		// and adjusting the target PWM value upwards if necessary
+		if fan.ShouldNeverStop() && lastSetPwm == target {
+			// TODO: this only works if the fan supports RPM measurements at all
+			avgRpm := fan.GetRpmAvg()
+			if avgRpm <= 0 {
+				if target >= maxPwm {
+					ui.Error("CRITICAL: Fan %s avg. RPM is %f, even at PWM value %d", fan.GetId(), avgRpm, target)
+					return -1
+				}
+				ui.Warning("WARNING: Increasing startPWM of %s from %d to %d, which is supposed to never stop, but RPM is %f",
+					fan.GetId(), fan.GetMinPwm(), fan.GetMinPwm()+1, avgRpm)
+				fan.SetMinPwm(fan.GetMinPwm() + 1)
+				target++
 
-			// set the moving avg to a value > 0 to prevent
-			// this increase from happening too fast
-			fan.SetRpmAvg(1)
+				// set the moving avg to a value > 0 to prevent
+				// this increase from happening too fast
+				fan.SetRpmAvg(1)
+			}
 		}
 	}
 

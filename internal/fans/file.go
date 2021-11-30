@@ -134,3 +134,12 @@ func (fan *FileFan) SetOriginalPwmEnabled(value int) {
 func (fan FileFan) GetLastSetPwm() int {
 	return fan.LastSetPwm
 }
+
+func (fan FileFan) Supports(feature int) bool {
+	switch feature {
+	case FeatureRpmSensor:
+		// TODO: maybe we could support this in the future
+		return false
+	}
+	return false
+}

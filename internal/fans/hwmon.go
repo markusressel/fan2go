@@ -145,3 +145,11 @@ func (fan HwMonFan) GetOriginalPwmEnabled() int {
 func (fan HwMonFan) GetLastSetPwm() int {
 	return fan.LastSetPwm
 }
+
+func (fan HwMonFan) Supports(feature int) bool {
+	switch feature {
+	case FeatureRpmSensor:
+		return len(fan.RpmInput) > 0
+	}
+	return false
+}

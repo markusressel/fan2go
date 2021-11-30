@@ -105,13 +105,13 @@ func InitializeObjects() {
 				}
 			}
 			if !found {
-				ui.Fatal("Couldn't find hwmon device for sensor: %s", config.ID)
+				ui.Fatal("Couldn't find hwmon device with platform '%s' for sensor: %s. Run 'fan2go detect' again and correct any mistake.", config.HwMon.Platform, config.ID)
 			}
 		}
 
 		sensor, err := sensors.NewSensor(config)
 		if err != nil {
-			ui.Fatal("Unable to process curve configuration: %s", config.ID)
+			ui.Fatal("Unable to process sensor configuration: %s", config.ID)
 		}
 
 		currentValue, err := sensor.GetValue()
@@ -143,7 +143,7 @@ func InitializeObjects() {
 				}
 			}
 			if !found {
-				ui.Fatal("Couldn't find hwmon device for fan: %s", config.ID)
+				ui.Fatal("Couldn't find hwmon device with platform '%s' for fan: %s", config.HwMon.Platform, config.ID)
 			}
 		}
 

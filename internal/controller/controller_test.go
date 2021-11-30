@@ -156,6 +156,10 @@ func (fan MockFan) ShouldNeverStop() bool {
 	return fan.shouldNeverStop
 }
 
+func (fan MockFan) Supports(feature int) bool {
+	return true
+}
+
 var (
 	LinearFan = map[int][]float64{
 		0:   {0.0},
