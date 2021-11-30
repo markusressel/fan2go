@@ -7,31 +7,61 @@ import (
 	"testing"
 )
 
-func TestFindDeviceName(t *testing.T) {
+func TestComputeIdentifierIsa(t *testing.T) {
 	// GIVEN
-	deviceName := "some-device-name"
-	devicePathToExpectedName := map[string]string{
-		"/sys/devices/platform/nct6775.656/hwmon/hwmon4":                                                 deviceName,
-		"/sys/devices/pci0000:00/0000:00:0e.0/pci10000:e0/10000:e0:06.0/10000:e1:00.0/nvme/nvme0/hwmon3": fmt.Sprintf("%s-pci-10000E100", deviceName),
-		"/sys/devices/pci0000:00/0000:00:01.2/0000:02:00.0/0000:03:01.0/0000:04:00.0/nvme/nvme1/hwmon0":  fmt.Sprintf("%s-pci-0400", deviceName),
+	c := gosensors.Chip{
+		Prefix: "ucsi_source_psy_USBC000:002",
+		Bus: gosensors.Bus{
+			Type: BusTypeIsa,
+			Nr:   1,
+		},
+		Path: "/sys/class/hwmon/hwmon7",
 	}
+	expected := fmt.Sprintf("%s-isa-%d", c.Prefix, c.Bus.Nr)
 
-	for key, value := range devicePathToExpectedName {
-		chip := gosensors.Chip{
-			Prefix: deviceName,
-			Bus: gosensors.Bus{
-				Type: 0,
-			},
-			Addr: 0,
-			Path: key,
-		}
+	// WHEN
+	result := computeIdentifier(c)
 
-		// WHEN
-		result := computeIdentifier(chip)
+	// THEN
+	assert.Equal(t, expected, result)
+}
 
-		// THEN
-		assert.Equal(t, value, result)
+func TestComputeIdentifierPci(t *testing.T) {
+	// GIVEN
+	c := gosensors.Chip{
+		Prefix: "nvme",
+		Bus: gosensors.Bus{
+			Type: BusTypePci,
+			Nr:   1,
+		},
+		Path: "/sys/class/hwmon/hwmon4",
 	}
+	expected := fmt.Sprintf("%s-pci-%d", c.Prefix, c.Bus.Nr)
+
+	// WHEN
+	result := computeIdentifier(c)
+
+	// THEN
+	assert.Equal(t, expected, result)
+}
+
+func TestComputeIdentifierAcpi(t *testing.T) {
+	// GIVEN
+	c := gosensors.Chip{
+		Prefix: "nvme",
+		Bus: gosensors.Bus{
+			Type: BusTypeAcpi,
+			Nr:   1,
+		},
+		Path: "/sys/class/hwmon/hwmon4",
+	}
+	expected := fmt.Sprintf("%s-acpi-%d", c.Prefix, c.Bus.Nr)
+
+	// WHEN
+	result := computeIdentifier(c)
+
+	// THEN
+	assert.Equal(t, expected, result)
 }
 
 func TestFindPlatform(t *testing.T) {

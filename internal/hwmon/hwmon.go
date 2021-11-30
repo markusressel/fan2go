@@ -15,8 +15,10 @@ import (
 	"strings"
 )
 
-var (
-	pciDeviceRegex = regexp.MustCompile("\\w+:\\w{2}:\\w{2}\\.\\d")
+const (
+	BusTypeIsa  = 1
+	BusTypePci  = 2
+	BusTypeAcpi = 5
 )
 
 type HwMonController struct {
@@ -230,23 +232,13 @@ func computeIdentifier(chip gosensors.Chip) (name string) {
 		_, name = filepath.Split(devicePath)
 	}
 
-	if strings.Contains(devicePath, "/pci") {
-		// add pci suffix to name
-		matches := pciDeviceRegex.FindAllString(devicePath, -1)
-		if len(matches) > 0 {
-			lastMatch := matches[len(matches)-1]
-			pciIdentifier := util.CreateShortPciIdentifier(lastMatch)
-			name = fmt.Sprintf("%s-%s", name, pciIdentifier)
-		}
-	}
-
 	identifier := name
 	switch chip.Bus.Type {
-	case 1:
+	case BusTypeIsa:
 		identifier = fmt.Sprintf("%s-isa-%d", identifier, chip.Bus.Nr)
-	case 2:
+	case BusTypePci:
 		identifier = fmt.Sprintf("%s-pci-%d", identifier, chip.Bus.Nr)
-	case 5:
+	case BusTypeAcpi:
 		identifier = fmt.Sprintf("%s-acpi-%d", identifier, chip.Bus.Nr)
 	}
 
