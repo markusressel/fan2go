@@ -1,7 +1,8 @@
-package internal
+package hwmon
 
 import (
 	"fmt"
+	"github.com/md14454/gosensors"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -16,8 +17,17 @@ func TestFindDeviceName(t *testing.T) {
 	}
 
 	for key, value := range devicePathToExpectedName {
+		chip := gosensors.Chip{
+			Prefix: deviceName,
+			Bus: gosensors.Bus{
+				Type: 0,
+			},
+			Addr: 0,
+			Path: key,
+		}
+
 		// WHEN
-		result := computeIdentifier(key, deviceName)
+		result := computeIdentifier(chip)
 
 		// THEN
 		assert.Equal(t, value, result)

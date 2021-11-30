@@ -15,6 +15,10 @@ import (
 	"strings"
 )
 
+var (
+	pciDeviceRegex = regexp.MustCompile("\\w+:\\w{2}:\\w{2}\\.\\d")
+)
+
 type HwMonController struct {
 	Name     string
 	DType    string
@@ -215,9 +219,9 @@ func getLabel(devicePath string, input string) string {
 }
 
 func computeIdentifier(chip gosensors.Chip) (name string) {
-	devicePath := chip.Path
-	pciDeviceRegex := regexp.MustCompile("\\w+:\\w{2}:\\w{2}\\.\\d")
+	name = chip.Prefix
 
+	devicePath := chip.Path
 	if len(name) <= 0 {
 		name = util.GetDeviceName(devicePath)
 	}
