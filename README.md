@@ -4,11 +4,23 @@ A daemon to control the fans of a computer.
 
 ![graph](screenshots/graph.png)
 
-## How to use
+# How to use
 
-fan2go relies on [lm-sensors](https://github.com/lm-sensors/lm-sensors) to both get temperature and RPM sensor readings,
+fan2go relies on [lm-sensors](https://github.com/lm-sensors/lm-sensors) to get both temperature and RPM sensor readings,
 as well as PWM controls, so you will have
 to [set it up first](https://wiki.archlinux.org/index.php/Lm_sensors#Installation).
+
+## Installation
+
+### AUR
+
+A third-party maintained AUR package has been created by [manvari](https://github.com/manvari).
+
+```shell
+yay -S fan2go-git
+```
+
+### Manual
 
 Download the latest release from GitHub:
 
@@ -19,165 +31,163 @@ sudo cp ./fan2go /usr/bin/fan2go
 fan2go -h
 ```
 
-### Configuration
-
-Use `fan2go detect` to print a list of all usable devices:
-
-```shell
-> fan2go detect
-Detected Devices:
-nvme
-  1: Composite (temp1_input): 51850
-  2: Sensor 1 (temp2_input): 51850
-  3: Sensor 2 (temp3_input): 52850
-nvme
-  1: Composite (temp1_input): 52850
-  2: Sensor 1 (temp2_input): 52850
-  3: Sensor 2 (temp3_input): 45850
-nvme
-  1: Composite (temp1_input): 52850
-  2: Sensor 1 (temp2_input): 52850
-  3: Sensor 2 (temp3_input): 53850
-nct6798
-  1: hwmon5 (pwm1): RPM: 0 PWM: 142 Auto: false
-  2: hwmon5 (pwm2): RPM: 994 PWM: 68 Auto: false
-  3: hwmon5 (pwm3): RPM: 579 PWM: 96 Auto: false
-  4: hwmon5 (pwm4): RPM: 345 PWM: 58 Auto: false
-  5: hwmon5 (pwm5): RPM: 343 PWM: 57 Auto: false
-  6: hwmon5 (pwm6): RPM: 0 PWM: 255 Auto: false
-  7: hwmon5 (pwm7): RPM: 0 PWM: 255 Auto: false
-  1: SYSTIN (temp1_input): 43000
-  2: CPUTIN (temp2_input): 55500
-  3: AUXTIN0 (temp3_input): 22000
-  4: AUXTIN1 (temp4_input): 127000
-  5: AUXTIN2 (temp5_input): 100000
-  6: AUXTIN3 (temp6_input): 32000
-  7: PECI Agent 0 Calibration (temp7_input): 56500
-  8: PCH_CHIP_CPU_MAX_TEMP (temp8_input): 0
-  9: PCH_CHIP_TEMP (temp9_input): 0
-k10temp
-  1: Tctl (temp1_input): 75875
-  2: Tdie (temp2_input): 75875
-  3: Tccd1 (temp3_input): 69250
-iwlwifi_1
-  1: hwmon8 (temp1_input): 41000
-amdgpu
-  1: hwmon9 (pwm1): RPM: 561 PWM: 43 Auto: false
-  1: edge (temp1_input): 56000
-  2: junction (temp2_input): 59000
-  3: mem (temp3_input): 56000
-```
+## Configuration
 
 Then configure fan2go by creating a YAML configuration file in **one** of the following locations:
 
-* `./fan2go.yaml`
 * `/etc/fan2go/fan2go.yaml` (recommended)
 * `/root/.fan2go/fan2go.yaml`
+* `./fan2go.yaml`
 
 ```shell
 sudo mkdir /etc/fan2go
+sudo nano /etc/fan2go/fan2go.yaml
 ```
+
+The most important configuration options you need to define are the `fans:`, `sensors:` and `curves:` sections.
+
+### Fans
+
+Under `fans:` you need to define a list of fan devices that you want to control using fan2go. To detect fans on your
+system run `fan2go detect`, which will print a list of devices exposed by the hwmon filesystem backend:
+
+```shell
+> fan2go detect
+nct6798
+ Fans      Index   Label    RPM    PWM   Auto   
+           1       hwmon4   0      153   false  
+           2       hwmon4   1223   104   false  
+           3       hwmon4   677    107   false  
+ Sensors   Index   Label    Value   
+           1       SYSTIN   41000   
+           2       CPUTIN   64000   
+ 
+amdgpu-pci-0031
+ Fans      Index   Label    RPM   PWM   Auto   
+           1       hwmon8   561   43    false  
+ Sensors   Index   Label      Value  
+           1       edge       58000  
+           2       junction   61000  
+           3       mem        56000  
+```
+
+To use detected devices in your configuration, use the `hwmon` fan type:
 
 ```yaml
-# The path of the database file.
-dbPath: "/etc/fan2go/fan2go.db"
-# Allow the fan initialization sequence to run in parallel for all configured fans
-runFanInitializationInParallel: false
-# The rate to poll temperature sensors at.
-tempSensorPollingRate: 200ms
-# The number of sensor items to keep in a rolling window array.
-rollingWindowSize: 50
-# The rate to poll fan RPM input sensors at.
-rpmPollingRate: 1s
-# The rate to update fan speed targets at.
-controllerAdjustmentTickRate: 200ms
-
-# A list of sensors to monitor.
-sensors:
-  # A user defined ID, which is used to reference a
-  # a sensor in a fan configuration (see below)
-  - id: cpu_package
-    # The controller platform as displayed by `fan2go detect`, f.ex.:
-    # "nouveau", "coretemp" or "it8620" etc.
-    platform: coretemp
-    # The index of this sensor as displayed by `fan2go detect`.
-    index: 1
-    # The minimum target temp for this sensor.
-    # If the sensor falls below this value, all fans referencing it
-    # will run at minimum PWM value.
-    min: 50
-    # The maximum target temp for this sensor.
-    # If the sensor is above this value, all fans referencing it
-    # will run at maximum PWM value.
-    max: 75
-
-  - id: mainboard
-    platform: it8620
-    index: 3 # Intel PECI
-    min: 50
-    max: 80
-
-  - id: sata_ssd
-    platform: acpitz
-    index: 1
-    min: 30
-    max: 40
-
-# A list of fans to control.
+# A list of fans to control
 fans:
-  # An user defined ID.
-  # Used for logging only.
-  - id: in_front
-    # The platform of the controller which is
-    # connected to this fan (see sensor.platform above).
-    platform: it8620
-    # The index of this fan as displayed by `fan2go detect`.
-    fan: 3 # HDD Cage (Front)
-    # Indicates whether this fan is allowed to fully stop.
-    neverStop: no
-    # The sensor ID (defined above) that should be used to determine the
-    # speed of this fan.
-    sensor: sata_ssd
-
-  - id: in_bottom
-    platform: it8620
-    fan: 4 # Power Supply (Bottom)
+  # A user defined ID.
+  # Used for logging only
+  - id: cpu
+    # The type of fan configuration, one of: hwmon | file
+    hwmon:
+      # The platform of the controller which is
+      # connected to this fan (see sensor.platform below)
+      platform: nct6798
+      # The index of this fan as displayed by `fan2go detect`
+      index: 1
+    # Indicates whether this fan should never stop rotating, regardless of
+    # how low the curve value is
     neverStop: yes
-    sensor: mainboard
-
-  - id: in_top_double
-    platform: it8620
-    fan: 5 # Radiator (Top)
-    neverStop: yes
-    sensor: cpu_package
+    # The curve ID that should be used to determine the
+    # speed of this fan
+    curve: cpu_curve
 ```
 
-### Run
+### Sensors
+
+Under `sensors:` you need to define a list of temperature sensor devices that you want to monitor and use to adjust
+fanspeeds. Like with fans, you can find usable devices using `fan2go detect`.
+
+```yaml
+# A list of sensors to monitor
+sensors:
+  # A user defined ID, which is used to reference
+  # a sensor in a curve configuration (see below)
+  - id: cpu_package
+    # The type of sensor configuration, one of: hwmon | file
+    hwmon:
+      # The controller platform as displayed by `fan2go detect`, f.ex.:
+      # "nouveau", "coretemp" or "it8620" etc.
+      platform: coretemp
+      # The index of this sensor as displayed by `fan2go detect`
+      index: 1
+```
+
+### Curves
+
+Under `curves:` you need to define a list of fan speed curves, which represent the speed of a fan based on one or more
+temperature sensors.
+
+#### Linear
+
+To create a simple, linear speed curve, use a curve of type `linear`.
+
+This curve type can be used with a min/max sensor value, where the min temp will result in a curve value of `0` and the
+max temp will result in a curve value of `255`:
+
+```yaml
+curves:
+  - id: cpu_curve
+    # The type of the curve, one of: linear | function
+    linear:
+      # The sensor ID to use as a temperature input
+      sensor: cpu_package
+      # Sensor input value at which the curve is at minimum speed
+      min: 40
+      # Sensor input value at which the curve is at maximum speed
+      max: 80
+```
+
+You can also define the curve in multiple, linear sections using the `steps` parameter:
+
+```yaml
+curves:
+  - id: cpu_curve
+    # The type of the curve
+    linear:
+      # The sensor ID to use as a temperature input
+      sensor: cpu_package
+      # Steps to define a section-wise defined speed curve function.
+      steps:
+        # Sensor value -> Speed (in percent)
+        - 40: 0
+        - 50: 50
+        - 80: 255
+```
+
+#### Function
+
+To create more complex curves you can combine exising curves using a curve of type `function`:
+
+```yaml
+curves:
+  - id: case_avg_curve
+    function:
+      # Type of aggregation function to use, on of: minimum | maximum | average
+      type: average
+      # A list of curve IDs to use
+      curves:
+        - cpu_curve
+        - mainboard_curve
+        - ssd_curve
+```
+
+### Example
+
+An example configuration file including more detailed documentation can be found in [fan2go.yaml](/fan2go.yaml).
+
+## Run
 
 ```shell
 sudo fan2go
 ```
 
-### As a Service
+## As a Service
 
-#### Systemd
+### Systemd
 
-```
-sudo tee /usr/lib/systemd/system/fan2go.service <<- 'EOF'
-[Unit]
-Description=Advanced Fan Control program
-After=lm-sensors.service
-
-[Service]
-LimitNOFILE=8192
-ExecStart=/usr/bin/fan2go -c /etc/fan2go/fan2go.yaml --no-style
-Restart=always
-RestartSec=1s
-
-[Install]
-WantedBy=multi-user.target
-EOF
-```
+When installing fan2go using a package, it comes with a [systemd unit file](./fan2go.service). To enable it simply run:
 
 ```shell
 sudo systemctl daemon-reload
@@ -186,7 +196,7 @@ sudo systemctl enable --now fan2go
 journalctl -u fan2go -f
 ```
 
-### Print fan curve data
+## Print fan curve data
 
 For each newly configured fan **fan2go** measures its fan curve and stores it in a db for future reference. You can take
 a look at this measurement using the following command:
@@ -225,9 +235,9 @@ nct6798 -> pwm2
                                                     RPM / PWM
 ```
 
-## How it works
+# How it works
 
-### Device detection
+## Device detection
 
 fan2go scans the `/sys/class/hwmon` directory for hardware monitor paths. All of these paths are then scanned for
 
@@ -237,10 +247,9 @@ fan2go scans the `/sys/class/hwmon` directory for hardware monitor paths. All of
 
 files, which represent temperature sensors, RPM sensors and PWM outputs.
 
-### Initialization
+## Initialization
 
-When a fan is added to the configuration that fan2go has not seen before, its fan curve will first be analyzed before it
-is controlled properly. This means
+To properly control a fan which fan2go has not seen before, its speed curve is analyzed. This means
 
 * spinning down the fans to 0
 * slowly ramping up the speed and monitoring RPM changes along the way
@@ -251,20 +260,15 @@ fan is still running, as well as the highest PWM value that still yields a chang
 
 All of this is saved to a local database, so it is only needed once per fan configuration.
 
-### Monitoring
+## Monitoring
 
-To monitor changes in temperature sensor values, a goroutine is started which continuously reads the `tempX_input` files
-of all sensors specified in the config. Sensor values are stored as a moving average of size `rollingWindowSize` (see
-configuration).
+To monitor temperature sensors, a goroutine is started which continuously reads the `tempX_input` files of all sensors
+specified in the config. Sensor values are stored as a moving average of size `tempRollingWindowSize` (
+see [configuration](#configuration)).
 
-### Fan Controllers
+## Fan Controllers
 
-To update the fan speed, one goroutine is started **per fan**, which continuously adjusts the PWM value of a given fan
-based on the sensor data measured by the monitor. This means:
-
-* calculating the ratio between the average temp and the max/min values defined in the config
-* calculating the target PWM of a fan using the previous ratio, taking its startPWM and maxPWM into account
-* applying the calculated target PWM to the fan
+Fan speeds are continuously adjusted based on the value of the associated curve.
 
 # Dependencies
 

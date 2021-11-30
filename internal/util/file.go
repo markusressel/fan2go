@@ -26,6 +26,7 @@ func ReadIntFromFile(path string) (value int, err error) {
 func WriteIntToFile(value int, path string) (err error) {
 	f, err := os.OpenFile(path, os.O_SYNC|os.O_WRONLY, 644)
 	if err != nil {
+		ui.Error("File opening file %s in write mode: %v", path, err)
 		return err
 	}
 	//goland:noinspection GoUnhandledErrorResult
@@ -37,19 +38,14 @@ func WriteIntToFile(value int, path string) (err error) {
 }
 
 // FindFilesMatching finds all files in a given directory, matching the given regex
-func FindFilesMatching(path string, expr string) []string {
-	r, err := regexp.Compile(expr)
-	if err != nil {
-		ui.Fatal("Cannot compile expr: %s", expr)
-	}
-
+func FindFilesMatching(path string, expr *regexp.Regexp) []string {
 	var result []string
-	err = filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			ui.Fatal("%v", err)
 		}
 
-		if !info.IsDir() && r.MatchString(info.Name()) {
+		if !info.IsDir() && expr.MatchString(info.Name()) {
 			var devicePath string
 
 			// we may need to adjust the path (pwmconfig cite...)

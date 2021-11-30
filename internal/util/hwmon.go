@@ -1,9 +1,11 @@
 package util
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -12,9 +14,6 @@ func GetDeviceName(devicePath string) string {
 	namePath := devicePath + "/name"
 	content, _ := ioutil.ReadFile(namePath)
 	name := string(content)
-	if len(name) <= 0 {
-		_, name = filepath.Split(devicePath)
-	}
 	return strings.TrimSpace(name)
 }
 
@@ -56,7 +55,8 @@ func FindI2cDevicePaths() []string {
 		return []string{}
 	}
 
-	return FindFilesMatching(basePath, ".+-.+")
+	regex := regexp.MustCompile(".+-.+")
+	return FindFilesMatching(basePath, regex)
 
 	//	# Find available fan control outputs
 	//	MATCH=$device/'pwm[1-9]'
@@ -84,7 +84,30 @@ func FindHwmonDevicePaths() []string {
 		return []string{}
 	}
 
-	result := FindFilesMatching(basePath, "hwmon.*")
+	regex := regexp.MustCompile("hwmon.*")
+	result := FindFilesMatching(basePath, regex)
 
 	return result
+}
+
+func CreateShortPciIdentifier(path string) string {
+	splits := strings.Split(path, ":")
+
+	domain := splits[0]
+	bus := splits[1]
+
+	splits = strings.Split(splits[2], ".")
+
+	slot, channel := splits[0], splits[1]
+
+	name := fmt.Sprintf(
+		"%s%s%s%s",
+		HexString(domain),
+		HexString(bus),
+		HexString(slot),
+		HexString(channel),
+	)
+	name = strings.Trim(name, "-")
+	name = fmt.Sprintf("pci-%s", name)
+	return name
 }

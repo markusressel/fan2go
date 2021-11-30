@@ -1,19 +1,26 @@
 package ui
 
 import (
+	"github.com/pterm/pterm"
 	"os"
-	"testing"
 )
 
-func TestPrintln(t *testing.T) {
-	msg := "This is a test: %d"
+func ExamplePrintln() {
+	pterm.SetDefaultOutput(os.Stdout)
+	pterm.DisableStyling()
+
+	msg := "This is a test %d"
 	a := 5
-	Println(msg, a)
+	Printfln(msg, a)
 	// Output:
-	// This is a test: 5
+	// This is a test 5
 }
 
-func TestDebug(t *testing.T) {
+func ExampleDebug() {
+	pterm.SetDefaultOutput(os.Stdout)
+	pterm.DisableStyling()
+	pterm.PrintDebugMessages = true
+
 	msg := "This is a test: %d"
 	a := 5
 	Debug(msg, a)
@@ -21,7 +28,10 @@ func TestDebug(t *testing.T) {
 	// DEBUG: This is a test: 5
 }
 
-func TestInfo(t *testing.T) {
+func ExampleInfo() {
+	pterm.SetDefaultOutput(os.Stdout)
+	pterm.DisableStyling()
+
 	msg := "This is a test: %d"
 	a := 5
 	Info(msg, a)
@@ -29,7 +39,10 @@ func TestInfo(t *testing.T) {
 	// INFO: This is a test: 5
 }
 
-func TestWarning(t *testing.T) {
+func ExampleWarning() {
+	pterm.SetDefaultOutput(os.Stdout)
+	pterm.DisableStyling()
+
 	msg := "This is a test: %d"
 	a := 5
 	Warning(msg, a)
@@ -37,7 +50,10 @@ func TestWarning(t *testing.T) {
 	// WARNING: This is a test: 5
 }
 
-func TestError(t *testing.T) {
+func ExampleError() {
+	pterm.SetDefaultOutput(os.Stdout)
+	pterm.DisableStyling()
+
 	msg := "This is a test: %v"
 	a := os.ErrClosed
 	Error(msg, a)
