@@ -2,6 +2,7 @@ package fans
 
 import (
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"os/user"
 	"path/filepath"
@@ -92,14 +93,16 @@ func (fan *FileFan) SetPwm(pwm int) (err error) {
 	}
 
 	err = util.WriteIntToFile(pwm, filePath)
-	return err
+	if err != nil {
+		ui.Error("Unable to write to file: %v", fan.FilePath)
+	}
+	return nil
 }
 
+var interpolated = util.InterpolateLinearly(&map[int]float64{0: 0, 255: 255}, 0, 255)
+
 func (fan FileFan) GetFanCurveData() *map[int]float64 {
-	return &map[int]float64{
-		0:   0,
-		255: 255,
-	}
+	return &interpolated
 }
 
 func (fan *FileFan) AttachFanCurveData(curveData *map[int]float64) (err error) {

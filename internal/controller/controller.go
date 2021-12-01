@@ -39,6 +39,7 @@ func NewFanController(persistence persistence.Persistence, fan fans.Fan, updateR
 	return fanController{
 		persistence: persistence,
 		fan:         fan,
+		curve:       curves.SpeedCurveMap[fan.GetCurveId()],
 		updateRate:  updateRate,
 		lastSetPwm:  InitialLastSetPwm,
 	}
@@ -67,6 +68,11 @@ func (f fanController) Run(ctx context.Context) error {
 		if ok {
 			ui.Warning("No fan curve data found for fan '%s', starting initialization sequence...", fan.GetId())
 			err = f.runInitializationSequence()
+			if err != nil {
+				return err
+			}
+		} else {
+			err = f.persistence.SaveFanPwmData(fan)
 			if err != nil {
 				return err
 			}
@@ -107,7 +113,7 @@ func (f fanController) Run(ctx context.Context) error {
 			}
 		}, func(err error) {
 			if err != nil {
-				ui.Fatal("Error monitoring fan rpm: %v", err)
+				ui.Warning("Error monitoring fan rpm: %v", err)
 			}
 		})
 	}
@@ -129,7 +135,7 @@ func (f fanController) Run(ctx context.Context) error {
 						if f.originalPwmEnabled != 1 {
 							err1 := fan.SetPwmEnabled(f.originalPwmEnabled)
 							if err1 == nil {
-								return err
+								return nil
 							}
 						}
 						// if this fails, try to set it to max speed instead
@@ -138,7 +144,7 @@ func (f fanController) Run(ctx context.Context) error {
 							ui.Warning("Unable to restore fan %s, make sure it is running!", fan.GetId())
 						}
 
-						return err
+						return nil
 					}
 				}
 			}
@@ -225,7 +231,7 @@ func (f fanController) runInitializationSequence() (err error) {
 			// since most sensors are update only each second,
 			// we wait double that to make sure we get
 			// the most recent measurement
-			time.Sleep(2 * time.Second)
+			time.Sleep(100 * time.Millisecond)
 		}
 
 		// TODO:

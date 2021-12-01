@@ -39,10 +39,14 @@ func RunDaemon() {
 			mon := NewSensorMonitor(sensor, pollingRate)
 
 			g.Add(func() error {
-				return mon.Run(ctx)
+				err := mon.Run(ctx)
+				if err != nil {
+					panic(err)
+				}
+				return err
 			}, func(err error) {
 				if err != nil {
-					ui.Error("Error monitoring sensor: %v", err)
+					ui.Warning("Error monitoring sensor: %v", err)
 				}
 			})
 		}
@@ -54,10 +58,14 @@ func RunDaemon() {
 			fanController := controller.NewFanController(pers, fan, updateRate)
 
 			g.Add(func() error {
-				return fanController.Run(ctx)
+				err := fanController.Run(ctx)
+				if err != nil {
+					panic(err)
+				}
+				return err
 			}, func(err error) {
 				if err != nil {
-					ui.Error("Something went wrong: %v", err)
+					ui.Warning("Something went wrong: %v", err)
 				}
 			})
 		}
@@ -153,7 +161,7 @@ func InitializeObjects() {
 func getProcessOwner() string {
 	stdout, err := exec.Command("ps", "-o", "user=", "-p", strconv.Itoa(os.Getpid())).Output()
 	if err != nil {
-		ui.Fatal("%v", err)
+		ui.Fatal("Error checking process owner: %v", err)
 		os.Exit(1)
 	}
 	return strings.TrimSpace(string(stdout))

@@ -22,7 +22,7 @@ func ReadIntFromFile(path string) (value int, err error) {
 }
 
 // WriteIntToFile write a single integer to a file.go path
-func WriteIntToFile(value int, path string) (err error) {
+func WriteIntToFile(value int, path string) error {
 	path, _ = filepath.EvalSymlinks(path)
 	f, err := os.OpenFile(path, os.O_SYNC|os.O_CREATE|os.O_WRONLY, 644)
 	if err != nil {
@@ -41,7 +41,7 @@ func FindFilesMatching(path string, expr *regexp.Regexp) []string {
 	var result []string
 	err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			ui.Fatal("%v", err)
+			ui.Fatal("File error: %v", err)
 		}
 
 		if !info.IsDir() && expr.MatchString(info.Name()) {
