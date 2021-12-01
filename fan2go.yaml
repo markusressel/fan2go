@@ -121,4 +121,4 @@ statistics:
   # Whether to enable the prometheus exporter or not
   enabled: false
   # The port to expose the exporter on
-  port: 9001
+  port: 9000
