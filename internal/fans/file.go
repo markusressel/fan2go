@@ -22,7 +22,7 @@ func (fan FileFan) GetId() string {
 }
 
 func (fan FileFan) GetStartPwm() int {
-	return 0
+	return 1
 }
 
 func (fan *FileFan) SetStartPwm(pwm int) {

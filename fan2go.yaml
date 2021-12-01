@@ -38,6 +38,11 @@ fans:
     # The curve ID (defined above) that should be used to determine the
     # speed of this fan
     curve: cpu_curve
+    # (Optional) Override for the lowest PWM value at which the
+    # fan will still be able to start rotating.
+    # Note: Settings this to a value that is too small
+    #       may damage your fans. Use at your own risk!
+    startPwm: 30
 
   - id: in_front
     hwmon:

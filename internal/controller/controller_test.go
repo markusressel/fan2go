@@ -185,7 +185,7 @@ func (p mockPersistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
 	return fanCurveDataMap, nil
 }
 
-func CreateFan(neverStop bool, curveData map[int]float64) (fan fans.Fan, err error) {
+func CreateFan(neverStop bool, curveData map[int]float64, startPwm *int) (fan fans.Fan, err error) {
 	configuration.CurrentConfig.RpmRollingWindowSize = 10
 
 	fan = &fans.HwMonFan{
@@ -197,9 +197,11 @@ func CreateFan(neverStop bool, curveData map[int]float64) (fan fans.Fan, err err
 			},
 			NeverStop: neverStop,
 			Curve:     "curve",
+			StartPwm:  startPwm,
 		},
 		PwmOutput: "fan1_output",
 		RpmInput:  "fan1_rpm",
+		StartPwm:  startPwm,
 	}
 	fans.FanMap[fan.GetId()] = fan
 
@@ -210,7 +212,7 @@ func CreateFan(neverStop bool, curveData map[int]float64) (fan fans.Fan, err err
 
 func TestLinearFan(t *testing.T) {
 	// GIVEN
-	fan, _ := CreateFan(false, LinearFan)
+	fan, _ := CreateFan(false, LinearFan, nil)
 
 	// WHEN
 	startPwm, maxPwm := fans.ComputePwmBoundaries(fan)
@@ -222,7 +224,7 @@ func TestLinearFan(t *testing.T) {
 
 func TestNeverStoppingFan(t *testing.T) {
 	// GIVEN
-	fan, _ := CreateFan(false, NeverStoppingFan)
+	fan, _ := CreateFan(false, NeverStoppingFan, nil)
 
 	// WHEN
 	startPwm, maxPwm := fans.ComputePwmBoundaries(fan)
@@ -234,7 +236,7 @@ func TestNeverStoppingFan(t *testing.T) {
 
 func TestCappedFan(t *testing.T) {
 	// GIVEN
-	fan, _ := CreateFan(false, CappedFan)
+	fan, _ := CreateFan(false, CappedFan, nil)
 
 	// WHEN
 	startPwm, maxPwm := fans.ComputePwmBoundaries(fan)
@@ -246,7 +248,7 @@ func TestCappedFan(t *testing.T) {
 
 func TestCappedNeverStoppingFan(t *testing.T) {
 	// GIVEN
-	fan, _ := CreateFan(false, CappedNeverStoppingFan)
+	fan, _ := CreateFan(false, CappedNeverStoppingFan, nil)
 
 	// WHEN
 	startPwm, maxPwm := fans.ComputePwmBoundaries(fan)
@@ -337,4 +339,17 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	// THEN
 	assert.Greater(t, fan.GetMinPwm(), 0)
 	assert.Equal(t, fan.GetMinPwm(), target)
+}
+
+func TestFanWithStartPwmConfig(t *testing.T) {
+	// GIVEN
+	startPwm := 50
+	fan, _ := CreateFan(false, LinearFan, &startPwm)
+
+	// WHEN
+	newStartPwm, maxPwm := fans.ComputePwmBoundaries(fan)
+
+	// THEN
+	assert.Equal(t, startPwm, newStartPwm)
+	assert.Equal(t, 255, maxPwm)
 }

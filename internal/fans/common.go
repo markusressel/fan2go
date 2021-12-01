@@ -116,6 +116,7 @@ func (fan *HwMonFan) AttachFanCurveData(curveData *map[int]float64) (err error) 
 
 // ComputePwmBoundaries calculates the startPwm and maxPwm values for a fan based on its fan curve data
 func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
+	userStartPwm := fan.GetStartPwm()
 	startPwm = 255
 	maxPwm = 255
 	pwmRpmMap := fan.GetFanCurveData()
@@ -137,6 +138,10 @@ func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 		if avgRpm > 0 && pwm < startPwm {
 			startPwm = pwm
 		}
+	}
+
+	if userStartPwm < 255 {
+		startPwm = userStartPwm
 	}
 
 	return startPwm, maxPwm
