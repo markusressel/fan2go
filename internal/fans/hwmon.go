@@ -16,7 +16,7 @@ type HwMonFan struct {
 	RpmMovingAvg float64                 `json:"rpmmovingavg"`
 	PwmOutput    string                  `json:"pwmoutput"`
 	Config       configuration.FanConfig `json:"config"`
-	StartPwm     int                     `json:"startpwm"` // the min PWM at which the fan starts to rotate from a stand still
+	StartPwm     *int                    `json:"startpwm"` // the min PWM at which the fan starts to rotate from a stand still
 	MinPwm       int                     `json:"minpwm"`   // lowest PWM value where the fans are still spinning, when spinning previously
 	MaxPwm       int                     `json:"maxpwm"`   // highest PWM value that yields an RPM increase
 	FanCurveData *map[int]float64        `json:"fancurvedata"`
@@ -27,11 +27,15 @@ func (fan HwMonFan) GetId() string {
 }
 
 func (fan HwMonFan) GetStartPwm() int {
-	return fan.StartPwm
+	if fan.StartPwm != nil {
+		return *fan.StartPwm
+	} else {
+		return MaxPwmValue
+	}
 }
 
 func (fan *HwMonFan) SetStartPwm(pwm int) {
-	fan.StartPwm = pwm
+	fan.StartPwm = &pwm
 }
 
 func (fan HwMonFan) GetMinPwm() int {
@@ -83,7 +87,7 @@ func (fan HwMonFan) GetPwm() int {
 }
 
 func (fan *HwMonFan) SetPwm(pwm int) (err error) {
-	ui.Debug("Setting %s (%s) to %d ...", fan.GetId(), fan.Label, pwm)
+	ui.Debug("Setting Fan PWM of '%s' to %d ...", fan.GetId(), pwm)
 	folder, _ := filepath.Split(fan.PwmOutput)
 	pwmPath := fmt.Sprintf("%s/pwm%d", folder, fan.Index)
 	err = util.WriteIntToFile(pwm, pwmPath)

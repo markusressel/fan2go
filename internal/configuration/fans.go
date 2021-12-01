@@ -3,7 +3,7 @@ package configuration
 type FanConfig struct {
 	ID        string          `json:"id"`
 	NeverStop bool            `json:"neverStop"`
-	StartPwm  int             `json:"startPwm"`
+	StartPwm  *int            `json:"startPwm,omitempty"`
 	Curve     string          `json:"curve"`
 	HwMon     *HwMonFanConfig `json:"hwMon,omitempty"`
 	File      *FileFanConfig  `json:"file,omitempty"`

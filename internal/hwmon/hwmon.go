@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/sensors"
-	"github.com/markusressel/fan2go/internal/util"
 	"github.com/md14454/gosensors"
 	"io/ioutil"
 	"path/filepath"
@@ -43,8 +42,8 @@ func GetChips() []*HwMonController {
 		chip := chips[i]
 
 		var identifier = computeIdentifier(chip)
-		dType := util.GetDeviceType(chip.Path)
-		modalias := util.GetDeviceModalias(chip.Path)
+		dType := getDeviceType(chip.Path)
+		modalias := getDeviceModalias(chip.Path)
 		platform := findPlatform(chip.Path)
 		if len(platform) <= 0 {
 			platform = identifier
@@ -70,6 +69,28 @@ func GetChips() []*HwMonController {
 	}
 
 	return list
+}
+
+// getDeviceName read the name of a device
+func getDeviceName(devicePath string) string {
+	namePath := devicePath + "/name"
+	content, _ := ioutil.ReadFile(namePath)
+	name := string(content)
+	return strings.TrimSpace(name)
+}
+
+// getDeviceModalias read the modalias of a device
+func getDeviceModalias(devicePath string) string {
+	modaliasPath := devicePath + "/device/modalias"
+	content, _ := ioutil.ReadFile(modaliasPath)
+	return strings.TrimSpace(string(content))
+}
+
+// getDeviceType read the type of a device
+func getDeviceType(devicePath string) string {
+	modaliasPath := devicePath + "/device/type"
+	content, _ := ioutil.ReadFile(modaliasPath)
+	return strings.TrimSpace(string(content))
 }
 
 func GetTempSensors(chip gosensors.Chip) []*sensors.HwmonSensor {
@@ -216,7 +237,7 @@ func computeIdentifier(chip gosensors.Chip) (name string) {
 
 	devicePath := chip.Path
 	if len(name) <= 0 {
-		name = util.GetDeviceName(devicePath)
+		name = getDeviceName(devicePath)
 	}
 
 	if len(name) <= 0 {
