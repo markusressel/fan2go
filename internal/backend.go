@@ -153,7 +153,7 @@ func InitializeObjects() {
 func getProcessOwner() string {
 	stdout, err := exec.Command("ps", "-o", "user=", "-p", strconv.Itoa(os.Getpid())).Output()
 	if err != nil {
-		ui.Error("%v", err)
+		ui.Fatal("%v", err)
 		os.Exit(1)
 	}
 	return strings.TrimSpace(string(stdout))

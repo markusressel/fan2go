@@ -178,6 +178,16 @@ func (f fanController) UpdateFanSpeed() error {
 func (f fanController) runInitializationSequence() (err error) {
 	fan := f.fan
 
+	if fan.GetFanCurveData() == nil {
+		err := fan.AttachFanCurveData(&map[int]float64{
+			0:   0,
+			255: 255,
+		})
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	if configuration.CurrentConfig.RunFanInitializationInParallel == false {
 		InitializationSequenceMutex.Lock()
 		defer InitializationSequenceMutex.Unlock()

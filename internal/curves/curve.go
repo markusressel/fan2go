@@ -136,7 +136,7 @@ func (c functionSpeedCurve) Evaluate() (value int, err error) {
 	return value, err
 }
 
-// Creates an interpolated function from the given map of x-values -> y-values
+// CalculateInterpolatedCurveValue creates an interpolated function from the given map of x-values -> y-values
 // as specified by the interpolationType and returns the y-value for the given input
 func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType string, input float64) float64 {
 	xValues := make([]int, 0, len(steps))

@@ -81,7 +81,10 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 
 	if config.File != nil {
 		return &FileFan{
+			ID:       config.ID,
+			Label:    config.ID,
 			FilePath: config.File.Path,
+			Config:   config,
 		}, nil
 	}
 
