@@ -28,15 +28,17 @@ jobs:
 
       - name: Genereat build files
         run: |
-          platform="linux/amd64"
-          filename="linux-amd64"
-          GOARCH="$platform" go build -o ./dist/fan2go-$filename main.go
+          GOOS="linux"
+          GOARCH="amd64
+          filename="$GOOS-$GOARCH"
+          go build -o ./dist/fan2go-$filename main.go
 
       - name: Genereat build files
         run: |
-          platform="linux/arm64"
-          filename="linux-arm64"
-          GOARCH="$platform" go build -o ./dist/fan2go-$filename main.go
+          GOOS="linux"
+          GOARCH="arm64
+          filename="$GOOS-$GOARCH"
+          go build -o ./dist/fan2go-$filename main.go
 
       - name: Release
         uses: softprops/action-gh-release@v1
