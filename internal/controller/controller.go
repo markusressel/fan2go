@@ -235,7 +235,7 @@ func (f fanController) runInitializationSequence() (err error) {
 		ui.Debug("Measuring RPM of %s at PWM: %d", fan.GetId(), pwm)
 		// update rpm curve
 		measureRpm(fan)
-		ui.Debug("Measured RPM of %d at PWM %d for fan %s", fan.GetRpmAvg(), pwm, fan.GetId())
+		ui.Debug("Measured RPM of %d at PWM %d for fan %s", int(fan.GetRpmAvg()), pwm, fan.GetId())
 	}
 
 	// save to database to restore it on restarts
