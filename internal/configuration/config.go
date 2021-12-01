@@ -141,6 +141,12 @@ func validateCurves(config *Configuration) {
 		if !isCurveConfigInUse(curveConfig, config.Curves, config.Fans) {
 			ui.Warning("Unused curve configuration: %s", curveConfig.ID)
 		}
+
+		if curveConfig.Linear != nil {
+			if len(curveConfig.Linear.Sensor) <= 0 {
+				ui.Fatal("Curve %s: Missing sensorId", curveConfig.ID)
+			}
+		}
 	}
 }
 

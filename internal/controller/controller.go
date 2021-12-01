@@ -139,7 +139,7 @@ func (f fanController) Run(ctx context.Context) error {
 							}
 						}
 						// if this fails, try to set it to max speed instead
-						err1 := f.setPwm(fan, fans.MaxPwmValue)
+						err1 := f.setPwm(fans.MaxPwmValue)
 						if err1 != nil {
 							ui.Warning("Unable to restore fan %s, make sure it is running!", fan.GetId())
 						}
@@ -161,15 +161,9 @@ func (f fanController) Run(ctx context.Context) error {
 
 func (f fanController) UpdateFanSpeed() error {
 	fan := f.fan
-	current := fan.GetPwm()
-	optimalPwm, err := f.calculateOptimalPwm(fan)
-	if err != nil {
-		ui.Error("Unable to calculate optimal PWM value for %s: %v", fan.GetId(), err)
-		return err
-	}
-	target := f.calculateTargetPwm(fan, current, optimalPwm)
+	target := f.calculateTargetPwm()
 	if target >= 0 {
-		err = f.setPwm(fan, target)
+		err := f.setPwm(target)
 		if err != nil {
 			ui.Error("Error setting %s: %v", fan.GetId(), err)
 			trySetManualPwm(fan)
@@ -286,15 +280,20 @@ func (f fanController) calculateOptimalPwm(fan fans.Fan) (int, error) {
 
 // calculates the optimal pwm for a fan with the given target level.
 // returns -1 if no rpm is detected even at fan.maxPwm
-func (f fanController) calculateTargetPwm(fan fans.Fan, currentPwm int, pwm int) int {
-	target := pwm
+func (f fanController) calculateTargetPwm() int {
+	fan := f.fan
+	currentPwm := fan.GetPwm()
+	target, err := f.calculateOptimalPwm(fan)
+	if err != nil {
+		ui.Fatal("Unable to calculate optimal PWM value for %s: %v", fan.GetId(), err)
+	}
 
 	// ensure target value is within bounds of possible values
 	if target > fans.MaxPwmValue {
-		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", pwm, fan.GetId())
+		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", target, fan.GetId())
 		target = fans.MaxPwmValue
 	} else if target < fans.MinPwmValue {
-		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", pwm, fan.GetId())
+		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", target, fan.GetId())
 		target = fans.MinPwmValue
 	}
 
@@ -338,12 +337,12 @@ func (f fanController) calculateTargetPwm(fan fans.Fan, currentPwm int, pwm int)
 }
 
 // set the pwm speed of a fan to the specified value (0..255)
-func (f fanController) setPwm(fan fans.Fan, target int) (err error) {
-	current := fan.GetPwm()
+func (f fanController) setPwm(target int) (err error) {
+	current := f.fan.GetPwm()
 	if target == current {
 		return nil
 	}
-	err = fan.SetPwm(target)
+	err = f.fan.SetPwm(target)
 	return err
 }
 
