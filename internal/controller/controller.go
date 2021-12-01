@@ -235,6 +235,7 @@ func (f fanController) runInitializationSequence() (err error) {
 		ui.Debug("Measuring RPM of %s at PWM: %d", fan.GetId(), pwm)
 		// update rpm curve
 		measureRpm(fan)
+		ui.Debug("Measured RPM of %d at PWM %d for fan %s", fan.GetRpmAvg(), pwm, fan.GetId())
 	}
 
 	// save to database to restore it on restarts
@@ -249,8 +250,6 @@ func (f fanController) runInitializationSequence() (err error) {
 func measureRpm(fan fans.Fan) {
 	pwm := fan.GetPwm()
 	rpm := fan.GetRpm()
-
-	ui.Debug("Measured RPM of %d at PWM %d for fan %s", rpm, pwm, fan.GetId())
 
 	updatedRpmAvg := util.UpdateSimpleMovingAvg(fan.GetRpmAvg(), configuration.CurrentConfig.RpmRollingWindowSize, float64(rpm))
 	fan.SetRpmAvg(updatedRpmAvg)
