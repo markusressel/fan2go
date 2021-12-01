@@ -31,6 +31,16 @@ sudo cp ./fan2go /usr/bin/fan2go
 fan2go -h
 ```
 
+Or compile yourself:
+
+```shell
+git clone https://github.com/markusressel/fan2go.git
+cd fan2go
+make build
+sudo cp ./bin/fan2go /usr/bin/fan2go
+sudo chmod ug+x /usr/bin/fan2go
+```
+
 ## Configuration
 
 Then configure fan2go by creating a YAML configuration file in **one** of the following locations:
