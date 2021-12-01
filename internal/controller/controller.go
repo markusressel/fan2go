@@ -225,7 +225,7 @@ func (f fanController) runInitializationSequence() (err error) {
 			// since most sensors are update only each second,
 			// we wait double that to make sure we get
 			// the most recent measurement
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(2 * time.Second)
 		}
 
 		// TODO:
