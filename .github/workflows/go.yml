@@ -29,14 +29,14 @@ jobs:
       - name: Genereat build files
         run: |
           GOOS="linux"
-          GOARCH="amd64
+          GOARCH="amd64"
           filename="$GOOS-$GOARCH"
           go build -o ./dist/fan2go-$filename main.go
 
       - name: Genereat build files
         run: |
           GOOS="linux"
-          GOARCH="arm64
+          GOARCH="arm64"
           filename="$GOOS-$GOARCH"
           go build -o ./dist/fan2go-$filename main.go
 
