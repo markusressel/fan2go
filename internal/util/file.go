@@ -28,9 +28,12 @@ func ReadIntFromFile(path string) (value int, err error) {
 
 // WriteIntToFile write a single integer to a file.go path
 func WriteIntToFile(value int, path string) error {
-	path, _ = filepath.EvalSymlinks(path)
+	evaluatedPath, err := filepath.EvalSymlinks(path)
+	if len(evaluatedPath) > 0 && err == nil {
+		path = evaluatedPath
+	}
 	valueAsString := fmt.Sprintf("%d", value)
-	err := ioutil.WriteFile(path, []byte(valueAsString), 644)
+	err = ioutil.WriteFile(path, []byte(valueAsString), 644)
 	return err
 }
 
