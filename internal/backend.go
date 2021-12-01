@@ -36,18 +36,24 @@ func RunDaemon() {
 
 	var g run.Group
 	{
-		// === Prometheus Exporter
-		g.Add(func() error {
-			http.Handle("/metrics", promhttp.Handler())
-			if err := http.ListenAndServe(":9000", nil); err != nil {
-				ui.Error("Cannot start prometheus metrics endpoint (%s)", err.Error())
-			}
-			select {}
-		}, func(err error) {
-			if err != nil {
-				ui.Warning("Error ")
-			}
-		})
+		enabled := configuration.CurrentConfig.Statistics.Enabled
+		if enabled {
+			// === Prometheus Exporter
+			g.Add(func() error {
+				port := configuration.CurrentConfig.Statistics.Port
+				endpoint := "/metrics"
+				addr := fmt.Sprintf(":%d", port)
+				http.Handle(endpoint, promhttp.Handler())
+				if err := http.ListenAndServe(addr, nil); err != nil {
+					ui.Error("Cannot start prometheus metrics endpoint (%s)", err.Error())
+				}
+				select {}
+			}, func(err error) {
+				if err != nil {
+					ui.Warning("Error ")
+				}
+			})
+		}
 	}
 	{
 		// === sensor monitoring
