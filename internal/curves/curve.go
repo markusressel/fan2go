@@ -32,7 +32,7 @@ type linearSpeedCurve struct {
 	sensorId string
 	min      int
 	max      int
-	steps    map[int]int
+	steps    map[int]float64
 }
 
 var (
@@ -71,7 +71,7 @@ func (c linearSpeedCurve) Evaluate() (value int, err error) {
 
 	steps := c.steps
 	if steps != nil {
-		value = calculateInterpolatedCurveValue(steps, InterpolationTypeLinear, avgTemp/1000)
+		value = int(math.Round(CalculateInterpolatedCurveValue(steps, InterpolationTypeLinear, avgTemp/1000)))
 	} else {
 		minTemp := float64(c.min) * 1000 // degree to milli-degree
 		maxTemp := float64(c.max) * 1000
@@ -138,10 +138,10 @@ func (c functionSpeedCurve) Evaluate() (value int, err error) {
 
 // Creates an interpolated function from the given map of x-values -> y-values
 // as specified by the interpolationType and returns the y-value for the given input
-func calculateInterpolatedCurveValue(steps map[int]int, interpolationType string, input float64) int {
+func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType string, input float64) float64 {
 	xValues := make([]int, 0, len(steps))
 	for x := range steps {
-		xValues = append(xValues, int(x))
+		xValues = append(xValues, x)
 	}
 	// sort them increasing
 	sort.Ints(xValues)
@@ -165,12 +165,12 @@ func calculateInterpolatedCurveValue(steps map[int]int, interpolationType string
 			return steps[currentX]
 		} else {
 			// input is somewhere in between currentX and nextX
-			currentY := float64(steps[currentX])
-			nextY := float64(steps[nextX])
+			currentY := steps[currentX]
+			nextY := steps[nextX]
 
 			ratio := util.Ratio(input, float64(currentX), float64(nextX))
 			interpolation := currentY + ratio*(nextY-currentY)
-			return int(math.Round(interpolation))
+			return interpolation
 		}
 	}
 

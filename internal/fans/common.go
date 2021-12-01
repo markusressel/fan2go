@@ -3,6 +3,7 @@ package fans
 import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/ui"
 	"os"
 	"sort"
@@ -98,6 +99,10 @@ func (fan *HwMonFan) AttachFanCurveData(curveData *map[int]float64) (err error) 
 	}
 
 	fan.FanCurveData = curveData
+	for i := 0; i < 255; i++ {
+		interpolatedValue := curves.CalculateInterpolatedCurveValue(*curveData, curves.InterpolationTypeLinear, float64(i))
+		(*curveData)[i] = interpolatedValue
+	}
 
 	startPwm, maxPwm := ComputePwmBoundaries(fan)
 
@@ -115,9 +120,6 @@ func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 	startPwm = 255
 	maxPwm = 255
 	pwmRpmMap := fan.GetFanCurveData()
-
-	// we have no data yet
-	startPwm = 0
 
 	if len(*pwmRpmMap) <= 0 {
 		// we have no data yet

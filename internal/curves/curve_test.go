@@ -59,7 +59,7 @@ func (sensor *MockSensor) SetMovingAvg(avg float64) {
 func createLinearCurveConfigWithSteps(
 	id string,
 	sensorId string,
-	steps map[int]int,
+	steps map[int]float64,
 ) (curve configuration.CurveConfig) {
 	curve = configuration.CurveConfig{
 		ID: id,
@@ -127,7 +127,7 @@ func TestLinearCurveWithSteps(t *testing.T) {
 	curveConfig := createLinearCurveConfigWithSteps(
 		"curve",
 		s.GetId(),
-		map[int]int{
+		map[int]float64{
 			40: 0,
 			50: 30,
 			60: 100,
@@ -313,15 +313,15 @@ func TestFunctionCurveMaximum(t *testing.T) {
 
 func TestCalculateInterpolatedCurveValue(t *testing.T) {
 	// GIVEN
-	expectedInputOutput := map[float64]int{
-		-100.0: 0.0,
-		0:      0,
+	expectedInputOutput := map[float64]float64{
+		//-100.0: 0.0,
+		0:      0.0,
 		100.0:  100.0,
 		500.0:  500.0,
 		1000.0: 1000.0,
 		2000.0: 1000.0,
 	}
-	steps := map[int]int{
+	steps := map[int]float64{
 		0:    0,
 		100:  100,
 		1000: 1000,
@@ -330,7 +330,7 @@ func TestCalculateInterpolatedCurveValue(t *testing.T) {
 
 	for input, output := range expectedInputOutput {
 		// WHEN
-		result := calculateInterpolatedCurveValue(steps, interpolationType, input)
+		result := CalculateInterpolatedCurveValue(steps, interpolationType, input)
 
 		// THEN
 		assert.Equal(t, output, result)
