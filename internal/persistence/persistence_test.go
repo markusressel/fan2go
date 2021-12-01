@@ -1,9 +1,9 @@
 package persistence
 
 import (
-	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -13,15 +13,15 @@ const (
 )
 
 var (
-	LinearFan = map[int][]float64{
-		0:   {0.0},
-		255: {255.0},
+	LinearFan = map[int]float64{
+		0:   0.0,
+		255: 255.0,
 	}
 
-	NeverStoppingFan = map[int][]float64{
-		0:   {50.0},
-		50:  {50.0},
-		255: {255.0},
+	NeverStoppingFan = map[int]float64{
+		0:   50.0,
+		50:  50.0,
+		255: 255.0,
 	}
 )
 
@@ -43,9 +43,10 @@ func TestReadFan(t *testing.T) {
 	persistence := NewPersistence(dbTestingPath)
 
 	fan, _ := createFan(false, NeverStoppingFan)
-	err := persistence.SaveFanPwmData(fan)
+	expected := util.InterpolateLinearly(fan.GetFanCurveData(), 0, 255)
 
-	fan, _ = createFan(false, LinearFan)
+	err := persistence.SaveFanPwmData(fan)
+	assert.NoError(t, err)
 
 	// WHEN
 	fanData, err := persistence.LoadFanPwmData(fan)
@@ -53,9 +54,10 @@ func TestReadFan(t *testing.T) {
 	// THEN
 	assert.Nil(t, err)
 	assert.NotNil(t, fanData)
+	assert.Equal(t, expected, fanData)
 }
 
-func createFan(neverStop bool, curveData map[int][]float64) (fan fans.Fan, err error) {
+func createFan(neverStop bool, curveData map[int]float64) (fan fans.Fan, err error) {
 	configuration.CurrentConfig.RpmRollingWindowSize = 10
 
 	fan = &fans.HwMonFan{
@@ -68,9 +70,8 @@ func createFan(neverStop bool, curveData map[int][]float64) (fan fans.Fan, err e
 			NeverStop: neverStop,
 			Curve:     "curve",
 		},
-		FanCurveData: &map[int]*rolling.PointPolicy{},
-		PwmOutput:    "fan1_output",
-		RpmInput:     "fan1_rpm",
+		PwmOutput: "fan1_output",
+		RpmInput:  "fan1_rpm",
 	}
 	fans.FanMap[fan.GetId()] = fan
 

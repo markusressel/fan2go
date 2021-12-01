@@ -69,7 +69,7 @@ func Execute() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "More verbose output")
 
 	if err := rootCmd.Execute(); err != nil {
-		ui.Error("%v", err)
+		ui.Fatal("Error Executing daemon: %v", err)
 		os.Exit(1)
 	}
 }

@@ -3,7 +3,6 @@ package persistence
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/ui"
 	bolt "go.etcd.io/bbolt"
@@ -16,7 +15,7 @@ const (
 )
 
 type Persistence interface {
-	LoadFanPwmData(fan fans.Fan) (map[int][]float64, error)
+	LoadFanPwmData(fan fans.Fan) (map[int]float64, error)
 	SaveFanPwmData(fan fans.Fan) (err error)
 }
 
@@ -32,7 +31,7 @@ func NewPersistence(dbPath string) Persistence {
 }
 
 func (p persistence) openPersistence() *bolt.DB {
-	db, err := bolt.Open(p.dbPath, 0600, &bolt.Options{Timeout: 1 * time.Second})
+	db, err := bolt.Open(p.dbPath, 0600, &bolt.Options{Timeout: 1 * time.Minute})
 	if err != nil {
 		ui.Error("Could not open database file: %v", err)
 		os.Exit(1)
@@ -48,15 +47,9 @@ func (p persistence) SaveFanPwmData(fan fans.Fan) (err error) {
 	key := fan.GetId()
 
 	// convert the curve data moving window to a map to arrays, so we can persist them
-	fanCurveDataMap := map[int][]float64{}
+	fanCurveDataMap := map[int]float64{}
 	for key, value := range *fan.GetFanCurveData() {
-		var pwmValues []float64
-		value.Reduce(func(window rolling.Window) float64 {
-			pwmValues = append(pwmValues, window[0][0])
-			return 0
-		})
-
-		fanCurveDataMap[key] = pwmValues
+		fanCurveDataMap[key] = value
 	}
 
 	data, err := json.Marshal(fanCurveDataMap)
@@ -75,13 +68,13 @@ func (p persistence) SaveFanPwmData(fan fans.Fan) (err error) {
 }
 
 // LoadFanPwmData loads the fan curve data from persistence
-func (p persistence) LoadFanPwmData(fan fans.Fan) (map[int][]float64, error) {
+func (p persistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
 	db := p.openPersistence()
 	defer db.Close()
 
 	key := fan.GetId()
 
-	fanCurveDataMap := map[int][]float64{}
+	fanCurveDataMap := map[int]float64{}
 	err := db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFans))
 		if b == nil {

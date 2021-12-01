@@ -7,10 +7,10 @@ type CurveConfig struct {
 }
 
 type LinearCurveConfig struct {
-	Sensor string      `json:"sensor"`
-	Min    int         `json:"min"`
-	Max    int         `json:"max"`
-	Steps  map[int]int `json:"steps"`
+	Sensor string          `json:"sensor"`
+	Min    int             `json:"min"`
+	Max    int             `json:"max"`
+	Steps  map[int]float64 `json:"steps"`
 }
 
 const (

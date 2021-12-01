@@ -1,8 +1,8 @@
 package fans
 
 import (
-	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"os/user"
 	"path/filepath"
@@ -10,13 +10,11 @@ import (
 )
 
 type FileFan struct {
-	ID                 string
-	Label              string
-	FilePath           string
-	Config             configuration.FanConfig
-	MovingAvg          float64
-	OriginalPwmEnabled int
-	LastSetPwm         int
+	ID        string
+	Label     string
+	FilePath  string
+	Config    configuration.FanConfig
+	MovingAvg float64
 }
 
 func (fan FileFan) GetId() string {
@@ -28,7 +26,7 @@ func (fan FileFan) GetStartPwm() int {
 }
 
 func (fan *FileFan) SetStartPwm(pwm int) {
-	panic("not supported")
+	return
 }
 
 func (fan FileFan) GetMinPwm() int {
@@ -36,7 +34,8 @@ func (fan FileFan) GetMinPwm() int {
 }
 
 func (fan *FileFan) SetMinPwm(pwm int) {
-	panic("not supported")
+	// not supported
+	return
 }
 
 func (fan FileFan) GetMaxPwm() int {
@@ -44,7 +43,8 @@ func (fan FileFan) GetMaxPwm() int {
 }
 
 func (fan *FileFan) SetMaxPwm(pwm int) {
-	panic("not supported")
+	// not supported
+	return
 }
 
 func (fan FileFan) GetRpm() int {
@@ -56,7 +56,8 @@ func (fan FileFan) GetRpmAvg() float64 {
 }
 
 func (fan *FileFan) SetRpmAvg(rpm float64) {
-	panic("not supported")
+	// not supported
+	return
 }
 
 func (fan FileFan) GetPwm() (result int) {
@@ -92,15 +93,21 @@ func (fan *FileFan) SetPwm(pwm int) (err error) {
 	}
 
 	err = util.WriteIntToFile(pwm, filePath)
-	return err
+	if err != nil {
+		ui.Error("Unable to write to file: %v", fan.FilePath)
+	}
+	return nil
 }
 
-func (fan FileFan) GetFanCurveData() *map[int]*rolling.PointPolicy {
-	panic("implement me")
+var interpolated = util.InterpolateLinearly(&map[int]float64{0: 0, 255: 255}, 0, 255)
+
+func (fan FileFan) GetFanCurveData() *map[int]float64 {
+	return &interpolated
 }
 
-func (fan *FileFan) AttachFanCurveData(curveData *map[int][]float64) (err error) {
-	panic("implement me")
+func (fan *FileFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
+	// not supported
+	return
 }
 
 func (fan FileFan) GetCurveId() string {
@@ -112,27 +119,16 @@ func (fan FileFan) ShouldNeverStop() bool {
 }
 
 func (fan FileFan) GetPwmEnabled() (int, error) {
-	panic("implement me")
+	return 1, nil
 }
 
 func (fan *FileFan) SetPwmEnabled(value int) (err error) {
-	panic("implement me")
+	// nothing to do
+	return nil
 }
 
 func (fan FileFan) IsPwmAuto() (bool, error) {
-	panic("implement me")
-}
-
-func (fan FileFan) GetOriginalPwmEnabled() int {
-	return fan.OriginalPwmEnabled
-}
-
-func (fan *FileFan) SetOriginalPwmEnabled(value int) {
-	fan.OriginalPwmEnabled = value
-}
-
-func (fan FileFan) GetLastSetPwm() int {
-	return fan.LastSetPwm
+	return true, nil
 }
 
 func (fan FileFan) Supports(feature int) bool {

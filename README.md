@@ -94,6 +94,18 @@ fans:
     curve: cpu_curve
 ```
 
+```yaml
+fans:
+  - id: file_fan
+    file:
+      path: /tmp/file_fan
+```
+
+```bash
+> cat /tmp/file_fan
+255
+```
+
 ### Sensors
 
 Under `sensors:` you need to define a list of temperature sensor devices that you want to monitor and use to adjust
@@ -112,6 +124,20 @@ sensors:
       platform: coretemp
       # The index of this sensor as displayed by `fan2go detect`
       index: 1
+```
+
+```yaml
+sensors:
+  - id: file_sensor
+    file:
+      path: /tmp/file_sensor
+```
+
+The file contains a value in milli-units, like milli-degrees.
+
+```bash
+> cat /tmp/file_sensor
+10000
 ```
 
 ### Curves

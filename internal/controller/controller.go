@@ -15,6 +15,10 @@ import (
 	"time"
 )
 
+const (
+	InitialLastSetPwm = -10
+)
+
 var InitializationSequenceMutex sync.Mutex
 
 type FanController interface {
@@ -23,17 +27,21 @@ type FanController interface {
 }
 
 type fanController struct {
-	persistence persistence.Persistence
-	fan         fans.Fan
-	curve       curves.SpeedCurve
-	updateRate  time.Duration
+	persistence        persistence.Persistence
+	fan                fans.Fan
+	curve              curves.SpeedCurve
+	updateRate         time.Duration
+	originalPwmEnabled int
+	lastSetPwm         int
 }
 
 func NewFanController(persistence persistence.Persistence, fan fans.Fan, updateRate time.Duration) FanController {
 	return fanController{
 		persistence: persistence,
 		fan:         fan,
+		curve:       curves.SpeedCurveMap[fan.GetCurveId()],
 		updateRate:  updateRate,
+		lastSetPwm:  InitialLastSetPwm,
 	}
 }
 
@@ -43,9 +51,9 @@ func (f fanController) Run(ctx context.Context) error {
 	// store original pwm_enable value
 	pwmEnabled, err := fan.GetPwmEnabled()
 	if err != nil {
-		ui.Fatal("Cannot read pwm_enable value of %s", fan.GetId())
+		ui.Warning("Cannot read pwm_enable value of %s", fan.GetId())
 	}
-	fan.SetOriginalPwmEnabled(pwmEnabled)
+	f.originalPwmEnabled = pwmEnabled
 
 	ui.Info("Gathering sensor data for %s...", fan.GetId())
 	// wait a bit to gather monitoring data
@@ -56,10 +64,18 @@ func (f fanController) Run(ctx context.Context) error {
 	ui.Info("Loading fan curve data for fan '%s'...", fan.GetId())
 	fanPwmData, err := f.persistence.LoadFanPwmData(fan)
 	if err != nil {
-		ui.Warning("No fan curve data found for fan '%s', starting initialization sequence...", fan.GetId())
-		err = f.runInitializationSequence()
-		if err != nil {
-			return err
+		_, ok := fan.(*fans.HwMonFan)
+		if ok {
+			ui.Warning("No fan curve data found for fan '%s', starting initialization sequence...", fan.GetId())
+			err = f.runInitializationSequence()
+			if err != nil {
+				return err
+			}
+		} else {
+			err = f.persistence.SaveFanPwmData(fan)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -76,11 +92,7 @@ func (f fanController) Run(ctx context.Context) error {
 	ui.Info("Start PWM of %s: %d", fan.GetId(), fan.GetMinPwm())
 	ui.Info("Max PWM of %s: %d", fan.GetId(), fan.GetMaxPwm())
 
-	err = trySetManualPwm(fan)
-	if err != nil {
-		ui.Error("Could not enable fan control on %s", fan.GetId())
-		return err
-	}
+	trySetManualPwm(fan)
 
 	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
 
@@ -101,7 +113,7 @@ func (f fanController) Run(ctx context.Context) error {
 			}
 		}, func(err error) {
 			if err != nil {
-				ui.Fatal("Error monitoring fan rpm: %v", err)
+				ui.Warning("Error monitoring fan rpm: %v", err)
 			}
 		})
 	}
@@ -120,19 +132,19 @@ func (f fanController) Run(ctx context.Context) error {
 						ui.Info("Trying to restore fan settings for %s...", f.fan.GetId())
 
 						// try to reset the pwm_enable value
-						if fan.GetOriginalPwmEnabled() != 1 {
-							err1 := fan.SetPwmEnabled(fan.GetOriginalPwmEnabled())
+						if f.originalPwmEnabled != 1 {
+							err1 := fan.SetPwmEnabled(f.originalPwmEnabled)
 							if err1 == nil {
-								return err
+								return nil
 							}
 						}
 						// if this fails, try to set it to max speed instead
-						err1 := setPwm(fan, fans.MaxPwmValue)
+						err1 := f.setPwm(fans.MaxPwmValue)
 						if err1 != nil {
 							ui.Warning("Unable to restore fan %s, make sure it is running!", fan.GetId())
 						}
 
-						return err
+						return nil
 					}
 				}
 			}
@@ -149,22 +161,12 @@ func (f fanController) Run(ctx context.Context) error {
 
 func (f fanController) UpdateFanSpeed() error {
 	fan := f.fan
-	current := fan.GetPwm()
-	optimalPwm, err := f.calculateOptimalPwm(fan)
-	if err != nil {
-		ui.Error("Unable to calculate optimal PWM value for %s: %v", fan.GetId(), err)
-		return err
-	}
-	target := calculateTargetPwm(fan, current, optimalPwm)
+	target := f.calculateTargetPwm()
 	if target >= 0 {
-		err = setPwm(fan, target)
+		err := f.setPwm(target)
 		if err != nil {
 			ui.Error("Error setting %s: %v", fan.GetId(), err)
-			err = trySetManualPwm(fan)
-			if err != nil {
-				ui.Error("Could not enable fan control on %s", fan.GetId())
-				return err
-			}
+			trySetManualPwm(fan)
 		}
 	}
 
@@ -176,16 +178,22 @@ func (f fanController) UpdateFanSpeed() error {
 func (f fanController) runInitializationSequence() (err error) {
 	fan := f.fan
 
+	if fan.GetFanCurveData() == nil {
+		err := fan.AttachFanCurveData(&map[int]float64{
+			0:   0,
+			255: 255,
+		})
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	if configuration.CurrentConfig.RunFanInitializationInParallel == false {
 		InitializationSequenceMutex.Lock()
 		defer InitializationSequenceMutex.Unlock()
 	}
 
-	err = trySetManualPwm(fan)
-	if err != nil {
-		ui.Error("Could not enable fan control on %s", fan.GetId())
-		return err
-	}
+	trySetManualPwm(fan)
 
 	for pwm := 0; pwm <= fans.MaxPwmValue; pwm++ {
 		// set a pwm
@@ -217,7 +225,7 @@ func (f fanController) runInitializationSequence() (err error) {
 			// since most sensors are update only each second,
 			// we wait double that to make sure we get
 			// the most recent measurement
-			time.Sleep(2 * time.Second)
+			time.Sleep(100 * time.Millisecond)
 		}
 
 		// TODO:
@@ -250,21 +258,17 @@ func measureRpm(fan fans.Fan) {
 	fan.SetRpmAvg(updatedRpmAvg)
 
 	pwmRpmMap := fan.GetFanCurveData()
-	pointWindow, exists := (*pwmRpmMap)[pwm]
-	if !exists {
-		// create rolling window for current pwm value
-		pointWindow = util.CreateRollingWindow(configuration.CurrentConfig.RpmRollingWindowSize)
-		(*pwmRpmMap)[pwm] = pointWindow
-	}
-	pointWindow.Append(float64(rpm))
+	(*pwmRpmMap)[pwm] = float64(rpm)
 }
 
-func trySetManualPwm(fan fans.Fan) (err error) {
-	err = fan.SetPwmEnabled(1)
+func trySetManualPwm(fan fans.Fan) {
+	err := fan.SetPwmEnabled(1)
 	if err != nil {
 		err = fan.SetPwmEnabled(0)
 	}
-	return err
+	if err != nil {
+		ui.Warning("Could not enable fan control on %s, trying to continue anyway...", fan.GetId())
+	}
 }
 
 // calculates the target speed for a given device output
@@ -276,15 +280,20 @@ func (f fanController) calculateOptimalPwm(fan fans.Fan) (int, error) {
 
 // calculates the optimal pwm for a fan with the given target level.
 // returns -1 if no rpm is detected even at fan.maxPwm
-func calculateTargetPwm(fan fans.Fan, currentPwm int, pwm int) int {
-	target := pwm
+func (f fanController) calculateTargetPwm() int {
+	fan := f.fan
+	currentPwm := fan.GetPwm()
+	target, err := f.calculateOptimalPwm(fan)
+	if err != nil {
+		ui.Fatal("Unable to calculate optimal PWM value for %s: %v", fan.GetId(), err)
+	}
 
 	// ensure target value is within bounds of possible values
 	if target > fans.MaxPwmValue {
-		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", pwm, fan.GetId())
+		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", target, fan.GetId())
 		target = fans.MaxPwmValue
 	} else if target < fans.MinPwmValue {
-		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", pwm, fan.GetId())
+		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", target, fan.GetId())
 		target = fans.MinPwmValue
 	}
 
@@ -295,8 +304,8 @@ func calculateTargetPwm(fan fans.Fan, currentPwm int, pwm int) int {
 	// TODO: this assumes a linear curve, but it might be something else
 	target = minPwm + int((float64(target)/fans.MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
 
-	lastSetPwm := fan.GetLastSetPwm()
-	if lastSetPwm != fans.InitialLastSetPwm && lastSetPwm != currentPwm {
+	lastSetPwm := f.lastSetPwm
+	if lastSetPwm != InitialLastSetPwm && lastSetPwm != currentPwm {
 		ui.Warning("PWM of %s was changed by third party! Last set PWM value was: %d but is now: %d",
 			fan.GetId(), lastSetPwm, currentPwm)
 	}
@@ -328,12 +337,12 @@ func calculateTargetPwm(fan fans.Fan, currentPwm int, pwm int) int {
 }
 
 // set the pwm speed of a fan to the specified value (0..255)
-func setPwm(fan fans.Fan, target int) (err error) {
-	current := fan.GetPwm()
+func (f fanController) setPwm(target int) (err error) {
+	current := f.fan.GetPwm()
 	if target == current {
 		return nil
 	}
-	err = fan.SetPwm(target)
+	err = f.fan.SetPwm(target)
 	return err
 }
 

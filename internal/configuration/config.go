@@ -141,6 +141,12 @@ func validateCurves(config *Configuration) {
 		if !isCurveConfigInUse(curveConfig, config.Curves, config.Fans) {
 			ui.Warning("Unused curve configuration: %s", curveConfig.ID)
 		}
+
+		if curveConfig.Linear != nil {
+			if len(curveConfig.Linear.Sensor) <= 0 {
+				ui.Fatal("Curve %s: Missing sensorId", curveConfig.ID)
+			}
+		}
 	}
 }
 
@@ -173,6 +179,10 @@ func validateFans(config *Configuration) {
 
 		if fanConfig.HwMon == nil && fanConfig.File == nil {
 			ui.Fatal("Fans %s: sub-configuration for fan is missing, use one of: hwmon | file", fanConfig.ID)
+		}
+
+		if len(fanConfig.Curve) <= 0 {
+			ui.Fatal("Fan %s: missing curve definition in configuration entry", fanConfig.ID)
 		}
 	}
 }

@@ -2,6 +2,7 @@ package sensors
 
 import (
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"os/user"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 
 type FileSensor struct {
 	Name      string                     `json:"name"`
-	FilePath  string                     `json:"string"`
+	FilePath  string                     `json:"file_path"`
 	Config    configuration.SensorConfig `json:"configuration"`
 	MovingAvg float64                    `json:"moving_avg"`
 }
@@ -23,13 +24,13 @@ func (sensor FileSensor) GetConfig() configuration.SensorConfig {
 	return sensor.Config
 }
 
-func (sensor FileSensor) GetValue() (result float64, err error) {
+func (sensor FileSensor) GetValue() (float64, error) {
 	filePath := sensor.FilePath
 	// resolve home dir path
 	if strings.HasPrefix(filePath, "~") {
 		currentUser, err := user.Current()
 		if err != nil {
-			return result, err
+			return 0, err
 		}
 
 		filePath = filepath.Join(currentUser.HomeDir, filePath[1:])
@@ -37,10 +38,12 @@ func (sensor FileSensor) GetValue() (result float64, err error) {
 
 	integer, err := util.ReadIntFromFile(filePath)
 	if err != nil {
-		return 0, err
+		ui.Warning("Unable to read int from file sensor: %s", filePath)
+		return 0, nil
 	}
-	result = float64(integer)
-	return result, err
+
+	result := float64(integer)
+	return result, nil
 }
 
 func (sensor FileSensor) GetMovingAvg() (avg float64) {
