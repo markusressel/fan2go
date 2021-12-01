@@ -30,13 +30,14 @@ func TestComputeIdentifierPci(t *testing.T) {
 	// GIVEN
 	c := gosensors.Chip{
 		Prefix: "nvme",
+		Addr:   5,
 		Bus: gosensors.Bus{
 			Type: BusTypePci,
 			Nr:   1,
 		},
 		Path: "/sys/class/hwmon/hwmon4",
 	}
-	expected := fmt.Sprintf("%s-pci-%d", c.Prefix, c.Bus.Nr)
+	expected := fmt.Sprintf("%s-pci-%d%x", c.Prefix, c.Bus.Nr, c.Addr)
 
 	// WHEN
 	result := computeIdentifier(c)

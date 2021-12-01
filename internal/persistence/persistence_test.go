@@ -1,7 +1,6 @@
 package persistence
 
 import (
-	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/stretchr/testify/assert"
@@ -68,7 +67,7 @@ func createFan(neverStop bool, curveData map[int][]float64) (fan fans.Fan, err e
 			NeverStop: neverStop,
 			Curve:     "curve",
 		},
-		FanCurveData: &map[int]*rolling.PointPolicy{},
+		FanCurveData: &map[int]float64{},
 		PwmOutput:    "fan1_output",
 		RpmInput:     "fan1_rpm",
 	}
