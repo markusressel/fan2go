@@ -38,7 +38,7 @@ jobs:
 
       - name: Generate build files
         run: go build -o ./dist/fan2go-linux-amd64 main.go
-        if: startsWith(github.ref, 'refs/tags/')
+        #if: startsWith(github.ref, 'refs/tags/')
 
       - name: Release
         uses: softprops/action-gh-release@v1
