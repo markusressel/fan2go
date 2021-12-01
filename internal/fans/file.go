@@ -102,7 +102,7 @@ func (fan FileFan) GetFanCurveData() *map[int]float64 {
 	}
 }
 
-func (fan *FileFan) AttachFanCurveData(curveData *map[int][]float64) (err error) {
+func (fan *FileFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
 	// not supported
 	return
 }

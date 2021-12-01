@@ -95,7 +95,7 @@ var curveCmd = &cobra.Command{
 
 			values := make([]float64, 0, len(keys))
 			for _, k := range keys {
-				values = append(values, pwmData[k][0])
+				values = append(values, pwmData[k])
 			}
 
 			caption := "RPM / PWM"

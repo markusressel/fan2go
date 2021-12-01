@@ -63,10 +63,13 @@ func (f fanController) Run(ctx context.Context) error {
 	ui.Info("Loading fan curve data for fan '%s'...", fan.GetId())
 	fanPwmData, err := f.persistence.LoadFanPwmData(fan)
 	if err != nil {
-		ui.Warning("No fan curve data found for fan '%s', starting initialization sequence...", fan.GetId())
-		err = f.runInitializationSequence()
-		if err != nil {
-			return err
+		_, ok := fan.(*fans.HwMonFan)
+		if ok {
+			ui.Warning("No fan curve data found for fan '%s', starting initialization sequence...", fan.GetId())
+			err = f.runInitializationSequence()
+			if err != nil {
+				return err
+			}
 		}
 	}
 

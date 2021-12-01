@@ -172,7 +172,6 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 				RpmMovingAvg: inputSubFeature.GetValue(),
 				MinPwm:       min,
 				MaxPwm:       max,
-				FanCurveData: &map[int]float64{},
 			}
 
 			fanList = append(fanList, fan)

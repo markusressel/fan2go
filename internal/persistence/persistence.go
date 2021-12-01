@@ -15,7 +15,7 @@ const (
 )
 
 type Persistence interface {
-	LoadFanPwmData(fan fans.Fan) (map[int][]float64, error)
+	LoadFanPwmData(fan fans.Fan) (map[int]float64, error)
 	SaveFanPwmData(fan fans.Fan) (err error)
 }
 
@@ -68,13 +68,13 @@ func (p persistence) SaveFanPwmData(fan fans.Fan) (err error) {
 }
 
 // LoadFanPwmData loads the fan curve data from persistence
-func (p persistence) LoadFanPwmData(fan fans.Fan) (map[int][]float64, error) {
+func (p persistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
 	db := p.openPersistence()
 	defer db.Close()
 
 	key := fan.GetId()
 
-	fanCurveDataMap := map[int][]float64{}
+	fanCurveDataMap := map[int]float64{}
 	err := db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFans))
 		if b == nil {

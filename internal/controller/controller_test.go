@@ -111,7 +111,7 @@ func (fan MockFan) GetFanCurveData() *map[int]float64 {
 	panic("implement me")
 }
 
-func (fan *MockFan) AttachFanCurveData(curveData *map[int][]float64) (err error) {
+func (fan *MockFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
 	panic("implement me")
 }
 
@@ -148,44 +148,44 @@ func (fan MockFan) Supports(feature int) bool {
 }
 
 var (
-	LinearFan = map[int][]float64{
-		0:   {0.0},
-		255: {255.0},
+	LinearFan = map[int]float64{
+		0:   0.0,
+		255: 255.0,
 	}
 
-	NeverStoppingFan = map[int][]float64{
-		0:   {50.0},
-		50:  {50.0},
-		255: {255.0},
+	NeverStoppingFan = map[int]float64{
+		0:   50.0,
+		50:  50.0,
+		255: 255.0,
 	}
 
-	CappedFan = map[int][]float64{
-		0:   {0.0},
-		1:   {0.0},
-		2:   {0.0},
-		3:   {0.0},
-		4:   {0.0},
-		5:   {0.0},
-		6:   {20.0},
-		200: {200.0},
+	CappedFan = map[int]float64{
+		0:   0.0,
+		1:   0.0,
+		2:   0.0,
+		3:   0.0,
+		4:   0.0,
+		5:   0.0,
+		6:   20.0,
+		200: 200.0,
 	}
 
-	CappedNeverStoppingFan = map[int][]float64{
-		0:   {50.0},
-		50:  {50.0},
-		200: {200.0},
+	CappedNeverStoppingFan = map[int]float64{
+		0:   50.0,
+		50:  50.0,
+		200: 200.0,
 	}
 )
 
 type mockPersistence struct{}
 
 func (p mockPersistence) SaveFanPwmData(fan fans.Fan) (err error) { return nil }
-func (p mockPersistence) LoadFanPwmData(fan fans.Fan) (map[int][]float64, error) {
-	fanCurveDataMap := map[int][]float64{}
+func (p mockPersistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
+	fanCurveDataMap := map[int]float64{}
 	return fanCurveDataMap, nil
 }
 
-func CreateFan(neverStop bool, curveData map[int][]float64) (fan fans.Fan, err error) {
+func CreateFan(neverStop bool, curveData map[int]float64) (fan fans.Fan, err error) {
 	configuration.CurrentConfig.RpmRollingWindowSize = 10
 
 	fan = &fans.HwMonFan{
@@ -198,9 +198,8 @@ func CreateFan(neverStop bool, curveData map[int][]float64) (fan fans.Fan, err e
 			NeverStop: neverStop,
 			Curve:     "curve",
 		},
-		FanCurveData: &map[int]float64{},
-		PwmOutput:    "fan1_output",
-		RpmInput:     "fan1_rpm",
+		PwmOutput: "fan1_output",
+		RpmInput:  "fan1_rpm",
 	}
 	fans.FanMap[fan.GetId()] = fan
 

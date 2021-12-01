@@ -12,15 +12,15 @@ const (
 )
 
 var (
-	LinearFan = map[int][]float64{
-		0:   {0.0},
-		255: {255.0},
+	LinearFan = map[int]float64{
+		0:   0.0,
+		255: 255.0,
 	}
 
-	NeverStoppingFan = map[int][]float64{
-		0:   {50.0},
-		50:  {50.0},
-		255: {255.0},
+	NeverStoppingFan = map[int]float64{
+		0:   50.0,
+		50:  50.0,
+		255: 255.0,
 	}
 )
 
@@ -54,7 +54,7 @@ func TestReadFan(t *testing.T) {
 	assert.NotNil(t, fanData)
 }
 
-func createFan(neverStop bool, curveData map[int][]float64) (fan fans.Fan, err error) {
+func createFan(neverStop bool, curveData map[int]float64) (fan fans.Fan, err error) {
 	configuration.CurrentConfig.RpmRollingWindowSize = 10
 
 	fan = &fans.HwMonFan{
@@ -67,9 +67,8 @@ func createFan(neverStop bool, curveData map[int][]float64) (fan fans.Fan, err e
 			NeverStop: neverStop,
 			Curve:     "curve",
 		},
-		FanCurveData: &map[int]float64{},
-		PwmOutput:    "fan1_output",
-		RpmInput:     "fan1_rpm",
+		PwmOutput: "fan1_output",
+		RpmInput:  "fan1_rpm",
 	}
 	fans.FanMap[fan.GetId()] = fan
 
