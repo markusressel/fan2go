@@ -26,6 +26,8 @@ type Configuration struct {
 	Fans    []FanConfig    `json:"fans"`
 	Sensors []SensorConfig `json:"sensors"`
 	Curves  []CurveConfig  `json:"curves"`
+
+	Statistics StatisticsConfig `json:"statistics"`
 }
 
 var CurrentConfig Configuration

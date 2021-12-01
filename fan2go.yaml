@@ -116,3 +116,9 @@ curves:
         - cpu_curve
         - mainboard_curve
         - ssd_curve
+
+statistics:
+  # Whether to enable the prometheus exporter or not
+  enabled: false
+  # The port to expose the exporter on
+  port: 9000

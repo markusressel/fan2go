@@ -10,8 +10,11 @@ import (
 	"github.com/markusressel/fan2go/internal/hwmon"
 	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/sensors"
+	"github.com/markusressel/fan2go/internal/statistics"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/oklog/run"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -32,6 +35,29 @@ func RunDaemon() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var g run.Group
+	{
+		enabled := configuration.CurrentConfig.Statistics.Enabled
+		if enabled {
+			// === Prometheus Exporter
+			g.Add(func() error {
+				port := configuration.CurrentConfig.Statistics.Port
+				if port <= 0 || port >= 65535 {
+					port = 9000
+				}
+				endpoint := "/metrics"
+				addr := fmt.Sprintf(":%d", port)
+				http.Handle(endpoint, promhttp.Handler())
+				if err := http.ListenAndServe(addr, nil); err != nil {
+					ui.Error("Cannot start prometheus metrics endpoint (%s)", err.Error())
+				}
+				select {}
+			}, func(err error) {
+				if err != nil {
+					ui.Warning("Error ")
+				}
+			})
+		}
+	}
 	{
 		// === sensor monitoring
 		for _, sensor := range sensors.SensorMap {
@@ -97,6 +123,7 @@ func RunDaemon() {
 func InitializeObjects() {
 	controllers := hwmon.GetChips()
 
+	var sensorList []sensors.Sensor
 	for _, config := range configuration.CurrentConfig.Sensors {
 		if config.HwMon != nil {
 			found := false
@@ -115,6 +142,7 @@ func InitializeObjects() {
 		if err != nil {
 			ui.Fatal("Unable to process sensor configuration: %s", config.ID)
 		}
+		sensorList = append(sensorList, sensor)
 
 		currentValue, err := sensor.GetValue()
 		if err != nil {
@@ -125,6 +153,9 @@ func InitializeObjects() {
 		sensors.SensorMap[config.ID] = sensor
 	}
 
+	sensorCollector := statistics.NewSensorCollector(sensorList)
+	statistics.Register(sensorCollector)
+
 	for _, config := range configuration.CurrentConfig.Curves {
 		curve, err := curves.NewSpeedCurve(config)
 		if err != nil {
@@ -133,6 +164,7 @@ func InitializeObjects() {
 		curves.SpeedCurveMap[config.ID] = curve
 	}
 
+	var fanList []fans.Fan
 	for _, config := range configuration.CurrentConfig.Fans {
 		if config.HwMon != nil {
 			found := false
@@ -154,7 +186,12 @@ func InitializeObjects() {
 			ui.Fatal("Unable to process fan configuration: %s", config.ID)
 		}
 		fans.FanMap[config.ID] = fan
+
+		fanList = append(fanList, fan)
 	}
+
+	fanCollector := statistics.NewFanCollector(fanList)
+	statistics.Register(fanCollector)
 
 }
 

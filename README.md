@@ -261,6 +261,21 @@ nct6798 -> pwm2
                                                     RPM / PWM
 ```
 
+## Statistics
+
+fan2go has a prometheus exporter built in, which you can use to extract data over time. Simply enable it in your
+configuration and you are good to go:
+
+```yaml
+statistics:
+  # Whether to enable the prometheus exporter or not
+  enabled: true
+  # The port to expose the exporter on
+  port: 9000
+```
+
+You can then see the metics on [http://localhost:9000/metrics](http://localhost:9000/metrics).
+
 # How it works
 
 ## Device detection
