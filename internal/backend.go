@@ -12,6 +12,8 @@ import (
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/oklog/run"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -32,6 +34,20 @@ func RunDaemon() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var g run.Group
+	{
+		// === Prometheus Exporter
+		g.Add(func() error {
+			http.Handle("/metrics", promhttp.Handler())
+			if err := http.ListenAndServe(":9000", nil); err != nil {
+				ui.Error("Cannot start prometheus metrics endpoint (%s)", err.Error())
+			}
+			select {}
+		}, func(err error) {
+			if err != nil {
+				ui.Warning("Error ")
+			}
+		})
+	}
 	{
 		// === sensor monitoring
 		for _, sensor := range sensors.SensorMap {
