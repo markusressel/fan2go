@@ -26,19 +26,17 @@ jobs:
       - name: Build
         run: go build -v ./...
 
-      - name: Generate build files
-        uses: thatisuday/go-cross-build@v1.1.0
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          platforms: 'linux/amd64, linux/arm64'
-          package: ''
-          name: 'fan2go'
-          compress: 'false'
-          dest: 'dist'
+      - name: Genereat build files
+        run: |
+          platform="linux/amd64"
+          filename="linux-amd64"
+          GOARCH="$platform" go build -o ./dist/fan2go-$filename main.go
 
-      - name: Generate build files
-        run: go build -o ./dist/fan2go-linux-amd64 main.go
-        #if: startsWith(github.ref, 'refs/tags/')
+      - name: Genereat build files
+        run: |
+          platform="linux/arm64"
+          filename="linux-arm64"
+          GOARCH="$platform" go build -o ./dist/fan2go-$filename main.go
 
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -46,5 +44,6 @@ jobs:
         with:
           files: |
             dist/fan2go-linux-amd64
+            dist/fan2go-linux-arm64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
