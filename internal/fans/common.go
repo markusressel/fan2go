@@ -2,7 +2,6 @@ package fans
 
 import (
 	"fmt"
-	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
@@ -48,7 +47,7 @@ type Fan interface {
 	SetPwm(pwm int) (err error)
 
 	// GetFanCurveData returns the fan curve data for this fan
-	GetFanCurveData() *map[int]*rolling.PointPolicy
+	GetFanCurveData() *map[int]float64
 	AttachFanCurveData(curveData *map[int][]float64) (err error)
 
 	// GetCurveId returns the id of the speed curve associated with this fan
@@ -75,14 +74,16 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 			RpmInput:     config.HwMon.RpmInput,
 			MinPwm:       MinPwmValue,
 			MaxPwm:       MaxPwmValue,
-			FanCurveData: &map[int]*rolling.PointPolicy{},
+			FanCurveData: &map[int]float64{},
 			StartPwm:     config.StartPwm,
 			Config:       config,
 		}, nil
 	}
 
 	if config.File != nil {
-		return &FileFan{}, nil
+		return &FileFan{
+			FilePath: config.File.Path,
+		}, nil
 	}
 
 	return nil, fmt.Errorf("no matching fan type for fan: %s", config.ID)
@@ -161,7 +162,7 @@ func (fan *HwMonFan) AttachFanCurveData(curveData *map[int][]float64) (err error
 		}
 
 		data := fan.GetFanCurveData()
-		(*data)[i] = fanCurveMovingWindow
+		(*data)[i] = util.GetWindowAvg(fanCurveMovingWindow)
 	}
 
 	startPwm, maxPwm := ComputePwmBoundaries(fan)
@@ -198,7 +199,7 @@ func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 		maxRpm := 0
 		for _, pwm := range keys {
 			window := (*pwmRpmMap)[pwm]
-			avgRpm := int(util.GetWindowAvg(window))
+			avgRpm := int(window)
 
 			if avgRpm > maxRpm {
 				maxRpm = avgRpm

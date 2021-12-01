@@ -3,7 +3,6 @@ package persistence
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/ui"
 	bolt "go.etcd.io/bbolt"
@@ -48,15 +47,9 @@ func (p persistence) SaveFanPwmData(fan fans.Fan) (err error) {
 	key := fan.GetId()
 
 	// convert the curve data moving window to a map to arrays, so we can persist them
-	fanCurveDataMap := map[int][]float64{}
+	fanCurveDataMap := map[int]float64{}
 	for key, value := range *fan.GetFanCurveData() {
-		var pwmValues []float64
-		value.Reduce(func(window rolling.Window) float64 {
-			pwmValues = append(pwmValues, window[0][0])
-			return 0
-		})
-
-		fanCurveDataMap[key] = pwmValues
+		fanCurveDataMap[key] = value
 	}
 
 	data, err := json.Marshal(fanCurveDataMap)

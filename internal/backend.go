@@ -110,7 +110,7 @@ func InitializeObjects() {
 
 		currentValue, err := sensor.GetValue()
 		if err != nil {
-			ui.Fatal("Error reading sensor %s: %v", config.ID, err)
+			ui.Warning("Error reading sensor %s: %v", config.ID, err)
 		}
 		sensor.SetMovingAvg(currentValue)
 

@@ -34,7 +34,7 @@ func (s sensorMonitor) Run(ctx context.Context) error {
 		case <-tick:
 			err := updateSensor(s.sensor)
 			if err != nil {
-				ui.Fatal("%v", err)
+				ui.Warning("Error updating sensor: %v", err)
 			}
 		}
 	}

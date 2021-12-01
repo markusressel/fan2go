@@ -108,7 +108,7 @@ func (fan *MockFan) SetPwm(pwm int) (err error) {
 	return nil
 }
 
-func (fan MockFan) GetFanCurveData() *map[int]*rolling.PointPolicy {
+func (fan MockFan) GetFanCurveData() *map[int]float64 {
 	panic("implement me")
 }
 

@@ -245,13 +245,7 @@ func measureRpm(fan fans.Fan) {
 	fan.SetRpmAvg(updatedRpmAvg)
 
 	pwmRpmMap := fan.GetFanCurveData()
-	pointWindow, exists := (*pwmRpmMap)[pwm]
-	if !exists {
-		// create rolling window for current pwm value
-		pointWindow = util.CreateRollingWindow(configuration.CurrentConfig.RpmRollingWindowSize)
-		(*pwmRpmMap)[pwm] = pointWindow
-	}
-	pointWindow.Append(float64(rpm))
+	(*pwmRpmMap)[pwm] = float64(rpm)
 }
 
 func trySetManualPwm(fan fans.Fan) {

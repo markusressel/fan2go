@@ -3,7 +3,6 @@ package hwmon
 import (
 	"errors"
 	"fmt"
-	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/util"
@@ -173,7 +172,7 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 				RpmMovingAvg: inputSubFeature.GetValue(),
 				MinPwm:       min,
 				MaxPwm:       max,
-				FanCurveData: &map[int]*rolling.PointPolicy{},
+				FanCurveData: &map[int]float64{},
 			}
 
 			fanList = append(fanList, fan)

@@ -3,7 +3,6 @@ package fans
 import (
 	"errors"
 	"fmt"
-	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
@@ -11,16 +10,16 @@ import (
 )
 
 type HwMonFan struct {
-	Label        string                        `json:"label"`
-	Index        int                           `json:"index"`
-	RpmInput     string                        `json:"rpminput"`
-	RpmMovingAvg float64                       `json:"rpmmovingavg"`
-	PwmOutput    string                        `json:"pwmoutput"`
-	Config       configuration.FanConfig       `json:"config"`
-	StartPwm     int                           `json:"startpwm"` // the min PWM at which the fan starts to rotate from a stand still
-	MinPwm       int                           `json:"minpwm"`   // lowest PWM value where the fans are still spinning, when spinning previously
-	MaxPwm       int                           `json:"maxpwm"`   // highest PWM value that yields an RPM increase
-	FanCurveData *map[int]*rolling.PointPolicy `json:"fancurvedata"`
+	Label        string                  `json:"label"`
+	Index        int                     `json:"index"`
+	RpmInput     string                  `json:"rpminput"`
+	RpmMovingAvg float64                 `json:"rpmmovingavg"`
+	PwmOutput    string                  `json:"pwmoutput"`
+	Config       configuration.FanConfig `json:"config"`
+	StartPwm     int                     `json:"startpwm"` // the min PWM at which the fan starts to rotate from a stand still
+	MinPwm       int                     `json:"minpwm"`   // lowest PWM value where the fans are still spinning, when spinning previously
+	MaxPwm       int                     `json:"maxpwm"`   // highest PWM value that yields an RPM increase
+	FanCurveData *map[int]float64        `json:"fancurvedata"`
 }
 
 func (fan HwMonFan) GetId() string {
@@ -91,7 +90,7 @@ func (fan *HwMonFan) SetPwm(pwm int) (err error) {
 	return err
 }
 
-func (fan HwMonFan) GetFanCurveData() *map[int]*rolling.PointPolicy {
+func (fan HwMonFan) GetFanCurveData() *map[int]float64 {
 	return fan.FanCurveData
 }
 
