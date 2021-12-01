@@ -332,14 +332,9 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	}
 
 	// WHEN
-	optimal, err := controller.calculateOptimalPwm(fan)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
-	target := controller.calculateTargetPwm(fan, 0, optimal)
+	target := controller.calculateTargetPwm()
 
 	// THEN
-	assert.Equal(t, 0, optimal)
 	assert.Greater(t, fan.GetMinPwm(), 0)
 	assert.Equal(t, fan.GetMinPwm(), target)
 }
