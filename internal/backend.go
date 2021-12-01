@@ -41,6 +41,9 @@ func RunDaemon() {
 			// === Prometheus Exporter
 			g.Add(func() error {
 				port := configuration.CurrentConfig.Statistics.Port
+				if port <= 0 || port >= 65535 {
+					port = 9000
+				}
 				endpoint := "/metrics"
 				addr := fmt.Sprintf(":%d", port)
 				http.Handle(endpoint, promhttp.Handler())
