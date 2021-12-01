@@ -317,7 +317,7 @@ func (f *fanController) calculateTargetPwm() int {
 			avgRpm := int(fan.GetRpmAvg())
 			if avgRpm <= 0 {
 				if target >= maxPwm {
-					ui.Error("CRITICAL: Fan %s avg. RPM is %f, even at PWM value %d", fan.GetId(), avgRpm, target)
+					ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), avgRpm, target)
 					return -1
 				}
 				ui.Warning("WARNING: Increasing startPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d",
