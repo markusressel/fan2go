@@ -7,11 +7,6 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"math"
-	"sort"
-)
-
-const (
-	InterpolationTypeLinear = "linear"
 )
 
 type SpeedCurve interface {
@@ -71,7 +66,7 @@ func (c linearSpeedCurve) Evaluate() (value int, err error) {
 
 	steps := c.steps
 	if steps != nil {
-		value = int(math.Round(CalculateInterpolatedCurveValue(steps, InterpolationTypeLinear, avgTemp/1000)))
+		value = int(math.Round(util.CalculateInterpolatedCurveValue(steps, util.InterpolationTypeLinear, avgTemp/1000)))
 	} else {
 		minTemp := float64(c.min) * 1000 // degree to milli-degree
 		maxTemp := float64(c.max) * 1000
@@ -134,47 +129,4 @@ func (c functionSpeedCurve) Evaluate() (value int, err error) {
 
 	ui.Fatal("Unknown curve function: %s", c.function)
 	return value, err
-}
-
-// CalculateInterpolatedCurveValue creates an interpolated function from the given map of x-values -> y-values
-// as specified by the interpolationType and returns the y-value for the given input
-func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType string, input float64) float64 {
-	xValues := make([]int, 0, len(steps))
-	for x := range steps {
-		xValues = append(xValues, x)
-	}
-	// sort them increasing
-	sort.Ints(xValues)
-
-	// find value closest to input
-	for i := 0; i < len(xValues)-1; i++ {
-		currentX := xValues[i]
-		nextX := xValues[i+1]
-
-		if input <= float64(currentX) && i == 0 {
-			// input is below the smallest given step, so
-			// we fall back to the value of the smallest step
-			return steps[currentX]
-		}
-
-		if input >= float64(nextX) {
-			continue
-		}
-
-		if input == float64(currentX) {
-			return steps[currentX]
-		} else {
-			// input is somewhere in between currentX and nextX
-			currentY := steps[currentX]
-			nextY := steps[nextX]
-
-			ratio := util.Ratio(input, float64(currentX), float64(nextX))
-			interpolation := currentY + ratio*(nextY-currentY)
-			return interpolation
-		}
-	}
-
-	// input is above (or equal to) the largest given
-	// step, so we fall back to the value of the largest step
-	return steps[xValues[len(xValues)-1]]
 }

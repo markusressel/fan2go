@@ -3,8 +3,8 @@ package fans
 import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 	"os"
 	"sort"
 )
@@ -101,14 +101,10 @@ func (fan *HwMonFan) AttachFanCurveData(curveData *map[int]float64) (err error) 
 		return os.ErrInvalid
 	}
 
-	fan.FanCurveData = curveData
-	for i := 0; i < 255; i++ {
-		interpolatedValue := curves.CalculateInterpolatedCurveValue(*curveData, curves.InterpolationTypeLinear, float64(i))
-		(*curveData)[i] = interpolatedValue
-	}
+	interpolatedCurve := util.InterpolateLinearly(curveData, 0, 255)
+	fan.FanCurveData = &interpolatedCurve
 
 	startPwm, maxPwm := ComputePwmBoundaries(fan)
-
 	fan.SetStartPwm(startPwm)
 	fan.SetMaxPwm(maxPwm)
 
@@ -124,28 +120,22 @@ func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 	maxPwm = 255
 	pwmRpmMap := fan.GetFanCurveData()
 
-	if len(*pwmRpmMap) <= 0 {
-		// we have no data yet
-		startPwm = 0
-	} else {
+	var keys []int
+	for pwm := range *pwmRpmMap {
+		keys = append(keys, pwm)
+	}
+	sort.Ints(keys)
 
-		var keys []int
-		for pwm := range *pwmRpmMap {
-			keys = append(keys, pwm)
+	maxRpm := 0
+	for _, pwm := range keys {
+		avgRpm := int((*pwmRpmMap)[pwm])
+		if avgRpm > maxRpm {
+			maxRpm = avgRpm
+			maxPwm = pwm
 		}
-		sort.Ints(keys)
 
-		maxRpm := 0
-		for _, pwm := range keys {
-			avgRpm := int((*pwmRpmMap)[pwm])
-			if avgRpm > maxRpm {
-				maxRpm = avgRpm
-				maxPwm = pwm
-			}
-
-			if avgRpm > 0 && pwm < startPwm {
-				startPwm = pwm
-			}
+		if avgRpm > 0 && pwm < startPwm {
+			startPwm = pwm
 		}
 	}
 
