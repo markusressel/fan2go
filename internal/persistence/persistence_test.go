@@ -43,7 +43,7 @@ func TestReadFan(t *testing.T) {
 	persistence := NewPersistence(dbTestingPath)
 
 	fan, _ := createFan(false, NeverStoppingFan)
-	expected := util.InterpolateLinearly(fan.GetFanCurveData(), 0, 256)
+	expected := util.InterpolateLinearly(fan.GetFanCurveData(), 0, 255)
 
 	err := persistence.SaveFanPwmData(fan)
 	assert.NoError(t, err)
