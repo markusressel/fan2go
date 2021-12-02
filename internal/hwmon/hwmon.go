@@ -7,6 +7,7 @@ import (
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/md14454/gosensors"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -154,8 +155,23 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 		subfeatures := feature.GetSubFeatures()
 
 		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput) {
+			pwmOutput := fmt.Sprintf("%s/pwm%d", chip.Path, len(fanList)+1)
+
+			if _, err := os.Stat(pwmOutput); err == nil {
+			} else if errors.Is(err, os.ErrNotExist) {
+				// path/to/whatever does *not* exist
+				pwmOutput = ""
+			} else {
+				pwmOutput = ""
+			}
+
+			rpmInput := ""
+			rpmAverage := 0.0
 			inputSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput)
-			rpmInput := fmt.Sprintf("%s/%s", chip.Path, inputSubFeature.Name)
+			if inputSubFeature != nil {
+				rpmInput = fmt.Sprintf("%s/%s", chip.Path, inputSubFeature.Name)
+				rpmAverage = inputSubFeature.GetValue()
+			}
 
 			max := -1
 			if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanMax) {
@@ -173,12 +189,6 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 				min = fans.MinPwmValue
 			}
 
-			pwmOutput := ""
-			if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanPulses) {
-				pulsesSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanPulses)
-				pwmOutput = fmt.Sprintf("%s/%s", chip.Path, pulsesSubFeature.Name)
-			}
-
 			if len(pwmOutput) <= 0 {
 				continue
 			}
@@ -190,7 +200,7 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 				Index:        len(fanList) + 1,
 				PwmOutput:    pwmOutput,
 				RpmInput:     rpmInput,
-				RpmMovingAvg: inputSubFeature.GetValue(),
+				RpmMovingAvg: rpmAverage,
 				MinPwm:       min,
 				MaxPwm:       max,
 			}
@@ -202,13 +212,13 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 	return fanList
 }
 
-func getSubFeature(subfeatures []gosensors.SubFeature, input gosensors.SubFeatureType) gosensors.SubFeature {
+func getSubFeature(subfeatures []gosensors.SubFeature, input gosensors.SubFeatureType) *gosensors.SubFeature {
 	for _, a := range subfeatures {
 		if a.Type == input {
-			return a
+			return &a
 		}
 	}
-	panic(errors.New(fmt.Sprintf("No such element: %v", input)))
+	return nil
 }
 
 func containsSubFeature(s []gosensors.SubFeature, e gosensors.SubFeatureType) bool {
