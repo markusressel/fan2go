@@ -171,8 +171,13 @@ func InitializeObjects() {
 			for _, c := range controllers {
 				if c.Platform == config.HwMon.Platform {
 					found = true
-					config.HwMon.PwmOutput = c.Fans[config.HwMon.Index-1].PwmOutput
-					config.HwMon.RpmInput = c.Fans[config.HwMon.Index-1].RpmInput
+					index := config.HwMon.Index - 1
+					if len(c.Fans) > index {
+						fan := c.Fans[index]
+						config.HwMon.PwmOutput = fan.PwmOutput
+						config.HwMon.RpmInput = fan.RpmInput
+					}
+
 					break
 				}
 			}
