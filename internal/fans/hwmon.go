@@ -42,6 +42,9 @@ func (fan HwMonFan) GetMinPwm() int {
 	// if the fan is never supposed to stop,
 	// use the lowest pwm value where the fan is still spinning
 	if fan.ShouldNeverStop() {
+		if len(fan.RpmInput) <= 0 {
+			ui.Warning("WARN: cannot guarantee neverStop option on fan %s, since it has no RPM input.", fan.GetId())
+		}
 		return fan.MinPwm
 	}
 
