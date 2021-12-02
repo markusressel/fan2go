@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"github.com/looplab/tarjan"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/mitchellh/go-homedir"
@@ -131,6 +132,8 @@ func isSensorConfigInUse(config SensorConfig, curves []CurveConfig) bool {
 }
 
 func validateCurves(config *Configuration) {
+	graph := make(map[interface{}][]interface{})
+
 	for _, curveConfig := range config.Curves {
 		if curveConfig.Linear != nil && curveConfig.Function != nil {
 			ui.Fatal("Curve %s: only one curve type can be used per curve definition block", curveConfig.ID)
@@ -144,10 +147,30 @@ func validateCurves(config *Configuration) {
 			ui.Warning("Unused curve configuration: %s", curveConfig.ID)
 		}
 
+		if curveConfig.Function != nil {
+			var connections []interface{}
+			for _, curve := range curveConfig.Function.Curves {
+				connections = append(connections, curve)
+			}
+			graph[curveConfig.ID] = connections
+		}
+
 		if curveConfig.Linear != nil {
 			if len(curveConfig.Linear.Sensor) <= 0 {
 				ui.Fatal("Curve %s: Missing sensorId", curveConfig.ID)
 			}
+		}
+
+	}
+
+	validateNoLoops(graph)
+}
+
+func validateNoLoops(graph map[interface{}][]interface{}) {
+	output := tarjan.Connections(graph)
+	for _, items := range output {
+		if len(items) > 1 {
+			ui.Fatal("You have created a curve  dependency cycle: %v", items)
 		}
 	}
 }
