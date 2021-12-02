@@ -177,6 +177,8 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 			if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanPulses) {
 				pulsesSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanPulses)
 				pwmOutput = fmt.Sprintf("%s/%s", chip.Path, pulsesSubFeature.Name)
+				folder, _ := filepath.Split(pwmOutput)
+				pwmOutput = fmt.Sprintf("%spwm%d", folder, len(fanList)+1)
 			}
 
 			if len(pwmOutput) <= 0 {

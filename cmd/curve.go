@@ -35,8 +35,8 @@ var curveCmd = &cobra.Command{
 							fan := controller.Fans[index]
 							config.HwMon.PwmOutput = fan.PwmOutput
 							config.HwMon.RpmInput = fan.RpmInput
+							break
 						}
-						break
 					}
 				}
 			}

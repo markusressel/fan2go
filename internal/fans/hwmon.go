@@ -77,9 +77,7 @@ func (fan *HwMonFan) SetRpmAvg(rpm float64) {
 }
 
 func (fan HwMonFan) GetPwm() int {
-	folder, _ := filepath.Split(fan.PwmOutput)
-	pwmPath := fmt.Sprintf("%s/pwm%d", folder, fan.Index)
-	value, err := util.ReadIntFromFile(pwmPath)
+	value, err := util.ReadIntFromFile(fan.PwmOutput)
 	if err != nil {
 		value = MinPwmValue
 	}
@@ -88,9 +86,7 @@ func (fan HwMonFan) GetPwm() int {
 
 func (fan *HwMonFan) SetPwm(pwm int) (err error) {
 	ui.Debug("Setting Fan PWM of '%s' to %d ...", fan.GetId(), pwm)
-	folder, _ := filepath.Split(fan.PwmOutput)
-	pwmPath := fmt.Sprintf("%s/pwm%d", folder, fan.Index)
-	err = util.WriteIntToFile(pwm, pwmPath)
+	err = util.WriteIntToFile(pwm, fan.PwmOutput)
 	return err
 }
 
@@ -108,7 +104,7 @@ func (fan HwMonFan) ShouldNeverStop() bool {
 
 func (fan HwMonFan) GetPwmEnabled() (int, error) {
 	folder, _ := filepath.Split(fan.PwmOutput)
-	pwmEnabledFilePath := fmt.Sprintf("%s/pwm%d_enable", folder, fan.Index)
+	pwmEnabledFilePath := fmt.Sprintf("%spwm%d_enable", folder, fan.Index)
 	return util.ReadIntFromFile(pwmEnabledFilePath)
 }
 
