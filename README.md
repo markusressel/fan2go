@@ -290,13 +290,7 @@ You can then see the metics on [http://localhost:9000/metrics](http://localhost:
 
 ## Device detection
 
-fan2go scans the `/sys/class/hwmon` directory for hardware monitor paths. All of these paths are then scanned for
-
-- `tempX_input`
-- `pwmX_input`
-- `pwmX`
-
-files, which represent temperature sensors, RPM sensors and PWM outputs.
+fan2go uses [gosensors](https://github.com/md14454/gosensors) to directly interact with lm-sensors.
 
 ## Initialization
 
