@@ -309,17 +309,19 @@ To properly control a fan which fan2go has not seen before, its speed curve is a
 measurements. Measurements taken during this process will then be used to determine the lowest PWM value at which the
 fan is still running, as well as the highest PWM value that still yields a change in RPM.
 
-All of this is saved to a local database, so it is only needed once per fan configuration.
+All of this is saved to a local database (path given by the `dbPath` config option), so it is only needed once per fan configuration.
+
+To reduce the risk of runnin the whole system on low fan speeds for such a long period of time, you can force fan2go to initialize only
+one fan at a time, using the `runFanInitializationInParallel: false` config option.
 
 ## Monitoring
 
-To monitor temperature sensors, a goroutine is started which continuously reads the `tempX_input` files of all sensors
-specified in the config. Sensor values are stored as a moving average of size `tempRollingWindowSize` (
-see [configuration](#configuration)).
+Temperature and RPM sensors are polled continuously at the rate specified by the `tempSensorPollingRate` config option.
+`tempRollingWindowSize`/`rpmRollingWindowSize` amount of measurements are always averaged and stored as the average sensor value.
 
 ## Fan Controllers
 
-Fan speeds are continuously adjusted based on the value of the associated curve.
+Fan speeds are continuously adjusted at the rate specified by the `controllerAdjustmentTickRate` config option based on the value of their associated curve.
 
 # Dependencies
 
