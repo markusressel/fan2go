@@ -1,0 +1,36 @@
+package statistics
+
+import (
+	"github.com/markusressel/fan2go/internal/curves"
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+type CurveCollector struct {
+	curves []curves.SpeedCurve
+	value  *prometheus.Desc
+}
+
+const subsystemCurve = "curve"
+
+func NewCurveCollector(curves []curves.SpeedCurve) *CurveCollector {
+	return &CurveCollector{
+		curves: curves,
+		value: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystemCurve, "value"),
+			"Current value of the curve",
+			[]string{"id"}, nil,
+		),
+	}
+}
+
+func (collector *CurveCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- collector.value
+}
+
+//Collect implements required collect function for all promehteus collectors
+func (collector *CurveCollector) Collect(ch chan<- prometheus.Metric) {
+	for _, curve := range collector.curves {
+		curveId := curve.GetId()
+		value, _ := curve.Evaluate()
+		ch <- prometheus.MustNewConstMetric(collector.value, prometheus.GaugeValue, float64(value), curveId)
+	}
+}
