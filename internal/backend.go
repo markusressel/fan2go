@@ -156,13 +156,18 @@ func InitializeObjects() {
 	sensorCollector := statistics.NewSensorCollector(sensorList)
 	statistics.Register(sensorCollector)
 
+	var curveList []curves.SpeedCurve
 	for _, config := range configuration.CurrentConfig.Curves {
 		curve, err := curves.NewSpeedCurve(config)
 		if err != nil {
 			ui.Fatal("Unable to process curve configuration: %s", config.ID)
 		}
+		curveList = append(curveList, curve)
 		curves.SpeedCurveMap[config.ID] = curve
 	}
+
+	curveCollector := statistics.NewCurveCollector(curveList)
+	statistics.Register(curveCollector)
 
 	var fanList []fans.Fan
 	for _, config := range configuration.CurrentConfig.Fans {
