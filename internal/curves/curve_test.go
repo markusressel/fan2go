@@ -205,6 +205,65 @@ func TestFunctionCurveAverage(t *testing.T) {
 	assert.Equal(t, 127, result)
 }
 
+func TestFunctionCurveDelta (t *testing.T) {
+	// GIVEN
+	temp1 := 20000.0
+	temp2 := 40000.0
+
+	s1 := MockSensor{
+		ID:        "ambient_sensor",
+		Name:      "sensor_ambient",
+		MovingAvg: temp1,
+	}
+	sensors.SensorMap[s1.GetId()] = &s1
+
+	s2 := MockSensor{
+		ID:        "water_sensor",
+		Name:      "sensor_water",
+		MovingAvg: temp2,
+	}
+	sensors.SensorMap[s2.GetId()] = &s2
+
+	curve1 :=  createLinearCurveConfig(
+		"case_fan_front",
+		s1.GetId(),
+		18,
+		60,
+	)
+	c1, err := NewSpeedCurve(curve1)
+	SpeedCurveMap[c1.GetId()] = c1
+
+	curve2 := createLinearCurveConfig(
+		"case_fan_back",
+		s2.GetId(),
+		18,
+		60,
+	)
+	c2, err := NewSpeedCurve(curve2)
+	SpeedCurveMap[c2.GetId()] = c2
+
+	function := configuration.FunctionDelta
+	functionCurveConfig := createFunctionCurveConfig(
+		"delta_function_curve",
+		function,
+		[]string{
+			curve1.ID,
+			curve2.ID,
+		},
+	)
+	functionCurve, err := NewSpeedCurve(functionCurveConfig)
+	SpeedCurveMap[functionCurve.GetId()] = functionCurve
+
+	// WHEN
+	result, err := functionCurve.Evaluate()
+	if err != nil {
+		assert.Fail(t, err.Error())
+	}
+
+	// THEN
+	assert.Equal(t, 121, result)
+}
+
 func TestFunctionCurveMinimum(t *testing.T) {
 	// GIVEN
 	temp1 := 40000.0

@@ -64,21 +64,21 @@ system run `fan2go detect`, which will print a list of devices exposed by the hw
 ```shell
 > fan2go detect
 nct6798
- Fans      Index   Label    RPM    PWM   Auto   
-           1       hwmon4   0      153   false  
-           2       hwmon4   1223   104   false  
-           3       hwmon4   677    107   false  
- Sensors   Index   Label    Value   
-           1       SYSTIN   41000   
-           2       CPUTIN   64000   
- 
+ Fans      Index   Label    RPM    PWM   Auto
+           1       hwmon4   0      153   false
+           2       hwmon4   1223   104   false
+           3       hwmon4   677    107   false
+ Sensors   Index   Label    Value
+           1       SYSTIN   41000
+           2       CPUTIN   64000
+
 amdgpu-pci-0031
- Fans      Index   Label    RPM   PWM   Auto   
-           1       hwmon8   561   43    false  
- Sensors   Index   Label      Value  
-           1       edge       58000  
-           2       junction   61000  
-           3       mem        56000  
+ Fans      Index   Label    RPM   PWM   Auto
+           1       hwmon8   561   43    false
+ Sensors   Index   Label      Value
+           1       edge       58000
+           2       junction   61000
+           3       mem        56000
 ```
 
 To use detected devices in your configuration, use the `hwmon` fan type:
@@ -186,7 +186,7 @@ curves:
       sensor: cpu_package
       # Steps to define a section-wise defined speed curve function.
       steps:
-        # Sensor value -> Speed (in percent)
+        # Sensor value -> Speed (in pwm)
         - 40: 0
         - 50: 50
         - 80: 255
@@ -200,7 +200,7 @@ To create more complex curves you can combine exising curves using a curve of ty
 curves:
   - id: case_avg_curve
     function:
-      # Type of aggregation function to use, on of: minimum | maximum | average
+      # Type of aggregation function to use, one of: minimum | maximum | average | delta
       type: average
       # A list of curve IDs to use
       curves:
@@ -240,17 +240,17 @@ a look at this measurement using the following command:
 ```shell
 > sudo fan2go curve
 nct6798 -> pwm1
-                  
- Start PWM   0    
- Max PWM     255  
+
+ Start PWM   0
+ Max PWM     255
 
 No fan curve data yet...
 
 
 nct6798 -> pwm2
-                  
- Start PWM   0    
- Max PWM     194  
+
+ Start PWM   0
+ Max PWM     194
 
  1994 ┤                                                                          ╭────────────────────────
  1900 ┤                                                                       ╭──╯
