@@ -11,6 +11,7 @@ import (
 	"github.com/mgutz/ansi"
 	"github.com/spf13/cobra"
 	"github.com/tomlazar/table"
+	"regexp"
 	"sort"
 	"strconv"
 )
@@ -29,7 +30,11 @@ var curveCmd = &cobra.Command{
 		for _, config := range configuration.CurrentConfig.Fans {
 			if config.HwMon != nil {
 				for _, controller := range controllers {
-					if controller.Platform == config.HwMon.Platform {
+					matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, controller.Platform)
+					if err != nil {
+						ui.Fatal("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform)
+					}
+					if matched {
 						index := config.HwMon.Index - 1
 						if len(controller.Fans) > index {
 							fan := controller.Fans[index]
