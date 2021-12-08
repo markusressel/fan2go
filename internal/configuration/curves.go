@@ -15,6 +15,7 @@ type LinearCurveConfig struct {
 
 const (
 	FunctionAverage = "average"
+	FunctionDelta   = "delta"
 	FunctionMinimum = "minimum"
 	FunctionMaximum = "maximum"
 )

@@ -106,6 +106,15 @@ func (c functionSpeedCurve) Evaluate() (value int, err error) {
 	}
 
 	switch c.function {
+    case configuration.FunctionDelta:
+		var dmax = float64(values[0])
+		var dmin = float64(values[0])
+		for _, v := range values {
+			dmin = math.Min(dmin, float64(v))
+			dmax = math.Max(dmax, float64(v))
+		}
+		delta := dmax - dmin
+		return int(delta), nil
 	case configuration.FunctionMinimum:
 		var min float64
 		for _, v := range values {
