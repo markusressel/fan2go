@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -128,7 +129,11 @@ func InitializeObjects() {
 		if config.HwMon != nil {
 			found := false
 			for _, c := range controllers {
-				if c.Platform == config.HwMon.Platform {
+				matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, c.Platform)
+				if err != nil {
+					ui.Fatal("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, c.Platform)
+				}
+				if matched {
 					found = true
 					config.HwMon.TempInput = c.Sensors[config.HwMon.Index-1].Input
 				}
@@ -174,7 +179,11 @@ func InitializeObjects() {
 		if config.HwMon != nil {
 			found := false
 			for _, c := range controllers {
-				if c.Platform == config.HwMon.Platform {
+				matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, c.Platform)
+				if err != nil {
+					ui.Fatal("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, c.Platform)
+				}
+				if matched {
 					found = true
 					index := config.HwMon.Index - 1
 					if len(c.Fans) > index {

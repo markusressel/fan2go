@@ -129,8 +129,8 @@ sensors:
   - id: cpu_package
     # The type of sensor configuration, one of: hwmon | file
     hwmon:
-      # The controller platform as displayed by `fan2go detect`, f.ex.:
-      # "nouveau", "coretemp" or "it8620" etc.
+      # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
+      # "coretemp", "it8620", "corsaircpro-*" etc.
       platform: coretemp
       # The index of this sensor as displayed by `fan2go detect`
       index: 1
