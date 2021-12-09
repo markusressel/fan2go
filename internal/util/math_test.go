@@ -30,3 +30,18 @@ func TestCalculateInterpolatedCurveValue(t *testing.T) {
 		assert.Equal(t, output, result)
 	}
 }
+
+func TestRatio(t *testing.T) {
+	// GIVEN
+	a := 0.0
+	b := 100.0
+	c := 50.0
+
+	expected := 0.5
+
+	// WHEN
+	result := Ratio(c, a, b)
+
+	// THEN
+	assert.Equal(t, expected, result)
+}

@@ -15,10 +15,6 @@ import (
 	"time"
 )
 
-const (
-	InitialLastSetPwm = -10
-)
-
 var InitializationSequenceMutex sync.Mutex
 
 type FanController interface {
@@ -178,10 +174,7 @@ func (f *fanController) runInitializationSequence() (err error) {
 	fan := f.fan
 
 	if fan.GetFanCurveData() == nil {
-		err := fan.AttachFanCurveData(&map[int]float64{
-			0:   0,
-			255: 255,
-		})
+		err := fan.AttachFanCurveData(&map[int]float64{})
 		if err != nil {
 			panic(err)
 		}
@@ -194,7 +187,8 @@ func (f *fanController) runInitializationSequence() (err error) {
 
 	trySetManualPwm(fan)
 
-	for pwm := 0; pwm <= fans.MaxPwmValue; pwm++ {
+	initialMeasurement := true
+	for pwm := fans.MinPwmValue; pwm <= fans.MaxPwmValue; pwm++ {
 		// set a pwm
 		err = fan.SetPwm(pwm)
 		if err != nil {
@@ -202,23 +196,18 @@ func (f *fanController) runInitializationSequence() (err error) {
 			return err
 		}
 
-		if pwm == 0 {
-			// TODO: this "waiting" logic could also be applied to the other measurements
-			diffThreshold := configuration.CurrentConfig.MaxRpmDiffForSettledFan
+		// verify that we were successful in writing our desired PWM value
+		// otherwise, skip this PWM value
+		// TODO: this has to be done _always_, while the RPM measurements only make sense if the fan supports it
+		actualPwm := fan.GetPwm()
+		if actualPwm != pwm {
+			ui.Warning("Actual PWM value differs from requested one, skipping. Requested: %d Actual: %d", pwm, actualPwm)
+			continue
+		}
 
-			measuredRpmDiffWindow := util.CreateRollingWindow(10)
-			fillWindow(measuredRpmDiffWindow, 10, 2*diffThreshold)
-			measuredRpmDiffMax := 2 * diffThreshold
-			oldRpm := 0
-			for !(measuredRpmDiffMax < diffThreshold) {
-				ui.Debug("Waiting for fan %s to settle (current RPM max diff: %f)...", fan.GetId(), measuredRpmDiffMax)
-				currentRpm := fan.GetPwm()
-				measuredRpmDiffWindow.Append(math.Abs(float64(currentRpm - oldRpm)))
-				oldRpm = currentRpm
-				measuredRpmDiffMax = math.Ceil(getWindowMax(measuredRpmDiffWindow))
-				time.Sleep(1 * time.Second)
-			}
-			ui.Debug("Fan %s has settled (current RPM max diff: %f)", fan.GetId(), measuredRpmDiffMax)
+		if initialMeasurement {
+			initialMeasurement = false
+			f.waitForFanToSettle(fan)
 		} else {
 			// wait a bit to allow the fan speed to settle.
 			// since most sensors are update only each second,
@@ -227,13 +216,14 @@ func (f *fanController) runInitializationSequence() (err error) {
 			time.Sleep(2 * time.Second)
 		}
 
-		// TODO:
-		// on some fans it is not possible to use the full pwm of 0..255
-		// so we try what values work and save them for later
+		rpm := fan.GetRpm()
+		ui.Debug("Measuring RPM of %s at PWM %d: %d", fan.GetId(), pwm, rpm)
 
-		ui.Debug("Measuring RPM of %s at PWM: %d", fan.GetId(), pwm)
 		// update rpm curve
-		measureRpm(fan)
+		fan.SetRpmAvg(float64(rpm))
+		pwmRpmMap := fan.GetFanCurveData()
+		(*pwmRpmMap)[pwm] = float64(rpm)
+
 		ui.Debug("Measured RPM of %d at PWM %d for fan %s", int(fan.GetRpmAvg()), pwm, fan.GetId())
 	}
 
@@ -267,19 +257,12 @@ func trySetManualPwm(fan fans.Fan) {
 	}
 }
 
-// calculates the target speed for a given device output
-func (f *fanController) calculateOptimalPwm(fan fans.Fan) (int, error) {
-	curveConfigId := fan.GetCurveId()
-	speedCurve := curves.SpeedCurveMap[curveConfigId]
-	return speedCurve.Evaluate()
-}
-
 // calculates the optimal pwm for a fan with the given target level.
 // returns -1 if no rpm is detected even at fan.maxPwm
 func (f *fanController) calculateTargetPwm() int {
 	fan := f.fan
 	currentPwm := fan.GetPwm()
-	target, err := f.calculateOptimalPwm(fan)
+	target, err := f.curve.Evaluate()
 	if err != nil {
 		ui.Fatal("Unable to calculate optimal PWM value for %s: %v", fan.GetId(), err)
 	}
@@ -313,7 +296,6 @@ func (f *fanController) calculateTargetPwm() int {
 		// and adjusting the target PWM value upwards if necessary
 		shouldNeverStop := fan.ShouldNeverStop()
 		if shouldNeverStop && (f.lastSetPwm != nil || f.lastSetPwm == &target) {
-			// TODO: this only works if the fan supports RPM measurements at all
 			avgRpm := int(fan.GetRpmAvg())
 			if avgRpm <= 0 {
 				if target >= maxPwm {
@@ -345,6 +327,25 @@ func (f *fanController) setPwm(target int) (err error) {
 	}
 	err = f.fan.SetPwm(target)
 	return err
+}
+
+func (f *fanController) waitForFanToSettle(fan fans.Fan) {
+	// TODO: this "waiting" logic could also be applied to the other measurements
+	diffThreshold := configuration.CurrentConfig.MaxRpmDiffForSettledFan
+
+	measuredRpmDiffWindow := util.CreateRollingWindow(10)
+	fillWindow(measuredRpmDiffWindow, 10, 2*diffThreshold)
+	measuredRpmDiffMax := 2 * diffThreshold
+	oldRpm := 0
+	for !(measuredRpmDiffMax < diffThreshold) {
+		ui.Debug("Waiting for fan %s to settle (current RPM max diff: %f)...", fan.GetId(), measuredRpmDiffMax)
+		currentRpm := fan.GetRpm()
+		measuredRpmDiffWindow.Append(math.Abs(float64(currentRpm - oldRpm)))
+		oldRpm = currentRpm
+		measuredRpmDiffMax = math.Ceil(getWindowMax(measuredRpmDiffWindow))
+		time.Sleep(1 * time.Second)
+	}
+	ui.Debug("Fan %s has settled (current RPM max diff: %f)", fan.GetId(), measuredRpmDiffMax)
 }
 
 // completely fills the given window with the given value

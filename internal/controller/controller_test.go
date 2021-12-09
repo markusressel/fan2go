@@ -290,10 +290,7 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 		updateRate:  time.Duration(100),
 	}
 	// WHEN
-	optimal, err := controller.calculateOptimalPwm(fan)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
+	optimal := controller.calculateTargetPwm()
 
 	// THEN
 	assert.Equal(t, 127, optimal)
