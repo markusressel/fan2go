@@ -123,26 +123,14 @@ func (f *fanController) Run(ctx context.Context) error {
 			for {
 				select {
 				case <-ctx.Done():
+					ui.Warning("Fan controller for fan %s was cancelled", fan.GetId())
+					f.restorePwmEnabled()
 					return nil
 				case <-tick:
 					err = f.UpdateFanSpeed()
 					if err != nil {
 						ui.Error("Error in FanController for fan %s: %v", fan.GetId(), err)
-						ui.Info("Trying to restore fan settings for %s...", f.fan.GetId())
-
-						// try to reset the pwm_enable value
-						if f.originalPwmEnabled != 1 {
-							err1 := fan.SetPwmEnabled(f.originalPwmEnabled)
-							if err1 == nil {
-								return nil
-							}
-						}
-						// if this fails, try to set it to max speed instead
-						err1 := f.setPwm(fans.MaxPwmValue)
-						if err1 != nil {
-							ui.Warning("Unable to restore fan %s, make sure it is running!", fan.GetId())
-						}
-
+						f.restorePwmEnabled()
 						return nil
 					}
 				}
@@ -264,6 +252,23 @@ func trySetManualPwm(fan fans.Fan) {
 	}
 	if err != nil {
 		ui.Warning("Could not enable fan control on %s, trying to continue anyway...", fan.GetId())
+	}
+}
+
+func (f *fanController) restorePwmEnabled() {
+	ui.Info("Trying to restore fan settings for %s...", f.fan.GetId())
+
+	// try to reset the pwm_enable value
+	if f.originalPwmEnabled != 1 {
+		err := f.fan.SetPwmEnabled(f.originalPwmEnabled)
+		if err == nil {
+			return
+		}
+	}
+	// if this fails, try to set it to max speed instead
+	err := f.setPwm(fans.MaxPwmValue)
+	if err != nil {
+		ui.Warning("Unable to restore fan %s, make sure it is running!", f.fan.GetId())
 	}
 }
 
