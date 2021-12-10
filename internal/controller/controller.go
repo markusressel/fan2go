@@ -123,7 +123,7 @@ func (f *fanController) Run(ctx context.Context) error {
 			for {
 				select {
 				case <-ctx.Done():
-					ui.Warning("Fan controller for fan %s was cancelled", fan.GetId())
+					ui.Info("Stopping fan controller for fan %s...", fan.GetId())
 					f.restorePwmEnabled()
 					return nil
 				case <-tick:
