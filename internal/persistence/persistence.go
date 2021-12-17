@@ -17,6 +17,7 @@ const (
 type Persistence interface {
 	LoadFanPwmData(fan fans.Fan) (map[int]float64, error)
 	SaveFanPwmData(fan fans.Fan) (err error)
+	DeleteFanPwmData(fan fans.Fan) (err error)
 }
 
 type persistence struct {
@@ -74,7 +75,7 @@ func (p persistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
 
 	key := fan.GetId()
 
-	fanCurveDataMap := map[int]float64{}
+	var fanCurveDataMap map[int]float64
 	err := db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFans))
 		if b == nil {
@@ -100,4 +101,28 @@ func (p persistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
 	})
 
 	return fanCurveDataMap, err
+}
+
+func (p persistence) DeleteFanPwmData(fan fans.Fan) error {
+	db := p.openPersistence()
+	defer db.Close()
+
+	key := fan.GetId()
+
+	err := db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(BucketFans))
+		if b == nil {
+			// no fan bucket yet
+			return nil
+		}
+		v := b.Get([]byte(key))
+		if v == nil {
+			// no data for given key
+			return nil
+		}
+
+		return b.Delete([]byte(key))
+	})
+
+	return err
 }

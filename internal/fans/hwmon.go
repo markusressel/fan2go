@@ -108,8 +108,7 @@ func (fan *HwMonFan) AttachFanCurveData(curveData *map[int]float64) (err error) 
 		return os.ErrInvalid
 	}
 
-	interpolatedCurve := util.InterpolateLinearly(curveData, 0, 255)
-	fan.FanCurveData = &interpolatedCurve
+	fan.FanCurveData = curveData
 
 	startPwm, maxPwm := ComputePwmBoundaries(fan)
 	fan.SetStartPwm(startPwm)

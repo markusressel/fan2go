@@ -10,6 +10,7 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
 	"math"
+	"sort"
 	"sync"
 	"time"
 )
@@ -22,12 +23,19 @@ type FanController interface {
 }
 
 type fanController struct {
-	persistence        persistence.Persistence
-	fan                fans.Fan
-	curve              curves.SpeedCurve
-	updateRate         time.Duration
+	persistence persistence.Persistence
+	// the fan to control
+	fan fans.Fan
+	// the curve used to control the fan
+	curve curves.SpeedCurve
+	// rate to update the target fan speed
+	updateRate time.Duration
+	// the original pwm_enabled flag state of the fan before starting the controller
 	originalPwmEnabled int
-	lastSetPwm         *int
+	// the last pwm value that was set to the fan
+	lastSetPwm *int
+	// a list of all directly supported PWM values by the controlled fan
+	supportedPwmValues []int
 }
 
 func NewFanController(persistence persistence.Persistence, fan fans.Fan, updateRate time.Duration) FanController {
@@ -82,6 +90,8 @@ func (f *fanController) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	f.updateSupportedPwmValues()
 
 	ui.Info("Start PWM of %s: %d", fan.GetId(), fan.GetMinPwm())
 	ui.Info("Max PWM of %s: %d", fan.GetId(), fan.GetMaxPwm())
@@ -286,6 +296,9 @@ func (f *fanController) calculateTargetPwm() int {
 	// TODO: this assumes a linear curve, but it might be something else
 	target = minPwm + int((float64(target)/fans.MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
 
+	// map the target value to the closest value supported by the fan
+	target = f.mapToSupported(target)
+
 	if f.lastSetPwm != nil {
 		lastSetPwm := *(f.lastSetPwm)
 		if lastSetPwm != currentPwm {
@@ -349,4 +362,18 @@ func (f *fanController) waitForFanToSettle(fan fans.Fan) {
 		time.Sleep(1 * time.Second)
 	}
 	ui.Debug("Fan %s has settled (current RPM max diff: %f)", fan.GetId(), measuredRpmDiffMax)
+}
+
+func (f *fanController) mapToSupported(target int) int {
+	return util.FindClosest(target, f.supportedPwmValues)
+}
+
+func (f *fanController) updateSupportedPwmValues() {
+	var keys []int
+	for pwm := range *f.fan.GetFanCurveData() {
+		keys = append(keys, pwm)
+	}
+	sort.Ints(keys)
+
+	f.supportedPwmValues = keys
 }

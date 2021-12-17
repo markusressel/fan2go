@@ -5,7 +5,9 @@ import (
 	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/sensors"
+	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
+	"sort"
 	"testing"
 	"time"
 )
@@ -60,6 +62,7 @@ type MockFan struct {
 	RPM             int
 	curveId         string
 	shouldNeverStop bool
+	speedCurve      *map[int]float64
 }
 
 func (fan MockFan) GetStartPwm() int {
@@ -108,11 +111,12 @@ func (fan *MockFan) SetPwm(pwm int) (err error) {
 }
 
 func (fan MockFan) GetFanCurveData() *map[int]float64 {
-	panic("implement me")
+	return fan.speedCurve
 }
 
 func (fan *MockFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
-	panic("implement me")
+	fan.speedCurve = curveData
+	return err
 }
 
 func (fan MockFan) GetPwmEnabled() (int, error) {
@@ -148,31 +152,50 @@ func (fan MockFan) Supports(feature int) bool {
 }
 
 var (
-	LinearFan = map[int]float64{
+	LinearFan = util.InterpolateLinearly(
+		&map[int]float64{
+			0:   0.0,
+			255: 255.0,
+		},
+		0, 255,
+	)
+
+	NeverStoppingFan = util.InterpolateLinearly(
+		&map[int]float64{
+			0:   50.0,
+			50:  50.0,
+			255: 255.0,
+		},
+		0, 255,
+	)
+
+	CappedFan = util.InterpolateLinearly(
+		&map[int]float64{
+			0:   0.0,
+			1:   0.0,
+			2:   0.0,
+			3:   0.0,
+			4:   0.0,
+			5:   0.0,
+			6:   20.0,
+			200: 200.0,
+		},
+		0, 255,
+	)
+
+	CappedNeverStoppingFan = util.InterpolateLinearly(
+		&map[int]float64{
+			0:   50.0,
+			50:  50.0,
+			200: 200.0,
+		},
+		0, 255,
+	)
+
+	DutyCycleFan = map[int]float64{
 		0:   0.0,
-		255: 255.0,
-	}
-
-	NeverStoppingFan = map[int]float64{
-		0:   50.0,
 		50:  50.0,
-		255: 255.0,
-	}
-
-	CappedFan = map[int]float64{
-		0:   0.0,
-		1:   0.0,
-		2:   0.0,
-		3:   0.0,
-		4:   0.0,
-		5:   0.0,
-		6:   20.0,
-		200: 200.0,
-	}
-
-	CappedNeverStoppingFan = map[int]float64{
-		0:   50.0,
-		50:  50.0,
+		100: 50.0,
 		200: 200.0,
 	}
 )
@@ -184,6 +207,7 @@ func (p mockPersistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
 	fanCurveDataMap := map[int]float64{}
 	return fanCurveDataMap, nil
 }
+func (p mockPersistence) DeleteFanPwmData(fan fans.Fan) (err error) { return nil }
 
 func CreateFan(neverStop bool, curveData map[int]float64, startPwm *int) (fan fans.Fan, err error) {
 	configuration.CurrentConfig.RpmRollingWindowSize = 10
@@ -280,6 +304,7 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 		PWM:             0,
 		shouldNeverStop: false,
 		curveId:         curve.GetId(),
+		speedCurve:      &LinearFan,
 	}
 	fans.FanMap[fan.GetId()] = fan
 
@@ -289,6 +314,8 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 		curve:       curve,
 		updateRate:  time.Duration(100),
 	}
+	controller.updateSupportedPwmValues()
+
 	// WHEN
 	optimal := controller.calculateTargetPwm()
 
@@ -321,6 +348,7 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 		MinPWM:          10,
 		curveId:         curve.GetId(),
 		shouldNeverStop: true,
+		speedCurve:      &NeverStoppingFan,
 	}
 	fans.FanMap[fan.GetId()] = fan
 
@@ -329,6 +357,7 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 		curve:      curve,
 		updateRate: time.Duration(100),
 	}
+	controller.updateSupportedPwmValues()
 
 	// WHEN
 	target := controller.calculateTargetPwm()
@@ -349,4 +378,67 @@ func TestFanWithStartPwmConfig(t *testing.T) {
 	// THEN
 	assert.Equal(t, startPwm, newStartPwm)
 	assert.Equal(t, 255, maxPwm)
+}
+
+func TestFanController_ComputePwmBoundaries_FanCurveGaps(t *testing.T) {
+	// GIVEN
+	fan, _ := CreateFan(false, DutyCycleFan, nil)
+
+	// WHEN
+	startPwm, maxPwm := fans.ComputePwmBoundaries(fan)
+
+	// THEN
+	assert.Equal(t, 50, startPwm)
+	assert.Equal(t, 200, maxPwm)
+}
+
+func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
+	// GIVEN
+	// GIVEN
+	avgTmp := 40000.0
+
+	s := MockSensor{
+		ID:        "sensor",
+		Name:      "sensor",
+		MovingAvg: avgTmp,
+	}
+	sensors.SensorMap[s.GetId()] = &s
+
+	curveValue := 10
+	curve := &MockCurve{
+		ID:    "curve",
+		Value: curveValue,
+	}
+	curves.SpeedCurveMap[curve.GetId()] = curve
+
+	fan := &MockFan{
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          50,
+		curveId:         curve.GetId(),
+		shouldNeverStop: true,
+		speedCurve:      &DutyCycleFan,
+	}
+	fans.FanMap[fan.GetId()] = fan
+
+	var keys []int
+	for pwm := range DutyCycleFan {
+		keys = append(keys, pwm)
+	}
+	sort.Ints(keys)
+
+	controller := fanController{
+		persistence: mockPersistence{}, fan: fan,
+		curve:      curve,
+		updateRate: time.Duration(100),
+	}
+	controller.updateSupportedPwmValues()
+
+	// WHEN
+	targetPwm := controller.calculateTargetPwm()
+
+	// THEN
+	assert.Contains(t, keys, targetPwm)
+	assert.Equal(t, 50, targetPwm)
 }
