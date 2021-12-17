@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"github.com/asecurityteam/rolling"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
@@ -87,8 +86,6 @@ func (f *fanController) Run(ctx context.Context) error {
 	ui.Info("Start PWM of %s: %d", fan.GetId(), fan.GetMinPwm())
 	ui.Info("Max PWM of %s: %d", fan.GetId(), fan.GetMaxPwm())
 
-	trySetManualPwm(fan)
-
 	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
 
 	var g run.Group
@@ -146,10 +143,10 @@ func (f *fanController) UpdateFanSpeed() error {
 	fan := f.fan
 	target := f.calculateTargetPwm()
 	if target >= 0 {
+		_ = trySetManualPwm(f.fan)
 		err := f.setPwm(target)
 		if err != nil {
 			ui.Error("Error setting %s: %v", fan.GetId(), err)
-			trySetManualPwm(fan)
 		}
 	}
 
@@ -173,7 +170,10 @@ func (f *fanController) runInitializationSequence() (err error) {
 		defer InitializationSequenceMutex.Unlock()
 	}
 
-	trySetManualPwm(fan)
+	err = trySetManualPwm(fan)
+	if err != nil {
+		ui.Warning("Could not enable manual fan mode on %s, trying to continue anyway...", f.fan.GetId())
+	}
 
 	initialMeasurement := true
 	for pwm := fans.MinPwmValue; pwm <= fans.MaxPwmValue; pwm++ {
@@ -189,7 +189,7 @@ func (f *fanController) runInitializationSequence() (err error) {
 		// TODO: this has to be done _always_, while the RPM measurements only make sense if the fan supports it
 		actualPwm := fan.GetPwm()
 		if actualPwm != pwm {
-			ui.Warning("Actual PWM value differs from requested one, skipping. Requested: %d Actual: %d", pwm, actualPwm)
+			ui.Debug("Actual PWM value differs from requested one, skipping. Requested: %d Actual: %d", pwm, actualPwm)
 			continue
 		}
 
@@ -235,14 +235,12 @@ func measureRpm(fan fans.Fan) {
 	(*pwmRpmMap)[pwm] = float64(rpm)
 }
 
-func trySetManualPwm(fan fans.Fan) {
+func trySetManualPwm(fan fans.Fan) error {
 	err := fan.SetPwmEnabled(1)
 	if err != nil {
 		err = fan.SetPwmEnabled(0)
 	}
-	if err != nil {
-		ui.Warning("Could not enable fan control on %s, trying to continue anyway...", fan.GetId())
-	}
+	return err
 }
 
 func (f *fanController) restorePwmEnabled() {
@@ -339,7 +337,7 @@ func (f *fanController) waitForFanToSettle(fan fans.Fan) {
 	diffThreshold := configuration.CurrentConfig.MaxRpmDiffForSettledFan
 
 	measuredRpmDiffWindow := util.CreateRollingWindow(10)
-	fillWindow(measuredRpmDiffWindow, 10, 2*diffThreshold)
+	util.FillWindow(measuredRpmDiffWindow, 10, 2*diffThreshold)
 	measuredRpmDiffMax := 2 * diffThreshold
 	oldRpm := 0
 	for !(measuredRpmDiffMax < diffThreshold) {
@@ -347,20 +345,8 @@ func (f *fanController) waitForFanToSettle(fan fans.Fan) {
 		currentRpm := fan.GetRpm()
 		measuredRpmDiffWindow.Append(math.Abs(float64(currentRpm - oldRpm)))
 		oldRpm = currentRpm
-		measuredRpmDiffMax = math.Ceil(getWindowMax(measuredRpmDiffWindow))
+		measuredRpmDiffMax = math.Ceil(util.GetWindowMax(measuredRpmDiffWindow))
 		time.Sleep(1 * time.Second)
 	}
 	ui.Debug("Fan %s has settled (current RPM max diff: %f)", fan.GetId(), measuredRpmDiffMax)
-}
-
-// completely fills the given window with the given value
-func fillWindow(window *rolling.PointPolicy, size int, value float64) {
-	for i := 0; i < size; i++ {
-		window.Append(value)
-	}
-}
-
-// returns the max value in the window
-func getWindowMax(window *rolling.PointPolicy) float64 {
-	return window.Reduce(rolling.Max)
 }
