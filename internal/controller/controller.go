@@ -61,7 +61,7 @@ func (f *fanController) Run(ctx context.Context) error {
 	if err != nil {
 		_, ok := fan.(*fans.HwMonFan)
 		if ok {
-			ui.Warning("No fan curve data found for fan '%s', starting initialization sequence...", fan.GetId())
+			ui.Warning("Fan '%s' has not yet been analyzed, starting initialization sequence...", fan.GetId())
 			err = f.runInitializationSequence()
 			if err != nil {
 				return err
