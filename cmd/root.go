@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/markusressel/fan2go/cmd/fan"
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -31,6 +32,15 @@ on your computer based on temperature sensors.`,
 		configuration.ReadConfigFile()
 		internal.RunDaemon()
 	},
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")
+	rootCmd.PersistentFlags().BoolVarP(&noColor, "no-color", "", false, "Disable all terminal output coloration")
+	rootCmd.PersistentFlags().BoolVarP(&noStyle, "no-style", "", false, "Disable all terminal output styling")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "More verbose output")
+
+	rootCmd.AddCommand(fan.Command)
 }
 
 func setupUi() {
@@ -63,13 +73,8 @@ func Execute() {
 		configuration.InitConfig(cfgFile)
 	})
 
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")
-	rootCmd.PersistentFlags().BoolVarP(&noColor, "no-color", "", false, "Disable all terminal output coloration")
-	rootCmd.PersistentFlags().BoolVarP(&noStyle, "no-style", "", false, "Disable all terminal output styling")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "More verbose output")
-
 	if err := rootCmd.Execute(); err != nil {
-		ui.Fatal("Error Executing daemon: %v", err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
