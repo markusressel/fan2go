@@ -15,6 +15,7 @@ var setSpeedCmd = &cobra.Command{
 	Use:   "setSpeed",
 	Short: "Set the speed of a fan to the given PWM value ([0..255])",
 	Long:  ``,
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fanIdFlag := cmd.Flag("id")
 		fanId := fanIdFlag.Value.String()
@@ -56,6 +57,7 @@ var setSpeedCmd = &cobra.Command{
 				if err != nil {
 					return err
 				}
+
 				return fan.SetPwm(pwmValue)
 			}
 		}
