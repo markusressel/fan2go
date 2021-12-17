@@ -107,7 +107,7 @@ func RunDaemon() {
 
 		g.Add(func() error {
 			<-sig
-			ui.Info("Exiting...")
+			ui.Info("Received SIGTERM signal, exiting...")
 			return nil
 		}, func(err error) {
 			cancel()
