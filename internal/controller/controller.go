@@ -168,12 +168,7 @@ func (f *fanController) UpdateFanSpeed() error {
 func (f *fanController) runInitializationSequence() (err error) {
 	fan := f.fan
 
-	if fan.GetFanCurveData() == nil {
-		err := fan.AttachFanCurveData(&map[int]float64{})
-		if err != nil {
-			panic(err)
-		}
-	}
+	curveData := map[int]float64{}
 
 	if configuration.CurrentConfig.RunFanInitializationInParallel == false {
 		InitializationSequenceMutex.Lock()
@@ -219,10 +214,15 @@ func (f *fanController) runInitializationSequence() (err error) {
 
 		// update rpm curve
 		fan.SetRpmAvg(float64(rpm))
-		pwmRpmMap := fan.GetFanCurveData()
-		(*pwmRpmMap)[pwm] = float64(rpm)
+		curveData[pwm] = float64(rpm)
 
 		ui.Debug("Measured RPM of %d at PWM %d for fan %s", int(fan.GetRpmAvg()), pwm, fan.GetId())
+	}
+
+	err = fan.AttachFanCurveData(&curveData)
+	if err != nil {
+		ui.Error("Failed to attach fan curve data to fan %s: %v", fan.GetId(), err)
+		return err
 	}
 
 	// save to database to restore it on restarts
