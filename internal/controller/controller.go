@@ -34,16 +34,20 @@ type fanController struct {
 	originalPwmEnabled int
 	// the last pwm value that was set to the fan
 	lastSetPwm *int
-	// a list of all directly supported PWM values by the controlled fan
-	supportedPwmValues []int
+	// a list of all pwm values where setPwm(x) != setPwm(y) for the controlled fan
+	pwmValuesWithDistinctTarget []int
+	// a map of x -> getPwm() where x is setPwm(x) for the controlled fan
+	pwmMap map[int]int
 }
 
 func NewFanController(persistence persistence.Persistence, fan fans.Fan, updateRate time.Duration) FanController {
 	return &fanController{
-		persistence: persistence,
-		fan:         fan,
-		curve:       curves.SpeedCurveMap[fan.GetCurveId()],
-		updateRate:  updateRate,
+		persistence:                 persistence,
+		fan:                         fan,
+		curve:                       curves.SpeedCurveMap[fan.GetCurveId()],
+		updateRate:                  updateRate,
+		pwmValuesWithDistinctTarget: []int{},
+		pwmMap:                      map[int]int{},
 	}
 }
 
@@ -91,7 +95,8 @@ func (f *fanController) Run(ctx context.Context) error {
 		return err
 	}
 
-	f.updateSupportedPwmValues()
+	f.updatePwmMap()
+	f.updateDistinctPwmValues()
 
 	ui.Info("Start PWM of %s: %d", fan.GetId(), fan.GetMinPwm())
 	ui.Info("Max PWM of %s: %d", fan.GetId(), fan.GetMaxPwm())
@@ -297,13 +302,14 @@ func (f *fanController) calculateTargetPwm() int {
 	target = minPwm + int((float64(target)/fans.MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
 
 	// map the target value to the closest value supported by the fan
-	target = f.mapToSupported(target)
+	target = f.mapToClosestDistinct(target)
 
-	if f.lastSetPwm != nil {
+	if f.lastSetPwm != nil && f.pwmMap != nil {
 		lastSetPwm := *(f.lastSetPwm)
-		if lastSetPwm != currentPwm {
+		expected := f.pwmMap[lastSetPwm]
+		if currentPwm != expected {
 			ui.Warning("PWM of %s was changed by third party! Last set PWM value was: %d but is now: %d",
-				fan.GetId(), lastSetPwm, currentPwm)
+				fan.GetId(), expected, currentPwm)
 		}
 	}
 
@@ -364,16 +370,30 @@ func (f *fanController) waitForFanToSettle(fan fans.Fan) {
 	ui.Debug("Fan %s has settled (current RPM max diff: %f)", fan.GetId(), measuredRpmDiffMax)
 }
 
-func (f *fanController) mapToSupported(target int) int {
-	return util.FindClosest(target, f.supportedPwmValues)
+func (f *fanController) mapToClosestDistinct(target int) int {
+	closest := util.FindClosest(target, f.pwmValuesWithDistinctTarget)
+	return f.pwmMap[closest]
 }
 
-func (f *fanController) updateSupportedPwmValues() {
+func (f *fanController) updatePwmMap() {
+	for i := 0; i <= 255; i++ {
+		f.fan.SetPwm(i)
+		time.Sleep(10 * time.Millisecond)
+		f.pwmMap[i] = f.fan.GetPwm()
+	}
+}
+
+func (f *fanController) updateDistinctPwmValues() {
 	var keys []int
-	for pwm := range *f.fan.GetFanCurveData() {
-		keys = append(keys, pwm)
+
+	lastDistinctOutput := -1
+	for input, output := range f.pwmMap {
+		if lastDistinctOutput == -1 || lastDistinctOutput != output {
+			lastDistinctOutput = output
+			keys = append(keys, input)
+		}
 	}
 	sort.Ints(keys)
 
-	f.supportedPwmValues = keys
+	f.pwmValuesWithDistinctTarget = keys
 }
