@@ -209,6 +209,14 @@ func (p mockPersistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
 }
 func (p mockPersistence) DeleteFanPwmData(fan fans.Fan) (err error) { return nil }
 
+func createOneToOnePwmMap() map[int]int {
+	var pwmMap = map[int]int{}
+	for i := fans.MinPwmValue; i <= fans.MaxPwmValue; i++ {
+		pwmMap[i] = i
+	}
+	return pwmMap
+}
+
 func CreateFan(neverStop bool, curveData map[int]float64, startPwm *int) (fan fans.Fan, err error) {
 	configuration.CurrentConfig.RpmRollingWindowSize = 10
 
@@ -313,8 +321,9 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 		fan:         fan,
 		curve:       curve,
 		updateRate:  time.Duration(100),
+		pwmMap:      createOneToOnePwmMap(),
 	}
-	controller.updateSupportedPwmValues()
+	controller.updateDistinctPwmValues()
 
 	// WHEN
 	optimal := controller.calculateTargetPwm()
@@ -356,8 +365,9 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 		persistence: mockPersistence{}, fan: fan,
 		curve:      curve,
 		updateRate: time.Duration(100),
+		pwmMap:     createOneToOnePwmMap(),
 	}
-	controller.updateSupportedPwmValues()
+	controller.updateDistinctPwmValues()
 
 	// WHEN
 	target := controller.calculateTargetPwm()
@@ -393,7 +403,6 @@ func TestFanController_ComputePwmBoundaries_FanCurveGaps(t *testing.T) {
 }
 
 func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
-	// GIVEN
 	// GIVEN
 	avgTmp := 40000.0
 
@@ -432,8 +441,17 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 		persistence: mockPersistence{}, fan: fan,
 		curve:      curve,
 		updateRate: time.Duration(100),
+		pwmMap: map[int]int{
+			0:   0,
+			1:   1,
+			40:  40,
+			58:  50,
+			100: 120,
+			222: 200,
+			255: 255,
+		},
 	}
-	controller.updateSupportedPwmValues()
+	controller.updateDistinctPwmValues()
 
 	// WHEN
 	targetPwm := controller.calculateTargetPwm()
