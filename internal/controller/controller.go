@@ -113,6 +113,7 @@ func (f *fanController) Run(ctx context.Context) error {
 			for {
 				select {
 				case <-ctx.Done():
+					ui.Info("Stopping RPM monitor of fan controller for fan %s...", fan.GetId())
 					return nil
 				case <-tick:
 					measureRpm(fan)
@@ -318,21 +319,20 @@ func (f *fanController) calculateTargetPwm() int {
 		// and adjusting the target PWM value upwards if necessary
 		shouldNeverStop := fan.ShouldNeverStop()
 		if shouldNeverStop && (f.lastSetPwm != nil || f.lastSetPwm == &target) {
-			avgRpm := int(fan.GetRpmAvg())
+			avgRpm := fan.GetRpmAvg()
 			if avgRpm <= 0 {
 				if target >= maxPwm {
-					ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), avgRpm, target)
+					ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), int(avgRpm), target)
 					return -1
 				}
 				ui.Warning("WARNING: Increasing startPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d",
-					fan.GetId(), fan.GetMinPwm(), fan.GetMinPwm()+1, avgRpm)
+					fan.GetId(), fan.GetMinPwm(), fan.GetMinPwm()+1, int(avgRpm))
 				fan.SetMinPwm(fan.GetMinPwm() + 1)
 				target++
 
 				// set the moving avg to a value > 0 to prevent
 				// this increase from happening too fast
 				fan.SetRpmAvg(1)
-				err = f.setPwm(fan.GetMinPwm())
 			}
 		}
 	}
@@ -343,8 +343,10 @@ func (f *fanController) calculateTargetPwm() int {
 // set the pwm speed of a fan to the specified value (0..255)
 func (f *fanController) setPwm(target int) (err error) {
 	current := f.fan.GetPwm()
+
 	f.lastSetPwm = &target
-	if target == current {
+	if f.pwmMap[target] == current {
+		// nothing to do
 		return nil
 	}
 	err = f.fan.SetPwm(target)
