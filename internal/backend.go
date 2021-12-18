@@ -35,6 +35,7 @@ func RunDaemon() {
 	InitializeObjects()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	var g run.Group
 	{
@@ -46,19 +47,30 @@ func RunDaemon() {
 				if port <= 0 || port >= 65535 {
 					port = 9000
 				}
+
 				endpoint := "/metrics"
 				addr := fmt.Sprintf(":%d", port)
+
 				handler := promhttp.Handler()
 				http.Handle(endpoint, handler)
-				server := &http.Server{Addr: addr, Handler: handler}
-				if err := server.ListenAndServe(); err != nil {
-					ui.Error("Cannot start prometheus metrics endpoint (%s)", err.Error())
+
+				server := &http.Server{
+					Addr:         addr,
+					Handler:      handler,
+					ReadTimeout:  1 * time.Second,
+					WriteTimeout: 1 * time.Second,
 				}
+
+				go func() {
+					if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+						ui.Error("Cannot start prometheus metrics endpoint (%s)", err.Error())
+					}
+				}()
 
 				select {
 				case <-ctx.Done():
 					ui.Info("Stopping statistics server...")
-					timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+					timeoutCtx, timeoutCancel := context.WithTimeout(ctx, 5*time.Second)
 					defer timeoutCancel()
 					return server.Shutdown(timeoutCtx)
 				}
