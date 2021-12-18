@@ -376,7 +376,7 @@ func (f *fanController) mapToClosestDistinct(target int) int {
 }
 
 func (f *fanController) updatePwmMap() {
-	for i := 0; i <= 255; i++ {
+	for i := fans.MaxPwmValue; i >= fans.MinPwmValue; i-- {
 		f.fan.SetPwm(i)
 		time.Sleep(10 * time.Millisecond)
 		f.pwmMap[i] = f.fan.GetPwm()
