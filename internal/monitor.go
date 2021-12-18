@@ -30,6 +30,7 @@ func (s sensorMonitor) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
+			ui.Info("Stopping sensor monitor for sensor %s...", s.sensor.GetId())
 			return nil
 		case <-tick:
 			err := updateSensor(s.sensor)
