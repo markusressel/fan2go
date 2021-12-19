@@ -2,7 +2,11 @@
   <img src="screenshots/fan2go_icon.svg" width="144" height="144" alt="fan2go icon">
 </p>
 
+<h1 align="center">fan2go</h1>
+
 <p align="center">A daemon to control the fans of a computer.</p>
+
+
 
 <p align="center"><img src="screenshots/graph.png" width=90% alt="Screenshot of Pyrra"></p>
 
