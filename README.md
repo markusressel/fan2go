@@ -19,6 +19,9 @@
   * [x] File Fan/Sensor for control/measurement of custom devices 
 * [x] Works after resume from suspend
 * [x] **Stable** device paths after reboot
+* [x] Automatic analysis of fan properties, like:
+  * [x] RPM curve
+  * [x] minimum and maximum PWM
 
 # How to use
 
