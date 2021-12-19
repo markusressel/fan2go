@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 func RunDaemon() {
@@ -34,6 +35,7 @@ func RunDaemon() {
 	InitializeObjects()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	var g run.Group
 	{
@@ -45,16 +47,38 @@ func RunDaemon() {
 				if port <= 0 || port >= 65535 {
 					port = 9000
 				}
+
 				endpoint := "/metrics"
 				addr := fmt.Sprintf(":%d", port)
-				http.Handle(endpoint, promhttp.Handler())
-				if err := http.ListenAndServe(addr, nil); err != nil {
-					ui.Error("Cannot start prometheus metrics endpoint (%s)", err.Error())
+
+				handler := promhttp.Handler()
+				http.Handle(endpoint, handler)
+
+				server := &http.Server{
+					Addr:         addr,
+					Handler:      handler,
+					ReadTimeout:  1 * time.Second,
+					WriteTimeout: 1 * time.Second,
 				}
-				select {}
+
+				go func() {
+					if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+						ui.Error("Cannot start prometheus metrics endpoint (%s)", err.Error())
+					}
+				}()
+
+				select {
+				case <-ctx.Done():
+					ui.Info("Stopping statistics server...")
+					timeoutCtx, timeoutCancel := context.WithTimeout(ctx, 5*time.Second)
+					defer timeoutCancel()
+					return server.Shutdown(timeoutCtx)
+				}
 			}, func(err error) {
 				if err != nil {
-					ui.Warning("Error ")
+					ui.Warning("Error stopping statistics server: " + err.Error())
+				} else {
+					ui.Info("Statistics server stopped.")
 				}
 			})
 		}
@@ -62,11 +86,13 @@ func RunDaemon() {
 	{
 		// === sensor monitoring
 		for _, sensor := range sensors.SensorMap {
+			s := sensor
 			pollingRate := configuration.CurrentConfig.TempSensorPollingRate
-			mon := NewSensorMonitor(sensor, pollingRate)
+			mon := NewSensorMonitor(s, pollingRate)
 
 			g.Add(func() error {
 				err := mon.Run(ctx)
+				ui.Info("Sensor Monitor for sensor %s stopped.", s.GetId())
 				if err != nil {
 					panic(err)
 				}
@@ -81,11 +107,13 @@ func RunDaemon() {
 	{
 		// === fan controllers
 		for _, fan := range fans.FanMap {
+			f := fan
 			updateRate := configuration.CurrentConfig.ControllerAdjustmentTickRate
-			fanController := controller.NewFanController(pers, fan, updateRate)
+			fanController := controller.NewFanController(pers, f, updateRate)
 
 			g.Add(func() error {
 				err := fanController.Run(ctx)
+				ui.Info("Fan controller for fan %s stopped.", f.GetId())
 				if err != nil {
 					panic(err)
 				}
@@ -110,14 +138,17 @@ func RunDaemon() {
 			ui.Info("Received SIGTERM signal, exiting...")
 			return nil
 		}, func(err error) {
+			defer close(sig)
 			cancel()
-			close(sig)
 		})
 	}
 
 	if err := g.Run(); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	} else {
+		ui.Info("Done.")
+		os.Exit(0)
 	}
 }
 
@@ -211,7 +242,6 @@ func InitializeObjects() {
 
 	fanCollector := statistics.NewFanCollector(fanList)
 	statistics.Register(fanCollector)
-
 }
 
 func getProcessOwner() string {

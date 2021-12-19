@@ -6,6 +6,7 @@ import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
+	"os"
 	"path/filepath"
 )
 
@@ -95,6 +96,28 @@ func (fan *HwMonFan) SetPwm(pwm int) (err error) {
 
 func (fan HwMonFan) GetFanCurveData() *map[int]float64 {
 	return fan.FanCurveData
+}
+
+// AttachFanCurveData attaches fan curve data from persistence to a fan
+// Note: When the given data is incomplete, all values up until the highest
+// value in the given dataset will be interpolated linearly
+// returns os.ErrInvalid if curveData is void of any data
+func (fan *HwMonFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
+	if curveData == nil || len(*curveData) <= 0 {
+		ui.Error("Cant attach empty fan curve data to fan %s", fan.GetId())
+		return os.ErrInvalid
+	}
+
+	fan.FanCurveData = curveData
+
+	startPwm, maxPwm := ComputePwmBoundaries(fan)
+	fan.SetStartPwm(startPwm)
+	fan.SetMaxPwm(maxPwm)
+
+	// TODO: we don't have a way to determine this yet
+	fan.SetMinPwm(startPwm)
+
+	return err
 }
 
 func (fan HwMonFan) GetCurveId() string {

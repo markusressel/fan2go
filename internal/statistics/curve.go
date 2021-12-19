@@ -5,12 +5,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const subsystemCurve = "curve"
+
 type CurveCollector struct {
 	curves []curves.SpeedCurve
 	value  *prometheus.Desc
 }
-
-const subsystemCurve = "curve"
 
 func NewCurveCollector(curves []curves.SpeedCurve) *CurveCollector {
 	return &CurveCollector{

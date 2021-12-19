@@ -25,11 +25,28 @@ var (
 	}
 )
 
-func TestWriteFan(t *testing.T) {
+func TestPersistence_DeleteFanPwmData(t *testing.T) {
+	// GIVEN
+	p := NewPersistence(dbTestingPath)
+	fan, _ := createFan(false, LinearFan)
+	err := p.SaveFanPwmData(fan)
+
+	// WHEN
+	err = p.DeleteFanPwmData(fan)
+	assert.NoError(t, err)
+
+	// THEN
+	data, err := p.LoadFanPwmData(fan)
+	assert.Nil(t, data)
+	assert.Error(t, err)
+}
+
+func TestPersistence_SaveFanPwmData_LinearFanInterpolated(t *testing.T) {
 	// GIVEN
 	p := NewPersistence(dbTestingPath)
 
-	fan, _ := createFan(false, LinearFan)
+	expected := util.InterpolateLinearly(&LinearFan, 0, 255)
+	fan, _ := createFan(false, expected)
 
 	// WHEN
 	err := p.SaveFanPwmData(fan)
@@ -38,12 +55,45 @@ func TestWriteFan(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-func TestReadFan(t *testing.T) {
+func TestPersistence_LoadFanPwmData_LinearFanInterpolated(t *testing.T) {
 	// GIVEN
 	persistence := NewPersistence(dbTestingPath)
 
-	fan, _ := createFan(false, NeverStoppingFan)
-	expected := util.InterpolateLinearly(fan.GetFanCurveData(), 0, 255)
+	expected := util.InterpolateLinearly(&LinearFan, 0, 255)
+	fan, _ := createFan(false, expected)
+
+	err := persistence.SaveFanPwmData(fan)
+	assert.NoError(t, err)
+
+	// WHEN
+	fanData, err := persistence.LoadFanPwmData(fan)
+
+	// THEN
+	assert.Nil(t, err)
+	assert.NotNil(t, fanData)
+	assert.Equal(t, expected, fanData)
+}
+
+func TestPersistence_SaveFanPwmData_SamplesNotInterpolated(t *testing.T) {
+	// GIVEN
+	p := NewPersistence(dbTestingPath)
+
+	expected := NeverStoppingFan
+	fan, _ := createFan(false, expected)
+
+	// WHEN
+	err := p.SaveFanPwmData(fan)
+
+	// THEN
+	assert.Nil(t, err)
+}
+
+func TestPersistence_LoadFanPwmData_SamplesNotInterpolated(t *testing.T) {
+	// GIVEN
+	persistence := NewPersistence(dbTestingPath)
+
+	expected := NeverStoppingFan
+	fan, _ := createFan(false, expected)
 
 	err := persistence.SaveFanPwmData(fan)
 	assert.NoError(t, err)
