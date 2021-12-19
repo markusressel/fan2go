@@ -4,7 +4,7 @@
 
 <p align="center">A daemon to control the fans of a computer.</p>
 
-![graph](screenshots/graph.png)
+<p align="center"><img src="screenshots/graph.png" width=90% alt="Screenshot of Pyrra"></p>
 
 # How to use
 
