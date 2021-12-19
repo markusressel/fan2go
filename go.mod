@@ -7,9 +7,11 @@ require (
 	github.com/guptarohit/asciigraph v0.5.2
 	github.com/looplab/tarjan v0.1.0
 	github.com/mattn/go-colorable v0.1.8 // indirect
+	github.com/mattn/go-gtk v0.0.0-20191030024613-af2e013261f5 // indirect
 	github.com/md14454/gosensors v0.0.0-20180726083412-bded752ab001
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d
 	github.com/mitchellh/go-homedir v1.1.0
+	github.com/mqu/go-notify v0.0.0-20130719194048-ef6f6f49d093
 	github.com/oklog/run v1.1.0
 	github.com/prometheus/client_golang v1.11.0
 	github.com/pterm/pterm v0.12.33
