@@ -1,6 +1,12 @@
-# fan2go
+<div style="align-content: center; text-align: center">
 
-A daemon to control the fans of a computer.
+  <a href="https://github.com/markusressel/fan2go">
+    <img src="screenshots/fan2go_icon.svg" width="144" height="144" alt="fan2go icon">
+  </a>
+  <p style="font-size: xxx-large; font-weight: bold">fan2go</p>
+  A daemon to control the fans of a computer.
+
+</div>
 
 ![graph](screenshots/graph.png)
 
