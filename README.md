@@ -10,6 +10,16 @@
 
 <p align="center"><img src="screenshots/graph.png" width=90% alt="Screenshot of Pyrra"></p>
 
+# Features
+
+* [x] Fan speed control using user-defined speed curves
+* [x] Fully customizable and composable curve definitions
+* [x] Massive range of supported devices
+  * [x] Direct integration with lm-sensors 
+  * [x] File Fan/Sensor for control/measurement of custom devices 
+* [x] Works after resume from suspend
+* [x] **Stable** device paths after reboot
+
 # How to use
 
 fan2go relies on [lm-sensors](https://github.com/lm-sensors/lm-sensors) to get both temperature and RPM sensor readings,
