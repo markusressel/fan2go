@@ -114,6 +114,12 @@ func validateSensors(config *Configuration) {
 		if !isSensorConfigInUse(sensorConfig, config.Curves) {
 			ui.Warning("Unused sensor configuration: %s", sensorConfig.ID)
 		}
+
+		if sensorConfig.HwMon != nil {
+			if sensorConfig.HwMon.Index <= 0 {
+				ui.Fatal("Sensor %s: invalid index, must be >= 1", sensorConfig.ID)
+			}
+		}
 	}
 }
 
@@ -208,6 +214,12 @@ func validateFans(config *Configuration) {
 
 		if len(fanConfig.Curve) <= 0 {
 			ui.Fatal("Fan %s: missing curve definition in configuration entry", fanConfig.ID)
+		}
+
+		if fanConfig.HwMon != nil {
+			if fanConfig.HwMon.Index <= 0 {
+				ui.Fatal("Fan %s: invalid index, must be >= 1", fanConfig.ID)
+			}
 		}
 	}
 }
