@@ -31,6 +31,14 @@
   </g>
   <g
           id="layer2">
+    <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from="360 50 50"
+            to="0 50 50"
+            dur="2s"
+            repeatCount="indefinite"/>
+
     <g
             transform="matrix(0.81352599,0,0,0.81314402,9.4808795,-764.9234)"
             id="g6">
