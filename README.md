@@ -1,12 +1,19 @@
-<p align="center">
+<h1 align="center">
   <img src="screenshots/fan2go_icon.svg" width="144" height="144" alt="fan2go icon">
-</p>
+  <br>
+  fan2go
+  <br>
+</h1>
 
-<h1 align="center">fan2go</h1>
+<h4 align="center">A daemon to control the fans of a computer.</h4>
 
-<p align="center">A daemon to control the fans of a computer.</p>
-
-
+<div align="center">
+  
+  [![Programming Language](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)]()
+  [![Latest Release](https://img.shields.io/github/release/markusressel/fan2go.svg)](https://github.com/markusressel/fan2go/releases)
+  [![License](https://img.shields.io/badge/license-AGPLv3-blue.svg)](/LICENSE)
+  
+</div>
 
 <p align="center"><img src="screenshots/graph.png" width=90% alt="Screenshot of Pyrra"></p>
 
@@ -31,7 +38,7 @@ to [set it up first](https://wiki.archlinux.org/index.php/Lm_sensors#Installatio
 
 ## Installation
 
-### AUR
+### ![](https://img.shields.io/badge/Arch_Linux-1793D1?logo=arch-linux&logoColor=white)
 
 A third-party maintained AUR package has been created by [manvari](https://github.com/manvari).
 
