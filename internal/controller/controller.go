@@ -379,6 +379,7 @@ func (f *fanController) mapToClosestDistinct(target int) int {
 
 func (f *fanController) updatePwmMap() {
 	fan := f.fan
+	trySetManualPwm(fan)
 
 	// check every pwm value
 	for i := fans.MaxPwmValue; i >= fans.MinPwmValue; i-- {

@@ -258,7 +258,28 @@ sudo systemctl enable --now fan2go
 journalctl -u fan2go -f
 ```
 
-## Print fan curve data
+## CLI Commands
+
+### Fans interaction
+
+```shell
+> fan2go fan --id cpu speed 100
+
+> fan2go fan --id cpu speed
+255
+
+> fan2go fan --id cpu rpm
+546
+```
+
+### Sensors
+
+```shell
+> fan2go sensor --id cpu_package
+46000
+```
+
+### Print fan curve data
 
 For each newly configured fan **fan2go** measures its fan curve and stores it in a db for future reference. You can take
 a look at this measurement using the following command:
