@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/markusressel/fan2go/cmd/fan"
+	"github.com/markusressel/fan2go/cmd/sensor"
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -41,6 +42,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "More verbose output")
 
 	rootCmd.AddCommand(fan.Command)
+	rootCmd.AddCommand(sensor.Command)
 }
 
 func setupUi() {

@@ -54,10 +54,6 @@ func getFan(id string) (fans.Fan, error) {
 				}
 			}
 
-			if len(config.HwMon.PwmOutput) <= 0 {
-				return nil, errors.New(fmt.Sprintf("Unable to find pwm output for fan %s", id))
-			}
-
 			fan, err := fans.NewFan(config)
 			if err != nil {
 				return nil, err
