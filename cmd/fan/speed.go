@@ -1,7 +1,8 @@
 package fan
 
 import (
-	"github.com/markusressel/fan2go/internal/ui"
+	"fmt"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"strconv"
 )
@@ -12,6 +13,8 @@ var speedCmd = &cobra.Command{
 	Long:  ``,
 	Args:  cobra.RangeArgs(0, 1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		pterm.DisableOutput()
+
 		fanIdFlag := cmd.Flag("id")
 		fanId := fanIdFlag.Value.String()
 
@@ -30,7 +33,7 @@ var speedCmd = &cobra.Command{
 				return err
 			}
 		} else {
-			ui.Printfln("%d", fan.GetPwm())
+			fmt.Printf("%d", fan.GetPwm())
 			return nil
 		}
 

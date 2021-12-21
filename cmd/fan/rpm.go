@@ -1,7 +1,8 @@
 package fan
 
 import (
-	"github.com/markusressel/fan2go/internal/ui"
+	"fmt"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -11,6 +12,8 @@ var rpmCmd = &cobra.Command{
 	Long:  ``,
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		pterm.DisableOutput()
+
 		fanIdFlag := cmd.Flag("id")
 		fanId := fanIdFlag.Value.String()
 
@@ -19,7 +22,7 @@ var rpmCmd = &cobra.Command{
 			return err
 		}
 
-		ui.Printfln("%d", fan.GetRpm())
+		fmt.Printf("%d", fan.GetRpm())
 		return nil
 	},
 }

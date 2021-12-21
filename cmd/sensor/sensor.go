@@ -6,7 +6,7 @@ import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/hwmon"
 	"github.com/markusressel/fan2go/internal/sensors"
-	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"regexp"
 )
@@ -20,6 +20,8 @@ var Command = &cobra.Command{
 	TraverseChildren: true,
 	Args:             cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		pterm.DisableOutput()
+
 		sensorIdFlag := cmd.Flag("id")
 		sensorId := sensorIdFlag.Value.String()
 
@@ -32,7 +34,7 @@ var Command = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		ui.Printfln("%d", int(value))
+		fmt.Printf("%d", int(value))
 		return nil
 	},
 }
