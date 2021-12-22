@@ -260,6 +260,9 @@ journalctl -u fan2go -f
 
 ## CLI Commands
 
+Although fan2go is a fan controller daemon at heart, it also provides some handy cli commands
+to interact with the devices that you have specified within your config.
+
 ### Fans interaction
 
 ```shell
@@ -331,7 +334,8 @@ statistics:
   port: 9000
 ```
 
-You can then see the metics on [http://localhost:9000/metrics](http://localhost:9000/metrics).
+You can then see the metics on [http://localhost:9000/metrics](http://localhost:9000/metrics) while the fan2go daemon
+is running.
 
 # How it works
 
@@ -367,6 +371,12 @@ Fan speeds are continuously adjusted at the rate specified by the `controllerAdj
 # Dependencies
 
 See [go.mod](go.mod)
+
+# Similar Projects
+
+* [nbfc](https://github.com/hirschmann/nbfc)
+* [thinkfan](https://github.com/vmatare/thinkfan)
+* [fancon](https://github.com/hbriese/fancon)
 
 # License
 
