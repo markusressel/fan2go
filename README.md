@@ -241,8 +241,15 @@ An example configuration file including more detailed documentation can be found
 
 ## Run
 
+Assuming you put your configuration file in `/etc/fan2go/fan2go.yaml`:
+
 ```shell
 sudo fan2go
+```
+
+Alternatively you can specify the path to your configuration file like this:
+```shell
+fan2go -c /home/markus/my_fan2go_config.yaml
 ```
 
 ## As a Service
