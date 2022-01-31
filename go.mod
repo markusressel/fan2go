@@ -10,7 +10,7 @@ require (
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/oklog/run v1.1.0
-	github.com/prometheus/client_golang v1.12.0
+	github.com/prometheus/client_golang v1.12.1
 	github.com/pterm/pterm v0.12.34
 	github.com/spf13/cobra v1.3.0
 	github.com/spf13/viper v1.10.1
