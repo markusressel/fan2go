@@ -266,7 +266,7 @@ func TestFunctionCurveDelta(t *testing.T) {
 
 func TestFunctionCurveMinimum(t *testing.T) {
 	// GIVEN
-	temp1 := 40000.0
+	temp1 := 60000.0
 	temp2 := 80000.0
 
 	s1 := MockSensor{
@@ -319,7 +319,7 @@ func TestFunctionCurveMinimum(t *testing.T) {
 	}
 
 	// THEN
-	assert.Equal(t, 0, result)
+	assert.Equal(t, 127, result)
 }
 
 func TestFunctionCurveMaximum(t *testing.T) {
