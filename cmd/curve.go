@@ -19,9 +19,15 @@ import (
 var curveCmd = &cobra.Command{
 	Use:   "curve",
 	Short: "Print the measured fan curve(s) to console",
-	//Long:  `All software has versions. This is fan2go's`,
 	Run: func(cmd *cobra.Command, args []string) {
-		configuration.ReadConfigFile()
+		configPath := configuration.DetectConfigFile()
+		ui.Info("Using configuration file at: %s", configPath)
+		configuration.LoadConfig()
+		err := configuration.Validate()
+		if err != nil {
+			ui.Fatal(err.Error())
+		}
+
 		persistence := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
 
 		controllers := hwmon.GetChips()

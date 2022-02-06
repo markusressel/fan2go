@@ -6,6 +6,7 @@ import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/hwmon"
 	"github.com/markusressel/fan2go/internal/sensors"
+	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"regexp"
@@ -50,7 +51,13 @@ func init() {
 }
 
 func getSensor(id string) (sensors.Sensor, error) {
-	configuration.ReadConfigFile()
+	configPath := configuration.DetectConfigFile()
+	ui.Info("Using configuration file at: %s", configPath)
+	configuration.LoadConfig()
+	err := configuration.Validate()
+	if err != nil {
+		ui.Fatal(err.Error())
+	}
 
 	controllers := hwmon.GetChips()
 
