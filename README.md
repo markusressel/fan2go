@@ -8,11 +8,11 @@
 <h4 align="center">A daemon to control the fans of a computer.</h4>
 
 <div align="center">
-  
-  [![Programming Language](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)]()
-  [![Latest Release](https://img.shields.io/github/release/markusressel/fan2go.svg)](https://github.com/markusressel/fan2go/releases)
-  [![License](https://img.shields.io/badge/license-AGPLv3-blue.svg)](/LICENSE)
-  
+
+[![Programming Language](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)]()
+[![Latest Release](https://img.shields.io/github/release/markusressel/fan2go.svg)](https://github.com/markusressel/fan2go/releases)
+[![License](https://img.shields.io/badge/license-AGPLv3-blue.svg)](/LICENSE)
+
 </div>
 
 <p align="center"><img src="screenshots/graph.png" width=90% alt="Screenshot of Pyrra"></p>
@@ -22,8 +22,8 @@
 * [x] Fan speed control using user-defined speed curves
 * [x] Fully customizable and composable curve definitions
 * [x] Massive range of supported devices
-  * [x] Direct integration with lm-sensors 
-  * [x] File Fan/Sensor for control/measurement of custom devices 
+  * [x] Direct integration with lm-sensors
+  * [x] File Fan/Sensor for control/measurement of custom devices
 * [x] Works after resume from suspend
 * [x] **Stable** device paths after reboot
 * [x] Automatic analysis of fan properties, like:
@@ -137,7 +137,7 @@ fans:
       path: /tmp/file_fan
 ```
 
-```bash
+```shell
 > cat /tmp/file_fan
 255
 ```
@@ -239,17 +239,38 @@ curves:
 
 An example configuration file including more detailed documentation can be found in [fan2go.yaml](/fan2go.yaml).
 
-## Run
+### Verify your Configuration
 
-Assuming you put your configuration file in `/etc/fan2go/fan2go.yaml`:
+To check whether your configuration is correct before actually running fan2go you can use:
 
 ```shell
-sudo fan2go
+> fan2go config validate
+ INFO  Using configuration file at: ./fan2go.yaml
+ SUCCESS  Config looks good! :)
+```
+
+or to validate a specific config file:
+
+```shell
+> fan2go -c "./my_config.yaml" config validate
+ INFO  Using configuration file at: ./my_config.yaml
+ WARNING  Unused curve configuration: m2_first_ssd_curve
+  ERROR   Validation failed: Curve m2_ssd_curve: no curve definition with id 'm2_first_ssd_curve123' found
+```
+
+## Run
+
+After successfully verifying your configuration you can launch fan2go from the CLI and make sure the initial setup is
+working as expected. Assuming you put your configuration file in `/etc/fan2go/fan2go.yaml` run:
+
+```shell
+> sudo fan2go
 ```
 
 Alternatively you can specify the path to your configuration file like this:
+
 ```shell
-fan2go -c /home/markus/my_fan2go_config.yaml
+> fan2go -c /home/markus/my_fan2go_config.yaml
 ```
 
 ## As a Service
@@ -267,8 +288,8 @@ journalctl -u fan2go -f
 
 ## CLI Commands
 
-Although fan2go is a fan controller daemon at heart, it also provides some handy cli commands
-to interact with the devices that you have specified within your config.
+Although fan2go is a fan controller daemon at heart, it also provides some handy cli commands to interact with the
+devices that you have specified within your config.
 
 ### Fans interaction
 
@@ -341,8 +362,8 @@ statistics:
   port: 9000
 ```
 
-You can then see the metics on [http://localhost:9000/metrics](http://localhost:9000/metrics) while the fan2go daemon
-is running.
+You can then see the metics on [http://localhost:9000/metrics](http://localhost:9000/metrics) while the fan2go daemon is
+running.
 
 # How it works
 
@@ -361,19 +382,22 @@ To properly control a fan which fan2go has not seen before, its speed curve is a
 measurements. Measurements taken during this process will then be used to determine the lowest PWM value at which the
 fan is still running, as well as the highest PWM value that still yields a change in RPM.
 
-All of this is saved to a local database (path given by the `dbPath` config option), so it is only needed once per fan configuration.
+All of this is saved to a local database (path given by the `dbPath` config option), so it is only needed once per fan
+configuration.
 
-To reduce the risk of runnin the whole system on low fan speeds for such a long period of time, you can force fan2go to initialize only
-one fan at a time, using the `runFanInitializationInParallel: false` config option.
+To reduce the risk of runnin the whole system on low fan speeds for such a long period of time, you can force fan2go to
+initialize only one fan at a time, using the `runFanInitializationInParallel: false` config option.
 
 ## Monitoring
 
 Temperature and RPM sensors are polled continuously at the rate specified by the `tempSensorPollingRate` config option.
-`tempRollingWindowSize`/`rpmRollingWindowSize` amount of measurements are always averaged and stored as the average sensor value.
+`tempRollingWindowSize`/`rpmRollingWindowSize` amount of measurements are always averaged and stored as the average
+sensor value.
 
 ## Fan Controllers
 
-Fan speeds are continuously adjusted at the rate specified by the `controllerAdjustmentTickRate` config option based on the value of their associated curve.
+Fan speeds are continuously adjusted at the rate specified by the `controllerAdjustmentTickRate` config option based on
+the value of their associated curve.
 
 # Dependencies
 

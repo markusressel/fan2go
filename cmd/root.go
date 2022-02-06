@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/markusressel/fan2go/cmd/config"
 	"github.com/markusressel/fan2go/cmd/fan"
 	"github.com/markusressel/fan2go/cmd/sensor"
 	"github.com/markusressel/fan2go/internal"
@@ -30,7 +31,14 @@ on your computer based on temperature sensors.`,
 		setupUi()
 		printHeader()
 
-		configuration.ReadConfigFile()
+		configPath := configuration.DetectConfigFile()
+		ui.Info("Using configuration file at: %s", configPath)
+		configuration.LoadConfig()
+		err := configuration.Validate()
+		if err != nil {
+			ui.Fatal(err.Error())
+		}
+
 		internal.RunDaemon()
 	},
 }
@@ -40,6 +48,8 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&noColor, "no-color", "", false, "Disable all terminal output coloration")
 	rootCmd.PersistentFlags().BoolVarP(&noStyle, "no-style", "", false, "Disable all terminal output styling")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "More verbose output")
+
+	rootCmd.AddCommand(config.Command)
 
 	rootCmd.AddCommand(fan.Command)
 	rootCmd.AddCommand(sensor.Command)

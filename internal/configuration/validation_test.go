@@ -19,7 +19,7 @@ func TestValidateFanSubConfigIsMissing(t *testing.T) {
 	}
 
 	// WHEN
-	err := validateConfig(&config)
+	err := ValidateConfig(&config)
 
 	// THEN
 	assert.EqualError(t, err, "Fans fan: sub-configuration for fan is missing, use one of: hwmon | file")
@@ -41,7 +41,7 @@ func TestValidateFanCurveWithIdIsNotDefined(t *testing.T) {
 	}
 
 	// WHEN
-	err := validateConfig(&config)
+	err := ValidateConfig(&config)
 
 	// THEN
 	assert.EqualError(t, err, "Fan fan: no curve definition with id 'curve' found")
@@ -60,7 +60,7 @@ func TestValidateCurveSubConfigSensorIdIsMissing(t *testing.T) {
 	}
 
 	// WHEN
-	err := validateConfig(&config)
+	err := ValidateConfig(&config)
 
 	// THEN
 	assert.EqualError(t, err, "Curve curve: sub-configuration for curve is missing, use one of: linear | function")
@@ -82,7 +82,7 @@ func TestValidateCurveSensorIdIsMissing(t *testing.T) {
 	}
 
 	// WHEN
-	err := validateConfig(&config)
+	err := ValidateConfig(&config)
 
 	// THEN
 	assert.EqualError(t, err, "Curve curve: Missing sensorId")
@@ -104,7 +104,7 @@ func TestValidateCurveSensorWithIdIsNotDefined(t *testing.T) {
 	}
 
 	// WHEN
-	err := validateConfig(&config)
+	err := ValidateConfig(&config)
 
 	// THEN
 	assert.EqualError(t, err, "Curve curve: no sensor definition with id 'sensor' found")
@@ -127,7 +127,7 @@ func TestValidateCurveDependencyToSelf(t *testing.T) {
 	}
 
 	// WHEN
-	err := validateConfig(&config)
+	err := ValidateConfig(&config)
 
 	// THEN
 	assert.EqualError(t, err, "Curve curve: a curve cannot reference itself")
@@ -176,7 +176,7 @@ func TestValidateCurveDependencyCycle(t *testing.T) {
 	}
 
 	// WHEN
-	err := validateConfig(&config)
+	err := ValidateConfig(&config)
 
 	// THEN
 	assert.Contains(t, err.Error(), "You have created a curve dependency cycle")
@@ -184,6 +184,29 @@ func TestValidateCurveDependencyCycle(t *testing.T) {
 	// "manual" check to avoid a flaky test
 	assert.Contains(t, err.Error(), "curve1")
 	assert.Contains(t, err.Error(), "curve2")
+}
+
+func TestValidateCurveDependencyWithIdIsNotDefined(t *testing.T) {
+	// GIVEN
+	config := Configuration{
+		Curves: []CurveConfig{
+			{
+				ID: "curve1",
+				Function: &FunctionCurveConfig{
+					Type: FunctionAverage,
+					Curves: []string{
+						"curve2",
+					},
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := ValidateConfig(&config)
+
+	// THEN
+	assert.EqualError(t, err, "Curve curve1: no curve definition with id 'curve2' found")
 }
 
 func TestValidateCurve(t *testing.T) {
@@ -211,7 +234,7 @@ func TestValidateCurve(t *testing.T) {
 	}
 
 	// WHEN
-	err := validateConfig(&config)
+	err := ValidateConfig(&config)
 
 	// THEN
 	assert.NoError(t, err)
@@ -228,7 +251,7 @@ func TestValidateSensorSubConfigSensorIdIsMissing(t *testing.T) {
 	}
 
 	// WHEN
-	err := validateConfig(&config)
+	err := ValidateConfig(&config)
 
 	// THEN
 	assert.EqualError(t, err, "Sensor sensor: sub-configuration for sensor is missing, use one of: hwmon | file")
@@ -248,7 +271,7 @@ func TestValidateSensor(t *testing.T) {
 	}
 
 	// WHEN
-	err := validateConfig(&config)
+	err := ValidateConfig(&config)
 
 	// THEN
 	assert.NoError(t, err)

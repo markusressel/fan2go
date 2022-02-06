@@ -8,7 +8,11 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 )
 
-func validateConfig(config *Configuration) error {
+func Validate() error {
+	return ValidateConfig(&CurrentConfig)
+}
+
+func ValidateConfig(config *Configuration) error {
 	err := validateSensors(config)
 	if err != nil {
 		return err
