@@ -40,8 +40,6 @@ to [set it up first](https://wiki.archlinux.org/index.php/Lm_sensors#Installatio
 
 ### ![](https://img.shields.io/badge/Arch_Linux-1793D1?logo=arch-linux&logoColor=white)
 
-A third-party maintained AUR package has been created by [manvari](https://github.com/manvari).
-
 ```shell
 yay -S fan2go-git
 ```
