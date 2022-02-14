@@ -403,8 +403,8 @@ github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5Cc
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/subosito/gotenv v1.2.0 h1:Slr1R9HxAlEKefgq5jn9U+DnETlIUa6HfgEzj0g5d7s=
 github.com/subosito/gotenv v1.2.0/go.mod h1:N0PQaV/YGNqwC0u51sEeR/aUtSLEXKX9iv69rRypqCw=
-github.com/tomlazar/table v0.1.0 h1:cu8RBBJnwfMZE6W64rAbU9Rz+8ZZ+5KHmObCP5aHWPE=
-github.com/tomlazar/table v0.1.0/go.mod h1:POaW/39XThwZumQz5/5qas6G+STjFeI5DuCv5ht1ML0=
+github.com/tomlazar/table v0.1.1 h1:iGtj1ftxJIMwl8MM+Tea6TS9+gWvP/+KWSob95xjI7w=
+github.com/tomlazar/table v0.1.1/go.mod h1:1etC74FpdsahhSNt1lPeVDQWj1cNIHtMuWqRb/fAdoo=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
 github.com/xo/terminfo v0.0.0-20210125001918-ca9a967f8778 h1:QldyIu/L63oPpyvQmHgvgickp1Yw510KJOqX7H24mg8=
 github.com/xo/terminfo v0.0.0-20210125001918-ca9a967f8778/go.mod h1:2MuV+tbUrU1zIOPMxZ5EncGwgmMJsa+9ucAQZXxsObs=
