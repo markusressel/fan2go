@@ -56,7 +56,7 @@ func isSensorConfigInUse(config SensorConfig, curves []CurveConfig) bool {
 			// function curves cannot reference sensors
 			continue
 		}
-		if curveConfig.Linear.Sensor == config.ID {
+		if curveConfig.Linear != nil && curveConfig.Linear.Sensor == config.ID {
 			return true
 		}
 	}
