@@ -174,6 +174,14 @@ The file contains a value in milli-units, like milli-degrees.
 10000
 ```
 
+```yaml
+sensors:
+  - id: cmd_fan
+    cmd:
+      exec: /usr/bin/nvidia-settings
+      args: ['-q', 'gpucoretemp', '-t']
+```
+
 ### Curves
 
 Under `curves:` you need to define a list of fan speed curves, which represent the speed of a fan based on one or more

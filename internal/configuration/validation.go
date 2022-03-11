@@ -28,12 +28,13 @@ func ValidateConfig(config *Configuration) error {
 
 func validateSensors(config *Configuration) error {
 	for _, sensorConfig := range config.Sensors {
-		if sensorConfig.HwMon != nil && sensorConfig.File != nil {
+
+		if sensorConfig.HwMon != nil && sensorConfig.File != nil && sensorConfig.Cmd != nil {
 			return errors.New(fmt.Sprintf("Sensor %s: only one sensor type can be used per sensor definition block", sensorConfig.ID))
 		}
 
-		if sensorConfig.HwMon == nil && sensorConfig.File == nil {
-			return errors.New(fmt.Sprintf("Sensor %s: sub-configuration for sensor is missing, use one of: hwmon | file", sensorConfig.ID))
+		if sensorConfig.HwMon == nil && sensorConfig.File == nil && sensorConfig.Cmd == nil {
+			return errors.New(fmt.Sprintf("Sensor %s: sub-configuration for sensor is missing, use one of: hwmon | file | cmd", sensorConfig.ID))
 		}
 
 		if !isSensorConfigInUse(sensorConfig, config.Curves) {
@@ -158,7 +159,7 @@ func validateFans(config *Configuration) error {
 		}
 
 		if fanConfig.HwMon == nil && fanConfig.File == nil {
-			return errors.New(fmt.Sprintf("Fans %s: sub-configuration for fan is missing, use one of: hwmon | file", fanConfig.ID))
+			return errors.New(fmt.Sprintf("Fans %s: sub-configuration for fan is missing, use one of: hwmon | file | cmd", fanConfig.ID))
 		}
 
 		if len(fanConfig.Curve) <= 0 {
