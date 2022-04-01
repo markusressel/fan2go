@@ -1,6 +1,7 @@
 package sensors
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type CmdSensor struct {
@@ -29,14 +31,22 @@ func (sensor CmdSensor) GetConfig() configuration.SensorConfig {
 
 func (sensor CmdSensor) GetValue() (float64, error) {
 	if _, err := util.CheckFilePermissionsForExecution(sensor.Exec); err != nil {
-		return 0, errors.New(fmt.Sprintf("Cannot execute %s: %s", sensor.Exec, err))
+		return 0, errors.New(fmt.Sprintf("Sensor %s: Cannot execute %s: %s", sensor.Config.ID, sensor.Exec, err))
 	}
 
-	cmd := exec.Command(sensor.Exec, sensor.Args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
 
+	cmd := exec.CommandContext(ctx, sensor.Exec, sensor.Args...)
 	out, err := cmd.Output()
+
+	if ctx.Err() == context.DeadlineExceeded {
+		ui.Warning("Sensor %s: Command timed out: %s", sensor.Config.ID, sensor.Exec)
+		return 0, err
+	}
+
 	if err != nil {
-		ui.Warning("Command failed to execute: %s", sensor.Exec)
+		ui.Warning("Sensor %s: Command failed to execute: %s", sensor.Config.ID, sensor.Exec)
 		return 0, err
 	}
 
@@ -45,7 +55,7 @@ func (sensor CmdSensor) GetValue() (float64, error) {
 
 	temp, err := strconv.ParseFloat(strout, 64)
 	if err != nil {
-		ui.Warning("Unable to read int from command output: %s", sensor.Exec)
+		ui.Warning("Sensor %s: Unable to read int from command output: %s", sensor.Config.ID, sensor.Exec)
 		return 0, err
 	}
 
