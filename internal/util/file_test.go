@@ -6,9 +6,11 @@ import (
 	"testing"
 )
 
-// TODO: these tests need to run as root
-
 func TestFileHasPermissionsUserIsRoot(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("Skipping tests which require root")
+	}
+
 	// GIVEN
 	filePath := "./testfile"
 
@@ -32,6 +34,10 @@ func TestFileHasPermissionsUserIsRoot(t *testing.T) {
 }
 
 func TestFileHasPermissionsGroupIsRootAndHasWrite(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("Skipping tests which require root")
+	}
+
 	// GIVEN
 	filePath := "./testfile"
 
@@ -55,6 +61,10 @@ func TestFileHasPermissionsGroupIsRootAndHasWrite(t *testing.T) {
 }
 
 func TestFileHasPermissionsGroupOtherThanRootHasWritePermission(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("Skipping tests which require root")
+	}
+
 	// GIVEN
 	filePath := "./testfile"
 
@@ -78,6 +88,10 @@ func TestFileHasPermissionsGroupOtherThanRootHasWritePermission(t *testing.T) {
 }
 
 func TestFileHasPermissionsOtherHasWritePermission(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("Skipping tests which require root")
+	}
+
 	// GIVEN
 	filePath := "./testfile"
 
