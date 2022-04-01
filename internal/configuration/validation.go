@@ -8,7 +8,11 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 )
 
-func Validate() error {
+func Validate(configPath string) error {
+	if _, err := util.CheckFilePermissionsForExecution(configPath); err != nil {
+		return errors.New(fmt.Sprintf("Config file '%s' has invalid permissions: %s", configPath, err))
+	}
+
 	return ValidateConfig(&CurrentConfig)
 }
 

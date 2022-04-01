@@ -23,7 +23,7 @@ var curveCmd = &cobra.Command{
 		configPath := configuration.DetectConfigFile()
 		ui.Info("Using configuration file at: %s", configPath)
 		configuration.LoadConfig()
-		err := configuration.Validate()
+		err := configuration.Validate(configPath)
 		if err != nil {
 			ui.Fatal(err.Error())
 		}
