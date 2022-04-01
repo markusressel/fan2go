@@ -151,7 +151,7 @@ sensors:
   # A user defined ID, which is used to reference
   # a sensor in a curve configuration (see below)
   - id: cpu_package
-    # The type of sensor configuration, one of: hwmon | file
+    # The type of sensor configuration, one of: hwmon | file | cmd
     hwmon:
       # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
       # "coretemp", "it8620", "corsaircpro-*" etc.
@@ -164,6 +164,7 @@ sensors:
 sensors:
   - id: file_sensor
     file:
+      # Path to the file containing sensor values
       path: /tmp/file_sensor
 ```
 
@@ -178,9 +179,14 @@ The file contains a value in milli-units, like milli-degrees.
 sensors:
   - id: cmd_fan
     cmd:
+      # Path to the executable to run to retrieve the current sensor value
       exec: /usr/bin/nvidia-settings
-      args: ['-q', 'gpucoretemp', '-t']
+      # (optional) arguments to pass to the executable
+      args: [ '-q', 'gpucoretemp', '-t' ]
 ```
+
+Please also make sure to read the section
+about [considerations for using the cmd sensor/fan](##Using external commands for sensors/fans).
 
 ### Curves
 
@@ -263,6 +269,25 @@ or to validate a specific config file:
  WARNING  Unused curve configuration: m2_first_ssd_curve
   ERROR   Validation failed: Curve m2_ssd_curve: no curve definition with id 'm2_first_ssd_curve123' found
 ```
+
+## Using external commands for sensors/fans
+
+fan2go supports using external executables for use as both sensor input, as well as fan output (and rpm input). There
+are some considerations you should take into account before using this feature though:
+
+### Security
+
+Since fan2go requires root permissions to interact with lm-sensors, executables run by fan2go are also executed as root.
+To prevent some malicious actor from taking advantage of this fan2go will only allow the execution of files that only
+allow the root user (UID 0) to modify the file.
+
+### Side effects
+
+Running external commands repeatedly through fan2go can have unintended side effects. F.ex., on a laptop using hybrid
+graphics, running `nvidia-settings` can cause the dedicated GPU to wake up, resulting in substantial increase in power
+consumption while on battery. Also, fan2go expects to be able to update sensor values with a minimal delay, so using a
+long running script or some network call with a long timeout could also cause problems. With great power comes great
+responsibility, always remember that :)
 
 ## Run
 

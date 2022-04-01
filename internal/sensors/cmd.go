@@ -1,8 +1,11 @@
 package sensors
 
 import (
+	"errors"
+	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -25,6 +28,10 @@ func (sensor CmdSensor) GetConfig() configuration.SensorConfig {
 }
 
 func (sensor CmdSensor) GetValue() (float64, error) {
+	if _, err := util.CheckFilePermissionsForExecution(sensor.Exec); err != nil {
+		return 0, errors.New(fmt.Sprintf("Cannot execute %s: %s", sensor.Exec, err))
+	}
+
 	cmd := exec.Command(sensor.Exec, sensor.Args...)
 
 	out, err := cmd.Output()
