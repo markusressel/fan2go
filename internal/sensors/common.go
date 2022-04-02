@@ -39,5 +39,14 @@ func NewSensor(config configuration.SensorConfig) (Sensor, error) {
 		}, nil
 	}
 
+	if config.Cmd != nil {
+		return &CmdSensor{
+			Name:   config.ID,
+			Exec:   config.Cmd.Exec,
+			Args:   config.Cmd.Args,
+			Config: config,
+		}, nil
+	}
+
 	return nil, fmt.Errorf("no matching sensor type for sensor: %s", config.ID)
 }
