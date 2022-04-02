@@ -397,6 +397,15 @@ sensor value.
 Fan speeds are continuously adjusted at the rate specified by the `controllerAdjustmentTickRate` config option based on
 the value of their associated curve.
 
+# FAQ
+
+## Why are my SATA HDD drives not detected?
+
+**TL;DR**: `modprobe drivetemp`
+
+While _lm-sensors_ doesn't provide temperature sensors of SATA drives by default, you can use the kernel module 
+`drivetemp` to enable this. See [here](https://wiki.archlinux.org/title/Lm_sensors#S.M.A.R.T._drive_temperature)
+
 # Dependencies
 
 See [go.mod](go.mod)
