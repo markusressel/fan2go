@@ -186,7 +186,7 @@ sensors:
 ```
 
 Please also make sure to read the section
-about [considerations for using the cmd sensor/fan](##Using external commands for sensors/fans).
+about [considerations for using the cmd sensor/fan](#using-external-commands-for-sensorsfans).
 
 ### Curves
 
