@@ -256,8 +256,8 @@ An example configuration file including more detailed documentation can be found
 To check whether your configuration is correct before actually running fan2go you can use:
 
 ```shell
-> fan2go config validate
- INFO  Using configuration file at: ./fan2go.yaml
+> sudo fan2go config validate
+ INFO  Using configuration file at: /etc/fan2go/fan2go.yaml
  SUCCESS  Config looks good! :)
 ```
 
@@ -301,7 +301,7 @@ working as expected. Assuming you put your configuration file in `/etc/fan2go/fa
 Alternatively you can specify the path to your configuration file like this:
 
 ```shell
-> fan2go -c /home/markus/my_fan2go_config.yaml
+> sudo fan2go -c /home/markus/my_fan2go_config.yaml
 ```
 
 ## As a Service
