@@ -50,11 +50,19 @@ var detectCmd = &cobra.Command{
 
 			var fanRows [][]string
 			for _, fan := range fanList {
-				pwm := fan.GetPwm()
-				rpm := fan.GetRpm()
+				pwmText := "N/A"
+				if pwm, err := fan.GetPwm(); err == nil {
+					pwmText = strconv.Itoa(pwm)
+				}
+
+				rpmText := "N/A"
+				if rpm, err := fan.GetPwm(); err == nil {
+					rpmText = strconv.Itoa(rpm)
+				}
+
 				isAuto, _ := fan.IsPwmAuto()
 				fanRows = append(fanRows, []string{
-					"", strconv.Itoa(fan.Index), fan.Label, strconv.Itoa(rpm), strconv.Itoa(pwm), fmt.Sprintf("%v", isAuto),
+					"", strconv.Itoa(fan.Index), fan.Label, rpmText, pwmText, fmt.Sprintf("%v", isAuto),
 				})
 			}
 			var fanHeaders = []string{"Fans   ", "Index", "Label", "RPM", "PWM", "Auto"}
@@ -66,13 +74,17 @@ var detectCmd = &cobra.Command{
 
 			var sensorRows [][]string
 			for _, sensor := range sensorList {
-				value, _ := sensor.GetValue()
+				value, err := sensor.GetValue()
+				valueText := "N/A"
+				if err == nil {
+					valueText = strconv.Itoa(int(value))
+				}
 
 				_, file := filepath.Split(sensor.Input)
 				labelAndFile := fmt.Sprintf("%s (%s)", sensor.Label, file)
 
 				sensorRows = append(sensorRows, []string{
-					"", strconv.Itoa(sensor.Index), labelAndFile, strconv.Itoa(int(value)),
+					"", strconv.Itoa(sensor.Index), labelAndFile, valueText,
 				})
 			}
 			var sensorHeaders = []string{"Sensors", "Index", "Label", "Value"}

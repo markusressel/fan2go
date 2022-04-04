@@ -18,9 +18,10 @@ var rpmCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
-		fmt.Printf("%d", fan.GetRpm())
-		return nil
+		if rpm, err := fan.GetRpm(); err == nil {
+			fmt.Printf("%d", rpm)
+		}
+		return err
 	},
 }
 

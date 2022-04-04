@@ -26,12 +26,10 @@ var speedCmd = &cobra.Command{
 				return err
 			}
 			err = fan.SetPwm(pwmValue)
-			if err != nil {
-				return err
-			}
 		} else {
-			fmt.Printf("%d", fan.GetPwm())
-			return nil
+			if pwm, err := fan.GetPwm(); err == nil {
+				fmt.Printf("%d", pwm)
+			}
 		}
 
 		return err

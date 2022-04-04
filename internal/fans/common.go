@@ -35,12 +35,12 @@ type Fan interface {
 	SetMaxPwm(pwm int)
 
 	// GetRpm returns the current RPM value of this fan
-	GetRpm() int
+	GetRpm() (int, error)
 	GetRpmAvg() float64
 	SetRpmAvg(rpm float64)
 
 	// GetPwm returns the current PWM value of this fan
-	GetPwm() int
+	GetPwm() (int, error)
 	SetPwm(pwm int) (err error)
 
 	// GetFanCurveData returns the fan curve data for this fan

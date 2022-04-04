@@ -36,7 +36,11 @@ func (collector *FanCollector) Describe(ch chan<- *prometheus.Desc) {
 func (collector *FanCollector) Collect(ch chan<- prometheus.Metric) {
 	for _, fan := range collector.fans {
 		fanId := fan.GetId()
-		ch <- prometheus.MustNewConstMetric(collector.pwm, prometheus.GaugeValue, float64(fan.GetPwm()), fanId)
-		ch <- prometheus.MustNewConstMetric(collector.rpm, prometheus.GaugeValue, float64(fan.GetRpm()), fanId)
+
+		pwm, _ := fan.GetPwm()
+		rpm, _ := fan.GetRpm()
+
+		ch <- prometheus.MustNewConstMetric(collector.pwm, prometheus.GaugeValue, float64(pwm), fanId)
+		ch <- prometheus.MustNewConstMetric(collector.rpm, prometheus.GaugeValue, float64(rpm), fanId)
 	}
 }
