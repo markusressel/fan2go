@@ -15,6 +15,8 @@ import (
 )
 
 var (
+	version, commit, date = "dev", "dev", ""
+
 	cfgFile string
 	noColor bool
 	noStyle bool

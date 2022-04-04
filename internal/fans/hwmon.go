@@ -64,12 +64,12 @@ func (fan *HwMonFan) SetMaxPwm(pwm int) {
 	fan.MaxPwm = pwm
 }
 
-func (fan HwMonFan) GetRpm() int {
-	value, err := util.ReadIntFromFile(fan.RpmInput)
-	if err != nil {
-		value = -1
+func (fan HwMonFan) GetRpm() (int, error) {
+	if value, err := util.ReadIntFromFile(fan.RpmInput); err != nil {
+		return 0, err
+	} else {
+		return value, nil
 	}
-	return value
 }
 
 func (fan HwMonFan) GetRpmAvg() float64 {
@@ -80,12 +80,12 @@ func (fan *HwMonFan) SetRpmAvg(rpm float64) {
 	fan.RpmMovingAvg = rpm
 }
 
-func (fan HwMonFan) GetPwm() int {
+func (fan HwMonFan) GetPwm() (int, error) {
 	value, err := util.ReadIntFromFile(fan.PwmOutput)
 	if err != nil {
-		value = MinPwmValue
+		return MinPwmValue, err
 	}
-	return value
+	return value, nil
 }
 
 func (fan *HwMonFan) SetPwm(pwm int) (err error) {

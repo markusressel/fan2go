@@ -14,16 +14,14 @@ var rpmCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pterm.DisableOutput()
 
-		fanIdFlag := cmd.Flag("id")
-		fanId := fanIdFlag.Value.String()
-
 		fan, err := getFan(fanId)
 		if err != nil {
 			return err
 		}
-
-		fmt.Printf("%d", fan.GetRpm())
-		return nil
+		if rpm, err := fan.GetRpm(); err == nil {
+			fmt.Printf("%d", rpm)
+		}
+		return err
 	},
 }
 
