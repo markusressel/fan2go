@@ -89,8 +89,8 @@ func (fan *MockFan) SetMaxPwm(pwm int) {
 	panic("not supported")
 }
 
-func (fan MockFan) GetRpm() int {
-	return fan.RPM
+func (fan MockFan) GetRpm() (int, error) {
+	return fan.RPM, nil
 }
 
 func (fan MockFan) GetRpmAvg() float64 {
@@ -101,8 +101,8 @@ func (fan *MockFan) SetRpmAvg(rpm float64) {
 	panic("not supported")
 }
 
-func (fan MockFan) GetPwm() (result int) {
-	return fan.PWM
+func (fan MockFan) GetPwm() (result int, err error) {
+	return fan.PWM, nil
 }
 
 func (fan *MockFan) SetPwm(pwm int) (err error) {

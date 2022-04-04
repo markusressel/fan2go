@@ -23,9 +23,6 @@ var Command = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pterm.DisableOutput()
 
-		sensorIdFlag := cmd.Flag("id")
-		sensorId := sensorIdFlag.Value.String()
-
 		sensor, err := getSensor(sensorId)
 		if err != nil {
 			return err

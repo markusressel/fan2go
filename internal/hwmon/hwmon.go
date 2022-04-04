@@ -19,6 +19,7 @@ const (
 	BusTypeVirtual = 4
 	BusTypeAcpi    = 5
 	BusTypeHid     = 6
+	BusTypeScsi    = 8
 )
 
 type HwMonController struct {
@@ -266,6 +267,8 @@ func computeIdentifier(chip gosensors.Chip) (name string) {
 		identifier = fmt.Sprintf("%s-acpi-%d", identifier, chip.Bus.Nr)
 	case BusTypeHid:
 		identifier = fmt.Sprintf("%s-hid-%d-%d", identifier, chip.Bus.Nr, chip.Addr)
+	case BusTypeScsi:
+		identifier = fmt.Sprintf("%s-scsi-%d-%d", identifier, chip.Bus.Nr, chip.Addr)
 	}
 
 	return identifier

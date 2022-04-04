@@ -6,6 +6,8 @@ import (
 	"github.com/looplab/tarjan"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
+	"golang.org/x/exp/slices"
+	"strings"
 )
 
 func Validate(configPath string) error {
@@ -104,6 +106,11 @@ func validateCurves(config *Configuration) error {
 		}
 
 		if curveConfig.Function != nil {
+			supportedTypes := []string{FunctionMinimum, FunctionAverage, FunctionMaximum, FunctionDelta}
+			if !slices.Contains(supportedTypes, curveConfig.Function.Type) {
+				return errors.New(fmt.Sprintf("Curve %s: unsupported function type '%s', use one of: %s", curveConfig.ID, curveConfig.Function.Type, strings.Join(supportedTypes, " | ")))
+			}
+
 			var connections []interface{}
 			for _, curve := range curveConfig.Function.Curves {
 				if curve == curveConfig.ID {
