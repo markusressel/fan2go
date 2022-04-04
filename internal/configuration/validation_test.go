@@ -240,6 +240,29 @@ func TestValidateCurve(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestValidateCurveFunctionTypeUnsupported(t *testing.T) {
+	// GIVEN
+	config := Configuration{
+		Curves: []CurveConfig{
+			{
+				ID: "curve1",
+				Function: &FunctionCurveConfig{
+					Type: "unsupported",
+					Curves: []string{
+						"curve2",
+					},
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := ValidateConfig(&config)
+
+	// THEN
+	assert.EqualError(t, err, "Curve curve1: unsupported function type 'unsupported', use one of: minimum | average | maximum | delta")
+}
+
 func TestValidateSensorSubConfigSensorIdIsMissing(t *testing.T) {
 	// GIVEN
 	config := Configuration{
