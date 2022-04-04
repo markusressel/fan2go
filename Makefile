@@ -9,7 +9,7 @@ run:
 	./${OUTPUT_DIR}${BINARY_NAME}
 
 test:
-	sudo go test -v ./...
+	go test -v ./...
 
 clean:
 	go clean
