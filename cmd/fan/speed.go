@@ -15,9 +15,6 @@ var speedCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pterm.DisableOutput()
 
-		fanIdFlag := cmd.Flag("id")
-		fanId := fanIdFlag.Value.String()
-
 		fan, err := getFan(fanId)
 		if err != nil {
 			return err

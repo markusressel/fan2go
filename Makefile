@@ -1,16 +1,24 @@
-BINARY_NAME=fan2go
-OUTPUT_DIR=bin/
+GO_FLAGS   ?=
+NAME       := fan2go
+OUTPUT_BIN ?= bin/${NAME}
+PACKAGE    := github.com/markusressel/$(NAME)
+GIT_REV    ?= $(shell git rev-parse --short HEAD)
+SOURCE_DATE_EPOCH ?= $(shell date +%s)
+DATE       ?= $(shell date -u -d @${SOURCE_DATE_EPOCH} +"%Y-%m-%dT%H:%M:%SZ")
+VERSION    ?= 0.6.0
 
-build:
-	go build -o ${OUTPUT_DIR}${BINARY_NAME} main.go
+test:   ## Run all tests
+	@go clean --testcache && go test -v ./...
+
+build:  ## Builds the CLI
+	@go build ${GO_FLAGS} \
+	-ldflags "-w -s -X ${PACKAGE}/cmd.version=${VERSION} -X ${PACKAGE}/cmd.commit=${GIT_REV} -X ${PACKAGE}/cmd.date=${DATE}" \
+	-a -tags netgo -o ${OUTPUT_BIN} main.go
 
 run:
-	go build -o ${OUTPUT_DIR}${BINARY_NAME} main.go
-	./${OUTPUT_DIR}${BINARY_NAME}
-
-test:
-	sudo go test -v ./...
+	go build -o ${OUTPUT_BIN} main.go
+	./${OUTPUT_BIN}
 
 clean:
 	go clean
-	rm ${OUTPUT_DIR}${BINARY_NAME}
+	rm ${OUTPUT_BIN}
