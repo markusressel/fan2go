@@ -16,10 +16,10 @@ type LinearCurveConfig struct {
 
 type PidCurveConfig struct {
 	Sensor   string  `json:"sensor"`
-	SetPoint float64 `json:"set_point"`
-	Kp       float64 `json:"kp"`
-	Ki       float64 `json:"ki"`
-	Kd       float64 `json:"kd"`
+	SetPoint float64 `json:"setPoint"`
+	P        float64 `json:"p"`
+	I        float64 `json:"i"`
+	D        float64 `json:"d"`
 }
 
 const (

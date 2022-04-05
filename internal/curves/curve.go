@@ -30,9 +30,9 @@ func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
 
 	if config.PID != nil {
 		pidLoop := util.NewPidLoop(
-			config.PID.Kp,
-			config.PID.Ki,
-			config.PID.Kd,
+			config.PID.P,
+			config.PID.I,
+			config.PID.D,
 		)
 		return &pidSpeedCurve{
 			ID:       config.ID,

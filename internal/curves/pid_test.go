@@ -22,9 +22,9 @@ func createPidCurveConfig(
 		PID: &configuration.PidCurveConfig{
 			Sensor:   sensorId,
 			SetPoint: setPoint,
-			Kp:       p,
-			Ki:       i,
-			Kd:       d,
+			P:        p,
+			I:        i,
+			D:        d,
 		},
 	}
 	return curve

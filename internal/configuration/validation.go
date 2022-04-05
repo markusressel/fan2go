@@ -134,6 +134,13 @@ func validateCurves(config *Configuration) error {
 			}
 		}
 
+		if curveConfig.PID != nil {
+			pidConfig := curveConfig.PID
+			if pidConfig.P == 0 && pidConfig.I == 0 && pidConfig.D == 0 {
+				return errors.New(fmt.Sprintf("Curve %s: all PID constants are zero", curveConfig.ID))
+			}
+		}
+
 	}
 
 	err := validateNoLoops(graph)
