@@ -56,7 +56,7 @@ var detectCmd = &cobra.Command{
 				}
 
 				rpmText := "N/A"
-				if rpm, err := fan.GetPwm(); err == nil {
+				if rpm, err := fan.GetRpm(); err == nil {
 					rpmText = strconv.Itoa(rpm)
 				}
 
