@@ -63,7 +63,7 @@ func TestValidateCurveSubConfigSensorIdIsMissing(t *testing.T) {
 	err := ValidateConfig(&config)
 
 	// THEN
-	assert.EqualError(t, err, "Curve curve: sub-configuration for curve is missing, use one of: linear | function")
+	assert.EqualError(t, err, "Curve curve: sub-configuration for curve is missing, use one of: linear | pid | function")
 }
 
 func TestValidateCurveSensorIdIsMissing(t *testing.T) {

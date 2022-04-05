@@ -230,6 +230,21 @@ curves:
         - 80: 255
 ```
 
+#### PID
+
+If you want to get your hands dirty and use a PID control loop, you can use the `pid` curve:
+
+```yaml
+curves:
+  - id: pid_curve
+    pid:
+      sensor: cpu_package
+      setPoint: 60
+      p: -0.05
+      i: -0.005
+      d: -0.005
+```
+
 #### Function
 
 To create more complex curves you can combine exising curves using a curve of type `function`:
@@ -436,7 +451,7 @@ the value of their associated curve.
 
 **TL;DR**: `modprobe drivetemp`
 
-While _lm-sensors_ doesn't provide temperature sensors of SATA drives by default, you can use the kernel module 
+While _lm-sensors_ doesn't provide temperature sensors of SATA drives by default, you can use the kernel module
 `drivetemp` to enable this. See [here](https://wiki.archlinux.org/title/Lm_sensors#S.M.A.R.T._drive_temperature)
 
 # Dependencies

@@ -162,13 +162,10 @@ func validateNoLoops(graph map[interface{}][]interface{}) error {
 
 func isCurveConfigInUse(config CurveConfig, curves []CurveConfig, fans []FanConfig) bool {
 	for _, curveConfig := range curves {
-		if curveConfig.Linear != nil {
-			// linear curves cannot reference curves
-			continue
-		}
-
-		if util.ContainsString(curveConfig.Function.Curves, config.ID) {
-			return true
+		if curveConfig.Function != nil {
+			if util.ContainsString(curveConfig.Function.Curves, config.ID) {
+				return true
+			}
 		}
 	}
 
