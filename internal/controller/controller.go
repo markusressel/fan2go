@@ -38,9 +38,16 @@ type fanController struct {
 	pwmValuesWithDistinctTarget []int
 	// a map of x -> getPwm() where x is setPwm(x) for the controlled fan
 	pwmMap map[int]int
+	// PID loop for the PWM control
+	pidLoop *util.PidLoop
 }
 
-func NewFanController(persistence persistence.Persistence, fan fans.Fan, updateRate time.Duration) FanController {
+func NewFanController(
+	persistence persistence.Persistence,
+	fan fans.Fan,
+	pidLoop util.PidLoop,
+	updateRate time.Duration,
+) FanController {
 	return &fanController{
 		persistence:                 persistence,
 		fan:                         fan,
@@ -48,6 +55,7 @@ func NewFanController(persistence persistence.Persistence, fan fans.Fan, updateR
 		updateRate:                  updateRate,
 		pwmValuesWithDistinctTarget: []int{},
 		pwmMap:                      map[int]int{},
+		pidLoop:                     &pidLoop,
 	}
 }
 
