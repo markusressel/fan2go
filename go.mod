@@ -15,7 +15,7 @@ require (
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/viper v1.11.0
 	github.com/stretchr/testify v1.7.1
-	github.com/tomlazar/table v0.1.1
+	github.com/tomlazar/table v0.1.2
 	go.etcd.io/bbolt v1.3.6
 	golang.org/x/exp v0.0.0-20220328175248-053ad81199eb
 )
