@@ -11,14 +11,10 @@ import (
 )
 
 func Validate(configPath string) error {
-	if _, err := util.CheckFilePermissionsForExecution(configPath); err != nil {
-		return errors.New(fmt.Sprintf("Config file '%s' has invalid permissions: %s", configPath, err))
-	}
-
-	return ValidateConfig(&CurrentConfig)
+	return validateConfig(&CurrentConfig, configPath)
 }
 
-func ValidateConfig(config *Configuration) error {
+func validateConfig(config *Configuration, path string) error {
 	err := validateSensors(config)
 	if err != nil {
 		return err
@@ -29,7 +25,23 @@ func ValidateConfig(config *Configuration) error {
 	}
 	err = validateFans(config)
 
+	if containsCmdSensors() {
+		if _, err := util.CheckFilePermissionsForExecution(path); err != nil {
+			return errors.New(fmt.Sprintf("Config file '%s' has invalid permissions: %s", path, err))
+		}
+	}
+
 	return err
+}
+
+func containsCmdSensors() bool {
+	for _, sensorConfig := range CurrentConfig.Sensors {
+		if sensorConfig.Cmd != nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 func validateSensors(config *Configuration) error {
