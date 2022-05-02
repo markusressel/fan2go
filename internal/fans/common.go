@@ -11,7 +11,7 @@ const (
 	MinPwmValue = 0
 )
 
-type FeatureFlag = int
+type FeatureFlag int
 
 const (
 	FeatureRpmSensor FeatureFlag = 0

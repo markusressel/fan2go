@@ -268,9 +268,9 @@ func measureRpm(fan fans.Fan) {
 func trySetManualPwm(fan fans.Fan) error {
 	err := fan.SetPwmEnabled(fans.ControlModePWM)
 	if err != nil {
-		ui.Error("Unable to set Fan Mode of '%s' to \"%i\": %v", fan.GetId(), fans.ControlModePWM, err)
+		ui.Error("Unable to set Fan Mode of '%s' to \"%d\": %v", fan.GetId(), fans.ControlModePWM, err)
 		err = fan.SetPwmEnabled(fans.ControlModeDisabled)
-		ui.Error("Unable to set Fan Mode of '%s' to \"%i\": %v", fan.GetId(), fans.ControlModeDisabled, err)
+		ui.Error("Unable to set Fan Mode of '%s' to \"%d\": %v", fan.GetId(), fans.ControlModeDisabled, err)
 	}
 	return err
 }
