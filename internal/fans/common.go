@@ -20,8 +20,11 @@ const (
 type ControlMode int
 
 const (
-	ControlModeDisabled  ControlMode = 0
-	ControlModePWM       ControlMode = 1
+	// ControlModeDisabled completely disables control, resulting in a 100% voltage/PWM signal output
+	ControlModeDisabled ControlMode = 0
+	// ControlModePWM enables manual, fixed speed control via setting the pwm value
+	ControlModePWM ControlMode = 1
+	// ControlModeAutomatic enables automatic control by the integrated control of the mainboard
 	ControlModeAutomatic ControlMode = 2
 )
 
