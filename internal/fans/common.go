@@ -11,8 +11,21 @@ const (
 	MinPwmValue = 0
 )
 
+type FeatureFlag int
+
 const (
-	FeatureRpmSensor = 0
+	FeatureRpmSensor FeatureFlag = 0
+)
+
+type ControlMode int
+
+const (
+	// ControlModeDisabled completely disables control, resulting in a 100% voltage/PWM signal output
+	ControlModeDisabled ControlMode = 0
+	// ControlModePWM enables manual, fixed speed control via setting the pwm value
+	ControlModePWM ControlMode = 1
+	// ControlModeAutomatic enables automatic control by the integrated control of the mainboard
+	ControlModeAutomatic ControlMode = 2
 )
 
 var (
@@ -55,11 +68,11 @@ type Fan interface {
 
 	// GetPwmEnabled returns the current "pwm_enabled" value of this fan
 	GetPwmEnabled() (int, error)
-	SetPwmEnabled(value int) (err error)
+	SetPwmEnabled(value ControlMode) (err error)
 	// IsPwmAuto indicates whether this fan is in "Auto" mode
 	IsPwmAuto() (bool, error)
 
-	Supports(feature int) bool
+	Supports(feature FeatureFlag) bool
 }
 
 func NewFan(config configuration.FanConfig) (Fan, error) {
