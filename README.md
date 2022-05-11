@@ -442,8 +442,27 @@ sensor value.
 
 ## Fan Controllers
 
-Fan speeds are continuously adjusted at the rate specified by the `controllerAdjustmentTickRate` config option based on
-the value of their associated curve.
+Fan speed is controlled by a PID controller per each configured fan. The default
+configuration is pretty non-aggressive using the following values:
+
+| P      | I       | D        |
+|--------|---------|----------|
+| `0.03` | `0.002` | `0.0005` |
+
+If you don't like the default behaviour you can configure your own in the config:
+
+```yaml
+fans:
+  - id: some_fan
+    ...
+    controlLoop:
+      p: 0.03
+      i: 0.002
+      d: 0.0005
+```
+
+The loop is advanced at a constant rate, specified by the `controllerAdjustmentTickRate` config option, which
+defaults to `200ms`.
 
 # FAQ
 
