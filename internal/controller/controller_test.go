@@ -123,7 +123,7 @@ func (fan MockFan) GetPwmEnabled() (int, error) {
 	panic("implement me")
 }
 
-func (fan *MockFan) SetPwmEnabled(value int) (err error) {
+func (fan *MockFan) SetPwmEnabled(value fans.ControlMode) (err error) {
 	panic("implement me")
 }
 
@@ -147,7 +147,7 @@ func (fan MockFan) ShouldNeverStop() bool {
 	return fan.shouldNeverStop
 }
 
-func (fan MockFan) Supports(feature int) bool {
+func (fan MockFan) Supports(feature fans.FeatureFlag) bool {
 	return true
 }
 

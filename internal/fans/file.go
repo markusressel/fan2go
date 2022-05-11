@@ -122,7 +122,7 @@ func (fan FileFan) GetPwmEnabled() (int, error) {
 	return 1, nil
 }
 
-func (fan *FileFan) SetPwmEnabled(value int) (err error) {
+func (fan *FileFan) SetPwmEnabled(value ControlMode) (err error) {
 	// nothing to do
 	return nil
 }
@@ -131,7 +131,7 @@ func (fan FileFan) IsPwmAuto() (bool, error) {
 	return true, nil
 }
 
-func (fan FileFan) Supports(feature int) bool {
+func (fan FileFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureRpmSensor:
 		// TODO: maybe we could support this in the future

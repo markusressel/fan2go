@@ -147,23 +147,23 @@ func (fan HwMonFan) IsPwmAuto() (bool, error) {
 // 0 - no control (results in max speed)
 // 1 - manual pwm control
 // 2 - motherboard pwm control
-func (fan *HwMonFan) SetPwmEnabled(value int) (err error) {
+func (fan *HwMonFan) SetPwmEnabled(value ControlMode) (err error) {
 	folder, _ := filepath.Split(fan.PwmOutput)
 	pwmEnabledFilePath := fmt.Sprintf("%s/pwm%d_enable", folder, fan.Index)
 
 	// /hwmon4/pwm1_enable
 
-	err = util.WriteIntToFile(value, pwmEnabledFilePath)
+	err = util.WriteIntToFile(int(value), pwmEnabledFilePath)
 	if err == nil {
 		currentValue, err := util.ReadIntFromFile(pwmEnabledFilePath)
-		if err != nil || currentValue != value {
+		if err != nil || ControlMode(currentValue) != value {
 			return errors.New(fmt.Sprintf("PWM mode stuck to %d", currentValue))
 		}
 	}
 	return err
 }
 
-func (fan HwMonFan) Supports(feature int) bool {
+func (fan HwMonFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureRpmSensor:
 		return len(fan.RpmInput) > 0

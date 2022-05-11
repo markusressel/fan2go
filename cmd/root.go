@@ -8,7 +8,6 @@ import (
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/markusressel/fan2go/internal/util"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"os"
@@ -40,10 +39,6 @@ on your computer based on temperature sensors.`,
 		err := configuration.Validate(configPath)
 		if err != nil {
 			ui.Fatal(err.Error())
-		}
-
-		if _, err := util.CheckFilePermissionsForExecution(configPath); err != nil {
-			ui.Fatal("Config file '%s' has invalid permissions: %s", configPath, err)
 		}
 
 		internal.RunDaemon()
