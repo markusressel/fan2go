@@ -232,7 +232,7 @@ curves:
 
 #### PID
 
-If you want to get your hands dirty and use a PID control loop, you can use the `pid` curve:
+If you want to get your hands dirty and use a PID based curve, you can use `pid`:
 
 ```yaml
 curves:
@@ -244,6 +244,11 @@ curves:
       i: -0.005
       d: -0.005
 ```
+
+Unlike the other curve types, this one does not use the average of the sensor data
+to calculate its value, which allows you to create a completely custom behaviour.
+Keep in mind though that the fan controller is also PID based and will also affect
+how the curve is applied to the fan.
 
 #### Function
 
