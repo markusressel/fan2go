@@ -157,16 +157,26 @@ func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.Fan
 	initializeSensors(controllers)
 	initializeCurves()
 
-	var result map[fans.Fan]controller.FanController
+	var result = map[fans.Fan]controller.FanController{}
 
 	for config, fan := range initializeFans(controllers) {
 		updateRate := configuration.CurrentConfig.ControllerAdjustmentTickRate
-		pidLoop := util.NewPidLoop(
-			config.ControlLoop.P,
-			config.ControlLoop.I,
-			config.ControlLoop.D,
-		)
-		fanController := controller.NewFanController(pers, fan, *pidLoop, updateRate)
+
+		var pidLoop util.PidLoop
+		if config.ControlLoop != nil {
+			pidLoop = *util.NewPidLoop(
+				config.ControlLoop.P,
+				config.ControlLoop.I,
+				config.ControlLoop.D,
+			)
+		} else {
+			pidLoop = *util.NewPidLoop(
+				0.03,
+				0.002,
+				0.0005,
+			)
+		}
+		fanController := controller.NewFanController(pers, fan, pidLoop, updateRate)
 		result[fan] = fanController
 	}
 

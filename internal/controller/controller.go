@@ -165,10 +165,24 @@ func (f *fanController) Run(ctx context.Context) error {
 
 func (f *fanController) UpdateFanSpeed() error {
 	fan := f.fan
+
+	currentPwm, err := f.fan.GetPwm()
+	if err != nil {
+		return err
+	}
+
+	// calculate the direct optimal target speed
 	target := f.calculateTargetPwm()
+
+	// ask the PID controller how to proceed
+	pidControllerTarget := math.Ceil(f.pidLoop.Loop(float64(target), float64(currentPwm)))
+	// ensure we are within sane bounds
+	coerced := util.Coerce(float64(currentPwm)+pidControllerTarget, 0, 255)
+	roundedTarget := int(math.Round(coerced))
+
 	if target >= 0 {
 		_ = trySetManualPwm(f.fan)
-		err := f.setPwm(target)
+		err := f.setPwm(roundedTarget)
 		if err != nil {
 			ui.Error("Error setting %s: %v", fan.GetId(), err)
 		}
