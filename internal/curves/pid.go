@@ -19,7 +19,7 @@ func (c pidSpeedCurve) GetId() string {
 
 func (c pidSpeedCurve) Evaluate() (value int, err error) {
 	sensor := sensors.SensorMap[c.sensorId]
-	measured, _ := sensor.GetValue()
+	measured, err := sensor.GetValue()
 	pidTarget := c.setPoint
 
 	loopValue := c.pidLoop.Loop(pidTarget, measured/1000.0)

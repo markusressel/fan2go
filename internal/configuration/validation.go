@@ -147,6 +147,14 @@ func validateCurves(config *Configuration) error {
 		}
 
 		if curveConfig.PID != nil {
+			if len(curveConfig.PID.Sensor) <= 0 {
+				return errors.New(fmt.Sprintf("Curve %s: Missing sensorId", curveConfig.ID))
+			}
+
+			if !sensorIdExists(curveConfig.PID.Sensor, config) {
+				return errors.New(fmt.Sprintf("Curve %s: no sensor definition with id '%s' found", curveConfig.ID, curveConfig.PID.Sensor))
+			}
+
 			pidConfig := curveConfig.PID
 			if pidConfig.P == 0 && pidConfig.I == 0 && pidConfig.D == 0 {
 				return errors.New(fmt.Sprintf("Curve %s: all PID constants are zero", curveConfig.ID))
