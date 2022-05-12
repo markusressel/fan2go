@@ -61,7 +61,7 @@ func setDefaultValues() {
 	viper.SetDefault("RunFanInitializationInParallel", true)
 	viper.SetDefault("MaxRpmDiffForSettledFan", 10.0)
 	viper.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
-	viper.SetDefault("TempRollingWindowSize", 50)
+	viper.SetDefault("TempRollingWindowSize", 10)
 	viper.SetDefault("RpmPollingRate", 1*time.Second)
 	viper.SetDefault("RpmRollingWindowSize", 10)
 

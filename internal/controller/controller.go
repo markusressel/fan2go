@@ -38,9 +38,16 @@ type fanController struct {
 	pwmValuesWithDistinctTarget []int
 	// a map of x -> getPwm() where x is setPwm(x) for the controlled fan
 	pwmMap map[int]int
+	// PID loop for the PWM control
+	pidLoop *util.PidLoop
 }
 
-func NewFanController(persistence persistence.Persistence, fan fans.Fan, updateRate time.Duration) FanController {
+func NewFanController(
+	persistence persistence.Persistence,
+	fan fans.Fan,
+	pidLoop util.PidLoop,
+	updateRate time.Duration,
+) FanController {
 	return &fanController{
 		persistence:                 persistence,
 		fan:                         fan,
@@ -48,6 +55,7 @@ func NewFanController(persistence persistence.Persistence, fan fans.Fan, updateR
 		updateRate:                  updateRate,
 		pwmValuesWithDistinctTarget: []int{},
 		pwmMap:                      map[int]int{},
+		pidLoop:                     &pidLoop,
 	}
 }
 
@@ -157,10 +165,24 @@ func (f *fanController) Run(ctx context.Context) error {
 
 func (f *fanController) UpdateFanSpeed() error {
 	fan := f.fan
+
+	currentPwm, err := f.fan.GetPwm()
+	if err != nil {
+		return err
+	}
+
+	// calculate the direct optimal target speed
 	target := f.calculateTargetPwm()
+
+	// ask the PID controller how to proceed
+	pidControllerTarget := math.Ceil(f.pidLoop.Loop(float64(target), float64(currentPwm)))
+	// ensure we are within sane bounds
+	coerced := util.Coerce(float64(currentPwm)+pidControllerTarget, 0, 255)
+	roundedTarget := int(math.Round(coerced))
+
 	if target >= 0 {
 		_ = trySetManualPwm(f.fan)
-		err := f.setPwm(target)
+		err := f.setPwm(roundedTarget)
 		if err != nil {
 			ui.Error("Error setting %s: %v", fan.GetId(), err)
 		}

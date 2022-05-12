@@ -47,11 +47,20 @@ func containsCmdSensors() bool {
 func validateSensors(config *Configuration) error {
 	for _, sensorConfig := range config.Sensors {
 
-		if sensorConfig.HwMon != nil && sensorConfig.File != nil && sensorConfig.Cmd != nil {
+		subConfigs := 0
+		if sensorConfig.HwMon != nil {
+			subConfigs++
+		}
+		if sensorConfig.File != nil {
+			subConfigs++
+		}
+		if sensorConfig.Cmd != nil {
+			subConfigs++
+		}
+		if subConfigs > 1 {
 			return errors.New(fmt.Sprintf("Sensor %s: only one sensor type can be used per sensor definition block", sensorConfig.ID))
 		}
-
-		if sensorConfig.HwMon == nil && sensorConfig.File == nil && sensorConfig.Cmd == nil {
+		if subConfigs <= 0 {
 			return errors.New(fmt.Sprintf("Sensor %s: sub-configuration for sensor is missing, use one of: hwmon | file | cmd", sensorConfig.ID))
 		}
 
@@ -87,12 +96,21 @@ func validateCurves(config *Configuration) error {
 	graph := make(map[interface{}][]interface{})
 
 	for _, curveConfig := range config.Curves {
-		if curveConfig.Linear != nil && curveConfig.Function != nil {
+		subConfigs := 0
+		if curveConfig.Linear != nil {
+			subConfigs++
+		}
+		if curveConfig.PID != nil {
+			subConfigs++
+		}
+		if curveConfig.Function != nil {
+			subConfigs++
+		}
+		if subConfigs > 1 {
 			return errors.New(fmt.Sprintf("Curve %s: only one curve type can be used per curve definition block", curveConfig.ID))
 		}
-
-		if curveConfig.Linear == nil && curveConfig.Function == nil {
-			return errors.New(fmt.Sprintf("Curve %s: sub-configuration for curve is missing, use one of: linear | function", curveConfig.ID))
+		if subConfigs <= 0 {
+			return errors.New(fmt.Sprintf("Curve %s: sub-configuration for curve is missing, use one of: linear | pid | function", curveConfig.ID))
 		}
 
 		if !isCurveConfigInUse(curveConfig, config.Curves, config.Fans) {
@@ -128,6 +146,21 @@ func validateCurves(config *Configuration) error {
 			}
 		}
 
+		if curveConfig.PID != nil {
+			if len(curveConfig.PID.Sensor) <= 0 {
+				return errors.New(fmt.Sprintf("Curve %s: Missing sensorId", curveConfig.ID))
+			}
+
+			if !sensorIdExists(curveConfig.PID.Sensor, config) {
+				return errors.New(fmt.Sprintf("Curve %s: no sensor definition with id '%s' found", curveConfig.ID, curveConfig.PID.Sensor))
+			}
+
+			pidConfig := curveConfig.PID
+			if pidConfig.P == 0 && pidConfig.I == 0 && pidConfig.D == 0 {
+				return errors.New(fmt.Sprintf("Curve %s: all PID constants are zero", curveConfig.ID))
+			}
+		}
+
 	}
 
 	err := validateNoLoops(graph)
@@ -156,13 +189,10 @@ func validateNoLoops(graph map[interface{}][]interface{}) error {
 
 func isCurveConfigInUse(config CurveConfig, curves []CurveConfig, fans []FanConfig) bool {
 	for _, curveConfig := range curves {
-		if curveConfig.Linear != nil {
-			// linear curves cannot reference curves
-			continue
-		}
-
-		if util.ContainsString(curveConfig.Function.Curves, config.ID) {
-			return true
+		if curveConfig.Function != nil {
+			if util.ContainsString(curveConfig.Function.Curves, config.ID) {
+				return true
+			}
 		}
 	}
 

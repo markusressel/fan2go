@@ -12,6 +12,7 @@ import (
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/statistics"
 	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
@@ -32,7 +33,7 @@ func RunDaemon() {
 
 	pers := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
 
-	InitializeObjects()
+	fanControllers := initializeObjects(pers)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -106,14 +107,12 @@ func RunDaemon() {
 	}
 	{
 		// === fan controllers
-		for _, fan := range fans.FanMap {
-			f := fan
-			updateRate := configuration.CurrentConfig.ControllerAdjustmentTickRate
-			fanController := controller.NewFanController(pers, f, updateRate)
-
+		for f, c := range fanControllers {
+			fan := f
+			fanController := c
 			g.Add(func() error {
 				err := fanController.Run(ctx)
-				ui.Info("Fan controller for fan %s stopped.", f.GetId())
+				ui.Info("Fan controller for fan %s stopped.", fan.GetId())
 				if err != nil {
 					panic(err)
 				}
@@ -152,9 +151,39 @@ func RunDaemon() {
 	}
 }
 
-func InitializeObjects() {
+func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.FanController {
 	controllers := hwmon.GetChips()
 
+	initializeSensors(controllers)
+	initializeCurves()
+
+	var result = map[fans.Fan]controller.FanController{}
+
+	for config, fan := range initializeFans(controllers) {
+		updateRate := configuration.CurrentConfig.ControllerAdjustmentTickRate
+
+		var pidLoop util.PidLoop
+		if config.ControlLoop != nil {
+			pidLoop = *util.NewPidLoop(
+				config.ControlLoop.P,
+				config.ControlLoop.I,
+				config.ControlLoop.D,
+			)
+		} else {
+			pidLoop = *util.NewPidLoop(
+				0.03,
+				0.002,
+				0.0005,
+			)
+		}
+		fanController := controller.NewFanController(pers, fan, pidLoop, updateRate)
+		result[fan] = fanController
+	}
+
+	return result
+}
+
+func initializeSensors(controllers []*hwmon.HwMonController) {
 	var sensorList []sensors.Sensor
 	for _, config := range configuration.CurrentConfig.Sensors {
 		if config.HwMon != nil {
@@ -191,7 +220,9 @@ func InitializeObjects() {
 
 	sensorCollector := statistics.NewSensorCollector(sensorList)
 	statistics.Register(sensorCollector)
+}
 
+func initializeCurves() {
 	var curveList []curves.SpeedCurve
 	for _, config := range configuration.CurrentConfig.Curves {
 		curve, err := curves.NewSpeedCurve(config)
@@ -204,8 +235,13 @@ func InitializeObjects() {
 
 	curveCollector := statistics.NewCurveCollector(curveList)
 	statistics.Register(curveCollector)
+}
+
+func initializeFans(controllers []*hwmon.HwMonController) map[configuration.FanConfig]fans.Fan {
+	var result = map[configuration.FanConfig]fans.Fan{}
 
 	var fanList []fans.Fan
+
 	for _, config := range configuration.CurrentConfig.Fans {
 		if config.HwMon != nil {
 			found := false
@@ -236,12 +272,15 @@ func InitializeObjects() {
 			ui.Fatal("Unable to process fan configuration: %s", config.ID)
 		}
 		fans.FanMap[config.ID] = fan
+		result[config] = fan
 
 		fanList = append(fanList, fan)
 	}
 
 	fanCollector := statistics.NewFanCollector(fanList)
 	statistics.Register(fanCollector)
+
+	return result
 }
 
 func getProcessOwner() string {

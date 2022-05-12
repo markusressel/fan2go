@@ -230,6 +230,26 @@ curves:
         - 80: 255
 ```
 
+#### PID
+
+If you want to get your hands dirty and use a PID based curve, you can use `pid`:
+
+```yaml
+curves:
+  - id: pid_curve
+    pid:
+      sensor: cpu_package
+      setPoint: 60
+      p: -0.05
+      i: -0.005
+      d: -0.005
+```
+
+Unlike the other curve types, this one does not use the average of the sensor data
+to calculate its value, which allows you to create a completely custom behaviour.
+Keep in mind though that the fan controller is also PID based and will also affect
+how the curve is applied to the fan.
+
 #### Function
 
 To create more complex curves you can combine exising curves using a curve of type `function`:
@@ -427,8 +447,27 @@ sensor value.
 
 ## Fan Controllers
 
-Fan speeds are continuously adjusted at the rate specified by the `controllerAdjustmentTickRate` config option based on
-the value of their associated curve.
+Fan speed is controlled by a PID controller per each configured fan. The default
+configuration is pretty non-aggressive using the following values:
+
+| P      | I       | D        |
+|--------|---------|----------|
+| `0.03` | `0.002` | `0.0005` |
+
+If you don't like the default behaviour you can configure your own in the config:
+
+```yaml
+fans:
+  - id: some_fan
+    ...
+    controlLoop:
+      p: 0.03
+      i: 0.002
+      d: 0.0005
+```
+
+The loop is advanced at a constant rate, specified by the `controllerAdjustmentTickRate` config option, which
+defaults to `200ms`.
 
 # FAQ
 
@@ -436,7 +475,7 @@ the value of their associated curve.
 
 **TL;DR**: `modprobe drivetemp`
 
-While _lm-sensors_ doesn't provide temperature sensors of SATA drives by default, you can use the kernel module 
+While _lm-sensors_ doesn't provide temperature sensors of SATA drives by default, you can use the kernel module
 `drivetemp` to enable this. See [here](https://wiki.archlinux.org/title/Lm_sensors#S.M.A.R.T._drive_temperature)
 
 # Dependencies
