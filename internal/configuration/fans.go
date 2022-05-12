@@ -7,6 +7,7 @@ type FanConfig struct {
 	Curve       string             `json:"curve"`
 	HwMon       *HwMonFanConfig    `json:"hwMon,omitempty"`
 	File        *FileFanConfig     `json:"file,omitempty"`
+	Cmd         *CmdFanConfig      `json:"cmd,omitempty"`
 	ControlLoop *ControlLoopConfig `json:"controlLoop,omitempty"`
 }
 
@@ -19,6 +20,17 @@ type HwMonFanConfig struct {
 
 type FileFanConfig struct {
 	Path string `json:"path"`
+}
+
+type CmdFanConfig struct {
+	PwmSet *ExecConfig `json:"pwmSet,omitempty"`
+	PwmGet *ExecConfig `json:"pwmGet,omitempty"`
+	RpmGet *ExecConfig `json:"rpmGet,omitempty"`
+}
+
+type ExecConfig struct {
+	Exec string   `json:"exec"`
+	Args []string `json:"args"`
 }
 
 type ControlLoopConfig struct {
