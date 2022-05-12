@@ -5,12 +5,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const subsystemSensor = "sensor"
+
 type SensorCollector struct {
 	sensors []sensors.Sensor
 	value   *prometheus.Desc
 }
-
-const subsystemSensor = "sensor"
 
 func NewSensorCollector(sensors []sensors.Sensor) *SensorCollector {
 	return &SensorCollector{

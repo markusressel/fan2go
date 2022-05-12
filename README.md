@@ -1,8 +1,34 @@
-# fan2go
+<h1 align="center">
+  <img src="screenshots/fan2go_icon.svg" width="144" height="144" alt="fan2go icon">
+  <br>
+  fan2go
+  <br>
+</h1>
 
-A daemon to control the fans of a computer.
+<h4 align="center">A daemon to control the fans of a computer.</h4>
 
-![graph](screenshots/graph.png)
+<div align="center">
+
+[![Programming Language](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)]()
+[![Latest Release](https://img.shields.io/github/release/markusressel/fan2go.svg)](https://github.com/markusressel/fan2go/releases)
+[![License](https://img.shields.io/badge/license-AGPLv3-blue.svg)](/LICENSE)
+
+</div>
+
+<p align="center"><img src="screenshots/graph.png" width=90% alt="Screenshot of Pyrra"></p>
+
+# Features
+
+* [x] Fan speed control using user-defined speed curves
+* [x] Fully customizable and composable curve definitions
+* [x] Massive range of supported devices
+  * [x] Direct integration with lm-sensors
+  * [x] File Fan/Sensor for control/measurement of custom devices
+* [x] Works after resume from suspend
+* [x] **Stable** device paths after reboot
+* [x] Automatic analysis of fan properties, like:
+  * [x] RPM curve
+  * [x] minimum and maximum PWM
 
 # How to use
 
@@ -12,9 +38,7 @@ to [set it up first](https://wiki.archlinux.org/index.php/Lm_sensors#Installatio
 
 ## Installation
 
-### AUR
-
-A third-party maintained AUR package has been created by [manvari](https://github.com/manvari).
+### ![](https://img.shields.io/badge/Arch_Linux-1793D1?logo=arch-linux&logoColor=white)
 
 ```shell
 yay -S fan2go-git
@@ -114,7 +138,7 @@ fans:
       path: /tmp/file_fan
 ```
 
-```bash
+```shell
 > cat /tmp/file_fan
 255
 ```
@@ -130,7 +154,7 @@ sensors:
   # A user defined ID, which is used to reference
   # a sensor in a curve configuration (see below)
   - id: cpu_package
-    # The type of sensor configuration, one of: hwmon | file
+    # The type of sensor configuration, one of: hwmon | file | cmd
     hwmon:
       # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
       # "coretemp", "it8620", "corsaircpro-*" etc.
@@ -143,6 +167,7 @@ sensors:
 sensors:
   - id: file_sensor
     file:
+      # Path to the file containing sensor values
       path: /tmp/file_sensor
 ```
 
@@ -152,6 +177,19 @@ The file contains a value in milli-units, like milli-degrees.
 > cat /tmp/file_sensor
 10000
 ```
+
+```yaml
+sensors:
+  - id: cmd_fan
+    cmd:
+      # Path to the executable to run to retrieve the current sensor value
+      exec: /usr/bin/nvidia-settings
+      # (optional) arguments to pass to the executable
+      args: [ '-q', 'gpucoretemp', '-t' ]
+```
+
+Please also make sure to read the section
+about [considerations for using the cmd sensor/fan](#using-external-commands-for-sensorsfans).
 
 ### Curves
 
@@ -195,6 +233,26 @@ curves:
         - 80: 255
 ```
 
+#### PID
+
+If you want to get your hands dirty and use a PID based curve, you can use `pid`:
+
+```yaml
+curves:
+  - id: pid_curve
+    pid:
+      sensor: cpu_package
+      setPoint: 60
+      p: -0.05
+      i: -0.005
+      d: -0.005
+```
+
+Unlike the other curve types, this one does not use the average of the sensor data
+to calculate its value, which allows you to create a completely custom behaviour.
+Keep in mind though that the fan controller is also PID based and will also affect
+how the curve is applied to the fan.
+
 #### Function
 
 To create more complex curves you can combine exising curves using a curve of type `function`:
@@ -216,10 +274,57 @@ curves:
 
 An example configuration file including more detailed documentation can be found in [fan2go.yaml](/fan2go.yaml).
 
-## Run
+### Verify your Configuration
+
+To check whether your configuration is correct before actually running fan2go you can use:
 
 ```shell
-sudo fan2go
+> sudo fan2go config validate
+ INFO  Using configuration file at: /etc/fan2go/fan2go.yaml
+ SUCCESS  Config looks good! :)
+```
+
+or to validate a specific config file:
+
+```shell
+> fan2go -c "./my_config.yaml" config validate
+ INFO  Using configuration file at: ./my_config.yaml
+ WARNING  Unused curve configuration: m2_first_ssd_curve
+  ERROR   Validation failed: Curve m2_ssd_curve: no curve definition with id 'm2_first_ssd_curve123' found
+```
+
+## Using external commands for sensors/fans
+
+fan2go supports using external executables for use as both sensor input, as well as fan output (and rpm input). There
+are some considerations you should take into account before using this feature though:
+
+### Security
+
+Since fan2go requires root permissions to interact with lm-sensors, executables run by fan2go are also executed as root.
+To prevent some malicious actor from taking advantage of this fan2go will only allow the execution of files that only
+allow the root user (UID 0) to modify the file.
+
+### Side effects
+
+Running external commands repeatedly through fan2go can have unintended side effects. F.ex., on a laptop using hybrid
+graphics, running `nvidia-settings` can cause the dedicated GPU to wake up, resulting in substantial increase in power
+consumption while on battery. Also, fan2go expects to be able to update sensor values with a minimal delay, so using a
+long running script or some network call with a long timeout could also cause problems. With great power comes great
+responsibility, always remember that :)
+
+## Run
+
+After successfully verifying your configuration you can launch fan2go from the CLI and make sure the initial setup is
+working as expected. Assuming you put your configuration file in `/etc/fan2go/fan2go.yaml` run:
+
+```shell
+> sudo fan2go
+```
+
+Alternatively you can specify the path to your configuration file like this:
+
+```shell
+> sudo fan2go -c /home/markus/my_fan2go_config.yaml
 ```
 
 ## As a Service
@@ -235,7 +340,31 @@ sudo systemctl enable --now fan2go
 journalctl -u fan2go -f
 ```
 
-## Print fan curve data
+## CLI Commands
+
+Although fan2go is a fan controller daemon at heart, it also provides some handy cli commands to interact with the
+devices that you have specified within your config.
+
+### Fans interaction
+
+```shell
+> fan2go fan --id cpu speed 100
+
+> fan2go fan --id cpu speed
+255
+
+> fan2go fan --id cpu rpm
+546
+```
+
+### Sensors
+
+```shell
+> fan2go sensor --id cpu_package
+46000
+```
+
+### Print fan curve data
 
 For each newly configured fan **fan2go** measures its fan curve and stores it in a db for future reference. You can take
 a look at this measurement using the following command:
@@ -287,7 +416,8 @@ statistics:
   port: 9000
 ```
 
-You can then see the metics on [http://localhost:9000/metrics](http://localhost:9000/metrics).
+You can then see the metics on [http://localhost:9000/metrics](http://localhost:9000/metrics) while the fan2go daemon is
+running.
 
 # How it works
 
@@ -306,23 +436,60 @@ To properly control a fan which fan2go has not seen before, its speed curve is a
 measurements. Measurements taken during this process will then be used to determine the lowest PWM value at which the
 fan is still running, as well as the highest PWM value that still yields a change in RPM.
 
-All of this is saved to a local database (path given by the `dbPath` config option), so it is only needed once per fan configuration.
+All of this is saved to a local database (path given by the `dbPath` config option), so it is only needed once per fan
+configuration.
 
-To reduce the risk of runnin the whole system on low fan speeds for such a long period of time, you can force fan2go to initialize only
-one fan at a time, using the `runFanInitializationInParallel: false` config option.
+To reduce the risk of runnin the whole system on low fan speeds for such a long period of time, you can force fan2go to
+initialize only one fan at a time, using the `runFanInitializationInParallel: false` config option.
 
 ## Monitoring
 
 Temperature and RPM sensors are polled continuously at the rate specified by the `tempSensorPollingRate` config option.
-`tempRollingWindowSize`/`rpmRollingWindowSize` amount of measurements are always averaged and stored as the average sensor value.
+`tempRollingWindowSize`/`rpmRollingWindowSize` amount of measurements are always averaged and stored as the average
+sensor value.
 
 ## Fan Controllers
 
-Fan speeds are continuously adjusted at the rate specified by the `controllerAdjustmentTickRate` config option based on the value of their associated curve.
+Fan speed is controlled by a PID controller per each configured fan. The default
+configuration is pretty non-aggressive using the following values:
+
+| P      | I       | D        |
+|--------|---------|----------|
+| `0.03` | `0.002` | `0.0005` |
+
+If you don't like the default behaviour you can configure your own in the config:
+
+```yaml
+fans:
+  - id: some_fan
+    ...
+    controlLoop:
+      p: 0.03
+      i: 0.002
+      d: 0.0005
+```
+
+The loop is advanced at a constant rate, specified by the `controllerAdjustmentTickRate` config option, which
+defaults to `200ms`.
+
+# FAQ
+
+## Why are my SATA HDD drives not detected?
+
+**TL;DR**: `modprobe drivetemp`
+
+While _lm-sensors_ doesn't provide temperature sensors of SATA drives by default, you can use the kernel module
+`drivetemp` to enable this. See [here](https://wiki.archlinux.org/title/Lm_sensors#S.M.A.R.T._drive_temperature)
 
 # Dependencies
 
 See [go.mod](go.mod)
+
+# Similar Projects
+
+* [nbfc](https://github.com/hirschmann/nbfc)
+* [thinkfan](https://github.com/vmatare/thinkfan)
+* [fancon](https://github.com/hbriese/fancon)
 
 # License
 

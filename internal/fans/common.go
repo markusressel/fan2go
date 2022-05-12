@@ -3,9 +3,6 @@ package fans
 import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/markusressel/fan2go/internal/util"
-	"os"
 	"sort"
 )
 
@@ -14,8 +11,21 @@ const (
 	MinPwmValue = 0
 )
 
+type FeatureFlag int
+
 const (
-	FeatureRpmSensor = 0
+	FeatureRpmSensor FeatureFlag = 0
+)
+
+type ControlMode int
+
+const (
+	// ControlModeDisabled completely disables control, resulting in a 100% voltage/PWM signal output
+	ControlModeDisabled ControlMode = 0
+	// ControlModePWM enables manual, fixed speed control via setting the pwm value
+	ControlModePWM ControlMode = 1
+	// ControlModeAutomatic enables automatic control by the integrated control of the mainboard
+	ControlModeAutomatic ControlMode = 2
 )
 
 var (
@@ -38,12 +48,12 @@ type Fan interface {
 	SetMaxPwm(pwm int)
 
 	// GetRpm returns the current RPM value of this fan
-	GetRpm() int
+	GetRpm() (int, error)
 	GetRpmAvg() float64
 	SetRpmAvg(rpm float64)
 
 	// GetPwm returns the current PWM value of this fan
-	GetPwm() int
+	GetPwm() (int, error)
 	SetPwm(pwm int) (err error)
 
 	// GetFanCurveData returns the fan curve data for this fan
@@ -58,11 +68,11 @@ type Fan interface {
 
 	// GetPwmEnabled returns the current "pwm_enabled" value of this fan
 	GetPwmEnabled() (int, error)
-	SetPwmEnabled(value int) (err error)
+	SetPwmEnabled(value ControlMode) (err error)
 	// IsPwmAuto indicates whether this fan is in "Auto" mode
 	IsPwmAuto() (bool, error)
 
-	Supports(feature int) bool
+	Supports(feature FeatureFlag) bool
 }
 
 func NewFan(config configuration.FanConfig) (Fan, error) {
@@ -89,29 +99,6 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 	}
 
 	return nil, fmt.Errorf("no matching fan type for fan: %s", config.ID)
-}
-
-// AttachFanCurveData attaches fan curve data from persistence to a fan
-// Note: When the given data is incomplete, all values up until the highest
-// value in the given dataset will be interpolated linearly
-// returns os.ErrInvalid if curveData is void of any data
-func (fan *HwMonFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
-	if curveData == nil || len(*curveData) <= 0 {
-		ui.Error("Cant attach empty fan curve data to fan %s", fan.GetId())
-		return os.ErrInvalid
-	}
-
-	interpolatedCurve := util.InterpolateLinearly(curveData, 0, 255)
-	fan.FanCurveData = &interpolatedCurve
-
-	startPwm, maxPwm := ComputePwmBoundaries(fan)
-	fan.SetStartPwm(startPwm)
-	fan.SetMaxPwm(maxPwm)
-
-	// TODO: we don't have a way to determine this yet
-	fan.SetMinPwm(startPwm)
-
-	return err
 }
 
 // ComputePwmBoundaries calculates the startPwm and maxPwm values for a fan based on its fan curve data

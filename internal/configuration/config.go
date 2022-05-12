@@ -1,9 +1,7 @@
 package configuration
 
 import (
-	"github.com/looplab/tarjan"
 	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/markusressel/fan2go/internal/util"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 	"os"
@@ -63,7 +61,7 @@ func setDefaultValues() {
 	viper.SetDefault("RunFanInitializationInParallel", true)
 	viper.SetDefault("MaxRpmDiffForSettledFan", 10.0)
 	viper.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
-	viper.SetDefault("TempRollingWindowSize", 50)
+	viper.SetDefault("TempRollingWindowSize", 10)
 	viper.SetDefault("RpmPollingRate", 1*time.Second)
 	viper.SetDefault("RpmRollingWindowSize", 10)
 
@@ -73,16 +71,18 @@ func setDefaultValues() {
 	viper.SetDefault("fans", []FanConfig{})
 }
 
-func ReadConfigFile() {
+// DetectConfigFile detects the path of the first existing config file
+func DetectConfigFile() string {
 	if err := viper.ReadInConfig(); err != nil {
 		// config file is required, so we fail here
 		ui.Fatal("Error reading config file, %s", err)
 	}
-	// this is only populated _after_ ReadInConfig()
-	ui.Info("Using configuration file at: %s", viper.ConfigFileUsed())
+	return GetFilePath()
+}
 
-	LoadConfig()
-	validateConfig()
+// GetFilePath this is only populated _after_ DetectConfigFile()
+func GetFilePath() string {
+	return viper.ConfigFileUsed()
 }
 
 func LoadConfig() {
@@ -90,124 +90,5 @@ func LoadConfig() {
 	err := viper.Unmarshal(&CurrentConfig)
 	if err != nil {
 		ui.Fatal("unable to decode into struct, %v", err)
-	}
-}
-
-func validateConfig() {
-	config := &CurrentConfig
-
-	validateSensors(config)
-	validateCurves(config)
-	validateFans(config)
-}
-
-func validateSensors(config *Configuration) {
-	for _, sensorConfig := range config.Sensors {
-		if sensorConfig.HwMon != nil && sensorConfig.File != nil {
-			ui.Fatal("Sensor %s: only one sensor type can be used per sensor definition block", sensorConfig.ID)
-		}
-
-		if sensorConfig.HwMon == nil && sensorConfig.File == nil {
-			ui.Fatal("Sensor %s: sub-configuration for sensor is missing, use one of: hwmon | file", sensorConfig.ID)
-		}
-
-		if !isSensorConfigInUse(sensorConfig, config.Curves) {
-			ui.Warning("Unused sensor configuration: %s", sensorConfig.ID)
-		}
-	}
-}
-
-func isSensorConfigInUse(config SensorConfig, curves []CurveConfig) bool {
-	for _, curveConfig := range curves {
-		if curveConfig.Function != nil {
-			// function curves cannot reference sensors
-			continue
-		}
-		if curveConfig.Linear.Sensor == config.ID {
-			return true
-		}
-	}
-
-	return false
-}
-
-func validateCurves(config *Configuration) {
-	graph := make(map[interface{}][]interface{})
-
-	for _, curveConfig := range config.Curves {
-		if curveConfig.Linear != nil && curveConfig.Function != nil {
-			ui.Fatal("Curve %s: only one curve type can be used per curve definition block", curveConfig.ID)
-		}
-
-		if curveConfig.Linear == nil && curveConfig.Function == nil {
-			ui.Fatal("Curve %s: sub-configuration for curve is missing, use one of: linear | function", curveConfig.ID)
-		}
-
-		if !isCurveConfigInUse(curveConfig, config.Curves, config.Fans) {
-			ui.Warning("Unused curve configuration: %s", curveConfig.ID)
-		}
-
-		if curveConfig.Function != nil {
-			var connections []interface{}
-			for _, curve := range curveConfig.Function.Curves {
-				connections = append(connections, curve)
-			}
-			graph[curveConfig.ID] = connections
-		}
-
-		if curveConfig.Linear != nil {
-			if len(curveConfig.Linear.Sensor) <= 0 {
-				ui.Fatal("Curve %s: Missing sensorId", curveConfig.ID)
-			}
-		}
-
-	}
-
-	validateNoLoops(graph)
-}
-
-func validateNoLoops(graph map[interface{}][]interface{}) {
-	output := tarjan.Connections(graph)
-	for _, items := range output {
-		if len(items) > 1 {
-			ui.Fatal("You have created a curve  dependency cycle: %v", items)
-		}
-	}
-}
-
-func isCurveConfigInUse(config CurveConfig, curves []CurveConfig, fans []FanConfig) bool {
-	for _, curveConfig := range curves {
-		if curveConfig.Linear != nil {
-			// linear curves cannot reference curves
-			continue
-		}
-
-		if util.ContainsString(curveConfig.Function.Curves, config.ID) {
-			return true
-		}
-	}
-
-	for _, fanConfig := range fans {
-		if fanConfig.Curve == config.ID {
-			return true
-		}
-	}
-
-	return false
-}
-
-func validateFans(config *Configuration) {
-	for _, fanConfig := range config.Fans {
-		if fanConfig.HwMon != nil && fanConfig.File != nil {
-			ui.Fatal("Fans %s: only one fan type can be used per fan definition block", fanConfig.ID)
-		}
-
-		if fanConfig.HwMon == nil && fanConfig.File == nil {
-			ui.Fatal("Fans %s: sub-configuration for fan is missing, use one of: hwmon | file", fanConfig.ID)
-		}
-
-		if len(fanConfig.Curve) <= 0 {
-			ui.Fatal("Fan %s: missing curve definition in configuration entry", fanConfig.ID)
-		}
 	}
 }

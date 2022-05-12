@@ -10,7 +10,44 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 )
+
+// CheckFilePermissionsForExecution checks whether the given filePath owner, group and permissions
+// are safe to use this file for execution by fan2go.
+func CheckFilePermissionsForExecution(filePath string) (bool, error) {
+	var file = filePath
+
+	file, err := filepath.EvalSymlinks(file)
+	if err != nil {
+		panic(err)
+	}
+
+	info, err := os.Stat(file)
+	if os.IsNotExist(err) {
+		return false, errors.New("file not found")
+	}
+
+	stat := info.Sys().(*syscall.Stat_t)
+	if stat.Uid != 0 {
+		return false, errors.New("owner is not root")
+	}
+
+	if stat.Gid != 0 {
+		mode := info.Mode()
+		groupWrite := mode & (os.FileMode(0o020))
+		if groupWrite != 0 {
+			return false, errors.New("group is not root but has write permission")
+		}
+	}
+
+	otherWrite := info.Mode() & (os.FileMode(0o002))
+	if otherWrite != 0 {
+		return false, errors.New("others have write permission")
+	}
+
+	return true, nil
+}
 
 func ReadIntFromFile(path string) (value int, err error) {
 	data, err := ioutil.ReadFile(path)

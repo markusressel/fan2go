@@ -11,6 +11,17 @@ const (
 	InterpolationTypeLinear = "linear"
 )
 
+// Coerce returns a value that is at least min and at most max, otherwise value
+func Coerce(value float64, min float64, max float64) float64 {
+	if value > max {
+		return max
+	}
+	if value < min {
+		return min
+	}
+	return value
+}
+
 // Avg calculates the average of all values in the given array
 func Avg(values []float64) float64 {
 	sum := 0.0
@@ -44,6 +55,7 @@ func UpdateSimpleMovingAvg(oldAvg float64, n int, newValue float64) float64 {
 	return oldAvg + (1/float64(n))*(newValue-oldAvg)
 }
 
+// InterpolateLinearly takes the given mapping and adds interpolated values in [start;stop].
 func InterpolateLinearly(data *map[int]float64, start int, stop int) map[int]float64 {
 	interpolated := map[int]float64{}
 	for i := start; i <= stop; i++ {
@@ -94,4 +106,63 @@ func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType st
 	// input is above (or equal to) the largest given
 	// step, so we fall back to the value of the largest step
 	return steps[xValues[len(xValues)-1]]
+}
+
+// FindClosest finds the closest value to target in options.
+func FindClosest(target int, arr []int) int {
+	n := len(arr)
+
+	// Corner cases
+	if target <= arr[0] {
+		return arr[0]
+	}
+	if target >= arr[n-1] {
+		return arr[n-1]
+	}
+
+	i := 0
+	j := len(arr)
+	mid := 0
+
+	for i < j {
+		mid = (i + j) / 2
+
+		if arr[mid] == target {
+			return arr[mid]
+		}
+
+		/* If target is less than array element,
+		   then search in left */
+		if target < arr[mid] {
+			// If target is greater than previous
+			// to mid, return closest of two
+			if mid > 0 && target > arr[mid-1] {
+				return getClosest(arr[mid-1], arr[mid], target)
+			}
+
+			/* Repeat for left half */
+			j = mid
+		} else {
+			// If target is greater than mid
+
+			if mid < n-1 && target < arr[mid+1] {
+				return getClosest(arr[mid], arr[mid+1], target)
+			}
+			// update i
+			i = mid + 1
+		}
+	}
+
+	// Only single element left after search
+	return arr[mid]
+}
+
+// Returns the value that is closer to target.
+// Assumes that val1 < target < val2.
+func getClosest(val1 int, val2 int, target int) int {
+	if target-val1 >= val2-target {
+		return val2
+	} else {
+		return val1
+	}
 }

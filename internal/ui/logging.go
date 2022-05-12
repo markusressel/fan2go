@@ -20,6 +20,10 @@ func Debug(format string, a ...interface{}) {
 	pterm.Debug.Printfln(format, a...)
 }
 
+func Success(format string, a ...interface{}) {
+	pterm.Success.Printfln(format, a...)
+}
+
 func Info(format string, a ...interface{}) {
 	pterm.Info.Printfln(format, a...)
 }

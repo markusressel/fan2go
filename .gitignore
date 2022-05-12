@@ -1,3 +1,5 @@
 bin
-fan2go.db
+dist
+fan2go*.db
+fan2go*.yaml
 test.db

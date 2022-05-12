@@ -6,6 +6,7 @@ import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
+	"os"
 	"path/filepath"
 )
 
@@ -63,12 +64,12 @@ func (fan *HwMonFan) SetMaxPwm(pwm int) {
 	fan.MaxPwm = pwm
 }
 
-func (fan HwMonFan) GetRpm() int {
-	value, err := util.ReadIntFromFile(fan.RpmInput)
-	if err != nil {
-		value = -1
+func (fan HwMonFan) GetRpm() (int, error) {
+	if value, err := util.ReadIntFromFile(fan.RpmInput); err != nil {
+		return 0, err
+	} else {
+		return value, nil
 	}
-	return value
 }
 
 func (fan HwMonFan) GetRpmAvg() float64 {
@@ -79,12 +80,12 @@ func (fan *HwMonFan) SetRpmAvg(rpm float64) {
 	fan.RpmMovingAvg = rpm
 }
 
-func (fan HwMonFan) GetPwm() int {
+func (fan HwMonFan) GetPwm() (int, error) {
 	value, err := util.ReadIntFromFile(fan.PwmOutput)
 	if err != nil {
-		value = MinPwmValue
+		return MinPwmValue, err
 	}
-	return value
+	return value, nil
 }
 
 func (fan *HwMonFan) SetPwm(pwm int) (err error) {
@@ -95,6 +96,28 @@ func (fan *HwMonFan) SetPwm(pwm int) (err error) {
 
 func (fan HwMonFan) GetFanCurveData() *map[int]float64 {
 	return fan.FanCurveData
+}
+
+// AttachFanCurveData attaches fan curve data from persistence to a fan
+// Note: When the given data is incomplete, all values up until the highest
+// value in the given dataset will be interpolated linearly
+// returns os.ErrInvalid if curveData is void of any data
+func (fan *HwMonFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
+	if curveData == nil || len(*curveData) <= 0 {
+		ui.Error("Cant attach empty fan curve data to fan %s", fan.GetId())
+		return os.ErrInvalid
+	}
+
+	fan.FanCurveData = curveData
+
+	startPwm, maxPwm := ComputePwmBoundaries(fan)
+	fan.SetStartPwm(startPwm)
+	fan.SetMaxPwm(maxPwm)
+
+	// TODO: we don't have a way to determine this yet
+	fan.SetMinPwm(startPwm)
+
+	return err
 }
 
 func (fan HwMonFan) GetCurveId() string {
@@ -124,23 +147,23 @@ func (fan HwMonFan) IsPwmAuto() (bool, error) {
 // 0 - no control (results in max speed)
 // 1 - manual pwm control
 // 2 - motherboard pwm control
-func (fan *HwMonFan) SetPwmEnabled(value int) (err error) {
+func (fan *HwMonFan) SetPwmEnabled(value ControlMode) (err error) {
 	folder, _ := filepath.Split(fan.PwmOutput)
 	pwmEnabledFilePath := fmt.Sprintf("%s/pwm%d_enable", folder, fan.Index)
 
 	// /hwmon4/pwm1_enable
 
-	err = util.WriteIntToFile(value, pwmEnabledFilePath)
+	err = util.WriteIntToFile(int(value), pwmEnabledFilePath)
 	if err == nil {
 		currentValue, err := util.ReadIntFromFile(pwmEnabledFilePath)
-		if err != nil || currentValue != value {
+		if err != nil || ControlMode(currentValue) != value {
 			return errors.New(fmt.Sprintf("PWM mode stuck to %d", currentValue))
 		}
 	}
 	return err
 }
 
-func (fan HwMonFan) Supports(feature int) bool {
+func (fan HwMonFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureRpmSensor:
 		return len(fan.RpmInput) > 0

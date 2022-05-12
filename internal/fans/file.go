@@ -47,8 +47,8 @@ func (fan *FileFan) SetMaxPwm(pwm int) {
 	return
 }
 
-func (fan FileFan) GetRpm() int {
-	return 0
+func (fan FileFan) GetRpm() (int, error) {
+	return 0, nil
 }
 
 func (fan FileFan) GetRpmAvg() float64 {
@@ -60,13 +60,13 @@ func (fan *FileFan) SetRpmAvg(rpm float64) {
 	return
 }
 
-func (fan FileFan) GetPwm() (result int) {
+func (fan FileFan) GetPwm() (result int, err error) {
 	filePath := fan.FilePath
 	// resolve home dir path
 	if strings.HasPrefix(filePath, "~") {
 		currentUser, err := user.Current()
 		if err != nil {
-			return result
+			return result, err
 		}
 
 		filePath = filepath.Join(currentUser.HomeDir, filePath[1:])
@@ -74,10 +74,10 @@ func (fan FileFan) GetPwm() (result int) {
 
 	integer, err := util.ReadIntFromFile(filePath)
 	if err != nil {
-		return MinPwmValue
+		return MinPwmValue, err
 	}
 	result = integer
-	return result
+	return result, err
 }
 
 func (fan *FileFan) SetPwm(pwm int) (err error) {
@@ -122,7 +122,7 @@ func (fan FileFan) GetPwmEnabled() (int, error) {
 	return 1, nil
 }
 
-func (fan *FileFan) SetPwmEnabled(value int) (err error) {
+func (fan *FileFan) SetPwmEnabled(value ControlMode) (err error) {
 	// nothing to do
 	return nil
 }
@@ -131,7 +131,7 @@ func (fan FileFan) IsPwmAuto() (bool, error) {
 	return true, nil
 }
 
-func (fan FileFan) Supports(feature int) bool {
+func (fan FileFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureRpmSensor:
 		// TODO: maybe we could support this in the future

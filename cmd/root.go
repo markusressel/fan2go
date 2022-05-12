@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/markusressel/fan2go/cmd/config"
+	"github.com/markusressel/fan2go/cmd/fan"
+	"github.com/markusressel/fan2go/cmd/sensor"
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -11,6 +14,8 @@ import (
 )
 
 var (
+	version, commit, date = "dev", "dev", ""
+
 	cfgFile string
 	noColor bool
 	noStyle bool
@@ -28,9 +33,28 @@ on your computer based on temperature sensors.`,
 		setupUi()
 		printHeader()
 
-		configuration.ReadConfigFile()
+		configPath := configuration.DetectConfigFile()
+		ui.Info("Using configuration file at: %s", configPath)
+		configuration.LoadConfig()
+		err := configuration.Validate(configPath)
+		if err != nil {
+			ui.Fatal(err.Error())
+		}
+
 		internal.RunDaemon()
 	},
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")
+	rootCmd.PersistentFlags().BoolVarP(&noColor, "no-color", "", false, "Disable all terminal output coloration")
+	rootCmd.PersistentFlags().BoolVarP(&noStyle, "no-style", "", false, "Disable all terminal output styling")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "More verbose output")
+
+	rootCmd.AddCommand(config.Command)
+
+	rootCmd.AddCommand(fan.Command)
+	rootCmd.AddCommand(sensor.Command)
 }
 
 func setupUi() {
@@ -63,13 +87,8 @@ func Execute() {
 		configuration.InitConfig(cfgFile)
 	})
 
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")
-	rootCmd.PersistentFlags().BoolVarP(&noColor, "no-color", "", false, "Disable all terminal output coloration")
-	rootCmd.PersistentFlags().BoolVarP(&noStyle, "no-style", "", false, "Disable all terminal output styling")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "More verbose output")
-
 	if err := rootCmd.Execute(); err != nil {
-		ui.Fatal("Error Executing daemon: %v", err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
