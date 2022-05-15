@@ -112,7 +112,7 @@ func RunDaemon() {
 			fanController := c
 			g.Add(func() error {
 				err := fanController.Run(ctx)
-				ui.Info("Fan Controller Error", "Fan controller for fan %s stopped.", fan.GetId())
+				ui.Info("Fan controller for fan %s stopped.", fan.GetId())
 				if err != nil {
 					ui.NotifyError(fmt.Sprintf("Fan Controller: %s", fan.GetId()), err.Error())
 					panic(err)
