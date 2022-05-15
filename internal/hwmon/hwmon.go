@@ -146,6 +146,7 @@ func GetTempSensors(chip gosensors.Chip) []*sensors.HwmonSensor {
 func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 	var fanList []*fans.HwMonFan
 
+	currentOutputIndex := 0
 	features := chip.GetFeatures()
 	for j := 0; j < len(features); j++ {
 		feature := features[j]
@@ -157,8 +158,7 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 		subfeatures := feature.GetSubFeatures()
 
 		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput) {
-
-			pwmOutput := path.Join(chip.Path, fmt.Sprintf("pwm%d", len(fanList)+1))
+			pwmOutput := path.Join(chip.Path, fmt.Sprintf("pwm%d", currentOutputIndex+1))
 
 			if _, err := os.Stat(pwmOutput); err == nil {
 			} else if errors.Is(err, os.ErrNotExist) {
@@ -166,6 +166,12 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 				pwmOutput = ""
 			} else {
 				pwmOutput = ""
+			}
+
+			currentOutputIndex++
+
+			if len(pwmOutput) <= 0 {
+				continue
 			}
 
 			rpmInput := ""
@@ -190,10 +196,6 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 				min = int(minSubFeature.GetValue())
 			} else {
 				min = fans.MinPwmValue
-			}
-
-			if len(pwmOutput) <= 0 {
-				continue
 			}
 
 			label := getLabel(chip.Path, inputSubFeature.Name)
