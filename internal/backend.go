@@ -64,7 +64,7 @@ func RunDaemon() {
 
 				go func() {
 					if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-						ui.Error("Cannot start prometheus metrics endpoint (%s)", err.Error())
+						ui.ErrorAndNotify("Statistics Error", "Cannot start prometheus metrics endpoint (%s)", err.Error())
 					}
 				}()
 
@@ -114,12 +114,13 @@ func RunDaemon() {
 				err := fanController.Run(ctx)
 				ui.Info("Fan controller for fan %s stopped.", fan.GetId())
 				if err != nil {
+					ui.NotifyError(fmt.Sprintf("Fan Controller: %s", fan.GetId()), err.Error())
 					panic(err)
 				}
 				return err
 			}, func(err error) {
 				if err != nil {
-					ui.Warning("Something went wrong: %v", err)
+					ui.WarningAndNotify(fmt.Sprintf("Fan Controller: %s", fan.GetId()), "Something went wrong: %v", err)
 				}
 			})
 		}
