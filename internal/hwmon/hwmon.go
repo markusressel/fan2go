@@ -202,7 +202,7 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 
 			fan := &fans.HwMonFan{
 				Label:        label,
-				Index:        len(fanList) + 1,
+				Index:        currentOutputIndex,
 				PwmOutput:    pwmOutput,
 				RpmInput:     rpmInput,
 				RpmMovingAvg: rpmAverage,
