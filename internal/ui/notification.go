@@ -11,21 +11,25 @@ const (
 	IconDialogError = "dialog-error"
 	IconDialogInfo  = "dialog-information"
 	IconDialogWarn  = "dialog-warning"
+
+	UrgencyLow      = "low"
+	UrgencyNormal   = "normal"
+	UrgencyCritical = "critical"
 )
 
 func NotifyInfo(title, text string) {
-	NotifySend(title, text, IconDialogInfo)
+	NotifySend(UrgencyLow, title, text, IconDialogInfo)
 }
 
 func NotifyWarn(title, text string) {
-	NotifySend(title, text, IconDialogWarn)
+	NotifySend(UrgencyNormal, title, text, IconDialogWarn)
 }
 
 func NotifyError(title, text string) {
-	NotifySend(title, text, IconDialogError)
+	NotifySend(UrgencyCritical, title, text, IconDialogError)
 }
 
-func NotifySend(title, text, icon string) {
+func NotifySend(urgency, title, text, icon string) {
 	display, exists := os.LookupEnv("DISPLAY")
 	if !exists {
 		Warning("Cannot send notification, missing env variable 'DISPLAY'!")
@@ -63,7 +67,11 @@ func NotifySend(title, text, icon string) {
 	cmd = exec.Command("sudo", "-u", user,
 		"DISPLAY="+display,
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/"+userIdString+"/bus",
-		"notify-send", "-i", icon, title, text,
+		"notify-send",
+		"-a", "fan2go",
+		"-u", urgency,
+		"-i", icon,
+		title, text,
 	)
 	err = cmd.Run()
 	if err != nil {

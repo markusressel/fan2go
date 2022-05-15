@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"github.com/pterm/pterm"
 )
 
@@ -37,5 +38,6 @@ func Error(format string, a ...interface{}) {
 }
 
 func Fatal(format string, a ...interface{}) {
+	NotifyError("fan2go: Fatal", fmt.Sprintf(format, a...))
 	pterm.Fatal.Printfln(format, a...)
 }
