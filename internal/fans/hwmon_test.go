@@ -93,3 +93,20 @@ func TestHwMonFan_SetMaxPwm(t *testing.T) {
 	// THEN
 	assert.Equal(t, expected, maxPwm)
 }
+
+func TestHwMonFan_PathSanitization(t *testing.T) {
+	// GIVEN
+	pwmOutput := "/this/is/a/test/pwm5"
+	expected := "/this/is/a/test/pwm5" + "/" + "pwm5_enabled"
+	fan := HwMonFan{
+		Index:     5,
+		PwmOutput: pwmOutput,
+	}
+
+	// WHEN
+	result, err := fan.GetPwmEnabled()
+
+	// THEN
+	assert.Equal(t, expected, result)
+	assert.NoError(t, err)
+}
