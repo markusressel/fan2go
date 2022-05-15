@@ -38,8 +38,7 @@ on your computer based on temperature sensors.`,
 		configuration.LoadConfig()
 		err := configuration.Validate(configPath)
 		if err != nil {
-			ui.Error(err.Error())
-			ui.NotifyError("Validation Error", err.Error())
+			ui.ErrorAndNotify("Validation Error", err.Error())
 			return
 		}
 

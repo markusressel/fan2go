@@ -33,11 +33,21 @@ func Warning(format string, a ...interface{}) {
 	pterm.Warning.Printfln(format, a...)
 }
 
+func WarningAndNotify(title string, format string, a ...interface{}) {
+	Error(format, a...)
+	NotifyError(title, fmt.Sprintf(format, a...))
+}
+
 func Error(format string, a ...interface{}) {
 	pterm.Error.Printfln(format, a...)
 }
 
+func ErrorAndNotify(title string, format string, a ...interface{}) {
+	Error(format, a...)
+	NotifyError(title, fmt.Sprintf(format, a...))
+}
+
 func Fatal(format string, a ...interface{}) {
-	NotifyError("fan2go: Fatal", fmt.Sprintf(format, a...))
+	NotifyError("Fatal Error", fmt.Sprintf(format, a...))
 	pterm.Fatal.Printfln(format, a...)
 }

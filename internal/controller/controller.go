@@ -146,7 +146,7 @@ func (f *fanController) Run(ctx context.Context) error {
 				case <-tick:
 					err = f.UpdateFanSpeed()
 					if err != nil {
-						ui.Error("Error in FanController for fan %s: %v", fan.GetId(), err)
+						ui.ErrorAndNotify("Fan Control Error", "Fan %s: %v", fan.GetId(), err)
 						f.restorePwmEnabled()
 						return nil
 					}
