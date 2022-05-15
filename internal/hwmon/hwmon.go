@@ -8,6 +8,7 @@ import (
 	"github.com/md14454/gosensors"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -75,7 +76,7 @@ func GetChips() []*HwMonController {
 
 // getDeviceName read the name of a device
 func getDeviceName(devicePath string) string {
-	namePath := devicePath + "/name"
+	namePath := path.Join(devicePath, "name")
 	content, _ := ioutil.ReadFile(namePath)
 	name := string(content)
 	return strings.TrimSpace(name)
@@ -83,14 +84,14 @@ func getDeviceName(devicePath string) string {
 
 // getDeviceModalias read the modalias of a device
 func getDeviceModalias(devicePath string) string {
-	modaliasPath := devicePath + "/device/modalias"
+	modaliasPath := path.Join(devicePath, "device", "modalias")
 	content, _ := ioutil.ReadFile(modaliasPath)
 	return strings.TrimSpace(string(content))
 }
 
 // getDeviceType read the type of a device
 func getDeviceType(devicePath string) string {
-	modaliasPath := devicePath + "/device/type"
+	modaliasPath := path.Join(devicePath, "device", "type")
 	content, _ := ioutil.ReadFile(modaliasPath)
 	return strings.TrimSpace(string(content))
 }
@@ -110,7 +111,7 @@ func GetTempSensors(chip gosensors.Chip) []*sensors.HwmonSensor {
 
 		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeTempInput) {
 			inputSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeTempInput)
-			sensorInputPath := fmt.Sprintf("%s/%s", chip.Path, inputSubFeature.Name)
+			sensorInputPath := path.Join(chip.Path, inputSubFeature.Name)
 
 			max := -1
 			if containsSubFeature(subfeatures, gosensors.SubFeatureTypeTempMax) {
@@ -156,7 +157,8 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 		subfeatures := feature.GetSubFeatures()
 
 		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput) {
-			pwmOutput := fmt.Sprintf("%s/pwm%d", chip.Path, len(fanList)+1)
+
+			pwmOutput := path.Join(chip.Path, fmt.Sprintf("pwm%d", len(fanList)+1))
 
 			if _, err := os.Stat(pwmOutput); err == nil {
 			} else if errors.Is(err, os.ErrNotExist) {
@@ -170,7 +172,7 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 			rpmAverage := 0.0
 			inputSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput)
 			if inputSubFeature != nil {
-				rpmInput = fmt.Sprintf("%s/%s", chip.Path, inputSubFeature.Name)
+				rpmInput = path.Join(chip.Path, inputSubFeature.Name)
 				rpmAverage = inputSubFeature.GetValue()
 			}
 
@@ -233,7 +235,7 @@ func containsSubFeature(s []gosensors.SubFeature, e gosensors.SubFeatureType) bo
 
 // getLabel read the label of a in/output of a device
 func getLabel(devicePath string, input string) string {
-	labelPath := strings.TrimSuffix(devicePath+"/"+input, "input") + "label"
+	labelPath := strings.TrimSuffix(path.Join(devicePath, input), "input") + "label"
 
 	content, _ := ioutil.ReadFile(labelPath)
 	label := string(content)
