@@ -34,7 +34,7 @@ func NewPersistence(dbPath string) Persistence {
 func (p persistence) openPersistence() *bolt.DB {
 	db, err := bolt.Open(p.dbPath, 0600, &bolt.Options{Timeout: 1 * time.Minute})
 	if err != nil {
-		ui.Error("Could not open database file: %v", err)
+		ui.ErrorAndNotify("Persistence Error", "Could not open database file: %v", err)
 		os.Exit(1)
 	}
 	return db

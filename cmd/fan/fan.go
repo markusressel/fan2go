@@ -50,9 +50,8 @@ func getFan(id string) (fans.Fan, error) {
 						return nil, errors.New(fmt.Sprintf("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform))
 					}
 					if matched {
-						index := config.HwMon.Index - 1
-						if len(controller.Fans) > index {
-							fan := controller.Fans[index]
+						fan, exists := controller.Fans[config.HwMon.Index]
+						if exists {
 							config.HwMon.PwmOutput = fan.PwmOutput
 							config.HwMon.RpmInput = fan.RpmInput
 							break

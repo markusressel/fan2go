@@ -38,7 +38,8 @@ on your computer based on temperature sensors.`,
 		configuration.LoadConfig()
 		err := configuration.Validate(configPath)
 		if err != nil {
-			ui.Fatal(err.Error())
+			ui.ErrorAndNotify("Config Validation Error", err.Error())
+			return
 		}
 
 		internal.RunDaemon()

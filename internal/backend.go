@@ -64,7 +64,7 @@ func RunDaemon() {
 
 				go func() {
 					if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-						ui.Error("Cannot start prometheus metrics endpoint (%s)", err.Error())
+						ui.ErrorAndNotify("Statistics Error", "Cannot start prometheus metrics endpoint (%s)", err.Error())
 					}
 				}()
 
@@ -114,12 +114,13 @@ func RunDaemon() {
 				err := fanController.Run(ctx)
 				ui.Info("Fan controller for fan %s stopped.", fan.GetId())
 				if err != nil {
+					ui.NotifyError(fmt.Sprintf("Fan Controller: %s", fan.GetId()), err.Error())
 					panic(err)
 				}
 				return err
 			}, func(err error) {
 				if err != nil {
-					ui.Warning("Something went wrong: %v", err)
+					ui.WarningAndNotify(fmt.Sprintf("Fan Controller: %s", fan.GetId()), "Something went wrong: %v", err)
 				}
 			})
 		}
@@ -195,7 +196,7 @@ func initializeSensors(controllers []*hwmon.HwMonController) {
 				}
 				if matched {
 					found = true
-					config.HwMon.TempInput = c.Sensors[config.HwMon.Index-1].Input
+					config.HwMon.TempInput = c.Sensors[config.HwMon.Index].Input
 				}
 			}
 			if !found {
@@ -252,9 +253,9 @@ func initializeFans(controllers []*hwmon.HwMonController) map[configuration.FanC
 				}
 				if matched {
 					found = true
-					index := config.HwMon.Index - 1
-					if len(c.Fans) > index {
-						fan := c.Fans[index]
+
+					fan, exists := c.Fans[config.HwMon.Index]
+					if exists {
 						config.HwMon.PwmOutput = fan.PwmOutput
 						config.HwMon.RpmInput = fan.RpmInput
 					}

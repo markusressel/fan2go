@@ -8,6 +8,7 @@ import (
 	"github.com/md14454/gosensors"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -29,8 +30,10 @@ type HwMonController struct {
 	Platform string
 	Path     string
 
-	Fans    []*fans.HwMonFan
-	Sensors []*sensors.HwmonSensor
+	// Fans maps from HwMon index -> HwMonFan instance
+	Fans map[int]*fans.HwMonFan
+	// Sensors maps from HwMon index -> HwmonSensor instance
+	Sensors map[int]*sensors.HwmonSensor
 }
 
 func GetChips() []*HwMonController {
@@ -51,10 +54,10 @@ func GetChips() []*HwMonController {
 			platform = identifier
 		}
 
-		fansList := GetFans(chip)
-		sensorsList := GetTempSensors(chip)
+		fanMap := GetFans(chip)
+		sensorMap := GetTempSensors(chip)
 
-		if len(fansList) <= 0 && len(sensorsList) <= 0 {
+		if len(fanMap) <= 0 && len(sensorMap) <= 0 {
 			continue
 		}
 
@@ -64,8 +67,8 @@ func GetChips() []*HwMonController {
 			Modalias: modalias,
 			Platform: platform,
 			Path:     chip.Path,
-			Fans:     fansList,
-			Sensors:  sensorsList,
+			Fans:     fanMap,
+			Sensors:  sensorMap,
 		}
 		list = append(list, c)
 	}
@@ -75,7 +78,7 @@ func GetChips() []*HwMonController {
 
 // getDeviceName read the name of a device
 func getDeviceName(devicePath string) string {
-	namePath := devicePath + "/name"
+	namePath := path.Join(devicePath, "name")
 	content, _ := ioutil.ReadFile(namePath)
 	name := string(content)
 	return strings.TrimSpace(name)
@@ -83,21 +86,22 @@ func getDeviceName(devicePath string) string {
 
 // getDeviceModalias read the modalias of a device
 func getDeviceModalias(devicePath string) string {
-	modaliasPath := devicePath + "/device/modalias"
+	modaliasPath := path.Join(devicePath, "device", "modalias")
 	content, _ := ioutil.ReadFile(modaliasPath)
 	return strings.TrimSpace(string(content))
 }
 
 // getDeviceType read the type of a device
 func getDeviceType(devicePath string) string {
-	modaliasPath := devicePath + "/device/type"
+	modaliasPath := path.Join(devicePath, "device", "type")
 	content, _ := ioutil.ReadFile(modaliasPath)
 	return strings.TrimSpace(string(content))
 }
 
-func GetTempSensors(chip gosensors.Chip) []*sensors.HwmonSensor {
-	var sensorList []*sensors.HwmonSensor
+func GetTempSensors(chip gosensors.Chip) map[int]*sensors.HwmonSensor {
+	result := map[int]*sensors.HwmonSensor{}
 
+	currentOutputIndex := 0
 	features := chip.GetFeatures()
 	for j := 0; j < len(features); j++ {
 		feature := features[j]
@@ -109,8 +113,10 @@ func GetTempSensors(chip gosensors.Chip) []*sensors.HwmonSensor {
 		subfeatures := feature.GetSubFeatures()
 
 		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeTempInput) {
+			currentOutputIndex++
+
 			inputSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeTempInput)
-			sensorInputPath := fmt.Sprintf("%s/%s", chip.Path, inputSubFeature.Name)
+			sensorInputPath := path.Join(chip.Path, inputSubFeature.Name)
 
 			max := -1
 			if containsSubFeature(subfeatures, gosensors.SubFeatureTypeTempMax) {
@@ -126,25 +132,24 @@ func GetTempSensors(chip gosensors.Chip) []*sensors.HwmonSensor {
 
 			label := getLabel(chip.Path, inputSubFeature.Name)
 
-			sensorList = append(
-				sensorList,
-				&sensors.HwmonSensor{
-					Label:     label,
-					Index:     len(sensorList) + 1,
-					Input:     sensorInputPath,
-					Max:       max,
-					Min:       min,
-					MovingAvg: inputSubFeature.GetValue(),
-				})
+			result[currentOutputIndex] = &sensors.HwmonSensor{
+				Label:     label,
+				Index:     currentOutputIndex,
+				Input:     sensorInputPath,
+				Max:       max,
+				Min:       min,
+				MovingAvg: inputSubFeature.GetValue(),
+			}
 		}
 	}
 
-	return sensorList
+	return result
 }
 
-func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
-	var fanList []*fans.HwMonFan
+func GetFans(chip gosensors.Chip) map[int]*fans.HwMonFan {
+	var result = map[int]*fans.HwMonFan{}
 
+	currentOutputIndex := 0
 	features := chip.GetFeatures()
 	for j := 0; j < len(features); j++ {
 		feature := features[j]
@@ -156,7 +161,7 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 		subfeatures := feature.GetSubFeatures()
 
 		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput) {
-			pwmOutput := fmt.Sprintf("%s/pwm%d", chip.Path, len(fanList)+1)
+			pwmOutput := path.Join(chip.Path, fmt.Sprintf("pwm%d", currentOutputIndex+1))
 
 			if _, err := os.Stat(pwmOutput); err == nil {
 			} else if errors.Is(err, os.ErrNotExist) {
@@ -166,11 +171,17 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 				pwmOutput = ""
 			}
 
+			currentOutputIndex++
+
+			if len(pwmOutput) <= 0 {
+				continue
+			}
+
 			rpmInput := ""
 			rpmAverage := 0.0
 			inputSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput)
 			if inputSubFeature != nil {
-				rpmInput = fmt.Sprintf("%s/%s", chip.Path, inputSubFeature.Name)
+				rpmInput = path.Join(chip.Path, inputSubFeature.Name)
 				rpmAverage = inputSubFeature.GetValue()
 			}
 
@@ -190,15 +201,11 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 				min = fans.MinPwmValue
 			}
 
-			if len(pwmOutput) <= 0 {
-				continue
-			}
-
 			label := getLabel(chip.Path, inputSubFeature.Name)
 
 			fan := &fans.HwMonFan{
 				Label:        label,
-				Index:        len(fanList) + 1,
+				Index:        currentOutputIndex,
 				PwmOutput:    pwmOutput,
 				RpmInput:     rpmInput,
 				RpmMovingAvg: rpmAverage,
@@ -206,11 +213,11 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 				MaxPwm:       max,
 			}
 
-			fanList = append(fanList, fan)
+			result[currentOutputIndex] = fan
 		}
 	}
 
-	return fanList
+	return result
 }
 
 func getSubFeature(subfeatures []gosensors.SubFeature, input gosensors.SubFeatureType) *gosensors.SubFeature {
@@ -233,7 +240,7 @@ func containsSubFeature(s []gosensors.SubFeature, e gosensors.SubFeatureType) bo
 
 // getLabel read the label of a in/output of a device
 func getLabel(devicePath string, input string) string {
-	labelPath := strings.TrimSuffix(devicePath+"/"+input, "input") + "label"
+	labelPath := strings.TrimSuffix(path.Join(devicePath, input), "input") + "label"
 
 	content, _ := ioutil.ReadFile(labelPath)
 	label := string(content)

@@ -67,9 +67,8 @@ func getSensor(id string) (sensors.Sensor, error) {
 						return nil, errors.New(fmt.Sprintf("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform))
 					}
 					if matched {
-						index := config.HwMon.Index - 1
-						if len(controller.Sensors) > index {
-							sensor := controller.Sensors[index]
+						sensor, exists := controller.Sensors[config.HwMon.Index]
+						if exists {
 							if len(sensor.Input) <= 0 {
 								return nil, errors.New(fmt.Sprintf("Unable to find temp input for sensor %s", id))
 							}
