@@ -196,7 +196,7 @@ func initializeSensors(controllers []*hwmon.HwMonController) {
 				}
 				if matched {
 					found = true
-					config.HwMon.TempInput = c.Sensors[config.HwMon.Index-1].Input
+					config.HwMon.TempInput = c.Sensors[config.HwMon.Index].Input
 				}
 			}
 			if !found {
