@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tomlazar/table"
 	"path/filepath"
+	"sort"
 	"strconv"
 )
 
@@ -39,17 +40,24 @@ var detectCmd = &cobra.Command{
 				continue
 			}
 
-			fanList := controller.Fans
-			sensorList := controller.Sensors
+			fanMap := controller.Fans
+			sensorMap := controller.Sensors
 
-			if len(fanList) <= 0 && len(sensorList) <= 0 {
+			if len(fanMap) <= 0 && len(sensorMap) <= 0 {
 				continue
 			}
 
 			ui.Printfln("> %s", controller.Name)
 
+			fanMapKeys := make([]int, 0, len(fanMap))
+			for k := range fanMap {
+				fanMapKeys = append(fanMapKeys, k)
+			}
+			sort.Ints(fanMapKeys)
+
 			var fanRows [][]string
-			for _, fan := range fanList {
+			for _, index := range fanMapKeys {
+				fan := fanMap[index]
 				pwmText := "N/A"
 				if pwm, err := fan.GetPwm(); err == nil {
 					pwmText = strconv.Itoa(pwm)
@@ -72,8 +80,15 @@ var detectCmd = &cobra.Command{
 				Rows:    fanRows,
 			}
 
+			sensorMapKeys := make([]int, 0, len(sensorMap))
+			for k := range sensorMap {
+				sensorMapKeys = append(sensorMapKeys, k)
+			}
+			sort.Ints(sensorMapKeys)
+
 			var sensorRows [][]string
-			for _, sensor := range sensorList {
+			for _, index := range sensorMapKeys {
+				sensor := sensorMap[index]
 				value, err := sensor.GetValue()
 				valueText := "N/A"
 				if err == nil {

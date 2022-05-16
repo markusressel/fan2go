@@ -30,8 +30,10 @@ type HwMonController struct {
 	Platform string
 	Path     string
 
-	Fans    []*fans.HwMonFan
-	Sensors []*sensors.HwmonSensor
+	// Fans maps from HwMon index -> HwMonFan instance
+	Fans map[int]*fans.HwMonFan
+	// Sensors maps from HwMon index -> HwmonSensor instance
+	Sensors map[int]*sensors.HwmonSensor
 }
 
 func GetChips() []*HwMonController {
@@ -52,10 +54,10 @@ func GetChips() []*HwMonController {
 			platform = identifier
 		}
 
-		fansList := GetFans(chip)
-		sensorsList := GetTempSensors(chip)
+		fanMap := GetFans(chip)
+		sensorMap := GetTempSensors(chip)
 
-		if len(fansList) <= 0 && len(sensorsList) <= 0 {
+		if len(fanMap) <= 0 && len(sensorMap) <= 0 {
 			continue
 		}
 
@@ -65,8 +67,8 @@ func GetChips() []*HwMonController {
 			Modalias: modalias,
 			Platform: platform,
 			Path:     chip.Path,
-			Fans:     fansList,
-			Sensors:  sensorsList,
+			Fans:     fanMap,
+			Sensors:  sensorMap,
 		}
 		list = append(list, c)
 	}
@@ -96,9 +98,10 @@ func getDeviceType(devicePath string) string {
 	return strings.TrimSpace(string(content))
 }
 
-func GetTempSensors(chip gosensors.Chip) []*sensors.HwmonSensor {
-	var sensorList []*sensors.HwmonSensor
+func GetTempSensors(chip gosensors.Chip) map[int]*sensors.HwmonSensor {
+	result := map[int]*sensors.HwmonSensor{}
 
+	currentOutputIndex := 0
 	features := chip.GetFeatures()
 	for j := 0; j < len(features); j++ {
 		feature := features[j]
@@ -110,6 +113,8 @@ func GetTempSensors(chip gosensors.Chip) []*sensors.HwmonSensor {
 		subfeatures := feature.GetSubFeatures()
 
 		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeTempInput) {
+			currentOutputIndex++
+
 			inputSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeTempInput)
 			sensorInputPath := path.Join(chip.Path, inputSubFeature.Name)
 
@@ -127,24 +132,22 @@ func GetTempSensors(chip gosensors.Chip) []*sensors.HwmonSensor {
 
 			label := getLabel(chip.Path, inputSubFeature.Name)
 
-			sensorList = append(
-				sensorList,
-				&sensors.HwmonSensor{
-					Label:     label,
-					Index:     len(sensorList) + 1,
-					Input:     sensorInputPath,
-					Max:       max,
-					Min:       min,
-					MovingAvg: inputSubFeature.GetValue(),
-				})
+			result[currentOutputIndex] = &sensors.HwmonSensor{
+				Label:     label,
+				Index:     currentOutputIndex,
+				Input:     sensorInputPath,
+				Max:       max,
+				Min:       min,
+				MovingAvg: inputSubFeature.GetValue(),
+			}
 		}
 	}
 
-	return sensorList
+	return result
 }
 
-func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
-	var fanList []*fans.HwMonFan
+func GetFans(chip gosensors.Chip) map[int]*fans.HwMonFan {
+	var result = map[int]*fans.HwMonFan{}
 
 	currentOutputIndex := 0
 	features := chip.GetFeatures()
@@ -210,11 +213,11 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 				MaxPwm:       max,
 			}
 
-			fanList = append(fanList, fan)
+			result[currentOutputIndex] = fan
 		}
 	}
 
-	return fanList
+	return result
 }
 
 func getSubFeature(subfeatures []gosensors.SubFeature, input gosensors.SubFeatureType) *gosensors.SubFeature {
