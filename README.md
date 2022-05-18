@@ -5,7 +5,7 @@
   <br>
 </h1>
 
-<h4 align="center">A daemon to control the fans of a computer.</h4>
+<h4 align="center">A daemon to control the fans of your computer.</h4>
 
 <div align="center">
 
