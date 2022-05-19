@@ -15,7 +15,7 @@ func SafeCmdExecution(executable string, args []string, timeout time.Duration) (
 		return "", errors.New(fmt.Sprintf("Cannot execute %s: %s", executable, err))
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, executable, args...)

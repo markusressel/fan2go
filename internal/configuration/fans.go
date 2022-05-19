@@ -23,9 +23,9 @@ type FileFanConfig struct {
 }
 
 type CmdFanConfig struct {
-	PwmSet *ExecConfig `json:"pwmSet,omitempty"`
-	PwmGet *ExecConfig `json:"pwmGet,omitempty"`
-	RpmGet *ExecConfig `json:"rpmGet,omitempty"`
+	SetPwm *ExecConfig `json:"setPwm,omitempty"`
+	GetPwm *ExecConfig `json:"getPwm,omitempty"`
+	GetRpm *ExecConfig `json:"getRpm,omitempty"`
 }
 
 type ExecConfig struct {

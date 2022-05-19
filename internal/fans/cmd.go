@@ -52,17 +52,17 @@ func (fan CmdFan) GetRpm() (int, error) {
 		return 0, nil
 	}
 
-	conf := fan.Config.Cmd.RpmGet
+	conf := fan.Config.Cmd.GetRpm
 
 	timeout := 2 * time.Second
 	result, err := util.SafeCmdExecution(conf.Exec, conf.Args, timeout)
 	if err != nil {
-		return 0, errors.New(fmt.Sprintf("Fan %s: %s", fan.GetId(), err.Error()))
+		return 0, err
 	}
 
 	temp, err := strconv.ParseFloat(result, 64)
 	if err != nil {
-		ui.Warning("Fan %s: Unable to read int from command output: %s", fan.GetId(), conf.Exec)
+		ui.Warning("Unable to read int from command output: %s", conf.Exec)
 		return 0, err
 	}
 
@@ -79,17 +79,17 @@ func (fan *CmdFan) SetRpmAvg(rpm float64) {
 }
 
 func (fan CmdFan) GetPwm() (result int, err error) {
-	conf := fan.Config.Cmd.PwmGet
+	conf := fan.Config.Cmd.GetPwm
 
 	timeout := 2 * time.Second
 	output, err := util.SafeCmdExecution(conf.Exec, conf.Args, timeout)
 	if err != nil {
-		return 0, errors.New(fmt.Sprintf("Fan %s: %s", fan.GetId(), err.Error()))
+		return 0, err
 	}
 
 	pwm, err := strconv.ParseFloat(output, 64)
 	if err != nil {
-		ui.Warning("Fan %s: Unable to read int from command output: %s", fan.GetId(), conf.Exec)
+		ui.Warning("Unable to read int from command output: %s", conf.Exec)
 		return 0, err
 	}
 
@@ -97,7 +97,7 @@ func (fan CmdFan) GetPwm() (result int, err error) {
 }
 
 func (fan *CmdFan) SetPwm(pwm int) (err error) {
-	conf := fan.Config.Cmd.PwmSet
+	conf := fan.Config.Cmd.SetPwm
 
 	var args = []string{}
 	for _, arg := range conf.Args {
@@ -108,7 +108,7 @@ func (fan *CmdFan) SetPwm(pwm int) (err error) {
 	timeout := 2 * time.Second
 	_, err = util.SafeCmdExecution(conf.Exec, args, timeout)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Fan %s: %s", fan.GetId(), err.Error()))
+		return errors.New(fmt.Sprintf("%s", err.Error()))
 	}
 
 	return nil
@@ -147,7 +147,7 @@ func (fan CmdFan) IsPwmAuto() (bool, error) {
 func (fan CmdFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureRpmSensor:
-		return fan.Config.Cmd.RpmGet != nil
+		return fan.Config.Cmd.GetRpm != nil
 	}
 	return false
 }

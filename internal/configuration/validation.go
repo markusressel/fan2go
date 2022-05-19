@@ -247,17 +247,17 @@ func validateFans(config *Configuration) error {
 
 		if fanConfig.Cmd != nil {
 			cmdConfig := fanConfig.Cmd
-			if cmdConfig.PwmSet == nil {
+			if cmdConfig.SetPwm == nil {
 				return errors.New(fmt.Sprintf("Fan %s: missing setPwm configuration", fanConfig.ID))
 			}
-			if len(cmdConfig.PwmSet.Exec) <= 0 {
+			if len(cmdConfig.SetPwm.Exec) <= 0 {
 				return errors.New(fmt.Sprintf("Fan %s: setPwm executable is missing", fanConfig.ID))
 			}
 
-			if cmdConfig.PwmGet == nil {
+			if cmdConfig.GetPwm == nil {
 				return errors.New(fmt.Sprintf("Fan %s: missing getPwm configuration", fanConfig.ID))
 			}
-			if len(cmdConfig.PwmGet.Exec) <= 0 {
+			if len(cmdConfig.GetPwm.Exec) <= 0 {
 				return errors.New(fmt.Sprintf("Fan %s: getPwm executable is missing", fanConfig.ID))
 			}
 		}
