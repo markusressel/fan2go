@@ -222,7 +222,7 @@ func validateFans(config *Configuration) error {
 			return errors.New(fmt.Sprintf("Fan %s: only one fan type can be used per fan definition block", fanConfig.ID))
 		}
 		if subConfigs <= 0 {
-			return errors.New(fmt.Sprintf("Fan %s: sub-configuration for fan is missing, use one of: lhwmon | file | cmd", fanConfig.ID))
+			return errors.New(fmt.Sprintf("Fan %s: sub-configuration for fan is missing, use one of: hwmon | file | cmd", fanConfig.ID))
 		}
 
 		if len(fanConfig.Curve) <= 0 {

@@ -22,7 +22,7 @@ func TestValidateFanSubConfigIsMissing(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Fans fan: sub-configuration for fan is missing, use one of: hwmon | file | cmd")
+	assert.EqualError(t, err, "Fan fan: sub-configuration for fan is missing, use one of: hwmon | file | cmd")
 }
 
 func TestValidateFanCurveWithIdIsNotDefined(t *testing.T) {
