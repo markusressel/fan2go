@@ -222,11 +222,11 @@ func (f *fanController) runInitializationSequence() (err error) {
 		// TODO: this has to be done _always_, while the RPM measurements only make sense if the fan supports it
 		actualPwm, err := fan.GetPwm()
 		if err != nil {
-			ui.Error("Unable to measure current PWM")
+			ui.Error("Fan %s: Unable to measure current PWM", fan.GetId())
 			return err
 		}
 		if actualPwm != pwm {
-			ui.Debug("Actual PWM value differs from requested one, skipping. Requested: %d Actual: %d", pwm, actualPwm)
+			ui.Debug("Fan %s: Actual PWM value differs from requested one, skipping. Requested: %d Actual: %d", fan.GetId(), pwm, actualPwm)
 			continue
 		}
 

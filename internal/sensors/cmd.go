@@ -1,15 +1,12 @@
 package sensors
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
-	"os/exec"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -18,7 +15,7 @@ type CmdSensor struct {
 	Exec      string                     `json:"exec"`
 	Args      []string                   `json:"args"`
 	Config    configuration.SensorConfig `json:"configuration"`
-	MovingAvg float64                    `json:"moving_avg"`
+	MovingAvg float64                    `json:"movingAvg"`
 }
 
 func (sensor CmdSensor) GetId() string {
@@ -30,32 +27,15 @@ func (sensor CmdSensor) GetConfig() configuration.SensorConfig {
 }
 
 func (sensor CmdSensor) GetValue() (float64, error) {
-	if _, err := util.CheckFilePermissionsForExecution(sensor.Exec); err != nil {
-		return 0, errors.New(fmt.Sprintf("Sensor %s: Cannot execute %s: %s", sensor.Config.ID, sensor.Exec, err))
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, sensor.Exec, sensor.Args...)
-	out, err := cmd.Output()
-
-	if ctx.Err() == context.DeadlineExceeded {
-		ui.Warning("Sensor %s: Command timed out: %s", sensor.Config.ID, sensor.Exec)
-		return 0, err
-	}
-
+	timeout := 2 * time.Second
+	result, err := util.SafeCmdExecution(sensor.Exec, sensor.Args, timeout)
 	if err != nil {
-		ui.Warning("Sensor %s: Command failed to execute: %s", sensor.Config.ID, sensor.Exec)
-		return 0, err
+		return 0, errors.New(fmt.Sprintf("Sensor %s: %s", sensor.GetId(), err.Error()))
 	}
 
-	strout := string(out)
-	strout = strings.Trim(strout, "\n")
-
-	temp, err := strconv.ParseFloat(strout, 64)
+	temp, err := strconv.ParseFloat(result, 64)
 	if err != nil {
-		ui.Warning("Sensor %s: Unable to read int from command output: %s", sensor.Config.ID, sensor.Exec)
+		ui.Warning("Sensor %s: Unable to read int from command output: %s", sensor.GetId(), sensor.Exec)
 		return 0, err
 	}
 

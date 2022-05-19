@@ -270,7 +270,7 @@ func initializeFans(controllers []*hwmon.HwMonController) map[configuration.FanC
 
 		fan, err := fans.NewFan(config)
 		if err != nil {
-			ui.Fatal("Unable to process fan configuration: %s", config.ID)
+			ui.Fatal("Unable to process fan configuration of '%s': %v", config.ID, err)
 		}
 		fans.FanMap[config.ID] = fan
 		result[config] = fan

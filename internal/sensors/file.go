@@ -11,9 +11,9 @@ import (
 
 type FileSensor struct {
 	Name      string                     `json:"name"`
-	FilePath  string                     `json:"file_path"`
+	FilePath  string                     `json:"filePath"`
 	Config    configuration.SensorConfig `json:"configuration"`
-	MovingAvg float64                    `json:"moving_avg"`
+	MovingAvg float64                    `json:"movingAvg"`
 }
 
 func (sensor FileSensor) GetId() string {

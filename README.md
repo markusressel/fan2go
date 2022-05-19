@@ -111,6 +111,8 @@ amdgpu-pci-0031
            3       mem        56000
 ```
 
+#### HwMon
+
 To use detected devices in your configuration, use the `hwmon` fan type:
 
 ```yaml
@@ -134,6 +136,8 @@ fans:
     curve: cpu_curve
 ```
 
+#### File
+
 ```yaml
 fans:
   - id: file_fan
@@ -146,10 +150,36 @@ fans:
 255
 ```
 
+#### CMD
+
+Please also make sure to read the section about
+[considerations for using the cmd sensor/fan](#using-external-commands-for-sensorsfans).
+
+```yaml
+fans:
+  - id: cmd_fan
+    cmd:
+      # (optional) Command to apply a new PWM value (0..255)
+      #  use "%pwm%" to specify where the target pwm value should be used withing the arguments
+      setPwm:
+        exec: /usr/bin/some-program
+        args: [ "--set", "%pwm%" ]
+      # (optional) Command to retrieve the current PWM value (0..255)
+      getPwm:
+        exec: /usr/bin/nvidia-settings
+        args: [ "-a", "someargument" ]
+      # (optional) Command to retrieve the current RPM value
+      getRpm:
+        exec: /usr/bin/nvidia-settings
+        args: [ "-a", "someargument" ]
+```
+
 ### Sensors
 
 Under `sensors:` you need to define a list of temperature sensor devices that you want to monitor and use to adjust
 fanspeeds. Like with fans, you can find usable devices using `fan2go detect`.
+
+#### HwMon
 
 ```yaml
 # A list of sensors to monitor
@@ -166,6 +196,8 @@ sensors:
       index: 1
 ```
 
+#### File
+
 ```yaml
 sensors:
   - id: file_sensor
@@ -181,6 +213,11 @@ The file contains a value in milli-units, like milli-degrees.
 10000
 ```
 
+#### CMD
+
+Please also make sure to read the section about
+[considerations for using the cmd sensor/fan](#using-external-commands-for-sensorsfans).
+
 ```yaml
 sensors:
   - id: cmd_fan
@@ -190,9 +227,6 @@ sensors:
       # (optional) arguments to pass to the executable
       args: [ '-q', 'gpucoretemp', '-t' ]
 ```
-
-Please also make sure to read the section
-about [considerations for using the cmd sensor/fan](#using-external-commands-for-sensorsfans).
 
 ### Curves
 

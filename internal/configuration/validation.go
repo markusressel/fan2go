@@ -207,12 +207,22 @@ func isCurveConfigInUse(config CurveConfig, curves []CurveConfig, fans []FanConf
 
 func validateFans(config *Configuration) error {
 	for _, fanConfig := range config.Fans {
-		if fanConfig.HwMon != nil && fanConfig.File != nil {
-			return errors.New(fmt.Sprintf("Fans %s: only one fan type can be used per fan definition block", fanConfig.ID))
+		subConfigs := 0
+		if fanConfig.HwMon != nil {
+			subConfigs++
+		}
+		if fanConfig.File != nil {
+			subConfigs++
+		}
+		if fanConfig.Cmd != nil {
+			subConfigs++
 		}
 
-		if fanConfig.HwMon == nil && fanConfig.File == nil {
-			return errors.New(fmt.Sprintf("Fans %s: sub-configuration for fan is missing, use one of: hwmon | file | cmd", fanConfig.ID))
+		if subConfigs > 1 {
+			return errors.New(fmt.Sprintf("Fan %s: only one fan type can be used per fan definition block", fanConfig.ID))
+		}
+		if subConfigs <= 0 {
+			return errors.New(fmt.Sprintf("Fan %s: sub-configuration for fan is missing, use one of: hwmon | file | cmd", fanConfig.ID))
 		}
 
 		if len(fanConfig.Curve) <= 0 {
@@ -226,6 +236,29 @@ func validateFans(config *Configuration) error {
 		if fanConfig.HwMon != nil {
 			if fanConfig.HwMon.Index <= 0 {
 				return errors.New(fmt.Sprintf("Fan %s: invalid index, must be >= 1", fanConfig.ID))
+			}
+		}
+
+		if fanConfig.File != nil {
+			if len(fanConfig.File.Path) <= 0 {
+				return errors.New(fmt.Sprintf("Fan %s: no file path provided", fanConfig.ID))
+			}
+		}
+
+		if fanConfig.Cmd != nil {
+			cmdConfig := fanConfig.Cmd
+			if cmdConfig.SetPwm == nil {
+				return errors.New(fmt.Sprintf("Fan %s: missing setPwm configuration", fanConfig.ID))
+			}
+			if len(cmdConfig.SetPwm.Exec) <= 0 {
+				return errors.New(fmt.Sprintf("Fan %s: setPwm executable is missing", fanConfig.ID))
+			}
+
+			if cmdConfig.GetPwm == nil {
+				return errors.New(fmt.Sprintf("Fan %s: missing getPwm configuration", fanConfig.ID))
+			}
+			if len(cmdConfig.GetPwm.Exec) <= 0 {
+				return errors.New(fmt.Sprintf("Fan %s: getPwm executable is missing", fanConfig.ID))
 			}
 		}
 	}

@@ -12,7 +12,7 @@ type HwmonSensor struct {
 	Max       int                        `json:"max"`
 	Min       int                        `json:"min"`
 	Config    configuration.SensorConfig `json:"configuration"`
-	MovingAvg float64                    `json:"moving_avg"`
+	MovingAvg float64                    `json:"movingAvg"`
 }
 
 func (sensor HwmonSensor) GetId() string {
