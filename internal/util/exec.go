@@ -27,7 +27,8 @@ func SafeCmdExecution(executable string, args []string, timeout time.Duration) (
 	}
 
 	if err != nil {
-		ui.Warning("Command failed to execute: %s", executable)
+		exitError := err.(*exec.ExitError)
+		ui.Warning("Command failed to execute: %s: %s", executable, string(exitError.Stderr))
 		return "", err
 	}
 
