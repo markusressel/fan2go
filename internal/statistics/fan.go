@@ -38,9 +38,11 @@ func (collector *FanCollector) Collect(ch chan<- prometheus.Metric) {
 		fanId := fan.GetId()
 
 		pwm, _ := fan.GetPwm()
-		rpm, _ := fan.GetRpm()
-
 		ch <- prometheus.MustNewConstMetric(collector.pwm, prometheus.GaugeValue, float64(pwm), fanId)
-		ch <- prometheus.MustNewConstMetric(collector.rpm, prometheus.GaugeValue, float64(rpm), fanId)
+
+		if fan.Supports(fans.FeatureRpmSensor) {
+			rpm, _ := fan.GetRpm()
+			ch <- prometheus.MustNewConstMetric(collector.rpm, prometheus.GaugeValue, float64(rpm), fanId)
+		}
 	}
 }

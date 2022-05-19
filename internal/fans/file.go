@@ -133,6 +133,8 @@ func (fan FileFan) IsPwmAuto() (bool, error) {
 
 func (fan FileFan) Supports(feature FeatureFlag) bool {
 	switch feature {
+	case FeatureControlMode:
+		return false
 	case FeatureRpmSensor:
 		// TODO: maybe we could support this in the future
 		return false

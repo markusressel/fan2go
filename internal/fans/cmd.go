@@ -146,6 +146,8 @@ func (fan CmdFan) IsPwmAuto() (bool, error) {
 
 func (fan CmdFan) Supports(feature FeatureFlag) bool {
 	switch feature {
+	case FeatureControlMode:
+		return false
 	case FeatureRpmSensor:
 		return fan.Config.Cmd.GetRpm != nil
 	}
