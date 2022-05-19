@@ -152,6 +152,9 @@ fans:
 
 #### CMD
 
+Please also make sure to read the section about
+[considerations for using the cmd sensor/fan](#using-external-commands-for-sensorsfans).
+
 ```yaml
 fans:
   - id: cmd_fan
@@ -212,6 +215,9 @@ The file contains a value in milli-units, like milli-degrees.
 
 #### CMD
 
+Please also make sure to read the section about
+[considerations for using the cmd sensor/fan](#using-external-commands-for-sensorsfans).
+
 ```yaml
 sensors:
   - id: cmd_fan
@@ -221,9 +227,6 @@ sensors:
       # (optional) arguments to pass to the executable
       args: [ '-q', 'gpucoretemp', '-t' ]
 ```
-
-Please also make sure to read the section
-about [considerations for using the cmd sensor/fan](#using-external-commands-for-sensorsfans).
 
 ### Curves
 
