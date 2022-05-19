@@ -98,6 +98,13 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 		}, nil
 	}
 
+	if config.Cmd != nil {
+		return &CmdFan{
+			ID:     config.ID,
+			Config: config,
+		}, nil
+	}
+
 	return nil, fmt.Errorf("no matching fan type for fan: %s", config.ID)
 }
 
