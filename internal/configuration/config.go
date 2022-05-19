@@ -65,6 +65,11 @@ func setDefaultValues() {
 	viper.SetDefault("RpmPollingRate", 1*time.Second)
 	viper.SetDefault("RpmRollingWindowSize", 10)
 
+	viper.SetDefault("Statistics", StatisticsConfig{
+		Enabled: false,
+		Port:    9000,
+	})
+
 	viper.SetDefault("ControllerAdjustmentTickRate", 200*time.Millisecond)
 
 	viper.SetDefault("sensors", []SensorConfig{})
