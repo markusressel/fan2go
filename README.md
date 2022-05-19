@@ -5,7 +5,7 @@
   <br>
 </h1>
 
-<h4 align="center">A daemon to control the fans of a computer.</h4>
+<h4 align="center">A daemon to control the fans of your computer.</h4>
 
 <div align="center">
 
@@ -19,16 +19,19 @@
 
 # Features
 
-* [x] Fan speed control using user-defined speed curves
-* [x] Fully customizable and composable curve definitions
+* [x] Intuitive YAML based configuration
 * [x] Massive range of supported devices
-  * [x] Direct integration with lm-sensors
-  * [x] File Fan/Sensor for control/measurement of custom devices
+  * [x] lm-sensors (hwmon) based sensors and fans
+  * [x] File based fan/sensor for control/measurement of custom devices
+  * [x] Command based fan/sensor
+* [x] Per fan user-defined speed curves
+* [x] Fully customizable and composable curve definitions
 * [x] Works after resume from suspend
 * [x] **Stable** device paths after reboot
 * [x] Automatic analysis of fan properties, like:
   * [x] RPM curve
   * [x] minimum and maximum PWM
+* [x] Error notifications
 
 # How to use
 
