@@ -114,7 +114,8 @@ func (f *fanController) Run(ctx context.Context) error {
 	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
 
 	var g run.Group
-	{
+
+	if fan.Supports(fans.FeatureRpmSensor) {
 		// === rpm monitoring
 		pollingRate := configuration.CurrentConfig.RpmPollingRate
 
@@ -135,6 +136,7 @@ func (f *fanController) Run(ctx context.Context) error {
 			}
 		})
 	}
+
 	{
 		g.Add(func() error {
 			time.Sleep(1 * time.Second)
