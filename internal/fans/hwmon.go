@@ -130,8 +130,7 @@ func (fan HwMonFan) ShouldNeverStop() bool {
 }
 
 func (fan HwMonFan) GetPwmEnabled() (int, error) {
-	folder, _ := filepath.Split(fan.PwmOutput)
-	pwmEnabledFilePath := path.Join(folder, fmt.Sprintf("pwm%d_enable", fan.Index))
+	pwmEnabledFilePath := pwmEnablePath(fan)
 	return util.ReadIntFromFile(pwmEnabledFilePath)
 }
 
@@ -149,8 +148,7 @@ func (fan HwMonFan) IsPwmAuto() (bool, error) {
 // 1 - manual pwm control
 // 2 - motherboard pwm control
 func (fan *HwMonFan) SetPwmEnabled(value ControlMode) (err error) {
-	folder, _ := filepath.Split(fan.PwmOutput)
-	pwmEnabledFilePath := path.Join(folder, fmt.Sprintf("pwm%d_enable", fan.Index))
+	pwmEnabledFilePath := pwmEnablePath(*fan)
 
 	err = util.WriteIntToFile(int(value), pwmEnabledFilePath)
 	if err == nil {
@@ -162,8 +160,17 @@ func (fan *HwMonFan) SetPwmEnabled(value ControlMode) (err error) {
 	return err
 }
 
+func pwmEnablePath(f HwMonFan) string {
+	folder, _ := filepath.Split(f.PwmOutput)
+	return path.Join(folder, fmt.Sprintf("pwm%d_enable", f.Index))
+}
+
 func (fan HwMonFan) Supports(feature FeatureFlag) bool {
 	switch feature {
+	case FeatureControlMode:
+		pwmEnableFilePath := pwmEnablePath(fan)
+		_, err := os.Stat(pwmEnableFilePath)
+		return err != nil
 	case FeatureRpmSensor:
 		return len(fan.RpmInput) > 0
 	}
