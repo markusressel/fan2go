@@ -10,7 +10,6 @@ import (
 )
 
 type FileFan struct {
-	Label     string
 	Config    configuration.FanConfig
 	MovingAvg float64
 }
