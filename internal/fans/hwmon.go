@@ -175,7 +175,7 @@ func (fan HwMonFan) Supports(feature FeatureFlag) bool {
 	case FeatureControlMode:
 		pwmEnableFilePath := pwmEnablePath(fan)
 		_, err := os.Stat(pwmEnableFilePath)
-		return err != nil
+		return err == nil
 	case FeatureRpmSensor:
 		return len(fan.RpmInput) > 0
 	}
