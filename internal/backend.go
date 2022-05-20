@@ -51,8 +51,7 @@ func RunDaemon() {
 				address := fmt.Sprintf("%s:%d", apiConfig.Host, apiConfig.Port)
 
 				go func() {
-					err := server.Start(address)
-					if err != nil {
+					if err := server.Start(address); err != nil && err != http.ErrServerClosed {
 						ui.Fatal("Error starting REST server: %v", err)
 					}
 				}()
