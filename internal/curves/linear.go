@@ -1,33 +1,30 @@
 package curves
 
 import (
+	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/util"
 	"math"
 )
 
 type linearSpeedCurve struct {
-	ID       string
-	sensorId string
-	min      int
-	max      int
-	steps    map[int]float64
+	Config configuration.CurveConfig `json:"config"`
 }
 
 func (c linearSpeedCurve) GetId() string {
-	return c.ID
+	return c.Config.ID
 }
 
 func (c linearSpeedCurve) Evaluate() (value int, err error) {
-	sensor := sensors.SensorMap[c.sensorId]
+	sensor := sensors.SensorMap[c.Config.Linear.Sensor]
 	var avgTemp = sensor.GetMovingAvg()
 
-	steps := c.steps
+	steps := c.Config.Linear.Steps
 	if steps != nil {
 		value = int(math.Round(util.CalculateInterpolatedCurveValue(steps, util.InterpolationTypeLinear, avgTemp/1000)))
 	} else {
-		minTemp := float64(c.min) * 1000 // degree to milli-degree
-		maxTemp := float64(c.max) * 1000
+		minTemp := float64(c.Config.Linear.Min) * 1000 // degree to milli-degree
+		maxTemp := float64(c.Config.Linear.Max) * 1000
 
 		if avgTemp >= maxTemp {
 			// full throttle if max temp is reached

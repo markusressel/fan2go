@@ -65,6 +65,7 @@ func CreateRestService() *echo.Echo {
 	// Group level middleware
 	registerFanEndpoints(echoRest)
 	registerSensorEndpoints(echoRest)
+	registerCurveEndpoints(echoRest)
 	//registerWebsocketEndpoint(echoRest)
 
 	return echoRest

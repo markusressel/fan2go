@@ -7,18 +7,16 @@ import (
 )
 
 type functionSpeedCurve struct {
-	ID       string
-	function string
-	curveIds []string
+	Config configuration.CurveConfig `json:"config"`
 }
 
 func (c functionSpeedCurve) GetId() string {
-	return c.ID
+	return c.Config.ID
 }
 
 func (c functionSpeedCurve) Evaluate() (value int, err error) {
 	var curves []SpeedCurve
-	for _, curveId := range c.curveIds {
+	for _, curveId := range c.Config.Function.Curves {
 		curves = append(curves, SpeedCurveMap[curveId])
 	}
 
@@ -31,7 +29,7 @@ func (c functionSpeedCurve) Evaluate() (value int, err error) {
 		values = append(values, v)
 	}
 
-	switch c.function {
+	switch c.Config.Function.Type {
 	case configuration.FunctionDelta:
 		var dmax = float64(values[0])
 		var dmin = float64(values[0])
@@ -62,6 +60,6 @@ func (c functionSpeedCurve) Evaluate() (value int, err error) {
 		return avg, nil
 	}
 
-	ui.Fatal("Unknown curve function: %s", c.function)
+	ui.Fatal("Unknown curve function: %s", c.Config.Function.Type)
 	return value, err
 }
