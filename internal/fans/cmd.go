@@ -49,7 +49,7 @@ func (fan *CmdFan) SetMaxPwm(pwm int) {
 	return
 }
 
-func (fan CmdFan) GetRpm() (int, error) {
+func (fan *CmdFan) GetRpm() (int, error) {
 	if !fan.Supports(FeatureRpmSensor) {
 		return 0, nil
 	}
@@ -82,7 +82,7 @@ func (fan *CmdFan) SetRpmAvg(rpm float64) {
 	return
 }
 
-func (fan CmdFan) GetPwm() (result int, err error) {
+func (fan *CmdFan) GetPwm() (result int, err error) {
 	conf := fan.Config.Cmd.GetPwm
 
 	timeout := 2 * time.Second

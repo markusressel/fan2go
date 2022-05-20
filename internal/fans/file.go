@@ -59,7 +59,7 @@ func (fan *FileFan) SetRpmAvg(rpm float64) {
 	return
 }
 
-func (fan FileFan) GetPwm() (result int, err error) {
+func (fan *FileFan) GetPwm() (result int, err error) {
 	filePath := fan.Config.File.Path
 	// resolve home dir path
 	if strings.HasPrefix(filePath, "~") {
