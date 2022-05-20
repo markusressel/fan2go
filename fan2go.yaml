@@ -127,3 +127,8 @@ statistics:
   enabled: false
   # The port to expose the exporter on
   port: 9000
+
+api:
+  enabled: false
+  host: localhost
+  port: 9001

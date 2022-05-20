@@ -74,7 +74,7 @@ func setDefaultValues() {
 	viper.SetDefault("Api", ApiConfig{
 		Enabled: false,
 		Host:    "localhost",
-		Port:    9000,
+		Port:    9001,
 	})
 
 	viper.SetDefault("ControllerAdjustmentTickRate", 200*time.Millisecond)

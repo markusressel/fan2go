@@ -32,6 +32,7 @@
   * [x] RPM curve
   * [x] minimum and maximum PWM
 * [x] Error notifications
+* [x] (optional) REST Api
 
 # How to use
 
