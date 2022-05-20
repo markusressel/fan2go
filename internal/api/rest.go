@@ -27,7 +27,7 @@ func CreateRestService() *echo.Echo {
 
 	echoRest.Use(middleware.Secure())
 
-	echoRest.Use(middleware.Logger())
+	//echoRest.Use(middleware.Logger())
 	echoRest.Use(middleware.Recover())
 
 	//var allowedOrigins = config.CurrentConfig.Server.CORS.AllowedOrigins
