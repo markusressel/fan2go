@@ -10,7 +10,6 @@ import (
 )
 
 type FileSensor struct {
-	Name      string                     `json:"name"`
 	Config    configuration.SensorConfig `json:"configuration"`
 	MovingAvg float64                    `json:"movingAvg"`
 }
