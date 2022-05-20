@@ -12,7 +12,6 @@ import (
 type FileFan struct {
 	ID        string
 	Label     string
-	FilePath  string
 	Config    configuration.FanConfig
 	MovingAvg float64
 }
@@ -61,7 +60,7 @@ func (fan *FileFan) SetRpmAvg(rpm float64) {
 }
 
 func (fan FileFan) GetPwm() (result int, err error) {
-	filePath := fan.FilePath
+	filePath := fan.Config.File.Path
 	// resolve home dir path
 	if strings.HasPrefix(filePath, "~") {
 		currentUser, err := user.Current()
@@ -81,7 +80,7 @@ func (fan FileFan) GetPwm() (result int, err error) {
 }
 
 func (fan *FileFan) SetPwm(pwm int) (err error) {
-	filePath := fan.FilePath
+	filePath := fan.Config.File.Path
 	// resolve home dir path
 	if strings.HasPrefix(filePath, "~") {
 		currentUser, err := user.Current()
@@ -94,7 +93,7 @@ func (fan *FileFan) SetPwm(pwm int) (err error) {
 
 	err = util.WriteIntToFile(pwm, filePath)
 	if err != nil {
-		ui.Error("Unable to write to file: %v", fan.FilePath)
+		ui.Error("Unable to write to file: %v", fan.Config.File.Path)
 	}
 	return nil
 }
