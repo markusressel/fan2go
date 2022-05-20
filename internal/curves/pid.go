@@ -8,6 +8,7 @@ import (
 
 type pidSpeedCurve struct {
 	Config configuration.CurveConfig `json:"config"`
+	Value  int                       `json:"value"`
 
 	pidLoop *util.PidLoop
 }
@@ -33,5 +34,6 @@ func (c pidSpeedCurve) Evaluate() (value int, err error) {
 	// map to expected output range
 	curveValue := int(loopValue * 255)
 
+	c.Value = curveValue
 	return curveValue, nil
 }

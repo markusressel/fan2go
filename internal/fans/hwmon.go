@@ -14,14 +14,14 @@ import (
 type HwMonFan struct {
 	Label        string                  `json:"label"`
 	Index        int                     `json:"index"`
-	RpmInput     string                  `json:"rpminput"`
-	RpmMovingAvg float64                 `json:"rpmmovingavg"`
-	PwmOutput    string                  `json:"pwmoutput"`
+	RpmInput     string                  `json:"rpmInput"`
+	RpmMovingAvg float64                 `json:"rpmMovingAvg"`
+	PwmOutput    string                  `json:"pwmOutput"`
 	Config       configuration.FanConfig `json:"config"`
-	StartPwm     *int                    `json:"startpwm"` // the min PWM at which the fan starts to rotate from a stand still
-	MinPwm       int                     `json:"minpwm"`   // lowest PWM value where the fans are still spinning, when spinning previously
-	MaxPwm       int                     `json:"maxpwm"`   // highest PWM value that yields an RPM increase
-	FanCurveData *map[int]float64        `json:"fancurvedata"`
+	StartPwm     *int                    `json:"startPwm"` // the min PWM at which the fan starts to rotate from a stand still
+	MinPwm       int                     `json:"minPwm"`   // lowest PWM value where the fans are still spinning, when spinning previously
+	MaxPwm       int                     `json:"maxPwm"`   // highest PWM value that yields an RPM increase
+	FanCurveData *map[int]float64        `json:"fanCurveData"`
 }
 
 func (fan HwMonFan) GetId() string {

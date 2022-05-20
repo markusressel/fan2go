@@ -8,6 +8,7 @@ import (
 
 type functionSpeedCurve struct {
 	Config configuration.CurveConfig `json:"config"`
+	Value  int                       `json:"value"`
 }
 
 func (c functionSpeedCurve) GetId() string {
@@ -38,28 +39,30 @@ func (c functionSpeedCurve) Evaluate() (value int, err error) {
 			dmax = math.Max(dmax, float64(v))
 		}
 		delta := dmax - dmin
-		return int(delta), nil
+		value = int(delta)
 	case configuration.FunctionMinimum:
 		var min float64 = 255
 		for _, v := range values {
 			min = math.Min(min, float64(v))
 		}
-		return int(min), nil
+		value = int(min)
 	case configuration.FunctionMaximum:
 		var max float64
 		for _, v := range values {
 			max = math.Max(max, float64(v))
 		}
-		return int(max), nil
+		value = int(max)
 	case configuration.FunctionAverage:
 		var total = 0
 		for _, v := range values {
 			total += v
 		}
 		avg := total / len(curves)
-		return avg, nil
+		value = avg
+	default:
+		ui.Fatal("Unknown curve function: %s", c.Config.Function.Type)
 	}
 
-	ui.Fatal("Unknown curve function: %s", c.Config.Function.Type)
+	c.Value = value
 	return value, err
 }

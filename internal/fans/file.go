@@ -10,8 +10,8 @@ import (
 )
 
 type FileFan struct {
-	Config    configuration.FanConfig
-	MovingAvg float64
+	Config    configuration.FanConfig `json:"config"`
+	MovingAvg float64                 `json:"movingAvg"`
 }
 
 func (fan FileFan) GetId() string {

@@ -9,6 +9,7 @@ import (
 
 type linearSpeedCurve struct {
 	Config configuration.CurveConfig `json:"config"`
+	Value  int                       `json:"value"`
 }
 
 func (c linearSpeedCurve) GetId() string {
@@ -38,5 +39,6 @@ func (c linearSpeedCurve) Evaluate() (value int, err error) {
 		}
 	}
 
+	c.Value = value
 	return value, nil
 }
