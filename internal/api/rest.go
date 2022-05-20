@@ -30,35 +30,6 @@ func CreateRestService() *echo.Echo {
 	//echoRest.Use(middleware.Logger())
 	echoRest.Use(middleware.Recover())
 
-	//var allowedOrigins = config.CurrentConfig.Server.CORS.AllowedOrigins
-	//var allowedMethods = config.CurrentConfig.Server.CORS.AllowedMethods
-	//if len(allowedOrigins) <= 0 {
-	//	echoRest.Use(middleware.CORS())
-	//} else {
-	//	echoRest.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-	//		AllowOrigins: allowedOrigins,
-	//		AllowMethods: allowedMethods,
-	//	}))
-	//}
-
-	// global auth
-	//var authConf = config.CurrentConfig.Server.BasicAuth
-	//if authConf.User != "" && authConf.Password != "" {
-	//		basicAuthConfig := middleware.BasicAuthConfig{
-	//			Skipper: func(context echo.Context) bool {
-	//				return context.Path() == EndpointPathAlive
-	//			},
-	//			Validator: func(username string, password string, context echo.Context) (b bool, err error) {
-	//				if username == authConf.User && password == authConf.Password {
-	//					return true, nil
-	//			}
-	//				return false, nil
-	//			},
-	//			Realm: "Restricted",
-	//		}
-	//		echoRest.Use(middleware.BasicAuthWithConfig(basicAuthConfig))
-	//}
-
 	echoRest.GET("/alive/", isAlive)
 
 	// Authentication
