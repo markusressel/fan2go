@@ -10,14 +10,13 @@ import (
 )
 
 type FileFan struct {
-	ID        string
 	Label     string
 	Config    configuration.FanConfig
 	MovingAvg float64
 }
 
 func (fan FileFan) GetId() string {
-	return fan.ID
+	return fan.Config.ID
 }
 
 func (fan FileFan) GetStartPwm() int {

@@ -92,7 +92,6 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 
 	if config.File != nil {
 		return &FileFan{
-			ID:     config.ID,
 			Label:  config.ID,
 			Config: config,
 		}, nil
@@ -100,7 +99,6 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 
 	if config.Cmd != nil {
 		return &CmdFan{
-			ID:     config.ID,
 			Config: config,
 		}, nil
 	}

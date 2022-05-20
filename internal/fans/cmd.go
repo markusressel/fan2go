@@ -12,13 +12,12 @@ import (
 )
 
 type CmdFan struct {
-	ID        string                  `json:"id"`
 	Config    configuration.FanConfig `json:"configuration"`
 	MovingAvg float64                 `json:"movingAvg"`
 }
 
 func (fan CmdFan) GetId() string {
-	return fan.ID
+	return fan.Config.ID
 }
 
 func (fan CmdFan) GetStartPwm() int {
