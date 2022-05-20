@@ -12,6 +12,8 @@ import (
 type FileFan struct {
 	Config    configuration.FanConfig `json:"config"`
 	MovingAvg float64                 `json:"movingAvg"`
+
+	Pwm int `json:"pwm"`
 }
 
 func (fan FileFan) GetId() string {
@@ -74,6 +76,7 @@ func (fan FileFan) GetPwm() (result int, err error) {
 		return MinPwmValue, err
 	}
 	result = integer
+	fan.Pwm = result
 	return result, err
 }
 

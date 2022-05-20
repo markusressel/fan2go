@@ -22,6 +22,9 @@ type HwMonFan struct {
 	MinPwm       int                     `json:"minPwm"`   // lowest PWM value where the fans are still spinning, when spinning previously
 	MaxPwm       int                     `json:"maxPwm"`   // highest PWM value that yields an RPM increase
 	FanCurveData *map[int]float64        `json:"fanCurveData"`
+
+	Rpm int `json:"rpm"`
+	Pwm int `json:"pwm"`
 }
 
 func (fan HwMonFan) GetId() string {
@@ -69,6 +72,7 @@ func (fan HwMonFan) GetRpm() (int, error) {
 	if value, err := util.ReadIntFromFile(fan.RpmInput); err != nil {
 		return 0, err
 	} else {
+		fan.Rpm = value
 		return value, nil
 	}
 }
@@ -86,6 +90,7 @@ func (fan HwMonFan) GetPwm() (int, error) {
 	if err != nil {
 		return MinPwmValue, err
 	}
+	fan.Pwm = value
 	return value, nil
 }
 
