@@ -129,6 +129,9 @@ statistics:
   port: 9000
 
 api:
+  # Whether to enable the API or not
   enabled: false
+  # The host to listen for connections
   host: localhost
+  # The port to listen for connections
   port: 9001
