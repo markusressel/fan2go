@@ -26,6 +26,7 @@ type Configuration struct {
 	Sensors []SensorConfig `json:"sensors"`
 	Curves  []CurveConfig  `json:"curves"`
 
+	Api        ApiConfig        `json:"api"`
 	Statistics StatisticsConfig `json:"statistics"`
 }
 
@@ -67,6 +68,12 @@ func setDefaultValues() {
 
 	viper.SetDefault("Statistics", StatisticsConfig{
 		Enabled: false,
+		Port:    9000,
+	})
+
+	viper.SetDefault("Api", ApiConfig{
+		Enabled: false,
+		Host:    "localhost",
 		Port:    9000,
 	})
 

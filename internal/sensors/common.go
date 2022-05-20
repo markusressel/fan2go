@@ -33,9 +33,8 @@ func NewSensor(config configuration.SensorConfig) (Sensor, error) {
 
 	if config.File != nil {
 		return &FileSensor{
-			Name:     config.ID,
-			FilePath: config.File.Path,
-			Config:   config,
+			Name:   config.ID,
+			Config: config,
 		}, nil
 	}
 

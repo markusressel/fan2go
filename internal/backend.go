@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"github.com/markusressel/fan2go/internal/api"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/controller"
 	"github.com/markusressel/fan2go/internal/curves"
@@ -40,14 +41,44 @@ func RunDaemon() {
 
 	var g run.Group
 	{
+		enabled := configuration.CurrentConfig.Api.Enabled
+		if enabled {
+			g.Add(func() error {
+				ui.Info("Starting REST server...")
+
+				apiConfig := configuration.CurrentConfig.Api
+				server := api.CreateRestService()
+				address := fmt.Sprintf("%s:%d", apiConfig.Host, apiConfig.Port)
+
+				go func() {
+					err := server.Start(address)
+					if err != nil {
+						ui.Fatal("Error starting REST server: %v", err)
+					}
+				}()
+
+				select {
+				case <-ctx.Done():
+					ui.Info("Stopping REST server...")
+					timeoutCtx, timeoutCancel := context.WithTimeout(ctx, 5*time.Second)
+					defer timeoutCancel()
+					return server.Shutdown(timeoutCtx)
+				}
+			}, func(err error) {
+				if err != nil {
+					ui.Warning("Error stopping REST server: " + err.Error())
+				} else {
+					ui.Info("REST server stopped.")
+				}
+			})
+		}
+	}
+	{
 		enabled := configuration.CurrentConfig.Statistics.Enabled
 		if enabled {
 			// === Prometheus Exporter
 			g.Add(func() error {
 				port := configuration.CurrentConfig.Statistics.Port
-				if port <= 0 || port >= 65535 {
-					port = 9000
-				}
 
 				endpoint := "/metrics"
 				addr := fmt.Sprintf(":%d", port)
@@ -63,6 +94,7 @@ func RunDaemon() {
 				}
 
 				go func() {
+					ui.Info("Starting statistics server...")
 					if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 						ui.ErrorAndNotify("Statistics Error", "Cannot start prometheus metrics endpoint (%s)", err.Error())
 					}
