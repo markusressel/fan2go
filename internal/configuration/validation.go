@@ -25,13 +25,23 @@ func validateConfig(config *Configuration, path string) error {
 	}
 	err = validateFans(config)
 
-	if containsCmdSensors() {
+	if containsCmdSensors() || containsCmdFan() {
 		if _, err := util.CheckFilePermissionsForExecution(path); err != nil {
 			return errors.New(fmt.Sprintf("Config file '%s' has invalid permissions: %s", path, err))
 		}
 	}
 
 	return err
+}
+
+func containsCmdFan() bool {
+	for _, fanConfig := range CurrentConfig.Fans {
+		if fanConfig.Cmd != nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 func containsCmdSensors() bool {
