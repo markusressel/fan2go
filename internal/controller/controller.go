@@ -32,6 +32,8 @@ type fanController struct {
 	updateRate time.Duration
 	// the original pwm_enabled flag state of the fan before starting the controller
 	originalPwmEnabled fans.ControlMode
+	// the original pwm value of the fan before starting the controller
+	originalPwmValue int
 	// the last pwm value that was set to the fan
 	lastSetPwm *int
 	// a list of all pwm values where setPwm(x) != setPwm(y) for the controlled fan
@@ -61,6 +63,13 @@ func NewFanController(
 
 func (f *fanController) Run(ctx context.Context) error {
 	fan := f.fan
+
+	// store original pwm value
+	pwm, err := fan.GetPwm()
+	if err != nil {
+		ui.Warning("Cannot read pwm value of %s", fan.GetId())
+	}
+	f.originalPwmValue = pwm
 
 	// store original pwm_enable value
 	if f.fan.Supports(fans.FeatureControlMode) {
@@ -310,6 +319,11 @@ func trySetManualPwm(fan fans.Fan) error {
 func (f *fanController) restorePwmEnabled() {
 	ui.Info("Trying to restore fan settings for %s...", f.fan.GetId())
 
+	err := f.setPwm(f.originalPwmValue)
+	if err != nil {
+		ui.Warning("Error restoring original PWM value for fan %s: %v", err)
+	}
+
 	// try to reset the pwm_enable value
 	if f.fan.Supports(fans.FeatureControlMode) && f.originalPwmEnabled != fans.ControlModePWM {
 		err := f.fan.SetPwmEnabled(f.originalPwmEnabled)
@@ -318,7 +332,7 @@ func (f *fanController) restorePwmEnabled() {
 		}
 	}
 	// if this fails, try to set it to max speed instead
-	err := f.setPwm(fans.MaxPwmValue)
+	err = f.setPwm(fans.MaxPwmValue)
 	if err != nil {
 		ui.Warning("Unable to restore fan %s, make sure it is running!", f.fan.GetId())
 	}
