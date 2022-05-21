@@ -487,10 +487,10 @@ communication via websockets.
 
 #### Sensors
 
-| Endpoint    | Type | Description                                          |
-|-------------|------|------------------------------------------------------|
-| `/fan`      | GET  | Returns a list of all currently configured sensors   |
-| `/fan/<id>` | GET  | Returns the sensor with the given `id`, if it exists |
+| Endpoint       | Type | Description                                          |
+|----------------|------|------------------------------------------------------|
+| `/sensor`      | GET  | Returns a list of all currently configured sensors   |
+| `/sensor/<id>` | GET  | Returns the sensor with the given `id`, if it exists |
 
 #### Curves
 
