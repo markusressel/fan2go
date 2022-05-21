@@ -12,13 +12,15 @@ import (
 )
 
 type CmdFan struct {
-	ID        string                  `json:"id"`
 	Config    configuration.FanConfig `json:"configuration"`
 	MovingAvg float64                 `json:"movingAvg"`
+
+	Rpm int `json:"rpm"`
+	Pwm int `json:"pwm"`
 }
 
 func (fan CmdFan) GetId() string {
-	return fan.ID
+	return fan.Config.ID
 }
 
 func (fan CmdFan) GetStartPwm() int {
@@ -47,7 +49,7 @@ func (fan *CmdFan) SetMaxPwm(pwm int) {
 	return
 }
 
-func (fan CmdFan) GetRpm() (int, error) {
+func (fan *CmdFan) GetRpm() (int, error) {
 	if !fan.Supports(FeatureRpmSensor) {
 		return 0, nil
 	}
@@ -60,13 +62,15 @@ func (fan CmdFan) GetRpm() (int, error) {
 		return 0, err
 	}
 
-	temp, err := strconv.ParseFloat(result, 64)
+	rpm, err := strconv.ParseFloat(result, 64)
 	if err != nil {
 		ui.Warning("Unable to read int from command output: %s", conf.Exec)
 		return 0, err
 	}
 
-	return int(temp), nil
+	fan.Rpm = int(rpm)
+
+	return int(rpm), nil
 }
 
 func (fan CmdFan) GetRpmAvg() float64 {
@@ -78,7 +82,7 @@ func (fan *CmdFan) SetRpmAvg(rpm float64) {
 	return
 }
 
-func (fan CmdFan) GetPwm() (result int, err error) {
+func (fan *CmdFan) GetPwm() (result int, err error) {
 	conf := fan.Config.Cmd.GetPwm
 
 	timeout := 2 * time.Second
@@ -92,6 +96,8 @@ func (fan CmdFan) GetPwm() (result int, err error) {
 		ui.Warning("Unable to read int from command output: %s", conf.Exec)
 		return 0, err
 	}
+
+	fan.Pwm = int(pwm)
 
 	return int(pwm), nil
 }

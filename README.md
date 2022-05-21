@@ -32,6 +32,7 @@
   * [x] RPM curve
   * [x] minimum and maximum PWM
 * [x] Error notifications
+* [x] (optional) REST Api
 
 # How to use
 
@@ -455,6 +456,48 @@ statistics:
 
 You can then see the metics on [http://localhost:9000/metrics](http://localhost:9000/metrics) while the fan2go daemon is
 running.
+
+## API
+
+fan2go comes with a built-in REST Api. This API can be used by third party tools to display (and in the future possibly
+modify) the state of fans, sensors and curves within fan2go.
+
+```yaml
+api:
+  # Whether to enable the API or not
+  enabled: false
+  # The host to listen for connections
+  host: localhost
+  # The port to listen for connections
+  port: 9001
+```
+
+### Endpoints
+
+Currently, this API is read-only and only provides REST endpoints. If there is demand for it, this might be expanded to
+also support realtime
+communication via websockets.
+
+#### Fans
+
+| Endpoint    | Type | Description                                       |
+|-------------|------|---------------------------------------------------|
+| `/fan`      | GET  | Returns a list of all currently configured fans   |
+| `/fan/<id>` | GET  | Returns the fan with the given <id>, if it exists |
+
+#### Sensors
+
+| Endpoint    | Type | Description                                          |
+|-------------|------|------------------------------------------------------|
+| `/fan`      | GET  | Returns a list of all currently configured sensors   |
+| `/fan/<id>` | GET  | Returns the sensor with the given <id>, if it exists |
+
+#### Curves
+
+| Endpoint      | Type | Description                                         |
+|---------------|------|-----------------------------------------------------|
+| `/curve`      | GET  | Returns a list of all currently configured curves   |
+| `/curve/<id>` | GET  | Returns the curve with the given <id>, if it exists |
 
 # How it works
 

@@ -10,15 +10,14 @@ import (
 )
 
 type FileFan struct {
-	ID        string
-	Label     string
-	FilePath  string
-	Config    configuration.FanConfig
-	MovingAvg float64
+	Config    configuration.FanConfig `json:"config"`
+	MovingAvg float64                 `json:"movingAvg"`
+
+	Pwm int `json:"pwm"`
 }
 
 func (fan FileFan) GetId() string {
-	return fan.ID
+	return fan.Config.ID
 }
 
 func (fan FileFan) GetStartPwm() int {
@@ -60,8 +59,8 @@ func (fan *FileFan) SetRpmAvg(rpm float64) {
 	return
 }
 
-func (fan FileFan) GetPwm() (result int, err error) {
-	filePath := fan.FilePath
+func (fan *FileFan) GetPwm() (result int, err error) {
+	filePath := fan.Config.File.Path
 	// resolve home dir path
 	if strings.HasPrefix(filePath, "~") {
 		currentUser, err := user.Current()
@@ -77,11 +76,12 @@ func (fan FileFan) GetPwm() (result int, err error) {
 		return MinPwmValue, err
 	}
 	result = integer
+	fan.Pwm = result
 	return result, err
 }
 
 func (fan *FileFan) SetPwm(pwm int) (err error) {
-	filePath := fan.FilePath
+	filePath := fan.Config.File.Path
 	// resolve home dir path
 	if strings.HasPrefix(filePath, "~") {
 		currentUser, err := user.Current()
@@ -94,7 +94,7 @@ func (fan *FileFan) SetPwm(pwm int) (err error) {
 
 	err = util.WriteIntToFile(pwm, filePath)
 	if err != nil {
-		ui.Error("Unable to write to file: %v", fan.FilePath)
+		ui.Error("Unable to write to file: %v", fan.Config.File.Path)
 	}
 	return nil
 }

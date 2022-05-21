@@ -7,18 +7,17 @@ import (
 )
 
 type functionSpeedCurve struct {
-	ID       string
-	function string
-	curveIds []string
+	Config configuration.CurveConfig `json:"config"`
+	Value  int                       `json:"value"`
 }
 
 func (c functionSpeedCurve) GetId() string {
-	return c.ID
+	return c.Config.ID
 }
 
 func (c functionSpeedCurve) Evaluate() (value int, err error) {
 	var curves []SpeedCurve
-	for _, curveId := range c.curveIds {
+	for _, curveId := range c.Config.Function.Curves {
 		curves = append(curves, SpeedCurveMap[curveId])
 	}
 
@@ -31,7 +30,7 @@ func (c functionSpeedCurve) Evaluate() (value int, err error) {
 		values = append(values, v)
 	}
 
-	switch c.function {
+	switch c.Config.Function.Type {
 	case configuration.FunctionDelta:
 		var dmax = float64(values[0])
 		var dmin = float64(values[0])
@@ -40,28 +39,30 @@ func (c functionSpeedCurve) Evaluate() (value int, err error) {
 			dmax = math.Max(dmax, float64(v))
 		}
 		delta := dmax - dmin
-		return int(delta), nil
+		value = int(delta)
 	case configuration.FunctionMinimum:
 		var min float64 = 255
 		for _, v := range values {
 			min = math.Min(min, float64(v))
 		}
-		return int(min), nil
+		value = int(min)
 	case configuration.FunctionMaximum:
 		var max float64
 		for _, v := range values {
 			max = math.Max(max, float64(v))
 		}
-		return int(max), nil
+		value = int(max)
 	case configuration.FunctionAverage:
 		var total = 0
 		for _, v := range values {
 			total += v
 		}
 		avg := total / len(curves)
-		return avg, nil
+		value = avg
+	default:
+		ui.Fatal("Unknown curve function: %s", c.Config.Function.Type)
 	}
 
-	ui.Fatal("Unknown curve function: %s", c.function)
+	c.Value = value
 	return value, err
 }

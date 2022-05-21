@@ -20,11 +20,7 @@ var (
 func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
 	if config.Linear != nil {
 		return &linearSpeedCurve{
-			ID:       config.ID,
-			sensorId: config.Linear.Sensor,
-			min:      config.Linear.Min,
-			max:      config.Linear.Max,
-			steps:    config.Linear.Steps,
+			Config: config,
 		}, nil
 	}
 
@@ -35,18 +31,14 @@ func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
 			config.PID.D,
 		)
 		return &pidSpeedCurve{
-			ID:       config.ID,
-			sensorId: config.PID.Sensor,
-			setPoint: config.PID.SetPoint,
-			pidLoop:  pidLoop,
+			Config:  config,
+			pidLoop: pidLoop,
 		}, nil
 	}
 
 	if config.Function != nil {
 		return &functionSpeedCurve{
-			ID:       config.ID,
-			function: config.Function.Type,
-			curveIds: config.Function.Curves,
+			Config: config,
 		}, nil
 	}
 

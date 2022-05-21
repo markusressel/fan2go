@@ -26,6 +26,7 @@ type Configuration struct {
 	Sensors []SensorConfig `json:"sensors"`
 	Curves  []CurveConfig  `json:"curves"`
 
+	Api        ApiConfig        `json:"api"`
 	Statistics StatisticsConfig `json:"statistics"`
 }
 
@@ -69,6 +70,15 @@ func setDefaultValues() {
 		Enabled: false,
 		Port:    9000,
 	})
+	viper.SetDefault("Statistics.Port", 9000)
+
+	viper.SetDefault("Api", ApiConfig{
+		Enabled: false,
+		Host:    "localhost",
+		Port:    9001,
+	})
+	viper.SetDefault("Api.Host", "localhost")
+	viper.SetDefault("Api.Port", 9001)
 
 	viper.SetDefault("ControllerAdjustmentTickRate", 200*time.Millisecond)
 

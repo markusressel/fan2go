@@ -10,8 +10,6 @@ import (
 )
 
 type FileSensor struct {
-	Name      string                     `json:"name"`
-	FilePath  string                     `json:"filePath"`
 	Config    configuration.SensorConfig `json:"configuration"`
 	MovingAvg float64                    `json:"movingAvg"`
 }
@@ -25,7 +23,7 @@ func (sensor FileSensor) GetConfig() configuration.SensorConfig {
 }
 
 func (sensor FileSensor) GetValue() (float64, error) {
-	filePath := sensor.FilePath
+	filePath := sensor.Config.File.Path
 	// resolve home dir path
 	if strings.HasPrefix(filePath, "~") {
 		currentUser, err := user.Current()

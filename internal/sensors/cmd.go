@@ -12,8 +12,6 @@ import (
 
 type CmdSensor struct {
 	Name      string                     `json:"name"`
-	Exec      string                     `json:"exec"`
-	Args      []string                   `json:"args"`
 	Config    configuration.SensorConfig `json:"configuration"`
 	MovingAvg float64                    `json:"movingAvg"`
 }
@@ -28,14 +26,16 @@ func (sensor CmdSensor) GetConfig() configuration.SensorConfig {
 
 func (sensor CmdSensor) GetValue() (float64, error) {
 	timeout := 2 * time.Second
-	result, err := util.SafeCmdExecution(sensor.Exec, sensor.Args, timeout)
+	exec := sensor.Config.Cmd.Exec
+	args := sensor.Config.Cmd.Args
+	result, err := util.SafeCmdExecution(exec, args, timeout)
 	if err != nil {
 		return 0, errors.New(fmt.Sprintf("Sensor %s: %s", sensor.GetId(), err.Error()))
 	}
 
 	temp, err := strconv.ParseFloat(result, 64)
 	if err != nil {
-		ui.Warning("Sensor %s: Unable to read int from command output: %s", sensor.GetId(), sensor.Exec)
+		ui.Warning("Sensor %s: Unable to read int from command output: %s", sensor.GetId(), exec)
 		return 0, err
 	}
 
