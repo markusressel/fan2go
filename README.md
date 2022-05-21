@@ -483,21 +483,21 @@ communication via websockets.
 | Endpoint    | Type | Description                                       |
 |-------------|------|---------------------------------------------------|
 | `/fan`      | GET  | Returns a list of all currently configured fans   |
-| `/fan/<id>` | GET  | Returns the fan with the given <id>, if it exists |
+| `/fan/<id>` | GET  | Returns the fan with the given `id`, if it exists |
 
 #### Sensors
 
 | Endpoint    | Type | Description                                          |
 |-------------|------|------------------------------------------------------|
 | `/fan`      | GET  | Returns a list of all currently configured sensors   |
-| `/fan/<id>` | GET  | Returns the sensor with the given <id>, if it exists |
+| `/fan/<id>` | GET  | Returns the sensor with the given `id`, if it exists |
 
 #### Curves
 
 | Endpoint      | Type | Description                                         |
 |---------------|------|-----------------------------------------------------|
 | `/curve`      | GET  | Returns a list of all currently configured curves   |
-| `/curve/<id>` | GET  | Returns the curve with the given <id>, if it exists |
+| `/curve/<id>` | GET  | Returns the curve with the given `id`, if it exists |
 
 # How it works
 
