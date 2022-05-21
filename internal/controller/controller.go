@@ -300,7 +300,9 @@ func trySetManualPwm(fan fans.Fan) error {
 	if err != nil {
 		ui.Error("Unable to set Fan Mode of '%s' to \"%d\": %v", fan.GetId(), fans.ControlModePWM, err)
 		err = fan.SetPwmEnabled(fans.ControlModeDisabled)
-		ui.Error("Unable to set Fan Mode of '%s' to \"%d\": %v", fan.GetId(), fans.ControlModeDisabled, err)
+		if err != nil {
+			ui.Error("Unable to set Fan Mode of '%s' to \"%d\": %v", fan.GetId(), fans.ControlModeDisabled, err)
+		}
 	}
 	return err
 }
