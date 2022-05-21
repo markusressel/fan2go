@@ -321,7 +321,7 @@ func (f *fanController) restorePwmEnabled() {
 
 	err := f.setPwm(f.originalPwmValue)
 	if err != nil {
-		ui.Warning("Error restoring original PWM value for fan %s: %v", err)
+		ui.Warning("Error restoring original PWM value for fan %s: %v", f.fan.GetId(), err)
 	}
 
 	// try to reset the pwm_enable value
