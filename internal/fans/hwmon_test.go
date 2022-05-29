@@ -39,8 +39,9 @@ func TestHwMonFan_ShouldNeverStop_GetMinPwm(t *testing.T) {
 	fan := HwMonFan{
 		Config: configuration.FanConfig{
 			NeverStop: true,
+			MinPwm:    &expected,
+			HwMon:     &configuration.HwMonFanConfig{},
 		},
-		MinPwm: expected,
 	}
 
 	// WHEN
@@ -53,25 +54,28 @@ func TestHwMonFan_ShouldNeverStop_GetMinPwm(t *testing.T) {
 func TestHwMonFan_GetMinPwm(t *testing.T) {
 	// GIVEN
 	expected := 0
+	minPwm := 30
 	fan := HwMonFan{
 		Config: configuration.FanConfig{
 			NeverStop: false,
+			MinPwm:    &minPwm,
 		},
-		MinPwm: 30,
 	}
 
 	// WHEN
-	minPwm := fan.GetMinPwm()
+	result := fan.GetMinPwm()
 
 	// THEN
-	assert.Equal(t, expected, minPwm)
+	assert.Equal(t, expected, result)
 }
 
 func TestHwMonFan_GetMaxPwm(t *testing.T) {
 	// GIVEN
 	expected := 240
 	fan := HwMonFan{
-		MaxPwm: expected,
+		Config: configuration.FanConfig{
+			MaxPwm: &expected,
+		},
 	}
 
 	// WHEN
