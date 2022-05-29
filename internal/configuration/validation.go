@@ -97,6 +97,9 @@ func isSensorConfigInUse(config SensorConfig, curves []CurveConfig) bool {
 		if curveConfig.Linear != nil && curveConfig.Linear.Sensor == config.ID {
 			return true
 		}
+		if curveConfig.PID != nil && curveConfig.PID.Sensor == config.ID {
+			return true
+		}
 	}
 
 	return false
