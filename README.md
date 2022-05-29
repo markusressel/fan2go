@@ -132,7 +132,7 @@ fans:
       index: 1
     # Indicates whether this fan should never stop rotating, regardless of
     # how low the curve value is
-    neverStop: yes
+    neverStop: true
     # The curve ID that should be used to determine the
     # speed of this fan
     curve: cpu_curve
