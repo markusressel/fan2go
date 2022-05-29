@@ -41,10 +41,9 @@ var curveCmd = &cobra.Command{
 						ui.Fatal("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform)
 					}
 					if matched {
-						fan, exists := controller.Fans[config.HwMon.Index]
+						_, exists := controller.Fans[config.HwMon.Index]
 						if exists {
-							config.HwMon.PwmOutput = fan.PwmOutput
-							config.HwMon.RpmInput = fan.RpmInput
+							// TODO: nothing to do here
 							break
 						}
 					}

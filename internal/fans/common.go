@@ -79,14 +79,10 @@ type Fan interface {
 func NewFan(config configuration.FanConfig) (Fan, error) {
 	if config.HwMon != nil {
 		return &HwMonFan{
-			Label:     config.ID,
-			Index:     config.HwMon.Index,
-			PwmOutput: config.HwMon.PwmOutput,
-			RpmInput:  config.HwMon.RpmInput,
-			MinPwm:    MinPwmValue,
-			MaxPwm:    MaxPwmValue,
-			StartPwm:  config.StartPwm,
-			Config:    config,
+			Label:    config.ID,
+			Index:    config.HwMon.Index,
+			StartPwm: config.StartPwm,
+			Config:   config,
 		}, nil
 	}
 

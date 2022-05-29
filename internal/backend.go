@@ -284,13 +284,7 @@ func initializeFans(controllers []*hwmon.HwMonController) map[configuration.FanC
 				}
 				if matched {
 					found = true
-
-					fan, exists := c.Fans[config.HwMon.Index]
-					if exists {
-						config.HwMon.PwmOutput = fan.PwmOutput
-						config.HwMon.RpmInput = fan.RpmInput
-					}
-
+					// TODO: also nothing to do here now
 					break
 				}
 			}
