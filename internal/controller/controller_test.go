@@ -209,6 +209,13 @@ func (p mockPersistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
 }
 func (p mockPersistence) DeleteFanPwmData(fan fans.Fan) (err error) { return nil }
 
+func (p mockPersistence) LoadFanPwmMap(fanId string) (map[int]int, error) {
+	pwmMap := map[int]int{}
+	return pwmMap, nil
+}
+func (p mockPersistence) SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error) { return nil }
+func (p mockPersistence) DeleteFanPwmMap(fanId string) (err error)                   { return nil }
+
 func createOneToOnePwmMap() map[int]int {
 	var pwmMap = map[int]int{}
 	for i := fans.MinPwmValue; i <= fans.MaxPwmValue; i++ {
