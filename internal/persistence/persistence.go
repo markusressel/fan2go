@@ -11,13 +11,18 @@ import (
 )
 
 const (
-	BucketFans = "fans"
+	BucketFans      = "fans"
+	BucketFanPwmMap = "fanPwmMap"
 )
 
 type Persistence interface {
 	LoadFanPwmData(fan fans.Fan) (map[int]float64, error)
 	SaveFanPwmData(fan fans.Fan) (err error)
 	DeleteFanPwmData(fan fans.Fan) (err error)
+
+	LoadFanPwmMap(fanId string) (map[int]int, error)
+	SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error)
+	DeleteFanPwmMap(fanId string) (err error)
 }
 
 type persistence struct {
@@ -111,6 +116,92 @@ func (p persistence) DeleteFanPwmData(fan fans.Fan) error {
 
 	err := db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFans))
+		if b == nil {
+			// no fan bucket yet
+			return nil
+		}
+		v := b.Get([]byte(key))
+		if v == nil {
+			// no data for given key
+			return nil
+		}
+
+		return b.Delete([]byte(key))
+	})
+
+	return err
+}
+
+// SaveFanPwmMap saves the "pwm requested" -> "actual pwm" map of the given fan to persistence
+func (p persistence) SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error) {
+	db := p.openPersistence()
+	defer db.Close()
+
+	key := fanId
+
+	// convert the curve data moving window to a map to arrays, so we can persist them
+	for key, value := range pwmMap {
+		pwmMap[key] = value
+	}
+
+	data, err := json.Marshal(pwmMap)
+	if err != nil {
+		return err
+	}
+
+	return db.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte(BucketFanPwmMap))
+		if err != nil {
+			return fmt.Errorf("create bucket: %s", err)
+		}
+		err = b.Put([]byte(key), data)
+		return err
+	})
+}
+
+// LoadFanPwmMap loads the fan curve data from persistence
+func (p persistence) LoadFanPwmMap(fanId string) (map[int]int, error) {
+	db := p.openPersistence()
+	defer db.Close()
+
+	key := fanId
+
+	var pwmMap map[int]int
+	err := db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(BucketFanPwmMap))
+		if b == nil {
+			return os.ErrNotExist
+		}
+		v := b.Get([]byte(key))
+		if v == nil {
+			return os.ErrNotExist
+		}
+
+		err := json.Unmarshal(v, &pwmMap)
+		if err != nil {
+			// if we cannot read the saved data, delete it
+			ui.Warning("Unable to unmarshal saved pwmMap data for %s: %v", key, err)
+			err := b.Delete([]byte(key))
+			if err != nil {
+				ui.Error("Unable to delete corrupt data key %s: %v", key, err)
+			}
+			return nil
+		}
+
+		return err
+	})
+
+	return pwmMap, err
+}
+
+func (p persistence) DeleteFanPwmMap(fanId string) error {
+	db := p.openPersistence()
+	defer db.Close()
+
+	key := fanId
+
+	err := db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(BucketFanPwmMap))
 		if b == nil {
 			// no fan bucket yet
 			return nil

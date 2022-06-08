@@ -118,7 +118,12 @@ func (f *fanController) Run(ctx context.Context) error {
 		return err
 	}
 
-	f.updatePwmMap()
+	f.pwmMap, err = f.persistence.LoadFanPwmMap(fan.GetId())
+	if err != nil {
+		f.computePwmMap()
+		f.persistence.SaveFanPwmMap(fan.GetId(), f.pwmMap)
+	}
+
 	f.updateDistinctPwmValues()
 
 	ui.Info("Start PWM of %s: %d", fan.GetId(), fan.GetMinPwm())
@@ -220,9 +225,15 @@ func (f *fanController) runInitializationSequence() (err error) {
 		defer InitializationSequenceMutex.Unlock()
 	}
 
+	f.computePwmMap()
+	err = f.persistence.SaveFanPwmMap(fan.GetId(), f.pwmMap)
+	if err != nil {
+		ui.Error("Unable to persist pwmMap for fan %s", fan.GetId())
+	}
+
 	err = trySetManualPwm(fan)
 	if err != nil {
-		ui.Warning("Could not enable manual fan mode on %s, trying to continue anyway...", f.fan.GetId())
+		ui.Warning("Could not enable manual fan mode on %s, trying to continue anyway...", fan.GetId())
 	}
 
 	initialMeasurement := true
@@ -451,11 +462,13 @@ func (f *fanController) mapToClosestDistinct(target int) int {
 	return f.pwmMap[closest]
 }
 
-func (f *fanController) updatePwmMap() {
+// computePwmMap computes a mapping between "requested pwm value" -> "actual set pwm value"
+func (f *fanController) computePwmMap() {
 	fan := f.fan
 	trySetManualPwm(fan)
 
 	// check every pwm value
+	pwmMap := map[int]int{}
 	for i := fans.MaxPwmValue; i >= fans.MinPwmValue; i-- {
 		fan.SetPwm(i)
 		time.Sleep(10 * time.Millisecond)
@@ -463,8 +476,9 @@ func (f *fanController) updatePwmMap() {
 		if err != nil {
 			ui.Warning("Error reading PWM value of fan %s: %v", fan.GetId(), err)
 		}
-		f.pwmMap[i] = pwm
+		pwmMap[i] = pwm
 	}
+	f.pwmMap = pwmMap
 
 	fan.SetPwm(f.pwmMap[fan.GetStartPwm()])
 }
