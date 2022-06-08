@@ -3,6 +3,7 @@ package hwmon
 import (
 	"errors"
 	"fmt"
+	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/md14454/gosensors"
@@ -204,13 +205,18 @@ func GetFans(chip gosensors.Chip) map[int]*fans.HwMonFan {
 			label := getLabel(chip.Path, inputSubFeature.Name)
 
 			fan := &fans.HwMonFan{
+				Config: configuration.FanConfig{
+					ID:     label,
+					MinPwm: &min,
+					MaxPwm: &max,
+					HwMon: &configuration.HwMonFanConfig{
+						Index:     currentOutputIndex,
+						PwmOutput: pwmOutput,
+						RpmInput:  rpmInput,
+					},
+				},
 				Label:        label,
-				Index:        currentOutputIndex,
-				PwmOutput:    pwmOutput,
-				RpmInput:     rpmInput,
 				RpmMovingAvg: rpmAverage,
-				MinPwm:       min,
-				MaxPwm:       max,
 			}
 
 			result[currentOutputIndex] = fan

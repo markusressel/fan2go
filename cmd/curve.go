@@ -5,13 +5,11 @@ import (
 	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
-	"github.com/markusressel/fan2go/internal/hwmon"
 	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/mgutz/ansi"
 	"github.com/spf13/cobra"
 	"github.com/tomlazar/table"
-	"regexp"
 	"sort"
 	"strconv"
 )
@@ -30,27 +28,8 @@ var curveCmd = &cobra.Command{
 
 		persistence := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
 
-		controllers := hwmon.GetChips()
-
 		var fanList []fans.Fan
 		for _, config := range configuration.CurrentConfig.Fans {
-			if config.HwMon != nil {
-				for _, controller := range controllers {
-					matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, controller.Platform)
-					if err != nil {
-						ui.Fatal("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform)
-					}
-					if matched {
-						fan, exists := controller.Fans[config.HwMon.Index]
-						if exists {
-							config.HwMon.PwmOutput = fan.PwmOutput
-							config.HwMon.RpmInput = fan.RpmInput
-							break
-						}
-					}
-				}
-			}
-
 			fan, err := fans.NewFan(config)
 			if err != nil {
 				ui.Fatal("Unable to process fan configuration: %s", config.ID)

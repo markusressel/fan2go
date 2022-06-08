@@ -224,16 +224,16 @@ func CreateFan(neverStop bool, curveData map[int]float64, startPwm *int) (fan fa
 		Config: configuration.FanConfig{
 			ID: "fan1",
 			HwMon: &configuration.HwMonFanConfig{
-				Platform: "platform",
-				Index:    1,
+				Platform:  "platform",
+				Index:     1,
+				PwmOutput: "fan1_output",
+				RpmInput:  "fan1_rpm",
 			},
 			NeverStop: neverStop,
 			Curve:     "curve",
 			StartPwm:  startPwm,
 		},
-		PwmOutput: "fan1_output",
-		RpmInput:  "fan1_rpm",
-		StartPwm:  startPwm,
+		StartPwm: startPwm,
 	}
 	fans.FanMap[fan.GetId()] = fan
 

@@ -1,9 +1,13 @@
 package configuration
 
 type FanConfig struct {
-	ID          string             `json:"id"`
-	NeverStop   bool               `json:"neverStop"`
-	StartPwm    *int               `json:"startPwm,omitempty"`
+	ID        string `json:"id"`
+	NeverStop bool   `json:"neverStop"`
+	// MinPwm defines the lowest PWM value where the fans are still spinning, when spinning previously
+	MinPwm   *int `json:"minPwm,omitempty"`
+	StartPwm *int `json:"startPwm,omitempty"`
+	// MaxPwm defines the highest PWM value that yields an RPM increase
+	MaxPwm      *int               `json:"maxPwm,omitempty"`
 	Curve       string             `json:"curve"`
 	HwMon       *HwMonFanConfig    `json:"hwMon,omitempty"`
 	File        *FileFanConfig     `json:"file,omitempty"`

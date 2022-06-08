@@ -64,6 +64,10 @@ func NewFanController(
 func (f *fanController) Run(ctx context.Context) error {
 	fan := f.fan
 
+	if fan.ShouldNeverStop() && !fan.Supports(fans.FeatureRpmSensor) {
+		ui.Warning("WARN: cannot guarantee neverStop option on fan %s, since it has no RPM input.", fan.GetId())
+	}
+
 	// store original pwm value
 	pwm, err := fan.GetPwm()
 	if err != nil {
