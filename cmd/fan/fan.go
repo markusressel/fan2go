@@ -49,8 +49,6 @@ func getFan(id string) (fans.Fan, error) {
 					if err != nil {
 						return nil, errors.New(fmt.Sprintf("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform))
 					}
-					// TODO: nothing to do in this case anymore,
-					//  without resetting the data, this is now only some kind of validation
 				}
 			}
 

@@ -2,6 +2,7 @@ package fan
 
 import (
 	"fmt"
+	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
@@ -18,8 +19,15 @@ var rpmCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if rpm, err := fan.GetRpm(); err == nil {
-			fmt.Printf("%d", rpm)
+
+		if !fan.Supports(fans.FeatureRpmSensor) {
+			fmt.Printf("N/A")
+			return nil
+		}
+
+		rpm, err := fan.GetRpm()
+		if err == nil {
+			fmt.Printf("RPM: %d", rpm)
 		}
 		return err
 	},
