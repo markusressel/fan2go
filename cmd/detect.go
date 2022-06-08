@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/hwmon"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/mgutz/ansi"
@@ -58,14 +59,19 @@ var detectCmd = &cobra.Command{
 			var fanRows [][]string
 			for _, index := range fanMapKeys {
 				fan := fanMap[index]
+
 				pwmText := "N/A"
-				if pwm, err := fan.GetPwm(); err == nil {
+				pwm, err := fan.GetPwm()
+				if err == nil {
 					pwmText = strconv.Itoa(pwm)
 				}
 
 				rpmText := "N/A"
-				if rpm, err := fan.GetRpm(); err == nil {
-					rpmText = strconv.Itoa(rpm)
+				if fan.Supports(fans.FeatureRpmSensor) {
+					rpm, err := fan.GetRpm()
+					if err == nil {
+						rpmText = strconv.Itoa(rpm)
+					}
 				}
 
 				isAuto, _ := fan.IsPwmAuto()
