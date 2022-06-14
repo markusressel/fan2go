@@ -1,8 +1,9 @@
-package cmd
+package curve
 
 import (
 	"bytes"
 	"github.com/guptarohit/asciigraph"
+	"github.com/markusressel/fan2go/cmd/global"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/persistence"
@@ -15,7 +16,7 @@ import (
 )
 
 var curveCmd = &cobra.Command{
-	Use:   "curve",
+	Use:   "list",
 	Short: "Print the measured fan curve(s) to console",
 	Run: func(cmd *cobra.Command, args []string) {
 		configPath := configuration.DetectConfigFile()
@@ -60,7 +61,7 @@ var curveCmd = &cobra.Command{
 			var buf bytes.Buffer
 			tableErr := tab.WriteTable(&buf, &table.Config{
 				ShowIndex:       false,
-				Color:           !noColor,
+				Color:           !global.NoColor,
 				AlternateColors: true,
 				TitleColorCode:  ansi.ColorCode("white+buf"),
 				AltColorCodes: []string{
@@ -99,5 +100,5 @@ var curveCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(curveCmd)
+	Command.AddCommand(curveCmd)
 }

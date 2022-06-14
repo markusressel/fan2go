@@ -3,7 +3,9 @@ package cmd
 import (
 	"fmt"
 	"github.com/markusressel/fan2go/cmd/config"
+	"github.com/markusressel/fan2go/cmd/curve"
 	"github.com/markusressel/fan2go/cmd/fan"
+	"github.com/markusressel/fan2go/cmd/global"
 	"github.com/markusressel/fan2go/cmd/sensor"
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -11,15 +13,6 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"os"
-)
-
-var (
-	version, commit, date = "dev", "dev", ""
-
-	cfgFile string
-	noColor bool
-	noStyle bool
-	verbose bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -47,24 +40,25 @@ on your computer based on temperature sensors.`,
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")
-	rootCmd.PersistentFlags().BoolVarP(&noColor, "no-color", "", false, "Disable all terminal output coloration")
-	rootCmd.PersistentFlags().BoolVarP(&noStyle, "no-style", "", false, "Disable all terminal output styling")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "More verbose output")
+	rootCmd.PersistentFlags().StringVarP(&global.CfgFile, "config", "c", "", "config file (default is $HOME/.fan2go.yaml)")
+	rootCmd.PersistentFlags().BoolVarP(&global.NoColor, "no-color", "", false, "Disable all terminal output coloration")
+	rootCmd.PersistentFlags().BoolVarP(&global.NoStyle, "no-style", "", false, "Disable all terminal output styling")
+	rootCmd.PersistentFlags().BoolVarP(&global.Verbose, "verbose", "v", false, "More verbose output")
 
 	rootCmd.AddCommand(config.Command)
 
 	rootCmd.AddCommand(fan.Command)
+	rootCmd.AddCommand(curve.Command)
 	rootCmd.AddCommand(sensor.Command)
 }
 
 func setupUi() {
-	ui.SetDebugEnabled(verbose)
+	ui.SetDebugEnabled(global.Verbose)
 
-	if noColor {
+	if global.NoColor {
 		pterm.DisableColor()
 	}
-	if noStyle {
+	if global.NoStyle {
 		pterm.DisableStyling()
 	}
 }
@@ -85,7 +79,7 @@ func printHeader() {
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	cobra.OnInitialize(func() {
-		configuration.InitConfig(cfgFile)
+		configuration.InitConfig(global.CfgFile)
 	})
 
 	if err := rootCmd.Execute(); err != nil {

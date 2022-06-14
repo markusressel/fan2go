@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"github.com/markusressel/fan2go/cmd/global"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/hwmon"
@@ -27,7 +28,7 @@ var detectCmd = &cobra.Command{
 		// === Print detected devices ===
 		tableConfig := &table.Config{
 			ShowIndex:       false,
-			Color:           !noColor,
+			Color:           !global.NoColor,
 			AlternateColors: true,
 			TitleColorCode:  ansi.ColorCode("white+buf"),
 			AltColorCodes: []string{
