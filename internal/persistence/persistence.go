@@ -36,18 +36,20 @@ func NewPersistence(dbPath string) Persistence {
 	return p
 }
 
-func (p persistence) openPersistence() *bolt.DB {
-	db, err := bolt.Open(p.dbPath, 0600, &bolt.Options{Timeout: 1 * time.Minute})
+func (p persistence) openPersistence() (db *bolt.DB, err error) {
+	db, err = bolt.Open(p.dbPath, 0600, &bolt.Options{Timeout: 1 * time.Minute})
 	if err != nil {
-		ui.ErrorAndNotify("Persistence Error", "Could not open database file: %v", err)
-		os.Exit(1)
+		return nil, err
 	}
-	return db
+	return db, nil
 }
 
 // SaveFanPwmData saves the fan curve data of the given fan to persistence
 func (p persistence) SaveFanPwmData(fan fans.Fan) (err error) {
-	db := p.openPersistence()
+	db, err := p.openPersistence()
+	if err != nil {
+		return err
+	}
 	defer db.Close()
 
 	key := fan.GetId()
@@ -75,13 +77,16 @@ func (p persistence) SaveFanPwmData(fan fans.Fan) (err error) {
 
 // LoadFanPwmData loads the fan curve data from persistence
 func (p persistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
-	db := p.openPersistence()
+	db, err := p.openPersistence()
+	if err != nil {
+		return nil, err
+	}
 	defer db.Close()
 
 	key := fan.GetId()
 
 	var fanCurveDataMap map[int]float64
-	err := db.Update(func(tx *bolt.Tx) error {
+	err = db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFans))
 		if b == nil {
 			return os.ErrNotExist
@@ -109,12 +114,15 @@ func (p persistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
 }
 
 func (p persistence) DeleteFanPwmData(fan fans.Fan) error {
-	db := p.openPersistence()
+	db, err := p.openPersistence()
+	if err != nil {
+		return err
+	}
 	defer db.Close()
 
 	key := fan.GetId()
 
-	err := db.Update(func(tx *bolt.Tx) error {
+	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFans))
 		if b == nil {
 			// no fan bucket yet
@@ -128,13 +136,14 @@ func (p persistence) DeleteFanPwmData(fan fans.Fan) error {
 
 		return b.Delete([]byte(key))
 	})
-
-	return err
 }
 
 // SaveFanPwmMap saves the "pwm requested" -> "actual pwm" map of the given fan to persistence
 func (p persistence) SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error) {
-	db := p.openPersistence()
+	db, err := p.openPersistence()
+	if err != nil {
+		return err
+	}
 	defer db.Close()
 
 	key := fanId
@@ -161,13 +170,16 @@ func (p persistence) SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error)
 
 // LoadFanPwmMap loads the fan curve data from persistence
 func (p persistence) LoadFanPwmMap(fanId string) (map[int]int, error) {
-	db := p.openPersistence()
+	db, err := p.openPersistence()
+	if err != nil {
+		return nil, err
+	}
 	defer db.Close()
 
 	key := fanId
 
 	var pwmMap map[int]int
-	err := db.Update(func(tx *bolt.Tx) error {
+	err = db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFanPwmMap))
 		if b == nil {
 			return os.ErrNotExist
@@ -195,12 +207,15 @@ func (p persistence) LoadFanPwmMap(fanId string) (map[int]int, error) {
 }
 
 func (p persistence) DeleteFanPwmMap(fanId string) error {
-	db := p.openPersistence()
+	db, err := p.openPersistence()
+	if err != nil {
+		return err
+	}
 	defer db.Close()
 
 	key := fanId
 
-	err := db.Update(func(tx *bolt.Tx) error {
+	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFanPwmMap))
 		if b == nil {
 			// no fan bucket yet
@@ -214,6 +229,4 @@ func (p persistence) DeleteFanPwmMap(fanId string) error {
 
 		return b.Delete([]byte(key))
 	})
-
-	return err
 }
