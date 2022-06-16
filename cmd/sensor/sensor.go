@@ -16,7 +16,7 @@ var sensorId string
 
 var Command = &cobra.Command{
 	Use:              "sensor",
-	Short:            "sensor related commands",
+	Short:            "Sensor related commands",
 	Long:             ``,
 	TraverseChildren: true,
 	Args:             cobra.NoArgs,

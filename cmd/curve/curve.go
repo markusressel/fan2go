@@ -8,7 +8,7 @@ var curveId string
 
 var Command = &cobra.Command{
 	Use:              "curve",
-	Short:            "Print the measured fan curve(s) to console",
+	Short:            "Curve related commands",
 	TraverseChildren: true,
 }
 

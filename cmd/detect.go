@@ -18,8 +18,8 @@ import (
 
 var detectCmd = &cobra.Command{
 	Use:   "detect",
-	Short: "Detect devices",
-	Long:  `Detects all fans and sensors and prints them as a list`,
+	Short: "Detect fans and sensors",
+	Long:  `Detect fans and sensors on your system and print them to console.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		configuration.LoadConfig()
 
