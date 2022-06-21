@@ -15,7 +15,7 @@ require (
 	github.com/pterm/pterm v0.12.41
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/viper v1.12.0
-	github.com/stretchr/testify v1.7.2
+	github.com/stretchr/testify v1.7.4
 	github.com/tomlazar/table v0.1.2
 	go.etcd.io/bbolt v1.3.6
 	golang.org/x/exp v0.0.0-20220328175248-053ad81199eb
