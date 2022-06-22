@@ -1,8 +1,9 @@
-package cmd
+package fan
 
 import (
 	"bytes"
 	"github.com/guptarohit/asciigraph"
+	"github.com/markusressel/fan2go/cmd/global"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/persistence"
@@ -38,6 +39,10 @@ var curveCmd = &cobra.Command{
 		}
 
 		for idx, fan := range fanList {
+			if &fanId != nil && fan.GetId() != fanId {
+				continue
+			}
+
 			pwmData, fanCurveErr := persistence.LoadFanPwmData(fan)
 			if fanCurveErr == nil {
 				_ = fan.AttachFanCurveData(&pwmData)
@@ -60,7 +65,7 @@ var curveCmd = &cobra.Command{
 			var buf bytes.Buffer
 			tableErr := tab.WriteTable(&buf, &table.Config{
 				ShowIndex:       false,
-				Color:           !noColor,
+				Color:           !global.NoColor,
 				AlternateColors: true,
 				TitleColorCode:  ansi.ColorCode("white+buf"),
 				AltColorCodes: []string{
@@ -99,5 +104,5 @@ var curveCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(curveCmd)
+	Command.AddCommand(curveCmd)
 }

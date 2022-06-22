@@ -6,18 +6,18 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 )
 
-type pidSpeedCurve struct {
+type PidSpeedCurve struct {
 	Config configuration.CurveConfig `json:"config"`
 	Value  int                       `json:"value"`
 
 	pidLoop *util.PidLoop
 }
 
-func (c pidSpeedCurve) GetId() string {
+func (c PidSpeedCurve) GetId() string {
 	return c.Config.ID
 }
 
-func (c pidSpeedCurve) Evaluate() (value int, err error) {
+func (c PidSpeedCurve) Evaluate() (value int, err error) {
 	sensor := sensors.SensorMap[c.Config.PID.Sensor]
 	measured, err := sensor.GetValue()
 	pidTarget := c.Config.PID.SetPoint

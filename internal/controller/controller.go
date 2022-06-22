@@ -18,7 +18,14 @@ import (
 var InitializationSequenceMutex sync.Mutex
 
 type FanController interface {
+	// Run starts the control loop
 	Run(ctx context.Context) error
+
+	// RunInitializationSequence for the given fan to determine its characteristics
+	RunInitializationSequence() (err error)
+	// computePwmMap computes a mapping between "requested pwm value" -> "actual set pwm value"
+	computePwmMap()
+
 	UpdateFanSpeed() error
 }
 
@@ -96,7 +103,7 @@ func (f *fanController) Run(ctx context.Context) error {
 		_, ok := fan.(*fans.HwMonFan)
 		if ok {
 			ui.Warning("Fan '%s' has not yet been analyzed, starting initialization sequence...", fan.GetId())
-			err = f.runInitializationSequence()
+			err = f.RunInitializationSequence()
 			if err != nil {
 				return err
 			}
@@ -213,9 +220,7 @@ func (f *fanController) UpdateFanSpeed() error {
 	return nil
 }
 
-// runs an initialization sequence for the given fan
-// to determine an estimation of its fan curve
-func (f *fanController) runInitializationSequence() (err error) {
+func (f *fanController) RunInitializationSequence() (err error) {
 	fan := f.fan
 
 	curveData := map[int]float64{}
@@ -225,11 +230,19 @@ func (f *fanController) runInitializationSequence() (err error) {
 		defer InitializationSequenceMutex.Unlock()
 	}
 
+	ui.Info("Computing pwm map...")
 	f.computePwmMap()
 	err = f.persistence.SaveFanPwmMap(fan.GetId(), f.pwmMap)
 	if err != nil {
 		ui.Error("Unable to persist pwmMap for fan %s", fan.GetId())
 	}
+	f.updateDistinctPwmValues()
+
+	if !fan.Supports(fans.FeatureRpmSensor) {
+		ui.Info("Fan '%s' doesn't support RPM sensor, skipping fan curve measurement", fan.GetId())
+		return nil
+	}
+	ui.Info("Measuring RPM curve...")
 
 	err = trySetManualPwm(fan)
 	if err != nil {
@@ -237,17 +250,14 @@ func (f *fanController) runInitializationSequence() (err error) {
 	}
 
 	initialMeasurement := true
-	for pwm := fans.MinPwmValue; pwm <= fans.MaxPwmValue; pwm++ {
+	for pwm := range f.pwmValuesWithDistinctTarget {
 		// set a pwm
-		err = fan.SetPwm(pwm)
+		err = f.setPwm(pwm)
 		if err != nil {
 			ui.Error("Unable to run initialization sequence on %s: %v", fan.GetId(), err)
 			return err
 		}
 
-		// verify that we were successful in writing our desired PWM value
-		// otherwise, skip this PWM value
-		// TODO: this has to be done _always_, while the RPM measurements only make sense if the fan supports it
 		actualPwm, err := fan.GetPwm()
 		if err != nil {
 			ui.Error("Fan %s: Unable to measure current PWM", fan.GetId())
@@ -462,7 +472,6 @@ func (f *fanController) mapToClosestDistinct(target int) int {
 	return f.pwmMap[closest]
 }
 
-// computePwmMap computes a mapping between "requested pwm value" -> "actual set pwm value"
 func (f *fanController) computePwmMap() {
 	fan := f.fan
 	trySetManualPwm(fan)

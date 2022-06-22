@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"github.com/markusressel/fan2go/cmd/global"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/hwmon"
@@ -17,8 +18,8 @@ import (
 
 var detectCmd = &cobra.Command{
 	Use:   "detect",
-	Short: "Detect devices",
-	Long:  `Detects all fans and sensors and prints them as a list`,
+	Short: "Detect fans and sensors",
+	Long:  `Detect fans and sensors on your system and print them to console.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		configuration.LoadConfig()
 
@@ -27,7 +28,7 @@ var detectCmd = &cobra.Command{
 		// === Print detected devices ===
 		tableConfig := &table.Config{
 			ShowIndex:       false,
-			Color:           !noColor,
+			Color:           !global.NoColor,
 			AlternateColors: true,
 			TitleColorCode:  ansi.ColorCode("white+buf"),
 			AltColorCodes: []string{

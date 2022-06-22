@@ -7,16 +7,16 @@ import (
 	"math"
 )
 
-type linearSpeedCurve struct {
+type LinearSpeedCurve struct {
 	Config configuration.CurveConfig `json:"config"`
 	Value  int                       `json:"value"`
 }
 
-func (c linearSpeedCurve) GetId() string {
+func (c LinearSpeedCurve) GetId() string {
 	return c.Config.ID
 }
 
-func (c linearSpeedCurve) Evaluate() (value int, err error) {
+func (c LinearSpeedCurve) Evaluate() (value int, err error) {
 	sensor := sensors.SensorMap[c.Config.Linear.Sensor]
 	var avgTemp = sensor.GetMovingAvg()
 

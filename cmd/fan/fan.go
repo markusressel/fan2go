@@ -45,9 +45,16 @@ func getFan(id string) (fans.Fan, error) {
 		if config.ID == id {
 			if config.HwMon != nil {
 				for _, controller := range controllers {
-					_, err := regexp.MatchString("(?i)"+config.HwMon.Platform, controller.Platform)
+					matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, controller.Platform)
 					if err != nil {
 						return nil, errors.New(fmt.Sprintf("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform))
+					}
+
+					if matched {
+						fan := controller.Fans[config.HwMon.Index]
+						config.HwMon.PwmOutput = fan.Config.HwMon.PwmOutput
+						config.HwMon.RpmInput = fan.Config.HwMon.RpmInput
+						break
 					}
 				}
 			}

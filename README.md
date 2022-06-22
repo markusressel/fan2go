@@ -357,6 +357,33 @@ After successfully verifying your configuration you can launch fan2go from the C
 working as expected. Assuming you put your configuration file in `/etc/fan2go/fan2go.yaml` run:
 
 ```shell
+> fan2go help                                                                                                                                                                              2 (0.032s) < 22:43:49
+fan2go is a simple daemon that controls the fans
+on your computer based on temperature sensors.
+
+Usage:
+  fan2go [flags]
+  fan2go [command]
+
+Available Commands:
+  completion  Generate the autocompletion script for the specified shell
+  config      Configuration related commands
+  curve       Curve related commands
+  detect      Detect fans and sensors
+  fan         Fan related commands
+  help        Help about any command
+  sensor      Sensor related commands
+  version     Print the version number of fan2go
+
+Flags:
+  -c, --config string   config file (default is $HOME/.fan2go.yaml)
+  -h, --help            help for fan2go
+      --no-color        Disable all terminal output coloration
+      --no-style        Disable all terminal output styling
+  -v, --verbose         More verbose output
+
+Use "fan2go [command] --help" for more information about a command.
+
 > sudo fan2go
 ```
 

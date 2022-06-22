@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/markusressel/fan2go/cmd/global"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -12,12 +13,12 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number of fan2go",
 	Long:  `All software has versions. This is fan2go's`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if verbose {
-			ui.Printfln("%s-%s-%s", version, commit, date)
+		if global.Verbose {
+			ui.Printfln("%s-%s-%s", global.Version, global.Commit, global.Date)
 		} else if long {
-			ui.Printfln("%s-%s", version, commit)
+			ui.Printfln("%s-%s", global.Version, global.Commit)
 		} else {
-			ui.Printfln("%s", version)
+			ui.Printfln("%s", global.Version)
 		}
 	},
 }
