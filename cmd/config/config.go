@@ -8,7 +8,3 @@ var Command = &cobra.Command{
 	Long:             ``,
 	TraverseChildren: true,
 }
-
-func init() {
-	_ = Command.MarkPersistentFlagRequired("config")
-}
