@@ -50,6 +50,7 @@ var initCmd = &cobra.Command{
 
 		if err == nil {
 			ui.Success("Done!")
+			return curveCmd.RunE(cmd, []string{fanId})
 		}
 
 		return err

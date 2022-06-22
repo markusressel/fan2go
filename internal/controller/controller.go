@@ -242,6 +242,7 @@ func (f *fanController) RunInitializationSequence() (err error) {
 		ui.Info("Fan '%s' doesn't support RPM sensor, skipping fan curve measurement", fan.GetId())
 		return nil
 	}
+	ui.Info("Measuring RPM curve...")
 
 	err = trySetManualPwm(fan)
 	if err != nil {
