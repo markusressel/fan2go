@@ -19,5 +19,4 @@ func init() {
 		"",
 		"Curve ID as specified in the config",
 	)
-	_ = Command.MarkPersistentFlagRequired("id")
 }

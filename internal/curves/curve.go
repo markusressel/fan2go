@@ -19,7 +19,7 @@ var (
 
 func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
 	if config.Linear != nil {
-		return &linearSpeedCurve{
+		return &LinearSpeedCurve{
 			Config: config,
 		}, nil
 	}
@@ -30,14 +30,14 @@ func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
 			config.PID.I,
 			config.PID.D,
 		)
-		return &pidSpeedCurve{
+		return &PidSpeedCurve{
 			Config:  config,
 			pidLoop: pidLoop,
 		}, nil
 	}
 
 	if config.Function != nil {
-		return &functionSpeedCurve{
+		return &FunctionSpeedCurve{
 			Config: config,
 		}, nil
 	}

@@ -6,16 +6,16 @@ import (
 	"math"
 )
 
-type functionSpeedCurve struct {
+type FunctionSpeedCurve struct {
 	Config configuration.CurveConfig `json:"config"`
 	Value  int                       `json:"value"`
 }
 
-func (c functionSpeedCurve) GetId() string {
+func (c FunctionSpeedCurve) GetId() string {
 	return c.Config.ID
 }
 
-func (c functionSpeedCurve) Evaluate() (value int, err error) {
+func (c FunctionSpeedCurve) Evaluate() (value int, err error) {
 	var curves []SpeedCurve
 	for _, curveId := range c.Config.Function.Curves {
 		curves = append(curves, SpeedCurveMap[curveId])
