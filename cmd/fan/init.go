@@ -50,7 +50,8 @@ var initCmd = &cobra.Command{
 
 		if err == nil {
 			ui.Success("Done!")
-			return curveCmd.RunE(cmd, []string{fanId})
+			// print measured fan curve
+			curveCmd.Run(curveCmd, []string{})
 		}
 
 		return err
