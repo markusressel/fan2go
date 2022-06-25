@@ -216,6 +216,7 @@ func GetFans(chip gosensors.Chip) map[int]*fans.HwMonFan {
 					},
 				},
 				Label:        label,
+				Index:        currentOutputIndex,
 				RpmMovingAvg: rpmAverage,
 			}
 
