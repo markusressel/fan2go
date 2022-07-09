@@ -223,8 +223,6 @@ func (f *fanController) UpdateFanSpeed() error {
 func (f *fanController) RunInitializationSequence() (err error) {
 	fan := f.fan
 
-	curveData := map[int]float64{}
-
 	if configuration.CurrentConfig.RunFanInitializationInParallel == false {
 		InitializationSequenceMutex.Lock()
 		defer InitializationSequenceMutex.Unlock()
@@ -242,69 +240,7 @@ func (f *fanController) RunInitializationSequence() (err error) {
 		ui.Info("Fan '%s' doesn't support RPM sensor, skipping fan curve measurement", fan.GetId())
 		return nil
 	}
-	ui.Info("Measuring RPM curve...")
-
-	err = trySetManualPwm(fan)
-	if err != nil {
-		ui.Warning("Could not enable manual fan mode on %s, trying to continue anyway...", fan.GetId())
-	}
-
-	initialMeasurement := true
-	for pwm := range f.pwmValuesWithDistinctTarget {
-		// set a pwm
-		err = f.setPwm(pwm)
-		if err != nil {
-			ui.Error("Unable to run initialization sequence on %s: %v", fan.GetId(), err)
-			return err
-		}
-
-		actualPwm, err := fan.GetPwm()
-		if err != nil {
-			ui.Error("Fan %s: Unable to measure current PWM", fan.GetId())
-			return err
-		}
-		if actualPwm != pwm {
-			ui.Debug("Fan %s: Actual PWM value differs from requested one, skipping. Requested: %d Actual: %d", fan.GetId(), pwm, actualPwm)
-			continue
-		}
-
-		if initialMeasurement {
-			initialMeasurement = false
-			f.waitForFanToSettle(fan)
-		} else {
-			// wait a bit to allow the fan speed to settle.
-			// since most sensors are update only each second,
-			// we wait double that to make sure we get
-			// the most recent measurement
-			time.Sleep(2 * time.Second)
-		}
-
-		rpm, err := fan.GetRpm()
-		if err != nil {
-			ui.Error("Unable to measure RPM of fan %s", fan.GetId())
-			return err
-		}
-		ui.Debug("Measuring RPM of %s at PWM %d: %d", fan.GetId(), pwm, rpm)
-
-		// update rpm curve
-		fan.SetRpmAvg(float64(rpm))
-		curveData[pwm] = float64(rpm)
-
-		ui.Debug("Measured RPM of %d at PWM %d for fan %s", int(fan.GetRpmAvg()), pwm, fan.GetId())
-	}
-
-	err = fan.AttachFanCurveData(&curveData)
-	if err != nil {
-		ui.Error("Failed to attach fan curve data to fan %s: %v", fan.GetId(), err)
-		return err
-	}
-
-	// save to database to restore it on restarts
-	err = f.persistence.SaveFanPwmData(fan)
-	if err != nil {
-		ui.Error("Failed to save fan PWM data for %s: %v", fan.GetId(), err)
-	}
-	return err
+	return f.measureFanCurve()
 }
 
 // read the current value of a fan RPM sensor and append it to the moving window
@@ -505,4 +441,74 @@ func (f *fanController) updateDistinctPwmValues() {
 	sort.Ints(keys)
 
 	f.pwmValuesWithDistinctTarget = keys
+}
+
+func (f *fanController) measureFanCurve() (err error) {
+	fan := f.fan
+	ui.Info("Measuring RPM curve...")
+
+	curveData := map[int]float64{}
+
+	err = trySetManualPwm(fan)
+	if err != nil {
+		ui.Warning("Could not enable manual fan mode on %s, trying to continue anyway...", fan.GetId())
+	}
+
+	initialMeasurement := true
+	for pwm := range f.pwmValuesWithDistinctTarget {
+		// set a pwm
+		err = f.setPwm(pwm)
+		if err != nil {
+			ui.Error("Unable to run initialization sequence on %s: %v", fan.GetId(), err)
+			return err
+		}
+
+		actualPwm, err := fan.GetPwm()
+		if err != nil {
+			ui.Error("Fan %s: Unable to measure current PWM", fan.GetId())
+			return err
+		}
+		if actualPwm != pwm {
+			ui.Debug("Fan %s: Actual PWM value differs from requested one, skipping. Requested: %d Actual: %d", fan.GetId(), pwm, actualPwm)
+			continue
+		}
+
+		if initialMeasurement {
+			initialMeasurement = false
+			f.waitForFanToSettle(fan)
+		} else {
+			// wait a bit to allow the fan speed to settle.
+			// since most sensors are update only each second,
+			// we wait double that to make sure we get
+			// the most recent measurement
+			time.Sleep(2 * time.Second)
+		}
+
+		rpm, err := fan.GetRpm()
+		if err != nil {
+			ui.Error("Unable to measure RPM of fan %s", fan.GetId())
+			return err
+		}
+		ui.Debug("Measuring RPM of %s at PWM %d: %d", fan.GetId(), pwm, rpm)
+
+		// update rpm curve
+		fan.SetRpmAvg(float64(rpm))
+		curveData[pwm] = float64(rpm)
+
+		ui.Debug("Measured RPM of %d at PWM %d for fan %s", int(fan.GetRpmAvg()), pwm, fan.GetId())
+	}
+
+	err = fan.AttachFanCurveData(&curveData)
+	if err != nil {
+		ui.Error("Failed to attach fan curve data to fan %s: %v", fan.GetId(), err)
+		return err
+	}
+
+	// save to database to restore it on restarts
+	err = f.persistence.SaveFanPwmData(fan)
+	if err != nil {
+		ui.Error("Failed to save fan PWM data for %s: %v", fan.GetId(), err)
+	}
+
+	return err
 }
