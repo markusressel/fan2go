@@ -12,7 +12,7 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/oklog/run v1.1.0
 	github.com/prometheus/client_golang v1.12.2
-	github.com/pterm/pterm v0.12.42
+	github.com/pterm/pterm v0.12.44
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/viper v1.12.0
 	github.com/stretchr/testify v1.8.0
