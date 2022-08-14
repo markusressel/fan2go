@@ -5,6 +5,8 @@ dbPath: "/etc/fan2go/fan2go.db"
 runFanInitializationInParallel: false
 # The maximum difference between consecutive RPM measurements to
 # consider a fan speed "settled"
+# Note: This parameter is only used for initial analysis of fan curve
+#       and has no effect during normal operation
 maxRpmDiffForSettledFan: 10
 
 # The rate to poll temperature sensors at
