@@ -208,7 +208,7 @@ sensors:
       path: /tmp/file_sensor
 ```
 
-The file contains a value in milli-units, like milli-degrees.
+The file contains a value in milli-units, like f.ex. milli-degrees.
 
 ```bash
 > cat /tmp/file_sensor
@@ -219,6 +219,9 @@ The file contains a value in milli-units, like milli-degrees.
 
 Please also make sure to read the section about
 [considerations for using the cmd sensor/fan](#using-external-commands-for-sensorsfans).
+
+Just like the `file` sensor, the command must output the sensor value in milli-units,
+like f.ex. milli-degrees.
 
 ```yaml
 sensors:
