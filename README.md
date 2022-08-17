@@ -228,9 +228,9 @@ sensors:
   - id: cmd_fan
     cmd:
       # Path to the executable to run to retrieve the current sensor value
-      exec: /usr/bin/nvidia-settings
+      exec: /usr/bin/bash
       # (optional) arguments to pass to the executable
-      args: [ '-q', 'gpucoretemp', '-t' ]
+      args: [ '/home/markus/myscript.sh' ]
 ```
 
 ### Curves
