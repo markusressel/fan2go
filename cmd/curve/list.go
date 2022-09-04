@@ -2,6 +2,7 @@ package curve
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/cmd/global"
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -11,8 +12,8 @@ import (
 	"github.com/mgutz/ansi"
 	"github.com/spf13/cobra"
 	"github.com/tomlazar/table"
-	"golang.org/x/exp/maps"
 	"sort"
+	"strings"
 )
 
 var curveCmd = &cobra.Command{
@@ -39,83 +40,151 @@ var curveCmd = &cobra.Command{
 				return err
 			}
 
-			var curveType string
-			var graphValues map[int]float64 = nil
 			switch curve.(type) {
 			case *curves.LinearSpeedCurve:
-				curveType = "Linear"
-
-				var keys map[int]float64
-				var start int
-				var stop int
-				if curveConf.Linear.Steps != nil {
-					keys = curveConf.Linear.Steps
-					start = int(util.Min(maps.Values(keys)))
-					stop = int(util.Max(maps.Values(keys)))
-				} else {
-					keys = map[int]float64{
-						curveConf.Linear.Min: 0,
-						curveConf.Linear.Max: 255,
-					}
-					start = curveConf.Linear.Min
-					stop = curveConf.Linear.Max
-				}
-
-				graphValues = util.InterpolateLinearly(&keys, start, stop)
+				printLinearCurveInfo(curve, curveConf.Linear)
 			case *curves.PidSpeedCurve:
-				curveType = "PID"
+				printPidCurveInfo(curve, curveConf.PID)
 			case *curves.FunctionSpeedCurve:
-				curveType = "Functional"
-			default:
-				curveType = "Unknown"
+				printFunctionCurveInfo(curve, curveConf.Function)
 			}
-
-			// print table
-			tab := table.Table{
-				Headers: []string{"ID", "Type"},
-				Rows: [][]string{
-					{curve.GetId(), curveType},
-				},
-			}
-			var buf bytes.Buffer
-			tableErr := tab.WriteTable(&buf, &table.Config{
-				ShowIndex:       false,
-				Color:           !global.NoColor,
-				AlternateColors: true,
-				TitleColorCode:  ansi.ColorCode("white+buf"),
-				AltColorCodes: []string{
-					ansi.ColorCode("white"),
-					ansi.ColorCode("white:236"),
-				},
-			})
-			if tableErr != nil {
-				panic(tableErr)
-			}
-			tableString := buf.String()
-			ui.Printfln(tableString)
-
-			if graphValues == nil {
-				continue
-			}
-
-			keys := make([]int, 0, len(graphValues))
-			for k := range graphValues {
-				keys = append(keys, k)
-			}
-			sort.Ints(keys)
-
-			values := make([]float64, 0, len(keys))
-			for _, k := range keys {
-				values = append(values, graphValues[k])
-			}
-
-			caption := "RPM / PWM"
-			graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(100), asciigraph.Caption(caption))
-			ui.Printfln(graph)
 		}
 
 		return nil
 	},
+}
+
+func printLinearCurveInfo(curve curves.SpeedCurve, config *configuration.LinearCurveConfig) {
+	curveType := "Linear"
+
+	sensorId := config.Sensor
+
+	if config.Steps != nil {
+		stepMappings := map[int]float64{}
+		sortedStepKeys := util.SortedKeys(config.Steps)
+		for _, x := range sortedStepKeys {
+			y := config.Steps[x]
+			stepMappings[int(y)] = float64(x)
+		}
+
+		headers := []string{"ID", "Type", "Sensor"}
+		rows := [][]string{
+			{curve.GetId(), curveType, sensorId},
+		}
+
+		printInfoTable(headers, rows)
+
+		interpolated := util.InterpolateLinearly(&stepMappings, 0, 255)
+		drawGraph(interpolated, "Temp / Curve Value")
+	} else {
+		headers := []string{"ID", "Type", "Sensor", "Min", "Max"}
+		rows := [][]string{
+			{curve.GetId(), curveType, sensorId, fmt.Sprint(config.Min), fmt.Sprint(config.Max)},
+		}
+
+		printInfoTable(headers, rows)
+
+		/*
+			var keys map[int]float64
+			// TODO: to draw a graph of what the PWM curve would look like, we would need to
+			//  calculate the target pwm for each input pwm for a given curve.
+			//
+			//  with the current architecture this isn't possible, because the curve instance is hardwired
+			//  to a specific sensor.
+			//  So to calculate curve targets we would need to set fake sensor values
+
+			// creates a virtual sensor, to simulate inputs and calculate the output of the curve
+			sensor := sensors.VirtualSensor{
+				Name:  sensorId,
+				Value: 0,
+			}
+			sensors.SensorMap[sensorId] = &sensor
+
+			keys = map[int]float64{}
+
+			for i := config.Min; i <= config.Max; i++ {
+				sensor.Value = float64(i * 1000)
+				v, _ := curve.Evaluate()
+				keys[i] = float64(v)
+			}
+
+			start := 0
+			stop := 100
+
+			var graphValues map[int]float64 = nil
+			graphValues = util.InterpolateLinearly(&keys, start, stop)
+
+			if graphValues != nil {
+				drawGraph(graphValues, "RPM / PWM")
+			}
+		*/
+	}
+
+}
+
+func drawGraph(graphValues map[int]float64, caption string) {
+	_keys := make([]int, 0, len(graphValues))
+	for k := range graphValues {
+		_keys = append(_keys, k)
+	}
+	sort.Ints(_keys)
+
+	values := make([]float64, 0, len(_keys))
+	for _, k := range _keys {
+		values = append(values, graphValues[k])
+	}
+
+	graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(100), asciigraph.Caption(caption))
+	ui.Printfln(graph)
+}
+
+func printFunctionCurveInfo(curve curves.SpeedCurve, config *configuration.FunctionCurveConfig) {
+	curveType := "Functional"
+
+	t := config.Type
+	curveIds := config.Curves
+	curveIdsText := strings.Join(curveIds, ", ")
+
+	headers := []string{"ID", "Type", "Function", "Curve IDs"}
+	rows := [][]string{
+		{curve.GetId(), curveType, t, curveIdsText},
+	}
+
+	printInfoTable(headers, rows)
+}
+
+func printPidCurveInfo(curve curves.SpeedCurve, config *configuration.PidCurveConfig) {
+	curveType := "PID"
+
+	headers := []string{"ID", "Type", "P", "I", "D", "Set Point"}
+	rows := [][]string{
+		{curve.GetId(), curveType, fmt.Sprint(config.P), fmt.Sprint(config.I), fmt.Sprint(config.D), fmt.Sprint(config.SetPoint)},
+	}
+
+	printInfoTable(headers, rows)
+}
+
+func printInfoTable(headers []string, rows [][]string) {
+	tab := table.Table{
+		Headers: headers,
+		Rows:    rows,
+	}
+	var buf bytes.Buffer
+	tableErr := tab.WriteTable(&buf, &table.Config{
+		ShowIndex:       false,
+		Color:           !global.NoColor,
+		AlternateColors: true,
+		TitleColorCode:  ansi.ColorCode("white+buf"),
+		AltColorCodes: []string{
+			ansi.ColorCode("white"),
+			ansi.ColorCode("white:236"),
+		},
+	})
+	if tableErr != nil {
+		panic(tableErr)
+	}
+	tableString := buf.String()
+	ui.Printfln(tableString)
 }
 
 func init() {
