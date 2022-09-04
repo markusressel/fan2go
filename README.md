@@ -208,7 +208,7 @@ sensors:
       path: /tmp/file_sensor
 ```
 
-The file contains a value in milli-units, like milli-degrees.
+The file contains a value in milli-units, like f.ex. milli-degrees.
 
 ```bash
 > cat /tmp/file_sensor
@@ -220,14 +220,17 @@ The file contains a value in milli-units, like milli-degrees.
 Please also make sure to read the section about
 [considerations for using the cmd sensor/fan](#using-external-commands-for-sensorsfans).
 
+Just like the `file` sensor, the command must output the sensor value in milli-units,
+like f.ex. milli-degrees.
+
 ```yaml
 sensors:
   - id: cmd_fan
     cmd:
       # Path to the executable to run to retrieve the current sensor value
-      exec: /usr/bin/nvidia-settings
+      exec: /usr/bin/bash
       # (optional) arguments to pass to the executable
-      args: [ '-q', 'gpucoretemp', '-t' ]
+      args: [ '/home/markus/myscript.sh' ]
 ```
 
 ### Curves

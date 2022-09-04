@@ -4,7 +4,8 @@ type FanConfig struct {
 	ID        string `json:"id"`
 	NeverStop bool   `json:"neverStop"`
 	// MinPwm defines the lowest PWM value where the fans are still spinning, when spinning previously
-	MinPwm   *int `json:"minPwm,omitempty"`
+	MinPwm *int `json:"minPwm,omitempty"`
+	// MinPwm defines the lowest PWM value where the fans are able to start spinning from a standstill
 	StartPwm *int `json:"startPwm,omitempty"`
 	// MaxPwm defines the highest PWM value that yields an RPM increase
 	MaxPwm      *int               `json:"maxPwm,omitempty"`
