@@ -133,9 +133,7 @@ func (f *fanController) Run(ctx context.Context) error {
 
 	f.updateDistinctPwmValues()
 
-	ui.Info("Start PWM of %s: %d", fan.GetId(), fan.GetMinPwm())
-	ui.Info("Max PWM of %s: %d", fan.GetId(), fan.GetMaxPwm())
-
+	ui.Info("PWM settings of fan '%s': Min %d, Start %d, Max %d", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm(), fan.GetMaxPwm())
 	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
 
 	var g run.Group
@@ -413,7 +411,7 @@ func (f *fanController) calculateTargetPwm() int {
 					ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), int(avgRpm), target)
 					return -1
 				}
-				ui.Warning("WARNING: Increasing startPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d",
+				ui.Warning("WARNING: Increasing minPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d",
 					fan.GetId(), fan.GetMinPwm(), fan.GetMinPwm()+1, int(avgRpm))
 				fan.SetMinPwm(fan.GetMinPwm() + 1)
 				target++

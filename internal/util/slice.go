@@ -1,5 +1,7 @@
 package util
 
+import "sort"
+
 func ContainsString(s []string, e string) bool {
 	for _, a := range s {
 		if a == e {
@@ -38,5 +40,14 @@ func Max(s []float64) float64 {
 			result = v
 		}
 	}
+	return result
+}
+
+func SortedKeys(input map[int]float64) []int {
+	result := make([]int, 0, len(input))
+	for k, _ := range input {
+		result = append(result, k)
+	}
+	sort.Ints(result)
 	return result
 }
