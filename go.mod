@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/asecurityteam/rolling v2.0.4+incompatible
 	github.com/guptarohit/asciigraph v0.5.5
-	github.com/labstack/echo/v4 v4.8.0
+	github.com/labstack/echo/v4 v4.9.0
 	github.com/looplab/tarjan v0.1.0
 	github.com/md14454/gosensors v0.0.0-20180726083412-bded752ab001
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d
