@@ -1,9 +1,60 @@
 package configuration
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
+
+func TestValidateDuplicateFanId(t *testing.T) {
+	// GIVEN
+	fanId := "fan"
+	config := Configuration{
+		Fans: []FanConfig{
+			{
+				ID:    fanId,
+				Curve: "curve",
+				HwMon: nil,
+				File: &FileFanConfig{
+					Path: "abc",
+				},
+			},
+			{
+				ID:    fanId,
+				Curve: "curve",
+				HwMon: nil,
+				File: &FileFanConfig{
+					Path: "abc",
+				},
+			},
+		},
+		Curves: []CurveConfig{
+			{
+				ID: "curve",
+				Linear: &LinearCurveConfig{
+					Sensor: "sensor",
+					Min:    0,
+					Max:    100,
+				},
+				Function: nil,
+			},
+		},
+		Sensors: []SensorConfig{
+			{
+				ID: "sensor",
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.EqualError(t, err, fmt.Sprintf("Duplicate fan id detected: %s", fanId))
+}
 
 func TestValidateFanSubConfigIsMissing(t *testing.T) {
 	// GIVEN
@@ -209,6 +260,46 @@ func TestValidateCurveDependencyWithIdIsNotDefined(t *testing.T) {
 	assert.EqualError(t, err, "Curve curve1: no curve definition with id 'curve2' found")
 }
 
+func TestValidateDuplicateCurveId(t *testing.T) {
+	// GIVEN
+	curveId := "curve"
+	config := Configuration{
+		Curves: []CurveConfig{
+			{
+				ID: curveId,
+				Linear: &LinearCurveConfig{
+					Sensor: "sensor",
+					Min:    0,
+					Max:    100,
+				},
+			},
+			{
+				ID: curveId,
+				Linear: &LinearCurveConfig{
+					Sensor: "sensor",
+					Min:    0,
+					Max:    100,
+				},
+			},
+		},
+		Sensors: []SensorConfig{
+			{
+				ID: "sensor",
+				File: &FileSensorConfig{
+					// TODO: path empty validation
+					Path: "",
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.EqualError(t, err, fmt.Sprintf("Duplicate curve id detected: %s", curveId))
+}
+
 func TestValidateCurve(t *testing.T) {
 	// GIVEN
 	config := Configuration{
@@ -298,4 +389,31 @@ func TestValidateSensor(t *testing.T) {
 
 	// THEN
 	assert.NoError(t, err)
+}
+
+func TestValidateDuplicateSensorId(t *testing.T) {
+	// GIVEN
+	sensorId := "sensor"
+	config := Configuration{
+		Sensors: []SensorConfig{
+			{
+				ID: sensorId,
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+			{
+				ID: sensorId,
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.EqualError(t, err, fmt.Sprintf("Duplicate sensor id detected: %s", sensorId))
 }

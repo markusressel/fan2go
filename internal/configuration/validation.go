@@ -55,7 +55,13 @@ func containsCmdSensors() bool {
 }
 
 func validateSensors(config *Configuration) error {
+	sensorIds := []string{}
+
 	for _, sensorConfig := range config.Sensors {
+		if slices.Contains(sensorIds, sensorConfig.ID) {
+			return errors.New(fmt.Sprintf("Duplicate sensor id detected: %s", sensorConfig.ID))
+		}
+		sensorIds = append(sensorIds, sensorConfig.ID)
 
 		subConfigs := 0
 		if sensorConfig.HwMon != nil {
@@ -107,8 +113,14 @@ func isSensorConfigInUse(config SensorConfig, curves []CurveConfig) bool {
 
 func validateCurves(config *Configuration) error {
 	graph := make(map[interface{}][]interface{})
+	curveIds := []string{}
 
 	for _, curveConfig := range config.Curves {
+		if slices.Contains(curveIds, curveConfig.ID) {
+			return errors.New(fmt.Sprintf("Duplicate curve id detected: %s", curveConfig.ID))
+		}
+		curveIds = append(curveIds, curveConfig.ID)
+
 		subConfigs := 0
 		if curveConfig.Linear != nil {
 			subConfigs++
@@ -219,7 +231,14 @@ func isCurveConfigInUse(config CurveConfig, curves []CurveConfig, fans []FanConf
 }
 
 func validateFans(config *Configuration) error {
+	fanIds := []string{}
+
 	for _, fanConfig := range config.Fans {
+		if slices.Contains(fanIds, fanConfig.ID) {
+			return errors.New(fmt.Sprintf("Duplicate fan id detected: %s", fanConfig.ID))
+		}
+		fanIds = append(fanIds, fanConfig.ID)
+
 		subConfigs := 0
 		if fanConfig.HwMon != nil {
 			subConfigs++
