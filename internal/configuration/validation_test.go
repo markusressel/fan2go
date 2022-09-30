@@ -6,6 +6,56 @@ import (
 	"testing"
 )
 
+func TestValidateDuplicateFanId(t *testing.T) {
+	// GIVEN
+	fanId := "fan"
+	config := Configuration{
+		Fans: []FanConfig{
+			{
+				ID:    fanId,
+				Curve: "curve",
+				HwMon: nil,
+				File: &FileFanConfig{
+					Path: "abc",
+				},
+			},
+			{
+				ID:    fanId,
+				Curve: "curve",
+				HwMon: nil,
+				File: &FileFanConfig{
+					Path: "abc",
+				},
+			},
+		},
+		Curves: []CurveConfig{
+			{
+				ID: "curve",
+				Linear: &LinearCurveConfig{
+					Sensor: "sensor",
+					Min:    0,
+					Max:    100,
+				},
+				Function: nil,
+			},
+		},
+		Sensors: []SensorConfig{
+			{
+				ID: "sensor",
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.EqualError(t, err, fmt.Sprintf("Duplicate fan id detected: %s", fanId))
+}
+
 func TestValidateFanSubConfigIsMissing(t *testing.T) {
 	// GIVEN
 	config := Configuration{
