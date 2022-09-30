@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -207,6 +208,46 @@ func TestValidateCurveDependencyWithIdIsNotDefined(t *testing.T) {
 
 	// THEN
 	assert.EqualError(t, err, "Curve curve1: no curve definition with id 'curve2' found")
+}
+
+func TestValidateDuplicateCurveId(t *testing.T) {
+	// GIVEN
+	curveId := "curve"
+	config := Configuration{
+		Curves: []CurveConfig{
+			{
+				ID: curveId,
+				Linear: &LinearCurveConfig{
+					Sensor: "sensor",
+					Min:    0,
+					Max:    100,
+				},
+			},
+			{
+				ID: curveId,
+				Linear: &LinearCurveConfig{
+					Sensor: "sensor",
+					Min:    0,
+					Max:    100,
+				},
+			},
+		},
+		Sensors: []SensorConfig{
+			{
+				ID: "sensor",
+				File: &FileSensorConfig{
+					// TODO: path empty validation
+					Path: "",
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.EqualError(t, err, fmt.Sprintf("Duplicate curve id detected: %s", curveId))
 }
 
 func TestValidateCurve(t *testing.T) {

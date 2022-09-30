@@ -107,8 +107,14 @@ func isSensorConfigInUse(config SensorConfig, curves []CurveConfig) bool {
 
 func validateCurves(config *Configuration) error {
 	graph := make(map[interface{}][]interface{})
+	curveIds := []string{}
 
 	for _, curveConfig := range config.Curves {
+		if slices.Contains(curveIds, curveConfig.ID) {
+			return errors.New(fmt.Sprintf("Duplicate curve id detected: %s", curveConfig.ID))
+		}
+		curveIds = append(curveIds, curveConfig.ID)
+
 		subConfigs := 0
 		if curveConfig.Linear != nil {
 			subConfigs++
