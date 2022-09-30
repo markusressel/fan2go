@@ -390,3 +390,30 @@ func TestValidateSensor(t *testing.T) {
 	// THEN
 	assert.NoError(t, err)
 }
+
+func TestValidateDuplicateSensorId(t *testing.T) {
+	// GIVEN
+	sensorId := "sensor"
+	config := Configuration{
+		Sensors: []SensorConfig{
+			{
+				ID: sensorId,
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+			{
+				ID: sensorId,
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.EqualError(t, err, fmt.Sprintf("Duplicate sensor id detected: %s", sensorId))
+}
