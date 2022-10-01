@@ -36,17 +36,17 @@ var (
 type Fan interface {
 	GetId() string
 
-	// GetStartPwm returns the min PWM at which the fan starts to rotate from a stand still
-	GetStartPwm() int
-	SetStartPwm(pwm int)
-
 	// GetMinPwm returns the lowest PWM value where the fans are still spinning, when spinning previously
 	GetMinPwm() int
-	SetMinPwm(pwm int)
+	SetMinPwm(pwm int, force bool)
+
+	// GetStartPwm returns the min PWM at which the fan starts to rotate from a stand still
+	GetStartPwm() int
+	SetStartPwm(pwm int, force bool)
 
 	// GetMaxPwm returns the highest PWM value that yields an RPM increase
 	GetMaxPwm() int
-	SetMaxPwm(pwm int)
+	SetMaxPwm(pwm int, force bool)
 
 	// GetRpm returns the current RPM value of this fan
 	GetRpm() (int, error)
@@ -81,7 +81,9 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 		return &HwMonFan{
 			Label:    config.ID,
 			Index:    config.HwMon.Index,
+			MinPwm:   config.MinPwm,
 			StartPwm: config.StartPwm,
+			MaxPwm:   config.MaxPwm,
 			Config:   config,
 		}, nil
 	}
