@@ -133,6 +133,7 @@ func (f *fanController) Run(ctx context.Context) error {
 
 	f.updateDistinctPwmValues()
 
+	ui.Debug("PWM map of fan '%s': %v", fan.GetId(), f.pwmMap)
 	ui.Info("PWM settings of fan '%s': Min %d, Start %d, Max %d", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm(), fan.GetMaxPwm())
 	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
 
@@ -503,4 +504,6 @@ func (f *fanController) updateDistinctPwmValues() {
 	sort.Ints(keys)
 
 	f.pwmValuesWithDistinctTarget = keys
+
+	ui.Debug("Distinct PWM value targets of fan %s: %v", f.fan.GetId(), keys)
 }
