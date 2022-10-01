@@ -496,17 +496,8 @@ func (f *fanController) computePwmMap() {
 }
 
 func (f *fanController) updateDistinctPwmValues() {
-	var keys []int
-
-	lastDistinctOutput := -1
-	for input, output := range f.pwmMap {
-		if lastDistinctOutput == -1 || lastDistinctOutput != output {
-			lastDistinctOutput = output
-			keys = append(keys, input)
-		}
-	}
+	var keys = util.ExtractKeysWithDistinctValues(f.pwmMap)
 	sort.Ints(keys)
-
 	f.pwmValuesWithDistinctTarget = keys
 
 	ui.Debug("Distinct PWM value targets of fan %s: %v", f.fan.GetId(), keys)
