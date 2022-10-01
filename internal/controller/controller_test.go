@@ -69,7 +69,7 @@ func (fan MockFan) GetStartPwm() int {
 	return 0
 }
 
-func (fan *MockFan) SetStartPwm(pwm int) {
+func (fan *MockFan) SetStartPwm(pwm int, force bool) {
 	panic("not supported")
 }
 
@@ -77,7 +77,7 @@ func (fan MockFan) GetMinPwm() int {
 	return fan.MinPWM
 }
 
-func (fan *MockFan) SetMinPwm(pwm int) {
+func (fan *MockFan) SetMinPwm(pwm int, force bool) {
 	fan.MinPWM = pwm
 }
 
@@ -85,7 +85,7 @@ func (fan MockFan) GetMaxPwm() int {
 	return fans.MaxPwmValue
 }
 
-func (fan *MockFan) SetMaxPwm(pwm int) {
+func (fan *MockFan) SetMaxPwm(pwm int, force bool) {
 	panic("not supported")
 }
 
