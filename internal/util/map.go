@@ -6,7 +6,7 @@ func ExtractKeysWithDistinctValues(input map[int]int) []int {
 	var keys = SortedKeys(input)
 
 	lastDistinctOutput := -1
-	for key := range keys {
+	for _, key := range keys {
 		value := input[key]
 		if lastDistinctOutput == -1 || lastDistinctOutput != value {
 			lastDistinctOutput = value
