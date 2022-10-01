@@ -24,7 +24,7 @@ func (fan FileFan) GetStartPwm() int {
 	return 1
 }
 
-func (fan *FileFan) SetStartPwm(pwm int) {
+func (fan *FileFan) SetStartPwm(pwm int, force bool) {
 	return
 }
 
@@ -32,7 +32,7 @@ func (fan FileFan) GetMinPwm() int {
 	return MinPwmValue
 }
 
-func (fan *FileFan) SetMinPwm(pwm int) {
+func (fan *FileFan) SetMinPwm(pwm int, force bool) {
 	// not supported
 	return
 }
@@ -41,7 +41,7 @@ func (fan FileFan) GetMaxPwm() int {
 	return MaxPwmValue
 }
 
-func (fan *FileFan) SetMaxPwm(pwm int) {
+func (fan *FileFan) SetMaxPwm(pwm int, force bool) {
 	// not supported
 	return
 }

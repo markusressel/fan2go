@@ -16,7 +16,9 @@ type HwMonFan struct {
 	Index        int                     `json:"index"`
 	RpmMovingAvg float64                 `json:"rpmMovingAvg"`
 	Config       configuration.FanConfig `json:"config"`
-	StartPwm     *int                    `json:"startPwm"` // the min PWM at which the fan starts to rotate from a stand still
+	MinPwm       *int                    `json:"minPwm"`
+	StartPwm     *int                    `json:"startPwm"`
+	MaxPwm       *int                    `json:"maxPwm"`
 	FanCurveData *map[int]float64        `json:"fanCurveData"`
 	Rpm          int                     `json:"rpm"`
 	Pwm          int                     `json:"pwm"`
@@ -24,6 +26,26 @@ type HwMonFan struct {
 
 func (fan HwMonFan) GetId() string {
 	return fan.Config.ID
+}
+
+func (fan HwMonFan) GetMinPwm() int {
+	// if the fan is never supposed to stop,
+	// use the lowest pwm value where the fan is still spinning
+	if fan.ShouldNeverStop() {
+		if fan.MinPwm != nil {
+			return *fan.MinPwm
+		} else {
+			return MinPwmValue
+		}
+	}
+
+	return MinPwmValue
+}
+
+func (fan *HwMonFan) SetMinPwm(pwm int, force bool) {
+	if fan.Config.MinPwm == nil || force {
+		fan.MinPwm = &pwm
+	}
 }
 
 func (fan HwMonFan) GetStartPwm() int {
@@ -34,42 +56,24 @@ func (fan HwMonFan) GetStartPwm() int {
 	}
 }
 
-func (fan *HwMonFan) SetStartPwm(pwm int) {
-	fan.StartPwm = &pwm
-}
-
-func (fan HwMonFan) GetMinPwm() int {
-	// if the fan is never supposed to stop,
-	// use the lowest pwm value where the fan is still spinning
-	if fan.ShouldNeverStop() {
-		var minPwm int
-		if fan.Config.MinPwm != nil {
-			minPwm = *fan.Config.MinPwm
-		} else {
-			minPwm = MinPwmValue
-		}
-		return minPwm
+func (fan *HwMonFan) SetStartPwm(pwm int, force bool) {
+	if fan.Config.StartPwm == nil || force {
+		fan.StartPwm = &pwm
 	}
-
-	return MinPwmValue
-}
-
-func (fan *HwMonFan) SetMinPwm(pwm int) {
-	fan.Config.MinPwm = &pwm
 }
 
 func (fan HwMonFan) GetMaxPwm() int {
-	var maxPwm int
-	if fan.Config.MaxPwm != nil {
-		maxPwm = *fan.Config.MaxPwm
+	if fan.MaxPwm != nil {
+		return *fan.MaxPwm
 	} else {
-		maxPwm = MaxPwmValue
+		return MaxPwmValue
 	}
-	return maxPwm
 }
 
-func (fan *HwMonFan) SetMaxPwm(pwm int) {
-	fan.Config.MaxPwm = &pwm
+func (fan *HwMonFan) SetMaxPwm(pwm int, force bool) {
+	if fan.Config.MaxPwm == nil || force {
+		fan.MaxPwm = &pwm
+	}
 }
 
 func (fan *HwMonFan) GetRpm() (int, error) {
@@ -121,11 +125,11 @@ func (fan *HwMonFan) AttachFanCurveData(curveData *map[int]float64) (err error) 
 	fan.FanCurveData = curveData
 
 	startPwm, maxPwm := ComputePwmBoundaries(fan)
-	fan.SetStartPwm(startPwm)
-	fan.SetMaxPwm(maxPwm)
+	fan.SetStartPwm(startPwm, false)
+	fan.SetMaxPwm(maxPwm, false)
 
 	// TODO: we don't have a way to determine this yet
-	fan.SetMinPwm(startPwm)
+	fan.SetMinPwm(startPwm, false)
 
 	return err
 }

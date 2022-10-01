@@ -136,6 +136,10 @@ func (f *fanController) Run(ctx context.Context) error {
 	ui.Info("PWM settings of fan '%s': Min %d, Start %d, Max %d", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm(), fan.GetMaxPwm())
 	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
 
+	if fan.GetMinPwm() > fan.GetStartPwm() {
+		ui.Warning("Suspicious pwm config of fan '%s': MinPwm (%d) > StartPwm (%d)", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm())
+	}
+
 	var g run.Group
 
 	if fan.Supports(fans.FeatureRpmSensor) {
@@ -413,7 +417,7 @@ func (f *fanController) calculateTargetPwm() int {
 				}
 				ui.Warning("WARNING: Increasing minPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d",
 					fan.GetId(), fan.GetMinPwm(), fan.GetMinPwm()+1, int(avgRpm))
-				fan.SetMinPwm(fan.GetMinPwm() + 1)
+				fan.SetMinPwm(fan.GetMinPwm()+1, true)
 				target++
 
 				// set the moving avg to a value > 0 to prevent
