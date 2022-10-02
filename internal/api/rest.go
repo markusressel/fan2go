@@ -2,7 +2,6 @@ package api
 
 import (
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"net/http"
 )
 
@@ -19,16 +18,7 @@ type (
 )
 
 func CreateRestService() *echo.Echo {
-	echoRest := echo.New()
-	echoRest.HideBanner = true
-
-	// Root level middleware
-	echoRest.Pre(middleware.AddTrailingSlash())
-
-	echoRest.Use(middleware.Secure())
-
-	//echoRest.Use(middleware.Logger())
-	echoRest.Use(middleware.Recover())
+	echoRest := CreateWebserver()
 
 	echoRest.GET("/alive/", isAlive)
 
