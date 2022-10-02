@@ -18,8 +18,7 @@ type (
 )
 
 func CreateRestService() *echo.Echo {
-	echoRest := echo.New()
-	echoRest.HideBanner = true
+	echoRest := CreateWebserver()
 
 	echoRest.GET("/alive/", isAlive)
 

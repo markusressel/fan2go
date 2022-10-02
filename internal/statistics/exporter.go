@@ -3,6 +3,7 @@ package statistics
 import (
 	echoProm "github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
+	"github.com/markusressel/fan2go/internal/api"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -14,7 +15,9 @@ func Register(collector prometheus.Collector) {
 	prometheus.MustRegister(collector)
 }
 
-func CreateStatisticsService(parentServer *echo.Echo) *echo.Echo {
+func CreateStatisticsService() *echo.Echo {
+	parentServer := api.CreateWebserver()
+
 	// Create Prometheus server and Middleware
 	echoPrometheus := echo.New()
 	echoPrometheus.HideBanner = true

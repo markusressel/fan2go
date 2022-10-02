@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/markusressel/fan2go/internal/api"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/controller"
@@ -148,8 +147,7 @@ func createWebServer() []*echo.Echo {
 	}
 
 	if configuration.CurrentConfig.Statistics.Enabled {
-		echoMainServer := createMainWebserver()
-		result = append(result, startStatisticsServer(echoMainServer))
+		result = append(result, startStatisticsServer())
 	}
 
 	return result
@@ -172,10 +170,10 @@ func startRestServer() *echo.Echo {
 	return restServer
 }
 
-func startStatisticsServer(echoMainServer *echo.Echo) *echo.Echo {
+func startStatisticsServer() *echo.Echo {
 	ui.Info("Starting statistics server...")
 
-	echoPrometheus := statistics.CreateStatisticsService(echoMainServer)
+	echoPrometheus := statistics.CreateStatisticsService()
 
 	go func() {
 		prometheusPort := configuration.CurrentConfig.Statistics.Port
@@ -187,22 +185,6 @@ func startStatisticsServer(echoMainServer *echo.Echo) *echo.Echo {
 	}()
 
 	return echoPrometheus
-}
-
-func createMainWebserver() *echo.Echo {
-	echoMain := echo.New()
-	echoMain.HideBanner = true
-
-	// Root level middleware
-	echoMain.Pre(middleware.AddTrailingSlash())
-
-	//echoMain.Use(middleware.Logger())
-	echoMain.Use(middleware.Secure())
-
-	//echoMain.Use(middleware.Logger())
-	echoMain.Use(middleware.Recover())
-
-	return echoMain
 }
 
 func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.FanController {
