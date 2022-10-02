@@ -5,6 +5,7 @@ go 1.18
 require (
 	github.com/asecurityteam/rolling v2.0.4+incompatible
 	github.com/guptarohit/asciigraph v0.5.5
+	github.com/labstack/echo-contrib v0.13.0
 	github.com/labstack/echo/v4 v4.9.0
 	github.com/looplab/tarjan v0.1.0
 	github.com/md14454/gosensors v0.0.0-20180726083412-bded752ab001
@@ -57,12 +58,12 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.1 // indirect
 	github.com/xo/terminfo v0.0.0-20210125001918-ca9a967f8778 // indirect
-	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4 // indirect
-	golang.org/x/net v0.0.0-20220520000938-2e3eb7b945c2 // indirect
-	golang.org/x/sys v0.0.0-20220704084225-05e143d24a9e // indirect
+	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa // indirect
+	golang.org/x/net v0.0.0-20220728030405-41545e8bf201 // indirect
+	golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10 // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/text v0.3.7 // indirect
-	golang.org/x/time v0.0.0-20201208040808-7e3f01d25324 // indirect
+	golang.org/x/time v0.0.0-20220722155302-e5dcc9cfc0b9 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

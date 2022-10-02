@@ -3,6 +3,8 @@ package internal
 import (
 	"context"
 	"fmt"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/markusressel/fan2go/internal/api"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/controller"
@@ -15,7 +17,6 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
 	"os"
 	"os/exec"
@@ -41,76 +42,32 @@ func RunDaemon() {
 
 	var g run.Group
 	{
-		enabled := configuration.CurrentConfig.Api.Enabled
-		if enabled {
+		// === Global Webserver
+		if configuration.CurrentConfig.Api.Enabled || configuration.CurrentConfig.Statistics.Enabled {
 			g.Add(func() error {
-				ui.Info("Starting REST server...")
+				ui.Info("Starting Webserver...")
 
-				apiConfig := configuration.CurrentConfig.Api
-				server := api.CreateRestService()
-				address := fmt.Sprintf("%s:%d", apiConfig.Host, apiConfig.Port)
-
-				go func() {
-					if err := server.Start(address); err != nil && err != http.ErrServerClosed {
-						ui.Fatal("Error starting REST server: %v", err)
-					}
-				}()
+				servers := createWebServer()
 
 				select {
 				case <-ctx.Done():
-					ui.Info("Stopping REST server...")
+					ui.Debug("Stopping all webservers...")
 					timeoutCtx, timeoutCancel := context.WithTimeout(ctx, 5*time.Second)
 					defer timeoutCancel()
-					return server.Shutdown(timeoutCtx)
-				}
-			}, func(err error) {
-				if err != nil {
-					ui.Warning("Error stopping REST server: " + err.Error())
-				} else {
-					ui.Info("REST server stopped.")
-				}
-			})
-		}
-	}
-	{
-		enabled := configuration.CurrentConfig.Statistics.Enabled
-		if enabled {
-			// === Prometheus Exporter
-			g.Add(func() error {
-				port := configuration.CurrentConfig.Statistics.Port
 
-				endpoint := "/metrics"
-				addr := fmt.Sprintf(":%d", port)
-
-				handler := promhttp.Handler()
-				http.Handle(endpoint, handler)
-
-				server := &http.Server{
-					Addr:         addr,
-					Handler:      handler,
-					ReadTimeout:  1 * time.Second,
-					WriteTimeout: 1 * time.Second,
-				}
-
-				go func() {
-					ui.Info("Starting statistics server...")
-					if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-						ui.ErrorAndNotify("Statistics Error", "Cannot start prometheus metrics endpoint (%s)", err.Error())
+					for _, server := range servers {
+						err := server.Shutdown(timeoutCtx)
+						if err != nil {
+							return err
+						}
 					}
-				}()
-
-				select {
-				case <-ctx.Done():
-					ui.Info("Stopping statistics server...")
-					timeoutCtx, timeoutCancel := context.WithTimeout(ctx, 5*time.Second)
-					defer timeoutCancel()
-					return server.Shutdown(timeoutCtx)
+					return nil
 				}
 			}, func(err error) {
 				if err != nil {
-					ui.Warning("Error stopping statistics server: " + err.Error())
+					ui.Warning("Error stopping webservers: " + err.Error())
 				} else {
-					ui.Info("Statistics server stopped.")
+					ui.Debug("Webservers stopped.")
 				}
 			})
 		}
@@ -181,6 +138,71 @@ func RunDaemon() {
 		ui.Info("Done.")
 		os.Exit(0)
 	}
+}
+
+func createWebServer() []*echo.Echo {
+	result := []*echo.Echo{}
+	// Setup Main Server
+	if configuration.CurrentConfig.Api.Enabled {
+		result = append(result, startRestServer())
+	}
+
+	if configuration.CurrentConfig.Statistics.Enabled {
+		echoMainServer := createMainWebserver()
+		result = append(result, startStatisticsServer(echoMainServer))
+	}
+
+	return result
+}
+
+func startRestServer() *echo.Echo {
+	ui.Info("Starting REST api server...")
+
+	restServer := api.CreateRestService()
+
+	go func() {
+		apiConfig := configuration.CurrentConfig.Api
+		restAddress := fmt.Sprintf("%s:%d", apiConfig.Host, apiConfig.Port)
+
+		if err := restServer.Start(restAddress); err != nil && err != http.ErrServerClosed {
+			ui.ErrorAndNotify("REST Error", "Cannot start REST Api endpoint (%s)", err.Error())
+		}
+	}()
+
+	return restServer
+}
+
+func startStatisticsServer(echoMainServer *echo.Echo) *echo.Echo {
+	ui.Info("Starting statistics server...")
+
+	echoPrometheus := statistics.CreateStatisticsService(echoMainServer)
+
+	go func() {
+		prometheusPort := configuration.CurrentConfig.Statistics.Port
+		prometheusAddress := fmt.Sprintf(":%d", prometheusPort)
+
+		if err := echoPrometheus.Start(prometheusAddress); err != nil && err != http.ErrServerClosed {
+			ui.ErrorAndNotify("Statistics Error", "Cannot start prometheus metrics endpoint (%s)", err.Error())
+		}
+	}()
+
+	return echoPrometheus
+}
+
+func createMainWebserver() *echo.Echo {
+	echoMain := echo.New()
+	echoMain.HideBanner = true
+
+	// Root level middleware
+	echoMain.Pre(middleware.AddTrailingSlash())
+
+	//echoMain.Use(middleware.Logger())
+	echoMain.Use(middleware.Secure())
+
+	//echoMain.Use(middleware.Logger())
+	echoMain.Use(middleware.Recover())
+
+	return echoMain
 }
 
 func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.FanController {
