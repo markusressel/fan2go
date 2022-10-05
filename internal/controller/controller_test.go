@@ -466,7 +466,6 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 	targetPwm := controller.calculateTargetPwm()
 
 	// THEN
-	assert.Contains(t, pwmMap, targetPwm)
 	assert.Equal(t, 54, targetPwm)
 
 	closestTarget := controller.mapToClosestDistinct(targetPwm)
