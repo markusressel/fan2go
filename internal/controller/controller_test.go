@@ -420,7 +420,7 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 	}
 	sensors.SensorMap[s.GetId()] = &s
 
-	curveValue := 10
+	curveValue := 5
 	curve := &MockCurve{
 		ID:    "curve",
 		Value: curveValue,
@@ -444,19 +444,21 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 	}
 	sort.Ints(keys)
 
+	pwmMap := map[int]int{
+		0:   0,
+		1:   1,
+		40:  40,
+		58:  50,
+		100: 120,
+		222: 200,
+		255: 255,
+	}
+
 	controller := fanController{
 		persistence: mockPersistence{}, fan: fan,
 		curve:      curve,
 		updateRate: time.Duration(100),
-		pwmMap: map[int]int{
-			0:   0,
-			1:   1,
-			40:  40,
-			58:  50,
-			100: 120,
-			222: 200,
-			255: 255,
-		},
+		pwmMap:     pwmMap,
 	}
 	controller.updateDistinctPwmValues()
 
@@ -464,6 +466,9 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 	targetPwm := controller.calculateTargetPwm()
 
 	// THEN
-	assert.Contains(t, keys, targetPwm)
-	assert.Equal(t, 50, targetPwm)
+	assert.Contains(t, pwmMap, targetPwm)
+	assert.Equal(t, 54, targetPwm)
+
+	closestTarget := controller.mapToClosestDistinct(targetPwm)
+	assert.Equal(t, 50, closestTarget)
 }
