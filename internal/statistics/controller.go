@@ -12,6 +12,7 @@ type ControllerCollector struct {
 
 	unexpectedPwmValueCount *prometheus.Desc
 	increasedMinPwmCount    *prometheus.Desc
+	minPwmOffset            *prometheus.Desc
 }
 
 func NewControllerCollector(controllers []controller.FanController) *ControllerCollector {
@@ -23,6 +24,10 @@ func NewControllerCollector(controllers []controller.FanController) *ControllerC
 		),
 		increasedMinPwmCount: prometheus.NewDesc(prometheus.BuildFQName(namespace, controllerSubsystem, "increased_minPwm_count"),
 			"Counter for number of automatic increases of the minPwm value due to a stalling fan",
+			[]string{"id"}, nil,
+		),
+		minPwmOffset: prometheus.NewDesc(prometheus.BuildFQName(namespace, controllerSubsystem, "minPwm_offset"),
+			"Offset applied to the original minPwm of the fan due to a stalling fan",
 			[]string{"id"}, nil,
 		),
 	}
@@ -41,6 +46,7 @@ func (collector *ControllerCollector) Collect(ch chan<- prometheus.Metric) {
 			fanId := contr.GetFanId()
 			ch <- prometheus.MustNewConstMetric(collector.unexpectedPwmValueCount, prometheus.CounterValue, float64(contr.GetStatistics().UnexpectedPwmValueCount), fanId)
 			ch <- prometheus.MustNewConstMetric(collector.increasedMinPwmCount, prometheus.CounterValue, float64(contr.GetStatistics().IncreasedMinPwmCount), fanId)
+			ch <- prometheus.MustNewConstMetric(collector.minPwmOffset, prometheus.GaugeValue, float64(contr.GetStatistics().MinPwmOffset), fanId)
 		}
 	}
 }

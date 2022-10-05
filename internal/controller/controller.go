@@ -21,6 +21,7 @@ var InitializationSequenceMutex sync.Mutex
 type FanControllerStatistics struct {
 	UnexpectedPwmValueCount int
 	IncreasedMinPwmCount    int
+	MinPwmOffset            int
 }
 
 type FanController interface {
@@ -60,6 +61,9 @@ type PidFanController struct {
 	pwmMap map[int]int
 	// PID loop for the PWM control
 	pidLoop *util.PidLoop
+
+	// offset applied to the actual minPwm of the fan to ensure "neverStops" constraint
+	minPwmOffset int
 }
 
 func NewFanController(
@@ -76,6 +80,7 @@ func NewFanController(
 		pwmValuesWithDistinctTarget: []int{},
 		pwmMap:                      map[int]int{},
 		pidLoop:                     &pidLoop,
+		minPwmOffset:                0,
 	}
 }
 
@@ -407,7 +412,7 @@ func (f *PidFanController) calculateTargetPwm() int {
 
 	// map the target value to the possible range of this fan
 	maxPwm := fan.GetMaxPwm()
-	minPwm := fan.GetMinPwm()
+	minPwm := fan.GetMinPwm() + f.minPwmOffset
 
 	// TODO: this assumes a linear curve, but it might be something else
 	target = minPwm + int((float64(target)/fans.MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
@@ -435,10 +440,11 @@ func (f *PidFanController) calculateTargetPwm() int {
 					ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), int(avgRpm), target)
 					return -1
 				}
-				f.stats.IncreasedMinPwmCount += 1
+				oldOffset := f.minPwmOffset
 				ui.Warning("WARNING: Increasing minPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d",
-					fan.GetId(), fan.GetMinPwm(), fan.GetMinPwm()+1, int(avgRpm))
-				fan.SetMinPwm(fan.GetMinPwm()+1, true)
+					fan.GetId(), oldOffset, oldOffset+1, int(avgRpm))
+				f.increaseMinPwmOffset()
+				fan.SetMinPwm(f.minPwmOffset, true)
 				target++
 
 				// set the moving avg to a value > 0 to prevent
@@ -571,4 +577,10 @@ func (f *PidFanController) updateDistinctPwmValues() {
 	f.pwmValuesWithDistinctTarget = keys
 
 	ui.Debug("Distinct PWM value targets of fan %s: %v", f.fan.GetId(), keys)
+}
+
+func (f *PidFanController) increaseMinPwmOffset() {
+	f.minPwmOffset += 1
+	f.stats.MinPwmOffset = f.minPwmOffset
+	f.stats.IncreasedMinPwmCount += 1
 }
