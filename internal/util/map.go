@@ -1,5 +1,7 @@
 package util
 
+import "golang.org/x/exp/constraints"
+
 func ExtractKeysWithDistinctValues(input map[int]int) []int {
 	var result []int
 
@@ -12,6 +14,14 @@ func ExtractKeysWithDistinctValues(input map[int]int) []int {
 			lastDistinctOutput = value
 			result = append(result, key)
 		}
+	}
+	return result
+}
+
+func Values[A constraints.Ordered, B any](input map[A]B) []B {
+	var result []B
+	for _, b := range input {
+		result = append(result, b)
 	}
 	return result
 }

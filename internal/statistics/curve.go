@@ -26,7 +26,7 @@ func (collector *CurveCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- collector.value
 }
 
-//Collect implements required collect function for all promehteus collectors
+// Collect implements required collect function for all prometheus collectors
 func (collector *CurveCollector) Collect(ch chan<- prometheus.Metric) {
 	for _, curve := range collector.curves {
 		curveId := curve.GetId()

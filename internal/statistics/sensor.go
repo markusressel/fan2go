@@ -26,7 +26,7 @@ func (collector *SensorCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- collector.value
 }
 
-//Collect implements required collect function for all promehteus collectors
+// Collect implements required collect function for all prometheus collectors
 func (collector *SensorCollector) Collect(ch chan<- prometheus.Metric) {
 	for _, sensor := range collector.sensors {
 		sensorId := sensor.GetId()

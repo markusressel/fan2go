@@ -323,7 +323,7 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 	}
 	fans.FanMap[fan.GetId()] = fan
 
-	controller := fanController{
+	controller := PidFanController{
 		persistence: mockPersistence{},
 		fan:         fan,
 		curve:       curve,
@@ -368,7 +368,7 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	}
 	fans.FanMap[fan.GetId()] = fan
 
-	controller := fanController{
+	controller := PidFanController{
 		persistence: mockPersistence{}, fan: fan,
 		curve:      curve,
 		updateRate: time.Duration(100),
@@ -454,7 +454,7 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 		255: 255,
 	}
 
-	controller := fanController{
+	controller := PidFanController{
 		persistence: mockPersistence{}, fan: fan,
 		curve:      curve,
 		updateRate: time.Duration(100),
