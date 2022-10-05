@@ -52,6 +52,15 @@ fans:
     # an increased rotational speed compared to lower values.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
+    # (Optional) Override for the PWM map used internally by fan2go for
+    # mapping the "normal" 0-255 value range to values supported by this fan.
+    # This can be used to compensate for a very limited set of supported values
+    # (f.ex. off, low, high). If not set manually, the map will be computed
+    # automatically by fan2go during fan initialization.
+    pwmMap:
+      0: 0
+      64: 128
+      192: 255
 
   - id: in_front
     hwmon:
