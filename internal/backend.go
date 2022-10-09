@@ -216,6 +216,13 @@ func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.Fan
 		result[fan] = fanController
 	}
 
+	var fanControllers = []controller.FanController{}
+	for _, c := range result {
+		fanControllers = append(fanControllers, c)
+	}
+	controllerCollector := statistics.NewControllerCollector(fanControllers)
+	statistics.Register(controllerCollector)
+
 	return result
 }
 
