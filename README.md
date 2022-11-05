@@ -49,6 +49,20 @@ to [set it up first](https://wiki.archlinux.org/index.php/Lm_sensors#Installatio
 yay -S fan2go-git
 ```
 
+### ![](https://img.shields.io/badge/nixpkgs-5277C3?logo=nixos&logoColor=white)
+
+- Nix with [Flakes](https://nixos.wiki/wiki/Flakes):
+
+```shell
+nix profile install nixpkgs#fan2go
+```
+
+- Nix stable:
+
+```shell
+nix-env -f '<nixpkgs>' -iA fan2go
+```
+
 ### Manual
 
 Download the latest release from GitHub:
