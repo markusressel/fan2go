@@ -28,7 +28,7 @@ import (
 )
 
 func RunDaemon() {
-	if getProcessOwner() != "root" {
+	if owner, err := getProcessOwner(); err != nil && owner != "root" {
 		ui.Fatal("Fan control requires root permissions to be able to modify fan speeds, please run fan2go as root")
 	}
 
@@ -322,11 +322,10 @@ func initializeFans(controllers []*hwmon.HwMonController) map[configuration.FanC
 	return result
 }
 
-func getProcessOwner() string {
+func getProcessOwner() (string, error) {
 	stdout, err := exec.Command("ps", "-o", "user=", "-p", strconv.Itoa(os.Getpid())).Output()
 	if err != nil {
-		ui.Fatal("Error checking process owner: %v", err)
-		os.Exit(1)
+		return "", err
 	}
-	return strings.TrimSpace(string(stdout))
+	return strings.TrimSpace(string(stdout)), nil
 }
