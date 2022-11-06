@@ -29,8 +29,7 @@ func RunDaemon() {
 	owner, err := getProcessOwner()
 	if err != nil {
 		ui.Warning("Unable to verify process owner: %v", err)
-	}
-	if owner != "root" {
+	} else if owner != "root" {
 		ui.Info("fan2go is running as a non-root user '%s'. If you encounter errors, make sure to give this user the required permissions.", owner)
 	}
 
