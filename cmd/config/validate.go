@@ -1,7 +1,6 @@
 package config
 
 import (
-	"github.com/markusressel/fan2go/cmd/global"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/spf13/cobra"
@@ -14,12 +13,7 @@ var validateCmd = &cobra.Command{
 	Long:  ``,
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var configPath string
-		if len(global.CfgFile) <= 0 {
-			configPath = configuration.DetectConfigFile()
-		} else {
-			configPath = global.CfgFile
-		}
+		configPath := configuration.DetectAndReadConfigFile()
 
 		ui.Info("Using configuration file at: %s", configPath)
 		configuration.LoadConfig()

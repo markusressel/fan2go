@@ -19,7 +19,7 @@ var curveCmd = &cobra.Command{
 	Use:   "curve",
 	Short: "Print the measured fan curve(s) to console",
 	Run: func(cmd *cobra.Command, args []string) {
-		configPath := configuration.DetectConfigFile()
+		configPath := configuration.DetectAndReadConfigFile()
 		ui.Info("Using configuration file at: %s", configPath)
 		configuration.LoadConfig()
 		err := configuration.Validate(configPath)

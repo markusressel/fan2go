@@ -26,7 +26,7 @@ on your computer based on temperature sensors.`,
 		setupUi()
 		printHeader()
 
-		configPath := configuration.DetectConfigFile()
+		configPath := configuration.DetectAndReadConfigFile()
 		ui.Info("Using configuration file at: %s", configPath)
 		configuration.LoadConfig()
 		err := configuration.Validate(configPath)
