@@ -18,18 +18,19 @@ import (
 	"github.com/oklog/run"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
+	"os/user"
 	"regexp"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 )
 
 func RunDaemon() {
-	if getProcessOwner() != "root" {
-		ui.Fatal("Fan control requires root permissions to be able to modify fan speeds, please run fan2go as root")
+	owner, err := getProcessOwner()
+	if err != nil {
+		ui.Warning("Unable to verify process owner: %v", err)
+	} else if owner != "root" {
+		ui.Info("fan2go is running as a non-root user '%s'. If you encounter errors, make sure to give this user the required permissions.", owner)
 	}
 
 	pers := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
@@ -322,11 +323,11 @@ func initializeFans(controllers []*hwmon.HwMonController) map[configuration.FanC
 	return result
 }
 
-func getProcessOwner() string {
-	stdout, err := exec.Command("ps", "-o", "user=", "-p", strconv.Itoa(os.Getpid())).Output()
+func getProcessOwner() (string, error) {
+	currentUser, err := user.Current()
 	if err != nil {
-		ui.Fatal("Error checking process owner: %v", err)
-		os.Exit(1)
+		return "", err
 	}
-	return strings.TrimSpace(string(stdout))
+
+	return currentUser.Username, nil
 }
