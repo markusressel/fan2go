@@ -43,13 +43,16 @@ to [set it up first](https://wiki.archlinux.org/index.php/Lm_sensors#Installatio
 
 ## Installation
 
-### ![](https://img.shields.io/badge/Arch_Linux-1793D1?logo=arch-linux&logoColor=white)
+### Arch Linux ![](https://img.shields.io/badge/Arch_Linux-1793D1?logo=arch-linux&logoColor=white)
 
 ```shell
 yay -S fan2go-git
 ```
 
-### ![](https://img.shields.io/badge/nixpkgs-5277C3?logo=nixos&logoColor=white)
+<details>
+<summary>Community Maintained Packages</summary>
+
+### Nix OS ![](https://img.shields.io/badge/nixpkgs-5277C3?logo=nixos&logoColor=white)
 
 - Nix with [Flakes](https://nixos.wiki/wiki/Flakes):
 
@@ -62,6 +65,8 @@ nix profile install nixpkgs#fan2go
 ```shell
 nix-env -f '<nixpkgs>' -iA fan2go
 ```
+
+</details>
 
 ### Manual
 
