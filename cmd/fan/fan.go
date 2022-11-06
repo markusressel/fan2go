@@ -31,7 +31,7 @@ func init() {
 }
 
 func getFan(id string) (fans.Fan, error) {
-	configPath := configuration.DetectConfigFile()
+	configPath := configuration.DetectAndReadConfigFile()
 	ui.Info("Using configuration file at: %s", configPath)
 	configuration.LoadConfig()
 	err := configuration.Validate(configPath)

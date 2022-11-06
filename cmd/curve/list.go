@@ -20,7 +20,7 @@ var curveCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Print the measured fan curve(s) to console",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		configPath := configuration.DetectConfigFile()
+		configPath := configuration.DetectAndReadConfigFile()
 		ui.Info("Using configuration file at: %s", configPath)
 		configuration.LoadConfig()
 

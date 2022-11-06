@@ -86,16 +86,21 @@ func setDefaultValues() {
 	viper.SetDefault("fans", []FanConfig{})
 }
 
-// DetectConfigFile detects the path of the first existing config file
-func DetectConfigFile() string {
+// DetectAndReadConfigFile detects the path of the first existing config file
+func DetectAndReadConfigFile() string {
+	ReadInConfig()
+	return GetFilePath()
+}
+
+// ReadInConfig reads and parses the config file
+func ReadInConfig() {
 	if err := viper.ReadInConfig(); err != nil {
 		// config file is required, so we fail here
 		ui.Fatal("Error reading config file, %s", err)
 	}
-	return GetFilePath()
 }
 
-// GetFilePath this is only populated _after_ DetectConfigFile()
+// GetFilePath this is only populated _after_ ReadInConfig()
 func GetFilePath() string {
 	return viper.ConfigFileUsed()
 }
