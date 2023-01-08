@@ -272,17 +272,17 @@ func computeIdentifier(chip gosensors.Chip) (name string) {
 	identifier := name
 	switch chip.Bus.Type {
 	case BusTypeIsa:
-		identifier = fmt.Sprintf("%s-isa-%d%x", identifier, chip.Bus.Nr, chip.Addr)
+		identifier = fmt.Sprintf("%s-isa-%d%03x", name, chip.Bus.Nr, chip.Addr)
 	case BusTypePci:
-		identifier = fmt.Sprintf("%s-pci-%d%x", identifier, chip.Bus.Nr, chip.Addr)
+		identifier = fmt.Sprintf("%s-pci-%d%03x", name, chip.Bus.Nr, chip.Addr)
 	case BusTypeVirtual:
-		identifier = fmt.Sprintf("%s-virtual-%d", identifier, chip.Bus.Nr)
+		identifier = fmt.Sprintf("%s-virtual-%d", name, chip.Bus.Nr)
 	case BusTypeAcpi:
-		identifier = fmt.Sprintf("%s-acpi-%d", identifier, chip.Bus.Nr)
+		identifier = fmt.Sprintf("%s-acpi-%d", name, chip.Bus.Nr)
 	case BusTypeHid:
-		identifier = fmt.Sprintf("%s-hid-%d-%d", identifier, chip.Bus.Nr, chip.Addr)
+		identifier = fmt.Sprintf("%s-hid-%d-%d", name, chip.Bus.Nr, chip.Addr)
 	case BusTypeScsi:
-		identifier = fmt.Sprintf("%s-scsi-%d-%d", identifier, chip.Bus.Nr, chip.Addr)
+		identifier = fmt.Sprintf("%s-scsi-%d-%d", name, chip.Bus.Nr, chip.Addr)
 	}
 
 	return identifier
