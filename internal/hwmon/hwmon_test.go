@@ -11,13 +11,14 @@ func TestComputeIdentifierIsa(t *testing.T) {
 	// GIVEN
 	c := gosensors.Chip{
 		Prefix: "ucsi_source_psy_USBC000:002",
+		Addr:   0x0f1,
 		Bus: gosensors.Bus{
 			Type: BusTypeIsa,
 			Nr:   1,
 		},
 		Path: "/sys/class/hwmon/hwmon7",
 	}
-	expected := fmt.Sprintf("%s-isa-%d", c.Prefix, c.Bus.Nr)
+	expected := "ucsi_source_psy_USBC000:002-isa-10f1"
 
 	// WHEN
 	result := computeIdentifier(c)
@@ -30,14 +31,14 @@ func TestComputeIdentifierPci(t *testing.T) {
 	// GIVEN
 	c := gosensors.Chip{
 		Prefix: "nvme",
-		Addr:   5,
+		Addr:   0x5,
 		Bus: gosensors.Bus{
 			Type: BusTypePci,
 			Nr:   1,
 		},
 		Path: "/sys/class/hwmon/hwmon4",
 	}
-	expected := fmt.Sprintf("%s-pci-%d%x", c.Prefix, c.Bus.Nr, c.Addr)
+	expected := "nvme-pci-1005"
 
 	// WHEN
 	result := computeIdentifier(c)
