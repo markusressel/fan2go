@@ -58,7 +58,9 @@ func getSensor(id string) (sensors.Sensor, error) {
 
 	controllers := hwmon.GetChips()
 
+	availableSensorIds := []string{}
 	for _, config := range configuration.CurrentConfig.Sensors {
+		availableSensorIds = append(availableSensorIds, config.ID)
 		if config.ID == id {
 			if config.HwMon != nil {
 				for _, controller := range controllers {
@@ -88,5 +90,5 @@ func getSensor(id string) (sensors.Sensor, error) {
 		}
 	}
 
-	return nil, errors.New(fmt.Sprintf("No sensor with id found: %s", sensorId))
+	return nil, errors.New(fmt.Sprintf("No sensor with id found: %s, options: %s", sensorId, availableSensorIds))
 }
