@@ -322,7 +322,7 @@ To create more complex curves you can combine exising curves using a curve of ty
 curves:
   - id: case_avg_curve
     function:
-      # Type of aggregation function to use, one of: minimum | maximum | average | delta
+      # Type of aggregation function to use, one of: minimum | maximum | average | delta | sum | difference
       type: average
       # A list of curve IDs to use
       curves:

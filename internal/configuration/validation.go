@@ -143,7 +143,7 @@ func validateCurves(config *Configuration) error {
 		}
 
 		if curveConfig.Function != nil {
-			supportedTypes := []string{FunctionMinimum, FunctionAverage, FunctionMaximum, FunctionDelta}
+			supportedTypes := []string{FunctionMinimum, FunctionAverage, FunctionMaximum, FunctionDelta, FunctionSum, FunctionDifference}
 			if !slices.Contains(supportedTypes, curveConfig.Function.Type) {
 				return errors.New(fmt.Sprintf("Curve %s: unsupported function type '%s', use one of: %s", curveConfig.ID, curveConfig.Function.Type, strings.Join(supportedTypes, " | ")))
 			}

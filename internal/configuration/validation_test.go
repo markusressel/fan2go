@@ -351,7 +351,7 @@ func TestValidateCurveFunctionTypeUnsupported(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Curve curve1: unsupported function type 'unsupported', use one of: minimum | average | maximum | delta")
+	assert.EqualError(t, err, "Curve curve1: unsupported function type 'unsupported', use one of: minimum | average | maximum | delta | sum | difference")
 }
 
 func TestValidateSensorSubConfigSensorIdIsMissing(t *testing.T) {

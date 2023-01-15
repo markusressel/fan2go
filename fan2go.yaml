@@ -132,7 +132,7 @@ curves:
 
   - id: case_avg_curve
     function:
-      # Type of aggregation function to use, on of: minimum | maximum | average
+      # Type of aggregation function to use, on of: minimum | maximum | average | delta | sum | difference
       type: average
       # A list of curve IDs to use
       curves:
