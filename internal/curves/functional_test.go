@@ -85,7 +85,7 @@ func TestFunctionCurveSum(t *testing.T) {
 func TestFunctionCurveDifference(t *testing.T) {
 	// GIVEN
 	temp1 := 60000.0
-	temp2 := 80000.0
+	temp2 := 50000.0
 
 	s1 := MockSensor{
 		ID:        "cpu_sensor",
