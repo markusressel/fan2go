@@ -70,5 +70,5 @@ func getFan(id string) (fans.Fan, error) {
 		}
 	}
 
-	return nil, errors.New(fmt.Sprintf("No fan with id found: %s, options: %s", fanId, availableFanIds))
+	return nil, errors.New(fmt.Sprintf("No fan with id found: %s, options: %s", id, availableFanIds))
 }

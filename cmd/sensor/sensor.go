@@ -90,5 +90,5 @@ func getSensor(id string) (sensors.Sensor, error) {
 		}
 	}
 
-	return nil, errors.New(fmt.Sprintf("No sensor with id found: %s, options: %s", sensorId, availableSensorIds))
+	return nil, errors.New(fmt.Sprintf("No sensor with id found: %s, options: %s", id, availableSensorIds))
 }
