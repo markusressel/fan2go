@@ -41,7 +41,9 @@ func getFan(id string) (fans.Fan, error) {
 
 	controllers := hwmon.GetChips()
 
+	availableFanIds := []string{}
 	for _, config := range configuration.CurrentConfig.Fans {
+		availableFanIds = append(availableFanIds, config.ID)
 		if config.ID == id {
 			if config.HwMon != nil {
 				for _, controller := range controllers {
@@ -68,5 +70,5 @@ func getFan(id string) (fans.Fan, error) {
 		}
 	}
 
-	return nil, errors.New(fmt.Sprintf("No fan with id found: %s", fanId))
+	return nil, errors.New(fmt.Sprintf("No fan with id found: %s, options: %s", id, availableFanIds))
 }
