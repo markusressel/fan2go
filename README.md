@@ -195,6 +195,39 @@ fans:
         args: [ "-a", "someargument" ]
 ```
 
+#### Advanced Options
+
+If the automatic fan curve analysis doesn't provide a good enough estimation
+for how the fan behaves, you can use the following configuration options (per fan definition)
+to correct it:
+
+```yaml
+fans:
+  - id: ...
+    ...
+    # (Optional) Override for the lowest PWM value at which the
+    # fan is able to maintain rotation if it was spinning previously.
+    minPwm: 30
+    # (Optional) Override for the lowest PWM value at which the
+    # fan will still be able to start rotating.
+    # Note: Settings this to a value that is too small
+    #       may damage your fans. Use at your own risk!
+    startPwm: 30
+    # (Optional) Override for the highest PWM value which still yields
+    # an increased rotational speed compared to lower values.
+    # Note: you can also use this to limit the max speed of a fan.
+    maxPwm: 255
+    # (Optional) Override for the PWM map used internally by fan2go for
+    # mapping the "normal" 0-255 value range to values supported by this fan.
+    # This can be used to compensate for a very limited set of supported values
+    # (f.ex. off, low, high). If not set manually, the map will be computed
+    # automatically by fan2go during fan initialization.
+    pwmMap:
+      0: 0
+      64: 128
+      192: 255
+```
+
 ### Sensors
 
 Under `sensors:` you need to define a list of temperature sensor devices that you want to monitor and use to adjust
