@@ -17,6 +17,7 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"os/user"
@@ -41,6 +42,37 @@ func RunDaemon() {
 	defer cancel()
 
 	var g run.Group
+	{
+		if configuration.CurrentConfig.Profiling.Enabled {
+			g.Add(func() error {
+				mux := http.NewServeMux()
+				mux.HandleFunc("/debug/pprof/", pprof.Index)
+				mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+				mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+				mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+				mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+				go func() {
+					ui.Info("Starting profiling webserver...")
+					profilingConfig := configuration.CurrentConfig.Profiling
+					address := fmt.Sprintf("%s:%d", profilingConfig.Host, profilingConfig.Port)
+					ui.Error("Error running profiling webserver: %v", http.ListenAndServe(address, mux))
+				}()
+
+				select {
+				case <-ctx.Done():
+					ui.Info("Stopping profiling webserver...")
+					return nil
+				}
+			}, func(err error) {
+				if err != nil {
+					ui.Warning("Error stopping parca webserver: " + err.Error())
+				} else {
+					ui.Debug("Webservers stopped.")
+				}
+			})
+		}
+	}
 	{
 		// === Global Webserver
 		if configuration.CurrentConfig.Api.Enabled || configuration.CurrentConfig.Statistics.Enabled {
