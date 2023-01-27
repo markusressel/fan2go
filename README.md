@@ -644,6 +644,18 @@ defaults to `200ms`.
 While _lm-sensors_ doesn't provide temperature sensors of SATA drives by default, you can use the kernel module
 `drivetemp` to enable this. See [here](https://wiki.archlinux.org/title/Lm_sensors#S.M.A.R.T._drive_temperature)
 
+## WARNING: PWM of Front-02 was changed by third party!
+
+If you see this log message while running fan2go, fan2go detected a change of the PWM value for the given fan
+that was not caused by fan2go itself. This usually means that fan2go is not the only program controlling the fan
+and something else (like f.ex. the mainboard or another fan control software) is also running and changing the speed
+of the fan, competing with fan2go. Since fan2go cannot figure out what other software is, you have to investigate
+this yourself.
+
+Another common reason this message can occur is when the driver of the fan in question does not actually support
+setting the PWM directly and uses some kind of virtual PWM instead. This has been a problem mostly on AMD graphics
+cards but is probably not limitied to them. See #64 for more detail.
+
 # Dependencies
 
 See [go.mod](go.mod)
