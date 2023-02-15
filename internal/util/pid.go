@@ -15,7 +15,7 @@ type PidLoop struct {
 	// integral from previous loop + error, i.e. integral error
 	integral float64
 	// error - error from previous loop, i.e. differential error
-	differentialError float64
+	//differentialError float64
 	// last execution time of the loop
 	lastTime time.Time
 }
