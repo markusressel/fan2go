@@ -7,6 +7,7 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var initCmd = &cobra.Command{
@@ -59,5 +60,7 @@ var initCmd = &cobra.Command{
 }
 
 func init() {
+	initCmd.Flags().IntP("fan-response-delay", "e", 2, "Delay in seconds to wait before checking that a fan has responded to a control change")
+	_ = viper.BindPFlag("FanResponseDelay", initCmd.Flags().Lookup("fan-response-delay"))
 	Command.AddCommand(initCmd)
 }

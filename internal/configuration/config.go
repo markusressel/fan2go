@@ -1,11 +1,12 @@
 package configuration
 
 import (
+	"os"
+	"time"
+
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
-	"os"
-	"time"
 )
 
 type Configuration struct {
@@ -13,6 +14,7 @@ type Configuration struct {
 
 	RunFanInitializationInParallel bool    `json:"runFanInitializationInParallel"`
 	MaxRpmDiffForSettledFan        float64 `json:"maxRpmDiffForSettledFan"`
+	FanResponseDelay               int     `json:"fanResponseDelay"`
 
 	TempSensorPollingRate time.Duration `json:"tempSensorPollingRate"`
 	TempRollingWindowSize int           `json:"tempRollingWindowSize"`
@@ -62,6 +64,7 @@ func setDefaultValues() {
 	viper.SetDefault("dbpath", "/etc/fan2go/fan2go.db")
 	viper.SetDefault("RunFanInitializationInParallel", true)
 	viper.SetDefault("MaxRpmDiffForSettledFan", 10.0)
+	viper.SetDefault("FanResponseDelay", 2)
 	viper.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
 	viper.SetDefault("TempRollingWindowSize", 10)
 	viper.SetDefault("RpmPollingRate", 1*time.Second)
