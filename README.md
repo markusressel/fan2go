@@ -656,6 +656,15 @@ Another common reason this message can occur is when the driver of the fan in qu
 setting the PWM directly and uses some kind of virtual PWM instead. This has been a problem mostly on AMD graphics
 cards but is probably not limitied to them. See #64 for more detail.
 
+## My components are overheating during initialization, what can I do about this?
+
+**TL;DR**: Skip the initialization and configure your fans manually.
+
+The initialization phase measures the RPM curve of each fan and tries to estimate the minimum and maximum
+boundaries. This can take quite a while though and can lead to overheating of components if they are
+under load. To avoid this use the `mjnPwm` and `maxPwm` fan config options to set the boundaries yourself.
+That way the initialization phase will be skipped and the control algorithm will start right away.
+
 # Dependencies
 
 See [go.mod](go.mod)
