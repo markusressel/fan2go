@@ -3,16 +3,16 @@ package hwmon
 import (
 	"errors"
 	"fmt"
-	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/fans"
-	"github.com/markusressel/fan2go/internal/sensors"
-	"github.com/md14454/gosensors"
 	"io/ioutil"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/sensors"
+	"github.com/md14454/gosensors"
 )
 
 const (
@@ -31,8 +31,8 @@ type HwMonController struct {
 	Platform string
 	Path     string
 
-	// Fans maps from HwMon index -> HwMonFan instance
-	Fans map[int]*fans.HwMonFan
+	// Fans (can be matched either by enumeration index or channel number)
+	Fans []fans.HwMonFan
 	// Sensors maps from HwMon index -> HwmonSensor instance
 	Sensors map[int]*sensors.HwmonSensor
 }
@@ -55,10 +55,10 @@ func GetChips() []*HwMonController {
 			platform = identifier
 		}
 
-		fanMap := GetFans(chip)
+		fanSlice := GetFans(chip)
 		sensorMap := GetTempSensors(chip)
 
-		if len(fanMap) <= 0 && len(sensorMap) <= 0 {
+		if len(fanSlice) <= 0 && len(sensorMap) <= 0 {
 			continue
 		}
 
@@ -68,7 +68,7 @@ func GetChips() []*HwMonController {
 			Modalias: modalias,
 			Platform: platform,
 			Path:     chip.Path,
-			Fans:     fanMap,
+			Fans:     fanSlice,
 			Sensors:  sensorMap,
 		}
 		list = append(list, c)
@@ -131,7 +131,7 @@ func GetTempSensors(chip gosensors.Chip) map[int]*sensors.HwmonSensor {
 				min = int(minSubFeature.GetValue())
 			}
 
-			label := getLabel(chip.Path, inputSubFeature.Name)
+			label := getLabel(chip.Path, feature.Name)
 
 			result[currentOutputIndex] = &sensors.HwmonSensor{
 				Label:     label,
@@ -147,10 +147,9 @@ func GetTempSensors(chip gosensors.Chip) map[int]*sensors.HwmonSensor {
 	return result
 }
 
-func GetFans(chip gosensors.Chip) map[int]*fans.HwMonFan {
-	var result = map[int]*fans.HwMonFan{}
+func GetFans(chip gosensors.Chip) []fans.HwMonFan {
+	var result = []fans.HwMonFan{}
 
-	currentOutputIndex := 0
 	features := chip.GetFeatures()
 	for j := 0; j < len(features); j++ {
 		feature := features[j]
@@ -162,27 +161,15 @@ func GetFans(chip gosensors.Chip) map[int]*fans.HwMonFan {
 		subfeatures := feature.GetSubFeatures()
 
 		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput) {
-			pwmOutput := path.Join(chip.Path, fmt.Sprintf("pwm%d", currentOutputIndex+1))
-
-			if _, err := os.Stat(pwmOutput); err == nil {
-			} else if errors.Is(err, os.ErrNotExist) {
-				// path/to/whatever does *not* exist
-				pwmOutput = ""
-			} else {
-				pwmOutput = ""
-			}
-
-			currentOutputIndex++
-
-			if len(pwmOutput) <= 0 {
+			var channel int
+			_, err := fmt.Sscanf(feature.Name, "fan%d", &channel)
+			if err != nil {
 				continue
 			}
 
-			rpmInput := ""
 			rpmAverage := 0.0
 			inputSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput)
 			if inputSubFeature != nil {
-				rpmInput = path.Join(chip.Path, inputSubFeature.Name)
 				rpmAverage = inputSubFeature.GetValue()
 			}
 
@@ -202,25 +189,27 @@ func GetFans(chip gosensors.Chip) map[int]*fans.HwMonFan {
 				min = fans.MinPwmValue
 			}
 
-			label := getLabel(chip.Path, inputSubFeature.Name)
+			label := getLabel(chip.Path, feature.Name)
 
-			fan := &fans.HwMonFan{
+			fan := fans.HwMonFan{
 				Config: configuration.FanConfig{
 					ID:     label,
 					MinPwm: &min,
 					MaxPwm: &max,
 					HwMon: &configuration.HwMonFanConfig{
-						Index:     currentOutputIndex,
-						PwmOutput: pwmOutput,
-						RpmInput:  rpmInput,
+						Index:      len(result) + 1,
+						Channel:    channel,
+						PwmChannel: channel,
+						SysfsPath:  chip.Path,
 					},
 				},
 				Label:        label,
-				Index:        currentOutputIndex,
+				Index:        len(result) + 1,
 				RpmMovingAvg: rpmAverage,
 			}
+			setFanConfigPaths(fan.Config.HwMon)
 
-			result[currentOutputIndex] = fan
+			result = append(result, fan)
 		}
 	}
 
@@ -245,14 +234,13 @@ func containsSubFeature(s []gosensors.SubFeature, e gosensors.SubFeatureType) bo
 	return false
 }
 
-// getLabel read the label of a in/output of a device
-func getLabel(devicePath string, input string) string {
-	labelPath := strings.TrimSuffix(path.Join(devicePath, input), "input") + "label"
-
+// getLabel read the label of a feature
+func getLabel(devicePath string, featureName string) string {
+	labelPath := path.Join(devicePath, featureName) + "_label"
 	content, _ := ioutil.ReadFile(labelPath)
 	label := string(content)
 	if len(label) <= 0 {
-		_, label = filepath.Split(devicePath)
+		return path.Join(path.Base(devicePath), featureName)
 	}
 	return strings.TrimSpace(label)
 }
@@ -291,4 +279,40 @@ func computeIdentifier(chip gosensors.Chip) (name string) {
 func findPlatform(devicePath string) string {
 	platformRegex := regexp.MustCompile(".*/platform/{}/.*")
 	return platformRegex.FindString(devicePath)
+}
+
+func UpdateFanConfigFromHwMonControllers(controllers []*HwMonController, config *configuration.FanConfig) error {
+	for _, controller := range controllers {
+		matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, controller.Platform)
+		if err != nil {
+			return errors.New(fmt.Sprintf("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform))
+		}
+		if !matched {
+			continue
+		}
+		for _, fan := range controller.Fans {
+			controllerConfig := fan.Config.HwMon
+			if config.HwMon.Index > 0 && controllerConfig.Index != config.HwMon.Index {
+				continue
+			}
+			if config.HwMon.Channel > 0 && controllerConfig.Channel != config.HwMon.Channel {
+				continue
+			}
+			config.HwMon.Index = controllerConfig.Index
+			config.HwMon.Channel = controllerConfig.Channel
+			config.HwMon.SysfsPath = controllerConfig.SysfsPath
+			if config.HwMon.PwmChannel == 0 {
+				config.HwMon.PwmChannel = controllerConfig.PwmChannel
+			}
+			setFanConfigPaths(config.HwMon)
+			return nil
+		}
+	}
+	return errors.New(fmt.Sprintf("No hwmon fan matched fan config: %+v", config))
+}
+
+func setFanConfigPaths(config *configuration.HwMonFanConfig) {
+	config.RpmInputPath = path.Join(config.SysfsPath, fmt.Sprintf("fan%d_input", config.Channel))
+	config.PwmPath = path.Join(config.SysfsPath, fmt.Sprintf("pwm%d", config.PwmChannel))
+	config.PwmEnablePath = path.Join(config.SysfsPath, fmt.Sprintf("pwm%d_enable", config.PwmChannel))
 }

@@ -2,8 +2,9 @@ package configuration
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestValidateDuplicateFanId(t *testing.T) {
@@ -416,4 +417,163 @@ func TestValidateDuplicateSensorId(t *testing.T) {
 
 	// THEN
 	assert.EqualError(t, err, fmt.Sprintf("Duplicate sensor id detected: %s", sensorId))
+}
+
+func TestValidateFanHasIndexOrChannel(t *testing.T) {
+	// GIVEN
+	config := Configuration{
+		Fans: []FanConfig{
+			{
+				ID:    "fan",
+				Curve: "curve",
+				HwMon: &HwMonFanConfig{},
+			},
+		},
+		Curves: []CurveConfig{
+			{
+				ID: "curve",
+				Linear: &LinearCurveConfig{
+					Sensor: "sensor",
+					Min:    0,
+					Max:    100,
+				},
+				Function: nil,
+			},
+		},
+		Sensors: []SensorConfig{
+			{
+				ID: "sensor",
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.EqualError(t, err, "Fan fan: must have one of index or channel, must be >= 1")
+}
+
+func TestValidateFanIndex(t *testing.T) {
+	// GIVEN
+	config := Configuration{
+		Fans: []FanConfig{
+			{
+				ID:    "fan",
+				Curve: "curve",
+				HwMon: &HwMonFanConfig{
+					Index: -1,
+				},
+			},
+		},
+		Curves: []CurveConfig{
+			{
+				ID: "curve",
+				Linear: &LinearCurveConfig{
+					Sensor: "sensor",
+					Min:    0,
+					Max:    100,
+				},
+				Function: nil,
+			},
+		},
+		Sensors: []SensorConfig{
+			{
+				ID: "sensor",
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.EqualError(t, err, "Fan fan: invalid index, must be >= 1")
+}
+
+func TestValidateFanChannel(t *testing.T) {
+	// GIVEN
+	config := Configuration{
+		Fans: []FanConfig{
+			{
+				ID:    "fan",
+				Curve: "curve",
+				HwMon: &HwMonFanConfig{
+					Channel: -1,
+				},
+			},
+		},
+		Curves: []CurveConfig{
+			{
+				ID: "curve",
+				Linear: &LinearCurveConfig{
+					Sensor: "sensor",
+					Min:    0,
+					Max:    100,
+				},
+				Function: nil,
+			},
+		},
+		Sensors: []SensorConfig{
+			{
+				ID: "sensor",
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.EqualError(t, err, "Fan fan: invalid channel, must be >= 1")
+}
+
+func TestValidateFanPwmChannel(t *testing.T) {
+	// GIVEN
+	config := Configuration{
+		Fans: []FanConfig{
+			{
+				ID:    "fan",
+				Curve: "curve",
+				HwMon: &HwMonFanConfig{
+					Channel:    1,
+					PwmChannel: -1,
+				},
+			},
+		},
+		Curves: []CurveConfig{
+			{
+				ID: "curve",
+				Linear: &LinearCurveConfig{
+					Sensor: "sensor",
+					Min:    0,
+					Max:    100,
+				},
+				Function: nil,
+			},
+		},
+		Sensors: []SensorConfig{
+			{
+				ID: "sensor",
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.EqualError(t, err, "Fan fan: invalid pwmChannel, must be >= 1")
 }

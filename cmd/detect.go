@@ -3,6 +3,10 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
+	"sort"
+	"strconv"
+
 	"github.com/markusressel/fan2go/cmd/global"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
@@ -11,9 +15,6 @@ import (
 	"github.com/mgutz/ansi"
 	"github.com/spf13/cobra"
 	"github.com/tomlazar/table"
-	"path/filepath"
-	"sort"
-	"strconv"
 )
 
 var detectCmd = &cobra.Command{
@@ -42,25 +43,17 @@ var detectCmd = &cobra.Command{
 				continue
 			}
 
-			fanMap := controller.Fans
+			fanSlice := controller.Fans
 			sensorMap := controller.Sensors
 
-			if len(fanMap) <= 0 && len(sensorMap) <= 0 {
+			if len(fanSlice) <= 0 && len(sensorMap) <= 0 {
 				continue
 			}
 
 			ui.Printfln("> %s", controller.Name)
 
-			fanMapKeys := make([]int, 0, len(fanMap))
-			for k := range fanMap {
-				fanMapKeys = append(fanMapKeys, k)
-			}
-			sort.Ints(fanMapKeys)
-
 			var fanRows [][]string
-			for _, index := range fanMapKeys {
-				fan := fanMap[index]
-
+			for _, fan := range fanSlice {
 				pwmText := "N/A"
 				pwm, err := fan.GetPwm()
 				if err == nil {
@@ -77,10 +70,10 @@ var detectCmd = &cobra.Command{
 
 				isAuto, _ := fan.IsPwmAuto()
 				fanRows = append(fanRows, []string{
-					"", strconv.Itoa(fan.Index), fan.Label, rpmText, pwmText, fmt.Sprintf("%v", isAuto),
+					"", strconv.Itoa(fan.Index), strconv.Itoa(fan.Config.HwMon.Channel), fan.Label, rpmText, pwmText, fmt.Sprintf("%v", isAuto),
 				})
 			}
-			var fanHeaders = []string{"Fans   ", "Index", "Label", "RPM", "PWM", "Auto"}
+			var fanHeaders = []string{"Fans   ", "Index", "Channel", "Label", "RPM", "PWM", "Auto"}
 
 			fanTable := table.Table{
 				Headers: fanHeaders,

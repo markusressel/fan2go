@@ -2,9 +2,12 @@ package hwmon
 
 import (
 	"fmt"
+	"testing"
+
+	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/md14454/gosensors"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestComputeIdentifierIsa(t *testing.T) {
@@ -75,4 +78,156 @@ func TestFindPlatform(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, "", platform)
+}
+
+func TestUpdateFanConfigFromHwMonControllers(t *testing.T) {
+	var tests = []struct {
+		tn            string
+		hwMonConfigs  []configuration.HwMonFanConfig
+		hwMonPlatform string
+		configConfig  configuration.HwMonFanConfig
+		wantConfig    *configuration.HwMonFanConfig
+		wantErr       string
+	}{{
+		tn: "index config",
+		hwMonConfigs: []configuration.HwMonFanConfig{
+			{
+				Index:      1,
+				Channel:    2,
+				PwmChannel: 2,
+				SysfsPath:  "/sys/hwmon1",
+			},
+		},
+		configConfig: configuration.HwMonFanConfig{
+			Index: 1,
+		},
+		wantConfig: &configuration.HwMonFanConfig{
+			Index:         1,
+			Channel:       2,
+			PwmChannel:    2,
+			SysfsPath:     "/sys/hwmon1",
+			RpmInputPath:  "/sys/hwmon1/fan2_input",
+			PwmPath:       "/sys/hwmon1/pwm2",
+			PwmEnablePath: "/sys/hwmon1/pwm2_enable",
+		},
+	}, {
+		tn: "channel config",
+		hwMonConfigs: []configuration.HwMonFanConfig{
+			{
+				Index:      1,
+				Channel:    2,
+				PwmChannel: 2,
+				SysfsPath:  "/sys/hwmon1",
+			},
+		},
+		configConfig: configuration.HwMonFanConfig{
+			Channel: 2,
+		},
+		wantConfig: &configuration.HwMonFanConfig{
+			Index:         1,
+			Channel:       2,
+			PwmChannel:    2,
+			SysfsPath:     "/sys/hwmon1",
+			RpmInputPath:  "/sys/hwmon1/fan2_input",
+			PwmPath:       "/sys/hwmon1/pwm2",
+			PwmEnablePath: "/sys/hwmon1/pwm2_enable",
+		},
+	}, {
+		tn: "pwm channel config",
+		hwMonConfigs: []configuration.HwMonFanConfig{
+			{
+				Index:      1,
+				Channel:    2,
+				PwmChannel: 2,
+				SysfsPath:  "/sys/hwmon1",
+			},
+		},
+		configConfig: configuration.HwMonFanConfig{
+			Channel:    2,
+			PwmChannel: 3,
+		},
+		wantConfig: &configuration.HwMonFanConfig{
+			Index:         1,
+			Channel:       2,
+			PwmChannel:    3,
+			SysfsPath:     "/sys/hwmon1",
+			RpmInputPath:  "/sys/hwmon1/fan2_input",
+			PwmPath:       "/sys/hwmon1/pwm3",
+			PwmEnablePath: "/sys/hwmon1/pwm3_enable",
+		},
+	}, {
+		tn: "no hwmon fans",
+		configConfig: configuration.HwMonFanConfig{
+			Index: 1,
+		},
+		wantErr: "No hwmon fan matched fan config",
+	}, {
+		tn: "no matching index",
+		hwMonConfigs: []configuration.HwMonFanConfig{
+			{
+				Index: 2,
+			},
+		},
+		configConfig: configuration.HwMonFanConfig{
+			Index: 1,
+		},
+		wantErr: "No hwmon fan matched fan config",
+	}, {
+		tn: "no matching platform",
+		hwMonConfigs: []configuration.HwMonFanConfig{
+			{
+				Index: 1,
+			},
+		},
+		hwMonPlatform: "abc",
+		configConfig: configuration.HwMonFanConfig{
+			Index: 1,
+		},
+		wantErr: "No hwmon fan matched fan config",
+	}}
+
+	for _, tt := range tests {
+		t.Run(tt.tn, func(t *testing.T) {
+			// GIVEN
+			fanSlice := []fans.HwMonFan{}
+			for _, c := range tt.hwMonConfigs {
+				fanSlice = append(fanSlice, fans.HwMonFan{
+					Config: configuration.FanConfig{
+						HwMon: &c,
+					},
+				})
+			}
+			if tt.hwMonPlatform == "" {
+				tt.hwMonPlatform = "platform"
+			}
+			controllers := []*HwMonController{
+				{
+					Platform: tt.hwMonPlatform,
+					Fans:     fanSlice,
+				},
+			}
+			if tt.configConfig.Platform == "" {
+				tt.configConfig.Platform = "platform"
+			}
+			config := configuration.FanConfig{
+				HwMon: &tt.configConfig,
+			}
+
+			// WHEN
+			err := UpdateFanConfigFromHwMonControllers(controllers, &config)
+
+			// THEN
+			if tt.wantConfig != nil {
+				if tt.wantConfig.Platform == "" {
+					tt.wantConfig.Platform = "platform"
+				}
+				assert.Equal(t, tt.wantConfig, config.HwMon)
+			}
+			if tt.wantErr != "" {
+				assert.ErrorContains(t, err, tt.wantErr)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }

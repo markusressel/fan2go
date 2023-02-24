@@ -115,22 +115,30 @@ system run `fan2go detect`, which will print a list of devices exposed by the hw
 ```shell
 > fan2go detect
 nct6798
- Fans      Index   Label    RPM    PWM   Auto
-           1       hwmon4   0      153   false
-           2       hwmon4   1223   104   false
-           3       hwmon4   677    107   false
+ Fans     Index  Channel  Label        RPM   PWM  Auto
+          1      1        hwmon4/fan1  0     153  false
+          2      2        hwmon4/fan2  1223  104  false
+          3      3        hwmon4/fan3  677   107  false
  Sensors   Index   Label    Value
            1       SYSTIN   41000
            2       CPUTIN   64000
 
 amdgpu-pci-0031
- Fans      Index   Label    RPM   PWM   Auto
-           1       hwmon8   561   43    false
+ Fans     Index  Channel  Label        RPM   PWM  Auto
+          1      1        hwmon8/fan1  561   43   false
  Sensors   Index   Label      Value
            1       edge       58000
            2       junction   61000
            3       mem        56000
 ```
+
+The fan index is based on device enumeration and is not stable for a given fan if hardware configuration changes.
+The Linux kernel hwmon channel is a better identifier for configuration as it is largely based on the fan headers
+in use.
+
+Fan RPM, PWM, and temperature sensors are independent and Linux does not associate them automatically. A given PWM
+may control more than one fan, and a fan may not be under the control of a PWM. By default, fan2go guesses and sets
+the pwm channel number for a given fan to the fan's RPM sensor channel. You can override this in the config.
 
 #### HwMon
 
@@ -147,8 +155,10 @@ fans:
       # The platform of the controller which is
       # connected to this fan (see sensor.platform below)
       platform: nct6798
-      # The index of this fan as displayed by `fan2go detect`
-      index: 1
+      # The channel of this fan's RPM sensor as displayed by `fan2go detect`
+      channel: 1
+      # The pwm channel that controls this fan; fan2go defaults to same channel number as fan RPM
+      pwmChannel: 1
     # Indicates whether this fan should never stop rotating, regardless of
     # how low the curve value is
     neverStop: true
