@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/markusressel/fan2go/cmd/config"
 	"github.com/markusressel/fan2go/cmd/curve"
 	"github.com/markusressel/fan2go/cmd/fan"
@@ -12,7 +14,6 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"os"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -23,7 +24,6 @@ var rootCmd = &cobra.Command{
 on your computer based on temperature sensors.`,
 	// this is the default command to run when no subcommand is specified
 	Run: func(cmd *cobra.Command, args []string) {
-		setupUi()
 		printHeader()
 
 		configPath := configuration.DetectAndReadConfigFile()
@@ -80,6 +80,7 @@ func printHeader() {
 func Execute() {
 	cobra.OnInitialize(func() {
 		configuration.InitConfig(global.CfgFile)
+		setupUi()
 	})
 
 	if err := rootCmd.Execute(); err != nil {
