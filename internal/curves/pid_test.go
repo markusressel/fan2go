@@ -398,13 +398,14 @@ func TestPidCurveOnTarget(t *testing.T) {
 	curve, _ := NewSpeedCurve(curveConfig)
 
 	// WHEN
-	result, err := curve.Evaluate()
+	_, err := curve.Evaluate()
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
 
 	time.Sleep(1 * time.Second)
 
+	var result int
 	result, err = curve.Evaluate()
 	if err != nil {
 		assert.Fail(t, err.Error())
