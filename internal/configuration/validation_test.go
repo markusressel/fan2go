@@ -137,7 +137,7 @@ func TestValidateCurveSensorIdIsMissing(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "curve curve: Missing sensorId")
+	assert.EqualError(t, err, "curve curve: missing sensorId")
 }
 
 func TestValidateCurveSensorWithIdIsNotDefined(t *testing.T) {
