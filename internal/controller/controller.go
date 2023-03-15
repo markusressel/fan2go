@@ -169,13 +169,13 @@ func (f *PidFanController) Run(ctx context.Context) error {
 		pollingRate := configuration.CurrentConfig.RpmPollingRate
 
 		g.Add(func() error {
-			tick := time.Tick(pollingRate)
+			tick := time.NewTicker(pollingRate)
 			for {
 				select {
 				case <-ctx.Done():
 					ui.Info("Stopping RPM monitor of fan controller for fan %s...", fan.GetId())
 					return nil
-				case <-tick:
+				case <-tick.C:
 					measureRpm(fan)
 				}
 			}
@@ -189,14 +189,14 @@ func (f *PidFanController) Run(ctx context.Context) error {
 	{
 		g.Add(func() error {
 			time.Sleep(1 * time.Second)
-			tick := time.Tick(f.updateRate)
+			tick := time.NewTicker(f.updateRate)
 			for {
 				select {
 				case <-ctx.Done():
 					ui.Info("Stopping fan controller for fan %s...", fan.GetId())
 					f.restorePwmEnabled()
 					return nil
-				case <-tick:
+				case <-tick.C:
 					err = f.UpdateFanSpeed()
 					if err != nil {
 						ui.ErrorAndNotify("Fan Control Error", "Fan %s: %v", fan.GetId(), err)
