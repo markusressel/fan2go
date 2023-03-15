@@ -69,7 +69,7 @@ func WriteIntToFile(value int, path string) error {
 		path = evaluatedPath
 	}
 	valueAsString := fmt.Sprintf("%d", value)
-	err = os.WriteFile(path, []byte(valueAsString), 644)
+	err = os.WriteFile(path, []byte(valueAsString), 0644)
 	return err
 }
 
