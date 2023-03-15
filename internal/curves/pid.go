@@ -21,6 +21,9 @@ func (c PidSpeedCurve) Evaluate() (value int, err error) {
 	sensor := sensors.SensorMap[c.Config.PID.Sensor]
 	var measured float64
 	measured, err = sensor.GetValue()
+	if err != nil {
+		return c.Value, err
+	}
 	pidTarget := c.Config.PID.SetPoint
 
 	loopValue := c.pidLoop.Loop(pidTarget, measured/1000.0)
