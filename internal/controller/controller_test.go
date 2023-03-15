@@ -1,15 +1,16 @@
 package controller
 
 import (
+	"sort"
+	"testing"
+	"time"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
-	"sort"
-	"testing"
-	"time"
 )
 
 type MockSensor struct {
@@ -231,10 +232,8 @@ func CreateFan(neverStop bool, curveData map[int]float64, startPwm *int) (fan fa
 		Config: configuration.FanConfig{
 			ID: "fan1",
 			HwMon: &configuration.HwMonFanConfig{
-				Platform:  "platform",
-				Index:     1,
-				PwmOutput: "fan1_output",
-				RpmInput:  "fan1_rpm",
+				Platform: "platform",
+				Index:    1,
 			},
 			NeverStop: neverStop,
 			Curve:     "curve",

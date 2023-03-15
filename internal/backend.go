@@ -3,6 +3,15 @@ package internal
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/pprof"
+	"os"
+	"os/signal"
+	"os/user"
+	"regexp"
+	"syscall"
+	"time"
+
 	"github.com/labstack/echo/v4"
 	"github.com/markusressel/fan2go/internal/api"
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -16,14 +25,6 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
-	"net/http"
-	"net/http/pprof"
-	"os"
-	"os/signal"
-	"os/user"
-	"regexp"
-	"syscall"
-	"time"
 )
 
 func RunDaemon() {
@@ -316,22 +317,9 @@ func initializeFans(controllers []*hwmon.HwMonController) map[configuration.FanC
 
 	for _, config := range configuration.CurrentConfig.Fans {
 		if config.HwMon != nil {
-			found := false
-			for _, c := range controllers {
-				matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, c.Platform)
-				if err != nil {
-					ui.Fatal("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, c.Platform)
-				}
-				if matched {
-					found = true
-					fan := c.Fans[config.HwMon.Index].Config.HwMon
-					config.HwMon.PwmOutput = fan.PwmOutput
-					config.HwMon.RpmInput = fan.RpmInput
-					break
-				}
-			}
-			if !found {
-				ui.Fatal("Couldn't find hwmon device with platform '%s' for fan: %s", config.HwMon.Platform, config.ID)
+			err := hwmon.UpdateFanConfigFromHwMonControllers(controllers, &config)
+			if err != nil {
+				ui.Fatal("Couldn't update fan config from hwmon: %s", err)
 			}
 		}
 

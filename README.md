@@ -115,22 +115,30 @@ system run `fan2go detect`, which will print a list of devices exposed by the hw
 ```shell
 > fan2go detect
 nct6798
- Fans      Index   Label    RPM    PWM   Auto
-           1       hwmon4   0      153   false
-           2       hwmon4   1223   104   false
-           3       hwmon4   677    107   false
+ Fans     Index  Channel  Label        RPM   PWM  Auto
+          1      1        hwmon4/fan1  0     153  false
+          2      2        hwmon4/fan2  1223  104  false
+          3      3        hwmon4/fan3  677   107  false
  Sensors   Index   Label    Value
            1       SYSTIN   41000
            2       CPUTIN   64000
 
 amdgpu-pci-0031
- Fans      Index   Label    RPM   PWM   Auto
-           1       hwmon8   561   43    false
+ Fans     Index  Channel  Label        RPM   PWM  Auto
+          1      1        hwmon8/fan1  561   43   false
  Sensors   Index   Label      Value
            1       edge       58000
            2       junction   61000
            3       mem        56000
 ```
+
+The fan index is based on device enumeration and is not stable for a given fan if hardware configuration changes.
+The Linux kernel hwmon channel is a better identifier for configuration as it is largely based on the fan headers
+in use.
+
+Fan RPM, PWM, and temperature sensors are independent and Linux does not associate them automatically. A given PWM
+may control more than one fan, and a fan may not be under the control of a PWM. By default, fan2go guesses and sets
+the pwm channel number for a given fan to the fan's RPM sensor channel. You can override this in the config.
 
 #### HwMon
 
@@ -147,8 +155,10 @@ fans:
       # The platform of the controller which is
       # connected to this fan (see sensor.platform below)
       platform: nct6798
-      # The index of this fan as displayed by `fan2go detect`
-      index: 1
+      # The channel of this fan's RPM sensor as displayed by `fan2go detect`
+      rpmChannel: 1
+      # The pwm channel that controls this fan; fan2go defaults to same channel number as fan RPM
+      pwmChannel: 1
     # Indicates whether this fan should never stop rotating, regardless of
     # how low the curve value is
     neverStop: true
@@ -644,7 +654,7 @@ defaults to `200ms`.
 While _lm-sensors_ doesn't provide temperature sensors of SATA drives by default, you can use the kernel module
 `drivetemp` to enable this. See [here](https://wiki.archlinux.org/title/Lm_sensors#S.M.A.R.T._drive_temperature)
 
-## WARNING: PWM of <fan> was changed by third party!
+## WARNING: PWM of `<fan>` was changed by third party!
 
 If you see this log message while running fan2go, fan2go detected a change of the PWM value for the given fan
 that was not caused by fan2go itself. This usually means that fan2go is not the only program controlling the fan
@@ -655,6 +665,15 @@ this yourself.
 Another common reason this message can occur is when the driver of the fan in question does not actually support
 setting the PWM directly and uses some kind of virtual PWM instead. This has been a problem mostly on AMD graphics
 cards but is probably not limitied to them. See #64 for more detail.
+
+## My components are overheating during initialization, what can I do about this?
+
+**TL;DR**: Skip the initialization and configure your fans manually.
+
+The initialization phase measures the RPM curve of each fan and tries to estimate the minimum and maximum
+boundaries. This can take quite a while though and can lead to overheating of components if they are
+under load. To avoid this use the `mjnPwm` and `maxPwm` fan config options to set the boundaries yourself.
+That way the initialization phase will be skipped and the control algorithm will start right away.
 
 # Dependencies
 
