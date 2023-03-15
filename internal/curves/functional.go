@@ -11,11 +11,11 @@ type FunctionSpeedCurve struct {
 	Value  int                       `json:"value"`
 }
 
-func (c FunctionSpeedCurve) GetId() string {
+func (c *FunctionSpeedCurve) GetId() string {
 	return c.Config.ID
 }
 
-func (c FunctionSpeedCurve) Evaluate() (value int, err error) {
+func (c *FunctionSpeedCurve) Evaluate() (value int, err error) {
 	var curves []SpeedCurve
 	for _, curveId := range c.Config.Function.Curves {
 		curves = append(curves, SpeedCurveMap[curveId])
