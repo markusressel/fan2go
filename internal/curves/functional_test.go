@@ -48,6 +48,7 @@ func TestFunctionCurveSum(t *testing.T) {
 		40,
 		80,
 	)
+
 	c1, err := NewSpeedCurve(curve1)
 	SpeedCurveMap[c1.GetId()] = c1
 
@@ -57,7 +58,9 @@ func TestFunctionCurveSum(t *testing.T) {
 		40,
 		80,
 	)
-	c2, err := NewSpeedCurve(curve2)
+
+	var c2 SpeedCurve
+	c2, err = NewSpeedCurve(curve2)
 	SpeedCurveMap[c2.GetId()] = c2
 
 	function := configuration.FunctionSum

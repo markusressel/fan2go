@@ -398,7 +398,8 @@ func TestPidCurveOnTarget(t *testing.T) {
 	curve, err := NewSpeedCurve(curveConfig)
 
 	// WHEN
-	result, err := curve.Evaluate()
+	var result int
+	result, err = curve.Evaluate()
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}

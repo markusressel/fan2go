@@ -21,13 +21,15 @@ var speedCmd = &cobra.Command{
 		}
 
 		if len(args) > 0 {
-			pwmValue, err := strconv.Atoi(args[0])
+			var pwmValue int
+			pwmValue, err = strconv.Atoi(args[0])
 			if err != nil {
 				return err
 			}
 			err = fan.SetPwm(pwmValue)
 		} else {
-			if pwm, err := fan.GetPwm(); err == nil {
+			var pwm int
+			if pwm, err = fan.GetPwm(); err == nil {
 				fmt.Printf("%d", pwm)
 			}
 		}
