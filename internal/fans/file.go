@@ -25,7 +25,6 @@ func (fan FileFan) GetStartPwm() int {
 }
 
 func (fan *FileFan) SetStartPwm(pwm int, force bool) {
-	return
 }
 
 func (fan FileFan) GetMinPwm() int {
