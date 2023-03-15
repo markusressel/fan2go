@@ -1,7 +1,6 @@
 package fans
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
@@ -163,7 +162,7 @@ func (fan *HwMonFan) SetPwmEnabled(value ControlMode) (err error) {
 	if err == nil {
 		currentValue, err := util.ReadIntFromFile(fan.Config.HwMon.PwmEnablePath)
 		if err != nil || ControlMode(currentValue) != value {
-			return errors.New(fmt.Sprintf("PWM mode stuck to %d", currentValue))
+			return fmt.Errorf("PWM mode stuck to %d", currentValue)
 		}
 	}
 	return err

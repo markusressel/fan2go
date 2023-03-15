@@ -1,7 +1,6 @@
 package curve
 
 import (
-	"errors"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/spf13/cobra"
@@ -33,5 +32,5 @@ func getCurveConfig(id string, curves []configuration.CurveConfig) (*configurati
 		}
 	}
 
-	return nil, errors.New(fmt.Sprintf("No curve with id found: %s, options: %s", id, availableCurveIds))
+	return nil, fmt.Errorf("no curve with id found: %s, options: %s", id, availableCurveIds)
 }

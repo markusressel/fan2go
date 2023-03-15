@@ -1,7 +1,6 @@
 package fans
 
 import (
-	"errors"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -114,7 +113,7 @@ func (fan *CmdFan) SetPwm(pwm int) (err error) {
 	timeout := 2 * time.Second
 	_, err = util.SafeCmdExecution(conf.Exec, args, timeout)
 	if err != nil {
-		return errors.New(fmt.Sprintf("%s", err.Error()))
+		return fmt.Errorf("%s", err.Error())
 	}
 
 	return nil
