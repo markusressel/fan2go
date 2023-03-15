@@ -27,7 +27,6 @@ func (fan CmdFan) GetStartPwm() int {
 }
 
 func (fan *CmdFan) SetStartPwm(pwm int, force bool) {
-	return
 }
 
 func (fan CmdFan) GetMinPwm() int {
