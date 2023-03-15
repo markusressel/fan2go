@@ -506,7 +506,7 @@ func (f *PidFanController) mapToClosestDistinct(target int) int {
 
 // computePwmMap computes a mapping between "requested pwm value" -> "actual set pwm value"
 func (f *PidFanController) computePwmMap() (err error) {
-	if configuration.CurrentConfig.RunFanInitializationInParallel == false {
+	if !configuration.CurrentConfig.RunFanInitializationInParallel {
 		InitializationSequenceMutex.Lock()
 		defer InitializationSequenceMutex.Unlock()
 	}
