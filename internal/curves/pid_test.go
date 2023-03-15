@@ -395,11 +395,10 @@ func TestPidCurveOnTarget(t *testing.T) {
 		-0.005,
 		-0.006,
 	)
-	curve, err := NewSpeedCurve(curveConfig)
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	// WHEN
-	var result int
-	result, err = curve.Evaluate()
+	result, err := curve.Evaluate()
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
