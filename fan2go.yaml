@@ -32,8 +32,10 @@ fans:
       # The platform of the controller which is
       # connected to this fan (see sensor.platform below)
       platform: nct6798-isa-0
-      # The index of this fan as displayed by `fan2go detect`
-      index: 1
+      # The channel of this fan's RPM sensor as displayed by `fan2go detect`
+      rpmChannel: 1
+      # The pwm channel that controls this fan; fan2go defaults to same channel number as fan RPM
+      pwmChannel: 1
     # Indicates whether this fan should never stop rotating, regardless of
     # how low the curve value is
     neverStop: true
@@ -52,18 +54,27 @@ fans:
     # an increased rotational speed compared to lower values.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
+    # (Optional) Override for the PWM map used internally by fan2go for
+    # mapping the "normal" 0-255 value range to values supported by this fan.
+    # This can be used to compensate for a very limited set of supported values
+    # (f.ex. off, low, high). If not set manually, the map will be computed
+    # automatically by fan2go during fan initialization.
+    pwmMap:
+      0: 0
+      64: 128
+      192: 255
 
   - id: in_front
     hwmon:
       platform: it8620
-      index: 4
+      rpmChannel: 4
     neverStop: true
     curve: case_avg_curve
 
   - id: out_back
     hwmon:
       platform: it8620
-      index: 5
+      rpmChannel: 5
     neverStop: true
     curve: case_avg_curve
 
@@ -123,7 +134,7 @@ curves:
 
   - id: case_avg_curve
     function:
-      # Type of aggregation function to use, on of: minimum | maximum | average
+      # Type of aggregation function to use, on of: minimum | maximum | average | delta | sum | difference
       type: average
       # A list of curve IDs to use
       curves:
@@ -144,3 +155,11 @@ api:
   host: localhost
   # The port to listen for connections
   port: 9001
+
+profiling:
+  # Whether to enable the profiling webserver
+  enabled: false
+  # The host to listen for connections
+  host: localhost
+  # The port to listen for connections
+  port: 6060

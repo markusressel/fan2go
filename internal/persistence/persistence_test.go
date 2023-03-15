@@ -1,11 +1,12 @@
 package persistence
 
 import (
+	"testing"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 const (
@@ -29,10 +30,10 @@ func TestPersistence_DeleteFanPwmData(t *testing.T) {
 	// GIVEN
 	p := NewPersistence(dbTestingPath)
 	fan, _ := createFan(false, LinearFan)
-	err := p.SaveFanPwmData(fan)
+	_ = p.SaveFanPwmData(fan)
 
 	// WHEN
-	err = p.DeleteFanPwmData(fan)
+	err := p.DeleteFanPwmData(fan)
 	assert.NoError(t, err)
 
 	// THEN
@@ -114,10 +115,8 @@ func createFan(neverStop bool, curveData map[int]float64) (fan fans.Fan, err err
 		Config: configuration.FanConfig{
 			ID: "fan1",
 			HwMon: &configuration.HwMonFanConfig{
-				Platform:  "platform",
-				Index:     1,
-				PwmOutput: "fan1_output",
-				RpmInput:  "fan1_rpm",
+				Platform: "platform",
+				Index:    1,
 			},
 			NeverStop: neverStop,
 			Curve:     "curve",

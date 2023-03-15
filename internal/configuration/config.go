@@ -28,6 +28,7 @@ type Configuration struct {
 
 	Api        ApiConfig        `json:"api"`
 	Statistics StatisticsConfig `json:"statistics"`
+	Profiling  ProfilingConfig  `json:"profiling"`
 }
 
 var CurrentConfig Configuration
@@ -80,22 +81,35 @@ func setDefaultValues() {
 	viper.SetDefault("Api.Host", "localhost")
 	viper.SetDefault("Api.Port", 9001)
 
+	viper.SetDefault("Profiling", ProfilingConfig{
+		Enabled: false,
+		Host:    "localhost",
+		Port:    6060,
+	})
+	viper.SetDefault("Profiling.Host", "localhost")
+	viper.SetDefault("Profiling.Port", 6060)
+
 	viper.SetDefault("ControllerAdjustmentTickRate", 200*time.Millisecond)
 
 	viper.SetDefault("sensors", []SensorConfig{})
 	viper.SetDefault("fans", []FanConfig{})
 }
 
-// DetectConfigFile detects the path of the first existing config file
-func DetectConfigFile() string {
+// DetectAndReadConfigFile detects the path of the first existing config file
+func DetectAndReadConfigFile() string {
+	ReadInConfig()
+	return GetFilePath()
+}
+
+// ReadInConfig reads and parses the config file
+func ReadInConfig() {
 	if err := viper.ReadInConfig(); err != nil {
 		// config file is required, so we fail here
 		ui.Fatal("Error reading config file, %s", err)
 	}
-	return GetFilePath()
 }
 
-// GetFilePath this is only populated _after_ DetectConfigFile()
+// GetFilePath this is only populated _after_ ReadInConfig()
 func GetFilePath() string {
 	return viper.ConfigFileUsed()
 }

@@ -1,7 +1,6 @@
 package sensor
 
 import (
-	"errors"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/hwmon"
@@ -48,7 +47,7 @@ func init() {
 }
 
 func getSensor(id string) (sensors.Sensor, error) {
-	configPath := configuration.DetectConfigFile()
+	configPath := configuration.DetectAndReadConfigFile()
 	ui.Info("Using configuration file at: %s", configPath)
 	configuration.LoadConfig()
 	err := configuration.Validate(configPath)
@@ -58,19 +57,21 @@ func getSensor(id string) (sensors.Sensor, error) {
 
 	controllers := hwmon.GetChips()
 
+	availableSensorIds := []string{}
 	for _, config := range configuration.CurrentConfig.Sensors {
+		availableSensorIds = append(availableSensorIds, config.ID)
 		if config.ID == id {
 			if config.HwMon != nil {
 				for _, controller := range controllers {
 					matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, controller.Platform)
 					if err != nil {
-						return nil, errors.New(fmt.Sprintf("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform))
+						return nil, fmt.Errorf("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform)
 					}
 					if matched {
 						sensor, exists := controller.Sensors[config.HwMon.Index]
 						if exists {
 							if len(sensor.Input) <= 0 {
-								return nil, errors.New(fmt.Sprintf("Unable to find temp input for sensor %s", id))
+								return nil, fmt.Errorf("unable to find temp input for sensor %s", id)
 							}
 							config.HwMon.TempInput = sensor.Input
 							break
@@ -88,5 +89,5 @@ func getSensor(id string) (sensors.Sensor, error) {
 		}
 	}
 
-	return nil, errors.New(fmt.Sprintf("No sensor with id found: %s", sensorId))
+	return nil, fmt.Errorf("no sensor with id found: %s, options: %s", id, availableSensorIds)
 }

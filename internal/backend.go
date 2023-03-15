@@ -3,6 +3,16 @@ package internal
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/pprof"
+	"os"
+	"os/signal"
+	"os/user"
+	"regexp"
+	"syscall"
+	"time"
+
+	"github.com/labstack/echo/v4"
 	"github.com/markusressel/fan2go/internal/api"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/controller"
@@ -15,21 +25,14 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"net/http"
-	"os"
-	"os/exec"
-	"os/signal"
-	"regexp"
-	"strconv"
-	"strings"
-	"syscall"
-	"time"
 )
 
 func RunDaemon() {
-	if getProcessOwner() != "root" {
-		ui.Fatal("Fan control requires root permissions to be able to modify fan speeds, please run fan2go as root")
+	owner, err := getProcessOwner()
+	if err != nil {
+		ui.Warning("Unable to verify process owner: %v", err)
+	} else if owner != "root" {
+		ui.Info("fan2go is running as a non-root user '%s'. If you encounter errors, make sure to give this user the required permissions.", owner)
 	}
 
 	pers := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
@@ -41,76 +44,59 @@ func RunDaemon() {
 
 	var g run.Group
 	{
-		enabled := configuration.CurrentConfig.Api.Enabled
-		if enabled {
+		if configuration.CurrentConfig.Profiling.Enabled {
 			g.Add(func() error {
-				ui.Info("Starting REST server...")
-
-				apiConfig := configuration.CurrentConfig.Api
-				server := api.CreateRestService()
-				address := fmt.Sprintf("%s:%d", apiConfig.Host, apiConfig.Port)
+				mux := http.NewServeMux()
+				mux.HandleFunc("/debug/pprof/", pprof.Index)
+				mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+				mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+				mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+				mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 				go func() {
-					if err := server.Start(address); err != nil && err != http.ErrServerClosed {
-						ui.Fatal("Error starting REST server: %v", err)
-					}
+					ui.Info("Starting profiling webserver...")
+					profilingConfig := configuration.CurrentConfig.Profiling
+					address := fmt.Sprintf("%s:%d", profilingConfig.Host, profilingConfig.Port)
+					ui.Error("Error running profiling webserver: %v", http.ListenAndServe(address, mux))
 				}()
 
-				select {
-				case <-ctx.Done():
-					ui.Info("Stopping REST server...")
-					timeoutCtx, timeoutCancel := context.WithTimeout(ctx, 5*time.Second)
-					defer timeoutCancel()
-					return server.Shutdown(timeoutCtx)
-				}
+				<-ctx.Done()
+				ui.Info("Stopping profiling webserver...")
+				return nil
 			}, func(err error) {
 				if err != nil {
-					ui.Warning("Error stopping REST server: " + err.Error())
+					ui.Warning("Error stopping parca webserver: " + err.Error())
 				} else {
-					ui.Info("REST server stopped.")
+					ui.Debug("Webservers stopped.")
 				}
 			})
 		}
 	}
 	{
-		enabled := configuration.CurrentConfig.Statistics.Enabled
-		if enabled {
-			// === Prometheus Exporter
+		// === Global Webserver
+		if configuration.CurrentConfig.Api.Enabled || configuration.CurrentConfig.Statistics.Enabled {
 			g.Add(func() error {
-				port := configuration.CurrentConfig.Statistics.Port
+				ui.Info("Starting Webserver...")
 
-				endpoint := "/metrics"
-				addr := fmt.Sprintf(":%d", port)
+				servers := createWebServer()
 
-				handler := promhttp.Handler()
-				http.Handle(endpoint, handler)
+				<-ctx.Done()
+				ui.Debug("Stopping all webservers...")
+				timeoutCtx, timeoutCancel := context.WithTimeout(ctx, 5*time.Second)
+				defer timeoutCancel()
 
-				server := &http.Server{
-					Addr:         addr,
-					Handler:      handler,
-					ReadTimeout:  1 * time.Second,
-					WriteTimeout: 1 * time.Second,
-				}
-
-				go func() {
-					ui.Info("Starting statistics server...")
-					if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-						ui.ErrorAndNotify("Statistics Error", "Cannot start prometheus metrics endpoint (%s)", err.Error())
+				for _, server := range servers {
+					err := server.Shutdown(timeoutCtx)
+					if err != nil {
+						return err
 					}
-				}()
-
-				select {
-				case <-ctx.Done():
-					ui.Info("Stopping statistics server...")
-					timeoutCtx, timeoutCancel := context.WithTimeout(ctx, 5*time.Second)
-					defer timeoutCancel()
-					return server.Shutdown(timeoutCtx)
 				}
+				return nil
 			}, func(err error) {
 				if err != nil {
-					ui.Warning("Error stopping statistics server: " + err.Error())
+					ui.Warning("Error stopping webservers: " + err.Error())
 				} else {
-					ui.Info("Statistics server stopped.")
+					ui.Debug("Webservers stopped.")
 				}
 			})
 		}
@@ -161,8 +147,8 @@ func RunDaemon() {
 		}
 	}
 	{
-		sig := make(chan os.Signal)
-		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, os.Kill)
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 
 		g.Add(func() error {
 			<-sig
@@ -181,6 +167,54 @@ func RunDaemon() {
 		ui.Info("Done.")
 		os.Exit(0)
 	}
+}
+
+func createWebServer() []*echo.Echo {
+	result := []*echo.Echo{}
+	// Setup Main Server
+	if configuration.CurrentConfig.Api.Enabled {
+		result = append(result, startRestServer())
+	}
+
+	if configuration.CurrentConfig.Statistics.Enabled {
+		result = append(result, startStatisticsServer())
+	}
+
+	return result
+}
+
+func startRestServer() *echo.Echo {
+	ui.Info("Starting REST api server...")
+
+	restServer := api.CreateRestService()
+
+	go func() {
+		apiConfig := configuration.CurrentConfig.Api
+		restAddress := fmt.Sprintf("%s:%d", apiConfig.Host, apiConfig.Port)
+
+		if err := restServer.Start(restAddress); err != nil && err != http.ErrServerClosed {
+			ui.ErrorAndNotify("REST Error", "Cannot start REST Api endpoint (%s)", err.Error())
+		}
+	}()
+
+	return restServer
+}
+
+func startStatisticsServer() *echo.Echo {
+	ui.Info("Starting statistics server...")
+
+	echoPrometheus := statistics.CreateStatisticsService()
+
+	go func() {
+		prometheusPort := configuration.CurrentConfig.Statistics.Port
+		prometheusAddress := fmt.Sprintf(":%d", prometheusPort)
+
+		if err := echoPrometheus.Start(prometheusAddress); err != nil && err != http.ErrServerClosed {
+			ui.ErrorAndNotify("Statistics Error", "Cannot start prometheus metrics endpoint (%s)", err.Error())
+		}
+	}()
+
+	return echoPrometheus
 }
 
 func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.FanController {
@@ -211,6 +245,13 @@ func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.Fan
 		fanController := controller.NewFanController(pers, fan, pidLoop, updateRate)
 		result[fan] = fanController
 	}
+
+	var fanControllers = []controller.FanController{}
+	for _, c := range result {
+		fanControllers = append(fanControllers, c)
+	}
+	controllerCollector := statistics.NewControllerCollector(fanControllers)
+	statistics.Register(controllerCollector)
 
 	return result
 }
@@ -276,22 +317,9 @@ func initializeFans(controllers []*hwmon.HwMonController) map[configuration.FanC
 
 	for _, config := range configuration.CurrentConfig.Fans {
 		if config.HwMon != nil {
-			found := false
-			for _, c := range controllers {
-				matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, c.Platform)
-				if err != nil {
-					ui.Fatal("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, c.Platform)
-				}
-				if matched {
-					found = true
-					fan := c.Fans[config.HwMon.Index].Config.HwMon
-					config.HwMon.PwmOutput = fan.PwmOutput
-					config.HwMon.RpmInput = fan.RpmInput
-					break
-				}
-			}
-			if !found {
-				ui.Fatal("Couldn't find hwmon device with platform '%s' for fan: %s", config.HwMon.Platform, config.ID)
+			err := hwmon.UpdateFanConfigFromHwMonControllers(controllers, &config)
+			if err != nil {
+				ui.Fatal("Couldn't update fan config from hwmon: %s", err)
 			}
 		}
 
@@ -311,11 +339,11 @@ func initializeFans(controllers []*hwmon.HwMonController) map[configuration.FanC
 	return result
 }
 
-func getProcessOwner() string {
-	stdout, err := exec.Command("ps", "-o", "user=", "-p", strconv.Itoa(os.Getpid())).Output()
+func getProcessOwner() (string, error) {
+	currentUser, err := user.Current()
 	if err != nil {
-		ui.Fatal("Error checking process owner: %v", err)
-		os.Exit(1)
+		return "", err
 	}
-	return strings.TrimSpace(string(stdout))
+
+	return currentUser.Username, nil
 }

@@ -1,7 +1,6 @@
 package fans
 
 import (
-	"errors"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -27,26 +26,23 @@ func (fan CmdFan) GetStartPwm() int {
 	return 1
 }
 
-func (fan *CmdFan) SetStartPwm(pwm int) {
-	return
+func (fan *CmdFan) SetStartPwm(pwm int, force bool) {
 }
 
 func (fan CmdFan) GetMinPwm() int {
 	return MinPwmValue
 }
 
-func (fan *CmdFan) SetMinPwm(pwm int) {
+func (fan *CmdFan) SetMinPwm(pwm int, force bool) {
 	// not supported
-	return
 }
 
 func (fan CmdFan) GetMaxPwm() int {
 	return MaxPwmValue
 }
 
-func (fan *CmdFan) SetMaxPwm(pwm int) {
+func (fan *CmdFan) SetMaxPwm(pwm int, force bool) {
 	// not supported
-	return
 }
 
 func (fan *CmdFan) GetRpm() (int, error) {
@@ -79,7 +75,6 @@ func (fan CmdFan) GetRpmAvg() float64 {
 
 func (fan *CmdFan) SetRpmAvg(rpm float64) {
 	// not supported
-	return
 }
 
 func (fan *CmdFan) GetPwm() (result int, err error) {
@@ -114,7 +109,7 @@ func (fan *CmdFan) SetPwm(pwm int) (err error) {
 	timeout := 2 * time.Second
 	_, err = util.SafeCmdExecution(conf.Exec, args, timeout)
 	if err != nil {
-		return errors.New(fmt.Sprintf("%s", err.Error()))
+		return fmt.Errorf("%s", err.Error())
 	}
 
 	return nil

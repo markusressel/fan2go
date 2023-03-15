@@ -5,9 +5,10 @@ type FanConfig struct {
 	NeverStop bool   `json:"neverStop"`
 	// MinPwm defines the lowest PWM value where the fans are still spinning, when spinning previously
 	MinPwm *int `json:"minPwm,omitempty"`
-	// MinPwm defines the lowest PWM value where the fans are able to start spinning from a standstill
+	// StartPwm defines the lowest PWM value where the fans are able to start spinning from a standstill
 	StartPwm *int `json:"startPwm,omitempty"`
 	// MaxPwm defines the highest PWM value that yields an RPM increase
+	PwmMap      *map[int]int       `json:"pwmMap,omitempty"`
 	MaxPwm      *int               `json:"maxPwm,omitempty"`
 	Curve       string             `json:"curve"`
 	HwMon       *HwMonFanConfig    `json:"hwMon,omitempty"`
@@ -17,10 +18,14 @@ type FanConfig struct {
 }
 
 type HwMonFanConfig struct {
-	Platform  string `json:"platform"`
-	Index     int    `json:"index"`
-	PwmOutput string
-	RpmInput  string
+	Platform      string `json:"platform"`
+	Index         int    `json:"index"`
+	RpmChannel    int    `json:"rpmChannel"`
+	PwmChannel    int    `json:"pwmChannel"`
+	SysfsPath     string
+	RpmInputPath  string
+	PwmPath       string
+	PwmEnablePath string
 }
 
 type FileFanConfig struct {

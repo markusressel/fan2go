@@ -24,26 +24,23 @@ func (fan FileFan) GetStartPwm() int {
 	return 1
 }
 
-func (fan *FileFan) SetStartPwm(pwm int) {
-	return
+func (fan *FileFan) SetStartPwm(pwm int, force bool) {
 }
 
 func (fan FileFan) GetMinPwm() int {
 	return MinPwmValue
 }
 
-func (fan *FileFan) SetMinPwm(pwm int) {
+func (fan *FileFan) SetMinPwm(pwm int, force bool) {
 	// not supported
-	return
 }
 
 func (fan FileFan) GetMaxPwm() int {
 	return MaxPwmValue
 }
 
-func (fan *FileFan) SetMaxPwm(pwm int) {
+func (fan *FileFan) SetMaxPwm(pwm int, force bool) {
 	// not supported
-	return
 }
 
 func (fan FileFan) GetRpm() (int, error) {
@@ -56,7 +53,6 @@ func (fan FileFan) GetRpmAvg() float64 {
 
 func (fan *FileFan) SetRpmAvg(rpm float64) {
 	// not supported
-	return
 }
 
 func (fan *FileFan) GetPwm() (result int, err error) {

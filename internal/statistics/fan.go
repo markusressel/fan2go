@@ -32,7 +32,7 @@ func (collector *FanCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- collector.rpm
 }
 
-//Collect implements required collect function for all promehteus collectors
+// Collect implements required collect function for all prometheus collectors
 func (collector *FanCollector) Collect(ch chan<- prometheus.Metric) {
 	for _, fan := range collector.fans {
 		fanId := fan.GetId()

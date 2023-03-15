@@ -11,11 +11,11 @@ type FunctionSpeedCurve struct {
 	Value  int                       `json:"value"`
 }
 
-func (c FunctionSpeedCurve) GetId() string {
+func (c *FunctionSpeedCurve) GetId() string {
 	return c.Config.ID
 }
 
-func (c FunctionSpeedCurve) Evaluate() (value int, err error) {
+func (c *FunctionSpeedCurve) Evaluate() (value int, err error) {
 	var curves []SpeedCurve
 	for _, curveId := range c.Config.Function.Curves {
 		curves = append(curves, SpeedCurveMap[curveId])
@@ -31,6 +31,22 @@ func (c FunctionSpeedCurve) Evaluate() (value int, err error) {
 	}
 
 	switch c.Config.Function.Type {
+	case configuration.FunctionSum:
+		sum := 0
+		for _, v := range values {
+			sum += v
+		}
+		value = int(math.Min(255, float64(sum)))
+	case configuration.FunctionDifference:
+		difference := 0
+		for idx, v := range values {
+			if idx == 0 {
+				difference = v
+			} else {
+				difference -= v
+			}
+		}
+		value = int(math.Max(0, float64(difference)))
 	case configuration.FunctionDelta:
 		var dmax = float64(values[0])
 		var dmin = float64(values[0])

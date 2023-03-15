@@ -20,7 +20,7 @@ var curveCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Print the measured fan curve(s) to console",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		configPath := configuration.DetectConfigFile()
+		configPath := configuration.DetectAndReadConfigFile()
 		ui.Info("Using configuration file at: %s", configPath)
 		configuration.LoadConfig()
 
@@ -29,24 +29,35 @@ var curveCmd = &cobra.Command{
 			ui.Fatal(err.Error())
 		}
 
-		for idx, curveConf := range configuration.CurrentConfig.Curves {
+		curveConfigsToPrint := []configuration.CurveConfig{}
+		if curveId != "" {
+			curveConf, err := getCurveConfig(curveId, configuration.CurrentConfig.Curves)
+			if err != nil {
+				return err
+			}
+			curveConfigsToPrint = append(curveConfigsToPrint, *curveConf)
+		} else {
+			curveConfigsToPrint = append(curveConfigsToPrint, configuration.CurrentConfig.Curves...)
+		}
+
+		for idx, curveConfig := range curveConfigsToPrint {
 			if idx > 0 {
 				ui.Printfln("")
 				ui.Printfln("")
 			}
 
-			curve, err := curves.NewSpeedCurve(curveConf)
+			curve, err := curves.NewSpeedCurve(curveConfig)
 			if err != nil {
 				return err
 			}
 
 			switch curve.(type) {
 			case *curves.LinearSpeedCurve:
-				printLinearCurveInfo(curve, curveConf.Linear)
+				printLinearCurveInfo(curve, curveConfig.Linear)
 			case *curves.PidSpeedCurve:
-				printPidCurveInfo(curve, curveConf.PID)
+				printPidCurveInfo(curve, curveConfig.PID)
 			case *curves.FunctionSpeedCurve:
-				printFunctionCurveInfo(curve, curveConf.Function)
+				printFunctionCurveInfo(curve, curveConfig.Function)
 			}
 		}
 

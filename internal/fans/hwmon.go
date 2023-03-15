@@ -1,14 +1,12 @@
 package fans
 
 import (
-	"errors"
 	"fmt"
+	"os"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
-	"os"
-	"path"
-	"path/filepath"
 )
 
 type HwMonFan struct {
@@ -16,7 +14,9 @@ type HwMonFan struct {
 	Index        int                     `json:"index"`
 	RpmMovingAvg float64                 `json:"rpmMovingAvg"`
 	Config       configuration.FanConfig `json:"config"`
-	StartPwm     *int                    `json:"startPwm"` // the min PWM at which the fan starts to rotate from a stand still
+	MinPwm       *int                    `json:"minPwm"`
+	StartPwm     *int                    `json:"startPwm"`
+	MaxPwm       *int                    `json:"maxPwm"`
 	FanCurveData *map[int]float64        `json:"fanCurveData"`
 	Rpm          int                     `json:"rpm"`
 	Pwm          int                     `json:"pwm"`
@@ -24,6 +24,26 @@ type HwMonFan struct {
 
 func (fan HwMonFan) GetId() string {
 	return fan.Config.ID
+}
+
+func (fan HwMonFan) GetMinPwm() int {
+	// if the fan is never supposed to stop,
+	// use the lowest pwm value where the fan is still spinning
+	if fan.ShouldNeverStop() {
+		if fan.MinPwm != nil {
+			return *fan.MinPwm
+		} else {
+			return MinPwmValue
+		}
+	}
+
+	return MinPwmValue
+}
+
+func (fan *HwMonFan) SetMinPwm(pwm int, force bool) {
+	if fan.Config.MinPwm == nil || force {
+		fan.MinPwm = &pwm
+	}
 }
 
 func (fan HwMonFan) GetStartPwm() int {
@@ -34,46 +54,28 @@ func (fan HwMonFan) GetStartPwm() int {
 	}
 }
 
-func (fan *HwMonFan) SetStartPwm(pwm int) {
-	fan.StartPwm = &pwm
-}
-
-func (fan HwMonFan) GetMinPwm() int {
-	// if the fan is never supposed to stop,
-	// use the lowest pwm value where the fan is still spinning
-	if fan.ShouldNeverStop() {
-		var minPwm int
-		if fan.Config.MinPwm != nil {
-			minPwm = *fan.Config.MinPwm
-		} else {
-			minPwm = MinPwmValue
-		}
-		return minPwm
+func (fan *HwMonFan) SetStartPwm(pwm int, force bool) {
+	if fan.Config.StartPwm == nil || force {
+		fan.StartPwm = &pwm
 	}
-
-	return MinPwmValue
-}
-
-func (fan *HwMonFan) SetMinPwm(pwm int) {
-	fan.Config.MinPwm = &pwm
 }
 
 func (fan HwMonFan) GetMaxPwm() int {
-	var maxPwm int
-	if fan.Config.MaxPwm != nil {
-		maxPwm = *fan.Config.MaxPwm
+	if fan.MaxPwm != nil {
+		return *fan.MaxPwm
 	} else {
-		maxPwm = MaxPwmValue
+		return MaxPwmValue
 	}
-	return maxPwm
 }
 
-func (fan *HwMonFan) SetMaxPwm(pwm int) {
-	fan.Config.MaxPwm = &pwm
+func (fan *HwMonFan) SetMaxPwm(pwm int, force bool) {
+	if fan.Config.MaxPwm == nil || force {
+		fan.MaxPwm = &pwm
+	}
 }
 
 func (fan *HwMonFan) GetRpm() (int, error) {
-	if value, err := util.ReadIntFromFile(fan.Config.HwMon.RpmInput); err != nil {
+	if value, err := util.ReadIntFromFile(fan.Config.HwMon.RpmInputPath); err != nil {
 		return 0, err
 	} else {
 		fan.Rpm = value
@@ -90,7 +92,7 @@ func (fan *HwMonFan) SetRpmAvg(rpm float64) {
 }
 
 func (fan *HwMonFan) GetPwm() (int, error) {
-	value, err := util.ReadIntFromFile(fan.Config.HwMon.PwmOutput)
+	value, err := util.ReadIntFromFile(fan.Config.HwMon.PwmPath)
 	if err != nil {
 		return MinPwmValue, err
 	}
@@ -100,7 +102,7 @@ func (fan *HwMonFan) GetPwm() (int, error) {
 
 func (fan *HwMonFan) SetPwm(pwm int) (err error) {
 	ui.Debug("Setting Fan PWM of '%s' to %d ...", fan.GetId(), pwm)
-	err = util.WriteIntToFile(pwm, fan.Config.HwMon.PwmOutput)
+	err = util.WriteIntToFile(pwm, fan.Config.HwMon.PwmPath)
 	return err
 }
 
@@ -121,11 +123,11 @@ func (fan *HwMonFan) AttachFanCurveData(curveData *map[int]float64) (err error) 
 	fan.FanCurveData = curveData
 
 	startPwm, maxPwm := ComputePwmBoundaries(fan)
-	fan.SetStartPwm(startPwm)
-	fan.SetMaxPwm(maxPwm)
+	fan.SetStartPwm(startPwm, false)
+	fan.SetMaxPwm(maxPwm, false)
 
 	// TODO: we don't have a way to determine this yet
-	fan.SetMinPwm(startPwm)
+	fan.SetMinPwm(startPwm, false)
 
 	return err
 }
@@ -139,8 +141,7 @@ func (fan HwMonFan) ShouldNeverStop() bool {
 }
 
 func (fan HwMonFan) GetPwmEnabled() (int, error) {
-	pwmEnabledFilePath := pwmEnablePath(fan)
-	return util.ReadIntFromFile(pwmEnabledFilePath)
+	return util.ReadIntFromFile(fan.Config.HwMon.PwmEnablePath)
 }
 
 func (fan HwMonFan) IsPwmAuto() (bool, error) {
@@ -157,31 +158,24 @@ func (fan HwMonFan) IsPwmAuto() (bool, error) {
 // 1 - manual pwm control
 // 2 - motherboard pwm control
 func (fan *HwMonFan) SetPwmEnabled(value ControlMode) (err error) {
-	pwmEnabledFilePath := pwmEnablePath(*fan)
-
-	err = util.WriteIntToFile(int(value), pwmEnabledFilePath)
+	err = util.WriteIntToFile(int(value), fan.Config.HwMon.PwmEnablePath)
 	if err == nil {
-		currentValue, err := util.ReadIntFromFile(pwmEnabledFilePath)
+		currentValue, err := util.ReadIntFromFile(fan.Config.HwMon.PwmEnablePath)
 		if err != nil || ControlMode(currentValue) != value {
-			return errors.New(fmt.Sprintf("PWM mode stuck to %d", currentValue))
+			return fmt.Errorf("PWM mode stuck to %d", currentValue)
 		}
 	}
 	return err
 }
 
-func pwmEnablePath(f HwMonFan) string {
-	folder, _ := filepath.Split(f.Config.HwMon.PwmOutput)
-	return path.Join(folder, fmt.Sprintf("pwm%d_enable", f.Index))
-}
-
 func (fan HwMonFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureControlMode:
-		pwmEnableFilePath := pwmEnablePath(fan)
-		_, err := os.Stat(pwmEnableFilePath)
+		_, err := os.Stat(fan.Config.HwMon.PwmEnablePath)
 		return err == nil
 	case FeatureRpmSensor:
-		return len(fan.Config.HwMon.RpmInput) > 0
+		_, err := os.Stat(fan.Config.HwMon.RpmInputPath)
+		return err == nil
 	}
 	return false
 }

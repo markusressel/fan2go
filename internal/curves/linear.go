@@ -12,11 +12,11 @@ type LinearSpeedCurve struct {
 	Value  int                       `json:"value"`
 }
 
-func (c LinearSpeedCurve) GetId() string {
+func (c *LinearSpeedCurve) GetId() string {
 	return c.Config.ID
 }
 
-func (c LinearSpeedCurve) Evaluate() (value int, err error) {
+func (c *LinearSpeedCurve) Evaluate() (value int, err error) {
 	sensor := sensors.SensorMap[c.Config.Linear.Sensor]
 	var avgTemp = sensor.GetMovingAvg()
 

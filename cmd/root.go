@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/pterm/pterm/putils"
+	"os"
+
 	"github.com/markusressel/fan2go/cmd/config"
 	"github.com/markusressel/fan2go/cmd/curve"
 	"github.com/markusressel/fan2go/cmd/fan"
@@ -12,7 +15,6 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"os"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -23,10 +25,9 @@ var rootCmd = &cobra.Command{
 on your computer based on temperature sensors.`,
 	// this is the default command to run when no subcommand is specified
 	Run: func(cmd *cobra.Command, args []string) {
-		setupUi()
 		printHeader()
 
-		configPath := configuration.DetectConfigFile()
+		configPath := configuration.DetectAndReadConfigFile()
 		ui.Info("Using configuration file at: %s", configPath)
 		configuration.LoadConfig()
 		err := configuration.Validate(configPath)
@@ -66,9 +67,9 @@ func setupUi() {
 // Print a large text with the LetterStyle from the standard theme.
 func printHeader() {
 	err := pterm.DefaultBigText.WithLetters(
-		pterm.NewLettersFromStringWithStyle("fan", pterm.NewStyle(pterm.FgLightBlue)),
-		pterm.NewLettersFromStringWithStyle("2", pterm.NewStyle(pterm.FgWhite)),
-		pterm.NewLettersFromStringWithStyle("go", pterm.NewStyle(pterm.FgLightBlue)),
+		putils.LettersFromStringWithStyle("fan", pterm.NewStyle(pterm.FgLightBlue)),
+		putils.LettersFromStringWithStyle("2", pterm.NewStyle(pterm.FgWhite)),
+		putils.LettersFromStringWithStyle("go", pterm.NewStyle(pterm.FgLightBlue)),
 	).Render()
 	if err != nil {
 		fmt.Println("fan2go")
@@ -80,6 +81,7 @@ func printHeader() {
 func Execute() {
 	cobra.OnInitialize(func() {
 		configuration.InitConfig(global.CfgFile)
+		setupUi()
 	})
 
 	if err := rootCmd.Execute(); err != nil {

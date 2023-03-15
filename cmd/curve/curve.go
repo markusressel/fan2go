@@ -1,6 +1,8 @@
 package curve
 
 import (
+	"fmt"
+	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/spf13/cobra"
 )
 
@@ -19,4 +21,16 @@ func init() {
 		"",
 		"Curve ID as specified in the config",
 	)
+}
+
+func getCurveConfig(id string, curves []configuration.CurveConfig) (*configuration.CurveConfig, error) {
+	availableCurveIds := []string{}
+	for _, curveConf := range curves {
+		availableCurveIds = append(availableCurveIds, curveConf.ID)
+		if id == curveConf.ID {
+			return &curveConf, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no curve with id found: %s, options: %s", id, availableCurveIds)
 }

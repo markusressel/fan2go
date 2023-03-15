@@ -1,13 +1,13 @@
 package configuration
 
 import (
-	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/looplab/tarjan"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"golang.org/x/exp/slices"
-	"strings"
 )
 
 func Validate(configPath string) error {
@@ -27,7 +27,7 @@ func validateConfig(config *Configuration, path string) error {
 
 	if containsCmdSensors() || containsCmdFan() {
 		if _, err := util.CheckFilePermissionsForExecution(path); err != nil {
-			return errors.New(fmt.Sprintf("Config file '%s' has invalid permissions: %s", path, err))
+			return fmt.Errorf("config file '%s' has invalid permissions: %s", path, err)
 		}
 	}
 
@@ -55,7 +55,13 @@ func containsCmdSensors() bool {
 }
 
 func validateSensors(config *Configuration) error {
+	sensorIds := []string{}
+
 	for _, sensorConfig := range config.Sensors {
+		if slices.Contains(sensorIds, sensorConfig.ID) {
+			return fmt.Errorf("duplicate sensor id detected: %s", sensorConfig.ID)
+		}
+		sensorIds = append(sensorIds, sensorConfig.ID)
 
 		subConfigs := 0
 		if sensorConfig.HwMon != nil {
@@ -68,10 +74,10 @@ func validateSensors(config *Configuration) error {
 			subConfigs++
 		}
 		if subConfigs > 1 {
-			return errors.New(fmt.Sprintf("Sensor %s: only one sensor type can be used per sensor definition block", sensorConfig.ID))
+			return fmt.Errorf("sensor %s: only one sensor type can be used per sensor definition block", sensorConfig.ID)
 		}
 		if subConfigs <= 0 {
-			return errors.New(fmt.Sprintf("Sensor %s: sub-configuration for sensor is missing, use one of: hwmon | file | cmd", sensorConfig.ID))
+			return fmt.Errorf("sensor %s: sub-configuration for sensor is missing, use one of: hwmon | file | cmd", sensorConfig.ID)
 		}
 
 		if !isSensorConfigInUse(sensorConfig, config.Curves) {
@@ -80,7 +86,7 @@ func validateSensors(config *Configuration) error {
 
 		if sensorConfig.HwMon != nil {
 			if sensorConfig.HwMon.Index <= 0 {
-				return errors.New(fmt.Sprintf("Sensor %s: invalid index, must be >= 1", sensorConfig.ID))
+				return fmt.Errorf("sensor %s: invalid index, must be >= 1", sensorConfig.ID)
 			}
 		}
 	}
@@ -107,8 +113,14 @@ func isSensorConfigInUse(config SensorConfig, curves []CurveConfig) bool {
 
 func validateCurves(config *Configuration) error {
 	graph := make(map[interface{}][]interface{})
+	curveIds := []string{}
 
 	for _, curveConfig := range config.Curves {
+		if slices.Contains(curveIds, curveConfig.ID) {
+			return fmt.Errorf("duplicate curve id detected: %s", curveConfig.ID)
+		}
+		curveIds = append(curveIds, curveConfig.ID)
+
 		subConfigs := 0
 		if curveConfig.Linear != nil {
 			subConfigs++
@@ -120,10 +132,10 @@ func validateCurves(config *Configuration) error {
 			subConfigs++
 		}
 		if subConfigs > 1 {
-			return errors.New(fmt.Sprintf("Curve %s: only one curve type can be used per curve definition block", curveConfig.ID))
+			return fmt.Errorf("curve %s: only one curve type can be used per curve definition block", curveConfig.ID)
 		}
 		if subConfigs <= 0 {
-			return errors.New(fmt.Sprintf("Curve %s: sub-configuration for curve is missing, use one of: linear | pid | function", curveConfig.ID))
+			return fmt.Errorf("curve %s: sub-configuration for curve is missing, use one of: linear | pid | function", curveConfig.ID)
 		}
 
 		if !isCurveConfigInUse(curveConfig, config.Curves, config.Fans) {
@@ -131,18 +143,18 @@ func validateCurves(config *Configuration) error {
 		}
 
 		if curveConfig.Function != nil {
-			supportedTypes := []string{FunctionMinimum, FunctionAverage, FunctionMaximum, FunctionDelta}
+			supportedTypes := []string{FunctionMinimum, FunctionAverage, FunctionMaximum, FunctionDelta, FunctionSum, FunctionDifference}
 			if !slices.Contains(supportedTypes, curveConfig.Function.Type) {
-				return errors.New(fmt.Sprintf("Curve %s: unsupported function type '%s', use one of: %s", curveConfig.ID, curveConfig.Function.Type, strings.Join(supportedTypes, " | ")))
+				return fmt.Errorf("curve %s: unsupported function type '%s', use one of: %s", curveConfig.ID, curveConfig.Function.Type, strings.Join(supportedTypes, " | "))
 			}
 
 			var connections []interface{}
 			for _, curve := range curveConfig.Function.Curves {
 				if curve == curveConfig.ID {
-					return errors.New(fmt.Sprintf("Curve %s: a curve cannot reference itself", curveConfig.ID))
+					return fmt.Errorf("curve %s: a curve cannot reference itself", curveConfig.ID)
 				}
 				if !curveIdExists(curve, config) {
-					return errors.New(fmt.Sprintf("Curve %s: no curve definition with id '%s' found", curveConfig.ID, curve))
+					return fmt.Errorf("curve %s: no curve definition with id '%s' found", curveConfig.ID, curve)
 				}
 				connections = append(connections, curve)
 			}
@@ -151,26 +163,26 @@ func validateCurves(config *Configuration) error {
 
 		if curveConfig.Linear != nil {
 			if len(curveConfig.Linear.Sensor) <= 0 {
-				return errors.New(fmt.Sprintf("Curve %s: Missing sensorId", curveConfig.ID))
+				return fmt.Errorf("curve %s: missing sensorId", curveConfig.ID)
 			}
 
 			if !sensorIdExists(curveConfig.Linear.Sensor, config) {
-				return errors.New(fmt.Sprintf("Curve %s: no sensor definition with id '%s' found", curveConfig.ID, curveConfig.Linear.Sensor))
+				return fmt.Errorf("curve %s: no sensor definition with id '%s' found", curveConfig.ID, curveConfig.Linear.Sensor)
 			}
 		}
 
 		if curveConfig.PID != nil {
 			if len(curveConfig.PID.Sensor) <= 0 {
-				return errors.New(fmt.Sprintf("Curve %s: Missing sensorId", curveConfig.ID))
+				return fmt.Errorf("curve %s: missing sensorId", curveConfig.ID)
 			}
 
 			if !sensorIdExists(curveConfig.PID.Sensor, config) {
-				return errors.New(fmt.Sprintf("Curve %s: no sensor definition with id '%s' found", curveConfig.ID, curveConfig.PID.Sensor))
+				return fmt.Errorf("curve %s: no sensor definition with id '%s' found", curveConfig.ID, curveConfig.PID.Sensor)
 			}
 
 			pidConfig := curveConfig.PID
 			if pidConfig.P == 0 && pidConfig.I == 0 && pidConfig.D == 0 {
-				return errors.New(fmt.Sprintf("Curve %s: all PID constants are zero", curveConfig.ID))
+				return fmt.Errorf("curve %s: all PID constants are zero", curveConfig.ID)
 			}
 		}
 
@@ -194,7 +206,7 @@ func validateNoLoops(graph map[interface{}][]interface{}) error {
 	output := tarjan.Connections(graph)
 	for _, items := range output {
 		if len(items) > 1 {
-			return errors.New(fmt.Sprintf("You have created a curve dependency cycle: %v", items))
+			return fmt.Errorf("you have created a curve dependency cycle: %v", items)
 		}
 	}
 	return nil
@@ -219,7 +231,14 @@ func isCurveConfigInUse(config CurveConfig, curves []CurveConfig, fans []FanConf
 }
 
 func validateFans(config *Configuration) error {
+	fanIds := []string{}
+
 	for _, fanConfig := range config.Fans {
+		if slices.Contains(fanIds, fanConfig.ID) {
+			return fmt.Errorf("duplicate fan id detected: %s", fanConfig.ID)
+		}
+		fanIds = append(fanIds, fanConfig.ID)
+
 		subConfigs := 0
 		if fanConfig.HwMon != nil {
 			subConfigs++
@@ -232,46 +251,55 @@ func validateFans(config *Configuration) error {
 		}
 
 		if subConfigs > 1 {
-			return errors.New(fmt.Sprintf("Fan %s: only one fan type can be used per fan definition block", fanConfig.ID))
+			return fmt.Errorf("fan %s: only one fan type can be used per fan definition block", fanConfig.ID)
 		}
 		if subConfigs <= 0 {
-			return errors.New(fmt.Sprintf("Fan %s: sub-configuration for fan is missing, use one of: hwmon | file | cmd", fanConfig.ID))
+			return fmt.Errorf("fan %s: sub-configuration for fan is missing, use one of: hwmon | file | cmd", fanConfig.ID)
 		}
 
 		if len(fanConfig.Curve) <= 0 {
-			return errors.New(fmt.Sprintf("Fan %s: missing curve definition in configuration entry", fanConfig.ID))
+			return fmt.Errorf("fan %s: missing curve definition in configuration entry", fanConfig.ID)
 		}
 
 		if !curveIdExists(fanConfig.Curve, config) {
-			return errors.New(fmt.Sprintf("Fan %s: no curve definition with id '%s' found", fanConfig.ID, fanConfig.Curve))
+			return fmt.Errorf("fan %s: no curve definition with id '%s' found", fanConfig.ID, fanConfig.Curve)
 		}
 
 		if fanConfig.HwMon != nil {
-			if fanConfig.HwMon.Index <= 0 {
-				return errors.New(fmt.Sprintf("Fan %s: invalid index, must be >= 1", fanConfig.ID))
+			if (fanConfig.HwMon.Index != 0 && fanConfig.HwMon.RpmChannel != 0) || (fanConfig.HwMon.Index == 0 && fanConfig.HwMon.RpmChannel == 0) {
+				return fmt.Errorf("fan %s: must have one of index or rpmChannel, must be >= 1", fanConfig.ID)
+			}
+			if fanConfig.HwMon.Index < 0 {
+				return fmt.Errorf("fan %s: invalid index, must be >= 1", fanConfig.ID)
+			}
+			if fanConfig.HwMon.RpmChannel < 0 {
+				return fmt.Errorf("fan %s: invalid rpmChannel, must be >= 1", fanConfig.ID)
+			}
+			if fanConfig.HwMon.PwmChannel < 0 {
+				return fmt.Errorf("fan %s: invalid pwmChannel, must be >= 1", fanConfig.ID)
 			}
 		}
 
 		if fanConfig.File != nil {
 			if len(fanConfig.File.Path) <= 0 {
-				return errors.New(fmt.Sprintf("Fan %s: no file path provided", fanConfig.ID))
+				return fmt.Errorf("fan %s: no file path provided", fanConfig.ID)
 			}
 		}
 
 		if fanConfig.Cmd != nil {
 			cmdConfig := fanConfig.Cmd
 			if cmdConfig.SetPwm == nil {
-				return errors.New(fmt.Sprintf("Fan %s: missing setPwm configuration", fanConfig.ID))
+				return fmt.Errorf("fan %s: missing setPwm configuration", fanConfig.ID)
 			}
 			if len(cmdConfig.SetPwm.Exec) <= 0 {
-				return errors.New(fmt.Sprintf("Fan %s: setPwm executable is missing", fanConfig.ID))
+				return fmt.Errorf("fan %s: setPwm executable is missing", fanConfig.ID)
 			}
 
 			if cmdConfig.GetPwm == nil {
-				return errors.New(fmt.Sprintf("Fan %s: missing getPwm configuration", fanConfig.ID))
+				return fmt.Errorf("fan %s: missing getPwm configuration", fanConfig.ID)
 			}
 			if len(cmdConfig.GetPwm.Exec) <= 0 {
-				return errors.New(fmt.Sprintf("Fan %s: getPwm executable is missing", fanConfig.ID))
+				return fmt.Errorf("fan %s: getPwm executable is missing", fanConfig.ID)
 			}
 		}
 	}

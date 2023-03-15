@@ -26,13 +26,13 @@ func NewSensorMonitor(sensor sensors.Sensor, pollingRate time.Duration) SensorMo
 }
 
 func (s sensorMonitor) Run(ctx context.Context) error {
-	tick := time.Tick(s.pollingRate)
+	tick := time.NewTicker(s.pollingRate)
 	for {
 		select {
 		case <-ctx.Done():
 			ui.Info("Stopping sensor monitor for sensor %s...", s.sensor.GetId())
 			return nil
-		case <-tick:
+		case <-tick.C:
 			err := updateSensor(s.sensor)
 			if err != nil {
 				ui.Warning("Error updating sensor: %v", err)

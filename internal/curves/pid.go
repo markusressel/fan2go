@@ -13,13 +13,17 @@ type PidSpeedCurve struct {
 	pidLoop *util.PidLoop
 }
 
-func (c PidSpeedCurve) GetId() string {
+func (c *PidSpeedCurve) GetId() string {
 	return c.Config.ID
 }
 
-func (c PidSpeedCurve) Evaluate() (value int, err error) {
+func (c *PidSpeedCurve) Evaluate() (value int, err error) {
 	sensor := sensors.SensorMap[c.Config.PID.Sensor]
-	measured, err := sensor.GetValue()
+	var measured float64
+	measured, err = sensor.GetValue()
+	if err != nil {
+		return c.Value, err
+	}
 	pidTarget := c.Config.PID.SetPoint
 
 	loopValue := c.pidLoop.Loop(pidTarget, measured/1000.0)

@@ -1,6 +1,9 @@
 package util
 
-import "sort"
+import (
+	"golang.org/x/exp/constraints"
+	"sort"
+)
 
 func ContainsString(s []string, e string) bool {
 	for _, a := range s {
@@ -43,11 +46,17 @@ func Max(s []float64) float64 {
 	return result
 }
 
-func SortedKeys(input map[int]float64) []int {
-	result := make([]int, 0, len(input))
-	for k, _ := range input {
+func sortSlice[T constraints.Ordered](s []T) {
+	sort.Slice(s, func(i, j int) bool {
+		return s[i] < s[j]
+	})
+}
+
+func SortedKeys[T constraints.Ordered, K any](input map[T]K) []T {
+	result := make([]T, 0, len(input))
+	for k := range input {
 		result = append(result, k)
 	}
-	sort.Ints(result)
+	sortSlice(result)
 	return result
 }
