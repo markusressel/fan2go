@@ -149,7 +149,8 @@ func (f *PidFanController) Run(ctx context.Context) error {
 		return err
 	}
 
-	f.computePwmMap()
+	err1 := f.computePwmMap()
+	ui.Warning("Error computing PWM map: %v", err1)
 
 	f.updateDistinctPwmValues()
 
@@ -168,13 +169,13 @@ func (f *PidFanController) Run(ctx context.Context) error {
 		pollingRate := configuration.CurrentConfig.RpmPollingRate
 
 		g.Add(func() error {
-			tick := time.Tick(pollingRate)
+			tick := time.NewTicker(pollingRate)
 			for {
 				select {
 				case <-ctx.Done():
 					ui.Info("Stopping RPM monitor of fan controller for fan %s...", fan.GetId())
 					return nil
-				case <-tick:
+				case <-tick.C:
 					measureRpm(fan)
 				}
 			}
@@ -188,14 +189,14 @@ func (f *PidFanController) Run(ctx context.Context) error {
 	{
 		g.Add(func() error {
 			time.Sleep(1 * time.Second)
-			tick := time.Tick(f.updateRate)
+			tick := time.NewTicker(f.updateRate)
 			for {
 				select {
 				case <-ctx.Done():
 					ui.Info("Stopping fan controller for fan %s...", fan.GetId())
 					f.restorePwmEnabled()
 					return nil
-				case <-tick:
+				case <-tick.C:
 					err = f.UpdateFanSpeed()
 					if err != nil {
 						ui.ErrorAndNotify("Fan Control Error", "Fan %s: %v", fan.GetId(), err)
@@ -257,7 +258,8 @@ func (f *PidFanController) UpdateFanSpeed() error {
 func (f *PidFanController) RunInitializationSequence() (err error) {
 	fan := f.fan
 
-	f.computePwmMap()
+	err1 := f.computePwmMap()
+	ui.Warning("Error computing PWM map: %v", err1)
 
 	err = f.persistence.SaveFanPwmMap(fan.GetId(), f.pwmMap)
 	if err != nil {
@@ -504,7 +506,7 @@ func (f *PidFanController) mapToClosestDistinct(target int) int {
 
 // computePwmMap computes a mapping between "requested pwm value" -> "actual set pwm value"
 func (f *PidFanController) computePwmMap() (err error) {
-	if configuration.CurrentConfig.RunFanInitializationInParallel == false {
+	if !configuration.CurrentConfig.RunFanInitializationInParallel {
 		InitializationSequenceMutex.Lock()
 		defer InitializationSequenceMutex.Unlock()
 	}
@@ -553,12 +555,12 @@ func (f *PidFanController) computePwmMap() (err error) {
 
 func (f *PidFanController) computePwmMapAutomatically() {
 	fan := f.fan
-	trySetManualPwm(fan)
+	_ = trySetManualPwm(fan)
 
 	// check every pwm value
 	pwmMap := map[int]int{}
 	for i := fans.MaxPwmValue; i >= fans.MinPwmValue; i-- {
-		fan.SetPwm(i)
+		_ = fan.SetPwm(i)
 		time.Sleep(10 * time.Millisecond)
 		pwm, err := fan.GetPwm()
 		if err != nil {
@@ -568,7 +570,7 @@ func (f *PidFanController) computePwmMapAutomatically() {
 	}
 	f.pwmMap = pwmMap
 
-	fan.SetPwm(f.pwmMap[fan.GetStartPwm()])
+	_ = fan.SetPwm(f.pwmMap[fan.GetStartPwm()])
 }
 
 func (f *PidFanController) updateDistinctPwmValues() {

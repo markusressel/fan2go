@@ -1,7 +1,6 @@
 package sensor
 
 import (
-	"errors"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/hwmon"
@@ -66,13 +65,13 @@ func getSensor(id string) (sensors.Sensor, error) {
 				for _, controller := range controllers {
 					matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, controller.Platform)
 					if err != nil {
-						return nil, errors.New(fmt.Sprintf("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform))
+						return nil, fmt.Errorf("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform)
 					}
 					if matched {
 						sensor, exists := controller.Sensors[config.HwMon.Index]
 						if exists {
 							if len(sensor.Input) <= 0 {
-								return nil, errors.New(fmt.Sprintf("Unable to find temp input for sensor %s", id))
+								return nil, fmt.Errorf("unable to find temp input for sensor %s", id)
 							}
 							config.HwMon.TempInput = sensor.Input
 							break
@@ -90,5 +89,5 @@ func getSensor(id string) (sensors.Sensor, error) {
 		}
 	}
 
-	return nil, errors.New(fmt.Sprintf("No sensor with id found: %s, options: %s", id, availableSensorIds))
+	return nil, fmt.Errorf("no sensor with id found: %s, options: %s", id, availableSensorIds)
 }

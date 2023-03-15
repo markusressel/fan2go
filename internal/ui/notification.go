@@ -60,7 +60,7 @@ func NotifySend(urgency, title, text, icon string) {
 	output, err = cmd.Output()
 	userIdString := strings.TrimSpace(string(output))
 	if len(userIdString) <= 0 {
-		Warning("Cannot send notification, unable to detect user id")
+		Warning("Cannot send notification, unable to detect user id: %s", err.Error())
 		return
 	}
 

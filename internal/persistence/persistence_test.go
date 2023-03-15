@@ -30,10 +30,10 @@ func TestPersistence_DeleteFanPwmData(t *testing.T) {
 	// GIVEN
 	p := NewPersistence(dbTestingPath)
 	fan, _ := createFan(false, LinearFan)
-	err := p.SaveFanPwmData(fan)
+	_ = p.SaveFanPwmData(fan)
 
 	// WHEN
-	err = p.DeleteFanPwmData(fan)
+	err := p.DeleteFanPwmData(fan)
 	assert.NoError(t, err)
 
 	// THEN

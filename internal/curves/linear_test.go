@@ -57,7 +57,7 @@ func TestLinearCurveWithMinMax(t *testing.T) {
 		40,
 		80,
 	)
-	curve, err := NewSpeedCurve(curveConfig)
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	// WHEN
 	result, err := curve.Evaluate()
@@ -88,7 +88,7 @@ func TestLinearCurveWithSteps(t *testing.T) {
 			70: 255,
 		},
 	)
-	curve, err := NewSpeedCurve(curveConfig)
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	// WHEN
 	result, err := curve.Evaluate()

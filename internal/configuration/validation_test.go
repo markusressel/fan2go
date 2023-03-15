@@ -54,7 +54,7 @@ func TestValidateDuplicateFanId(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, fmt.Sprintf("Duplicate fan id detected: %s", fanId))
+	assert.EqualError(t, err, fmt.Sprintf("duplicate fan id detected: %s", fanId))
 }
 
 func TestValidateFanSubConfigIsMissing(t *testing.T) {
@@ -74,7 +74,7 @@ func TestValidateFanSubConfigIsMissing(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Fan fan: sub-configuration for fan is missing, use one of: hwmon | file | cmd")
+	assert.EqualError(t, err, "fan fan: sub-configuration for fan is missing, use one of: hwmon | file | cmd")
 }
 
 func TestValidateFanCurveWithIdIsNotDefined(t *testing.T) {
@@ -96,7 +96,7 @@ func TestValidateFanCurveWithIdIsNotDefined(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Fan fan: no curve definition with id 'curve' found")
+	assert.EqualError(t, err, "fan fan: no curve definition with id 'curve' found")
 }
 
 func TestValidateCurveSubConfigSensorIdIsMissing(t *testing.T) {
@@ -115,7 +115,7 @@ func TestValidateCurveSubConfigSensorIdIsMissing(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Curve curve: sub-configuration for curve is missing, use one of: linear | pid | function")
+	assert.EqualError(t, err, "curve curve: sub-configuration for curve is missing, use one of: linear | pid | function")
 }
 
 func TestValidateCurveSensorIdIsMissing(t *testing.T) {
@@ -137,7 +137,7 @@ func TestValidateCurveSensorIdIsMissing(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Curve curve: Missing sensorId")
+	assert.EqualError(t, err, "curve curve: missing sensorId")
 }
 
 func TestValidateCurveSensorWithIdIsNotDefined(t *testing.T) {
@@ -159,7 +159,7 @@ func TestValidateCurveSensorWithIdIsNotDefined(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Curve curve: no sensor definition with id 'sensor' found")
+	assert.EqualError(t, err, "curve curve: no sensor definition with id 'sensor' found")
 }
 
 func TestValidateCurveDependencyToSelf(t *testing.T) {
@@ -182,7 +182,7 @@ func TestValidateCurveDependencyToSelf(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Curve curve: a curve cannot reference itself")
+	assert.EqualError(t, err, "curve curve: a curve cannot reference itself")
 }
 
 func TestValidateCurveDependencyCycle(t *testing.T) {
@@ -231,7 +231,7 @@ func TestValidateCurveDependencyCycle(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.Contains(t, err.Error(), "You have created a curve dependency cycle")
+	assert.Contains(t, err.Error(), "you have created a curve dependency cycle")
 	// the order of these items is sometimes different, so we use this
 	// "manual" check to avoid a flaky test
 	assert.Contains(t, err.Error(), "curve1")
@@ -258,7 +258,7 @@ func TestValidateCurveDependencyWithIdIsNotDefined(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Curve curve1: no curve definition with id 'curve2' found")
+	assert.EqualError(t, err, "curve curve1: no curve definition with id 'curve2' found")
 }
 
 func TestValidateDuplicateCurveId(t *testing.T) {
@@ -298,7 +298,7 @@ func TestValidateDuplicateCurveId(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, fmt.Sprintf("Duplicate curve id detected: %s", curveId))
+	assert.EqualError(t, err, fmt.Sprintf("duplicate curve id detected: %s", curveId))
 }
 
 func TestValidateCurve(t *testing.T) {
@@ -352,7 +352,7 @@ func TestValidateCurveFunctionTypeUnsupported(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Curve curve1: unsupported function type 'unsupported', use one of: minimum | average | maximum | delta | sum | difference")
+	assert.EqualError(t, err, "curve curve1: unsupported function type 'unsupported', use one of: minimum | average | maximum | delta | sum | difference")
 }
 
 func TestValidateSensorSubConfigSensorIdIsMissing(t *testing.T) {
@@ -369,7 +369,7 @@ func TestValidateSensorSubConfigSensorIdIsMissing(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Sensor sensor: sub-configuration for sensor is missing, use one of: hwmon | file | cmd")
+	assert.EqualError(t, err, "sensor sensor: sub-configuration for sensor is missing, use one of: hwmon | file | cmd")
 }
 
 func TestValidateSensor(t *testing.T) {
@@ -416,7 +416,7 @@ func TestValidateDuplicateSensorId(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, fmt.Sprintf("Duplicate sensor id detected: %s", sensorId))
+	assert.EqualError(t, err, fmt.Sprintf("duplicate sensor id detected: %s", sensorId))
 }
 
 func TestValidateFanHasIndexOrChannel(t *testing.T) {
@@ -454,7 +454,7 @@ func TestValidateFanHasIndexOrChannel(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Fan fan: must have one of index or rpmChannel, must be >= 1")
+	assert.EqualError(t, err, "fan fan: must have one of index or rpmChannel, must be >= 1")
 }
 
 func TestValidateFanIndex(t *testing.T) {
@@ -494,7 +494,7 @@ func TestValidateFanIndex(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Fan fan: invalid index, must be >= 1")
+	assert.EqualError(t, err, "fan fan: invalid index, must be >= 1")
 }
 
 func TestValidateFanChannel(t *testing.T) {
@@ -534,7 +534,7 @@ func TestValidateFanChannel(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Fan fan: invalid rpmChannel, must be >= 1")
+	assert.EqualError(t, err, "fan fan: invalid rpmChannel, must be >= 1")
 }
 
 func TestValidateFanPwmChannel(t *testing.T) {
@@ -575,5 +575,5 @@ func TestValidateFanPwmChannel(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Fan fan: invalid pwmChannel, must be >= 1")
+	assert.EqualError(t, err, "fan fan: invalid pwmChannel, must be >= 1")
 }

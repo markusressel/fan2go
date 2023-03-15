@@ -1,7 +1,6 @@
 package hwmon
 
 import (
-	"errors"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/ui"
 	"io/ioutil"
@@ -287,7 +286,7 @@ func UpdateFanConfigFromHwMonControllers(controllers []*HwMonController, config 
 	for _, controller := range controllers {
 		matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, controller.Platform)
 		if err != nil {
-			return errors.New(fmt.Sprintf("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform))
+			return fmt.Errorf("failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform)
 		}
 		if !matched {
 			continue
@@ -310,7 +309,7 @@ func UpdateFanConfigFromHwMonControllers(controllers []*HwMonController, config 
 			return nil
 		}
 	}
-	return errors.New(fmt.Sprintf("No hwmon fan matched fan config: %+v", config))
+	return fmt.Errorf("no hwmon fan matched fan config: %+v", config)
 }
 
 func setFanConfigPaths(config *configuration.HwMonFanConfig) {

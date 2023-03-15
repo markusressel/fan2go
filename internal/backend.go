@@ -60,11 +60,9 @@ func RunDaemon() {
 					ui.Error("Error running profiling webserver: %v", http.ListenAndServe(address, mux))
 				}()
 
-				select {
-				case <-ctx.Done():
-					ui.Info("Stopping profiling webserver...")
-					return nil
-				}
+				<-ctx.Done()
+				ui.Info("Stopping profiling webserver...")
+				return nil
 			}, func(err error) {
 				if err != nil {
 					ui.Warning("Error stopping parca webserver: " + err.Error())
@@ -82,20 +80,18 @@ func RunDaemon() {
 
 				servers := createWebServer()
 
-				select {
-				case <-ctx.Done():
-					ui.Debug("Stopping all webservers...")
-					timeoutCtx, timeoutCancel := context.WithTimeout(ctx, 5*time.Second)
-					defer timeoutCancel()
+				<-ctx.Done()
+				ui.Debug("Stopping all webservers...")
+				timeoutCtx, timeoutCancel := context.WithTimeout(ctx, 5*time.Second)
+				defer timeoutCancel()
 
-					for _, server := range servers {
-						err := server.Shutdown(timeoutCtx)
-						if err != nil {
-							return err
-						}
+				for _, server := range servers {
+					err := server.Shutdown(timeoutCtx)
+					if err != nil {
+						return err
 					}
-					return nil
 				}
+				return nil
 			}, func(err error) {
 				if err != nil {
 					ui.Warning("Error stopping webservers: " + err.Error())
@@ -151,8 +147,8 @@ func RunDaemon() {
 		}
 	}
 	{
-		sig := make(chan os.Signal)
-		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, os.Kill)
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 
 		g.Add(func() error {
 			<-sig

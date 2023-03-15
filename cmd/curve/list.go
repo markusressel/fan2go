@@ -37,9 +37,7 @@ var curveCmd = &cobra.Command{
 			}
 			curveConfigsToPrint = append(curveConfigsToPrint, *curveConf)
 		} else {
-			for _, curveConfig := range configuration.CurrentConfig.Curves {
-				curveConfigsToPrint = append(curveConfigsToPrint, curveConfig)
-			}
+			curveConfigsToPrint = append(curveConfigsToPrint, configuration.CurrentConfig.Curves...)
 		}
 
 		for idx, curveConfig := range curveConfigsToPrint {

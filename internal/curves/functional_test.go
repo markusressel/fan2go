@@ -48,7 +48,8 @@ func TestFunctionCurveSum(t *testing.T) {
 		40,
 		80,
 	)
-	c1, err := NewSpeedCurve(curve1)
+
+	c1, _ := NewSpeedCurve(curve1)
 	SpeedCurveMap[c1.GetId()] = c1
 
 	curve2 := createLinearCurveConfig(
@@ -57,7 +58,9 @@ func TestFunctionCurveSum(t *testing.T) {
 		40,
 		80,
 	)
-	c2, err := NewSpeedCurve(curve2)
+
+	var c2 SpeedCurve
+	c2, _ = NewSpeedCurve(curve2)
 	SpeedCurveMap[c2.GetId()] = c2
 
 	function := configuration.FunctionSum
@@ -69,7 +72,7 @@ func TestFunctionCurveSum(t *testing.T) {
 			c2.GetId(),
 		},
 	)
-	functionCurve, err := NewSpeedCurve(functionCurveConfig)
+	functionCurve, _ := NewSpeedCurve(functionCurveConfig)
 	SpeedCurveMap[functionCurve.GetId()] = functionCurve
 
 	// WHEN
@@ -107,7 +110,7 @@ func TestFunctionCurveDifference(t *testing.T) {
 		40,
 		80,
 	)
-	c1, err := NewSpeedCurve(curve1)
+	c1, _ := NewSpeedCurve(curve1)
 	SpeedCurveMap[c1.GetId()] = c1
 
 	curve2 := createLinearCurveConfig(
@@ -116,7 +119,7 @@ func TestFunctionCurveDifference(t *testing.T) {
 		40,
 		80,
 	)
-	c2, err := NewSpeedCurve(curve2)
+	c2, _ := NewSpeedCurve(curve2)
 	SpeedCurveMap[c2.GetId()] = c2
 
 	function := configuration.FunctionDifference
@@ -128,7 +131,7 @@ func TestFunctionCurveDifference(t *testing.T) {
 			c2.GetId(),
 		},
 	)
-	functionCurve, err := NewSpeedCurve(functionCurveConfig)
+	functionCurve, _ := NewSpeedCurve(functionCurveConfig)
 	SpeedCurveMap[functionCurve.GetId()] = functionCurve
 
 	// WHEN
@@ -166,7 +169,7 @@ func TestFunctionCurveAverage(t *testing.T) {
 		40,
 		80,
 	)
-	c1, err := NewSpeedCurve(curve1)
+	c1, _ := NewSpeedCurve(curve1)
 	SpeedCurveMap[c1.GetId()] = c1
 
 	curve2 := createLinearCurveConfig(
@@ -175,7 +178,7 @@ func TestFunctionCurveAverage(t *testing.T) {
 		40,
 		80,
 	)
-	c2, err := NewSpeedCurve(curve2)
+	c2, _ := NewSpeedCurve(curve2)
 	SpeedCurveMap[c2.GetId()] = c2
 
 	function := configuration.FunctionAverage
@@ -187,7 +190,7 @@ func TestFunctionCurveAverage(t *testing.T) {
 			c2.GetId(),
 		},
 	)
-	functionCurve, err := NewSpeedCurve(functionCurveConfig)
+	functionCurve, _ := NewSpeedCurve(functionCurveConfig)
 	SpeedCurveMap[functionCurve.GetId()] = functionCurve
 
 	// WHEN
@@ -225,7 +228,7 @@ func TestFunctionCurveDelta(t *testing.T) {
 		18,
 		60,
 	)
-	c1, err := NewSpeedCurve(curve1)
+	c1, _ := NewSpeedCurve(curve1)
 	SpeedCurveMap[c1.GetId()] = c1
 
 	curve2 := createLinearCurveConfig(
@@ -234,7 +237,7 @@ func TestFunctionCurveDelta(t *testing.T) {
 		18,
 		60,
 	)
-	c2, err := NewSpeedCurve(curve2)
+	c2, _ := NewSpeedCurve(curve2)
 	SpeedCurveMap[c2.GetId()] = c2
 
 	function := configuration.FunctionDelta
@@ -246,7 +249,7 @@ func TestFunctionCurveDelta(t *testing.T) {
 			curve2.ID,
 		},
 	)
-	functionCurve, err := NewSpeedCurve(functionCurveConfig)
+	functionCurve, _ := NewSpeedCurve(functionCurveConfig)
 	SpeedCurveMap[functionCurve.GetId()] = functionCurve
 
 	// WHEN
@@ -284,7 +287,7 @@ func TestFunctionCurveMinimum(t *testing.T) {
 		40,
 		80,
 	)
-	c1, err := NewSpeedCurve(curve1)
+	c1, _ := NewSpeedCurve(curve1)
 	SpeedCurveMap[c1.GetId()] = c1
 
 	curve2 := createLinearCurveConfig(
@@ -293,7 +296,7 @@ func TestFunctionCurveMinimum(t *testing.T) {
 		40,
 		80,
 	)
-	c2, err := NewSpeedCurve(curve2)
+	c2, _ := NewSpeedCurve(curve2)
 	SpeedCurveMap[c2.GetId()] = c2
 
 	function := configuration.FunctionMinimum
@@ -305,7 +308,7 @@ func TestFunctionCurveMinimum(t *testing.T) {
 			curve2.ID,
 		},
 	)
-	functionCurve, err := NewSpeedCurve(functionCurveConfig)
+	functionCurve, _ := NewSpeedCurve(functionCurveConfig)
 
 	// WHEN
 	result, err := functionCurve.Evaluate()
@@ -342,7 +345,7 @@ func TestFunctionCurveMaximum(t *testing.T) {
 		40,
 		80,
 	)
-	c1, err := NewSpeedCurve(curve1)
+	c1, _ := NewSpeedCurve(curve1)
 	SpeedCurveMap[c1.GetId()] = c1
 
 	curve2 := createLinearCurveConfig(
@@ -351,7 +354,7 @@ func TestFunctionCurveMaximum(t *testing.T) {
 		40,
 		80,
 	)
-	c2, err := NewSpeedCurve(curve2)
+	c2, _ := NewSpeedCurve(curve2)
 	SpeedCurveMap[c2.GetId()] = c2
 
 	function := configuration.FunctionMaximum
@@ -363,7 +366,7 @@ func TestFunctionCurveMaximum(t *testing.T) {
 			curve2.ID,
 		},
 	)
-	functionCurve, err := NewSpeedCurve(functionCurveConfig)
+	functionCurve, _ := NewSpeedCurve(functionCurveConfig)
 
 	// WHEN
 	result, err := functionCurve.Evaluate()

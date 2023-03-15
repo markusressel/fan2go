@@ -39,7 +39,7 @@ var curveCmd = &cobra.Command{
 		}
 
 		for idx, fan := range fanList {
-			if &fanId != nil && fan.GetId() != fanId {
+			if fan.GetId() != fanId {
 				continue
 			}
 

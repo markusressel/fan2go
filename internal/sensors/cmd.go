@@ -1,7 +1,6 @@
 package sensors
 
 import (
-	"errors"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -30,12 +29,12 @@ func (sensor CmdSensor) GetValue() (float64, error) {
 	args := sensor.Config.Cmd.Args
 	result, err := util.SafeCmdExecution(exec, args, timeout)
 	if err != nil {
-		return 0, errors.New(fmt.Sprintf("Sensor %s: %s", sensor.GetId(), err.Error()))
+		return 0, fmt.Errorf("sensor %s: %s", sensor.GetId(), err.Error())
 	}
 
 	temp, err := strconv.ParseFloat(result, 64)
 	if err != nil {
-		ui.Warning("Sensor %s: Unable to read int from command output: %s", sensor.GetId(), exec)
+		ui.Warning("sensor %s: Unable to read int from command output: %s", sensor.GetId(), exec)
 		return 0, err
 	}
 

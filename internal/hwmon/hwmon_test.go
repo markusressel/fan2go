@@ -160,7 +160,7 @@ func TestUpdateFanConfigFromHwMonControllers(t *testing.T) {
 		configConfig: configuration.HwMonFanConfig{
 			Index: 1,
 		},
-		wantErr: "No hwmon fan matched fan config",
+		wantErr: "no hwmon fan matched fan config",
 	}, {
 		tn: "no matching index",
 		hwMonConfigs: []configuration.HwMonFanConfig{
@@ -171,7 +171,7 @@ func TestUpdateFanConfigFromHwMonControllers(t *testing.T) {
 		configConfig: configuration.HwMonFanConfig{
 			Index: 1,
 		},
-		wantErr: "No hwmon fan matched fan config",
+		wantErr: "no hwmon fan matched fan config",
 	}, {
 		tn: "no matching platform",
 		hwMonConfigs: []configuration.HwMonFanConfig{
@@ -183,7 +183,7 @@ func TestUpdateFanConfigFromHwMonControllers(t *testing.T) {
 		configConfig: configuration.HwMonFanConfig{
 			Index: 1,
 		},
-		wantErr: "No hwmon fan matched fan config",
+		wantErr: "no hwmon fan matched fan config",
 	}}
 
 	for _, tt := range tests {

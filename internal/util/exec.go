@@ -2,7 +2,6 @@ package util
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/ui"
 	"os/exec"
@@ -12,7 +11,7 @@ import (
 
 func SafeCmdExecution(executable string, args []string, timeout time.Duration) (string, error) {
 	if _, err := CheckFilePermissionsForExecution(executable); err != nil {
-		return "", errors.New(fmt.Sprintf("Cannot execute %s: %s", executable, err))
+		return "", fmt.Errorf("cannot execute %s: %s", executable, err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)

@@ -54,7 +54,7 @@ func sortSlice[T constraints.Ordered](s []T) {
 
 func SortedKeys[T constraints.Ordered, K any](input map[T]K) []T {
 	result := make([]T, 0, len(input))
-	for k, _ := range input {
+	for k := range input {
 		result = append(result, k)
 	}
 	sortSlice(result)
