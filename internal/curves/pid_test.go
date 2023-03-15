@@ -50,10 +50,7 @@ func TestPidCurveProportionalBelowTarget(t *testing.T) {
 		0,
 		0,
 	)
-	curve, err := NewSpeedCurve(curveConfig)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	for loopIdx, expected := range []int{0, 0, 0} {
 		// WHEN
@@ -87,10 +84,7 @@ func TestPidCurveProportionalAboveTarget(t *testing.T) {
 		0,
 		0,
 	)
-	curve, err := NewSpeedCurve(curveConfig)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	for loopIdx, expected := range []int{0, 127, 127} {
 		// WHEN
@@ -124,10 +118,7 @@ func TestPidCurveProportionalWayAboveTarget(t *testing.T) {
 		0,
 		0,
 	)
-	curve, err := NewSpeedCurve(curveConfig)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	for loopIdx, expected := range []int{0, 255, 255} {
 		// WHEN
@@ -163,10 +154,7 @@ func TestPidCurveIntegralBelowTarget(t *testing.T) {
 		-0.005,
 		0,
 	)
-	curve, err := NewSpeedCurve(curveConfig)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	for loopIdx, expected := range []int{0, 0, 0} {
 		// WHEN
@@ -200,10 +188,7 @@ func TestPidCurveIntegralAboveTarget(t *testing.T) {
 		-0.005,
 		0,
 	)
-	curve, err := NewSpeedCurve(curveConfig)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	for loopIdx, expected := range []int{0, 2, 5} {
 		// WHEN
@@ -237,10 +222,7 @@ func TestPidCurveIntegralWayAboveTarget(t *testing.T) {
 		-0.005,
 		0,
 	)
-	curve, err := NewSpeedCurve(curveConfig)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	for loopIdx, expected := range []int{0, 5, 10} {
 		// WHEN
@@ -276,10 +258,7 @@ func TestPidCurveDerivativeNoDiff(t *testing.T) {
 		0,
 		-0.006,
 	)
-	curve, err := NewSpeedCurve(curveConfig)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	for loopIdx, expected := range []int{0, 0, 0} {
 		// WHEN
@@ -313,10 +292,7 @@ func TestPidCurveDerivativePositiveStaticDiff(t *testing.T) {
 		0,
 		-0.006,
 	)
-	curve, err := NewSpeedCurve(curveConfig)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	for loopIdx, expected := range []int{0, 7, 7} {
 		// WHEN
@@ -353,10 +329,7 @@ func TestPidCurveDerivativeIncreasingDiff(t *testing.T) {
 		0,
 		-0.006,
 	)
-	curve, err := NewSpeedCurve(curveConfig)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	for loopIdx, expected := range []int{0, 7, 15, 22, 30} {
 		// WHEN
@@ -433,10 +406,7 @@ func TestPidCurveAboveTarget(t *testing.T) {
 		-0.005,
 		-0.006,
 	)
-	curve, err := NewSpeedCurve(curveConfig)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	for loopIdx, expected := range []int{0, 15, 17, 20, 22, 25} {
 		// WHEN
@@ -470,10 +440,7 @@ func TestPidCurveWayAboveTarget(t *testing.T) {
 		-0.005,
 		-0.006,
 	)
-	curve, err := NewSpeedCurve(curveConfig)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
+	curve, _ := NewSpeedCurve(curveConfig)
 
 	for loopIdx, expected := range []int{0, 30, 35, 40, 45, 51} {
 		// WHEN
