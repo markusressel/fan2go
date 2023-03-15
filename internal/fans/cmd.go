@@ -36,7 +36,6 @@ func (fan CmdFan) GetMinPwm() int {
 
 func (fan *CmdFan) SetMinPwm(pwm int, force bool) {
 	// not supported
-	return
 }
 
 func (fan CmdFan) GetMaxPwm() int {
@@ -45,7 +44,6 @@ func (fan CmdFan) GetMaxPwm() int {
 
 func (fan *CmdFan) SetMaxPwm(pwm int, force bool) {
 	// not supported
-	return
 }
 
 func (fan *CmdFan) GetRpm() (int, error) {
@@ -78,7 +76,6 @@ func (fan CmdFan) GetRpmAvg() float64 {
 
 func (fan *CmdFan) SetRpmAvg(rpm float64) {
 	// not supported
-	return
 }
 
 func (fan *CmdFan) GetPwm() (result int, err error) {
