@@ -20,7 +20,7 @@ type FanConfig struct {
 type HwMonFanConfig struct {
 	Platform      string `json:"platform"`
 	Index         int    `json:"index"`
-	Channel       int    `json:"channel"`
+	RpmChannel    int    `json:"rpmChannel"`
 	PwmChannel    int    `json:"pwmChannel"`
 	SysfsPath     string
 	RpmInputPath  string

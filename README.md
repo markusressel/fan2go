@@ -156,7 +156,7 @@ fans:
       # connected to this fan (see sensor.platform below)
       platform: nct6798
       # The channel of this fan's RPM sensor as displayed by `fan2go detect`
-      channel: 1
+      rpmChannel: 1
       # The pwm channel that controls this fan; fan2go defaults to same channel number as fan RPM
       pwmChannel: 1
     # Indicates whether this fan should never stop rotating, regardless of

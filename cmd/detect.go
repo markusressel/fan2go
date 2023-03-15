@@ -70,7 +70,7 @@ var detectCmd = &cobra.Command{
 
 				isAuto, _ := fan.IsPwmAuto()
 				fanRows = append(fanRows, []string{
-					"", strconv.Itoa(fan.Index), strconv.Itoa(fan.Config.HwMon.Channel), fan.Label, rpmText, pwmText, fmt.Sprintf("%v", isAuto),
+					"", strconv.Itoa(fan.Index), strconv.Itoa(fan.Config.HwMon.RpmChannel), fan.Label, rpmText, pwmText, fmt.Sprintf("%v", isAuto),
 				})
 			}
 			var fanHeaders = []string{"Fans   ", "Index", "Channel", "Label", "RPM", "PWM", "Auto"}

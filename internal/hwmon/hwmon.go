@@ -3,6 +3,7 @@ package hwmon
 import (
 	"errors"
 	"fmt"
+	"github.com/markusressel/fan2go/internal/ui"
 	"io/ioutil"
 	"path"
 	"path/filepath"
@@ -164,6 +165,7 @@ func GetFans(chip gosensors.Chip) []fans.HwMonFan {
 			var channel int
 			_, err := fmt.Sscanf(feature.Name, "fan%d", &channel)
 			if err != nil {
+				ui.Warning("No channel found for '%s', ignoring.", feature.Name)
 				continue
 			}
 
@@ -198,7 +200,7 @@ func GetFans(chip gosensors.Chip) []fans.HwMonFan {
 					MaxPwm: &max,
 					HwMon: &configuration.HwMonFanConfig{
 						Index:      len(result) + 1,
-						Channel:    channel,
+						RpmChannel: channel,
 						PwmChannel: channel,
 						SysfsPath:  chip.Path,
 					},
@@ -295,11 +297,11 @@ func UpdateFanConfigFromHwMonControllers(controllers []*HwMonController, config 
 			if config.HwMon.Index > 0 && controllerConfig.Index != config.HwMon.Index {
 				continue
 			}
-			if config.HwMon.Channel > 0 && controllerConfig.Channel != config.HwMon.Channel {
+			if config.HwMon.RpmChannel > 0 && controllerConfig.RpmChannel != config.HwMon.RpmChannel {
 				continue
 			}
 			config.HwMon.Index = controllerConfig.Index
-			config.HwMon.Channel = controllerConfig.Channel
+			config.HwMon.RpmChannel = controllerConfig.RpmChannel
 			config.HwMon.SysfsPath = controllerConfig.SysfsPath
 			if config.HwMon.PwmChannel == 0 {
 				config.HwMon.PwmChannel = controllerConfig.PwmChannel
@@ -312,7 +314,7 @@ func UpdateFanConfigFromHwMonControllers(controllers []*HwMonController, config 
 }
 
 func setFanConfigPaths(config *configuration.HwMonFanConfig) {
-	config.RpmInputPath = path.Join(config.SysfsPath, fmt.Sprintf("fan%d_input", config.Channel))
+	config.RpmInputPath = path.Join(config.SysfsPath, fmt.Sprintf("fan%d_input", config.RpmChannel))
 	config.PwmPath = path.Join(config.SysfsPath, fmt.Sprintf("pwm%d", config.PwmChannel))
 	config.PwmEnablePath = path.Join(config.SysfsPath, fmt.Sprintf("pwm%d_enable", config.PwmChannel))
 }

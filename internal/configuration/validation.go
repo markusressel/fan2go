@@ -267,14 +267,14 @@ func validateFans(config *Configuration) error {
 		}
 
 		if fanConfig.HwMon != nil {
-			if (fanConfig.HwMon.Index != 0 && fanConfig.HwMon.Channel != 0) || (fanConfig.HwMon.Index == 0 && fanConfig.HwMon.Channel == 0) {
-				return errors.New(fmt.Sprintf("Fan %s: must have one of index or channel, must be >= 1", fanConfig.ID))
+			if (fanConfig.HwMon.Index != 0 && fanConfig.HwMon.RpmChannel != 0) || (fanConfig.HwMon.Index == 0 && fanConfig.HwMon.RpmChannel == 0) {
+				return errors.New(fmt.Sprintf("Fan %s: must have one of index or rpmChannel, must be >= 1", fanConfig.ID))
 			}
 			if fanConfig.HwMon.Index < 0 {
 				return errors.New(fmt.Sprintf("Fan %s: invalid index, must be >= 1", fanConfig.ID))
 			}
-			if fanConfig.HwMon.Channel < 0 {
-				return errors.New(fmt.Sprintf("Fan %s: invalid channel, must be >= 1", fanConfig.ID))
+			if fanConfig.HwMon.RpmChannel < 0 {
+				return errors.New(fmt.Sprintf("Fan %s: invalid rpmChannel, must be >= 1", fanConfig.ID))
 			}
 			if fanConfig.HwMon.PwmChannel < 0 {
 				return errors.New(fmt.Sprintf("Fan %s: invalid pwmChannel, must be >= 1", fanConfig.ID))

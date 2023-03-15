@@ -93,7 +93,7 @@ func TestUpdateFanConfigFromHwMonControllers(t *testing.T) {
 		hwMonConfigs: []configuration.HwMonFanConfig{
 			{
 				Index:      1,
-				Channel:    2,
+				RpmChannel: 2,
 				PwmChannel: 2,
 				SysfsPath:  "/sys/hwmon1",
 			},
@@ -103,7 +103,7 @@ func TestUpdateFanConfigFromHwMonControllers(t *testing.T) {
 		},
 		wantConfig: &configuration.HwMonFanConfig{
 			Index:         1,
-			Channel:       2,
+			RpmChannel:    2,
 			PwmChannel:    2,
 			SysfsPath:     "/sys/hwmon1",
 			RpmInputPath:  "/sys/hwmon1/fan2_input",
@@ -115,17 +115,17 @@ func TestUpdateFanConfigFromHwMonControllers(t *testing.T) {
 		hwMonConfigs: []configuration.HwMonFanConfig{
 			{
 				Index:      1,
-				Channel:    2,
+				RpmChannel: 2,
 				PwmChannel: 2,
 				SysfsPath:  "/sys/hwmon1",
 			},
 		},
 		configConfig: configuration.HwMonFanConfig{
-			Channel: 2,
+			RpmChannel: 2,
 		},
 		wantConfig: &configuration.HwMonFanConfig{
 			Index:         1,
-			Channel:       2,
+			RpmChannel:    2,
 			PwmChannel:    2,
 			SysfsPath:     "/sys/hwmon1",
 			RpmInputPath:  "/sys/hwmon1/fan2_input",
@@ -137,18 +137,18 @@ func TestUpdateFanConfigFromHwMonControllers(t *testing.T) {
 		hwMonConfigs: []configuration.HwMonFanConfig{
 			{
 				Index:      1,
-				Channel:    2,
+				RpmChannel: 2,
 				PwmChannel: 2,
 				SysfsPath:  "/sys/hwmon1",
 			},
 		},
 		configConfig: configuration.HwMonFanConfig{
-			Channel:    2,
+			RpmChannel: 2,
 			PwmChannel: 3,
 		},
 		wantConfig: &configuration.HwMonFanConfig{
 			Index:         1,
-			Channel:       2,
+			RpmChannel:    2,
 			PwmChannel:    3,
 			SysfsPath:     "/sys/hwmon1",
 			RpmInputPath:  "/sys/hwmon1/fan2_input",

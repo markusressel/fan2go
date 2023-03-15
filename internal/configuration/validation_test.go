@@ -454,7 +454,7 @@ func TestValidateFanHasIndexOrChannel(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Fan fan: must have one of index or channel, must be >= 1")
+	assert.EqualError(t, err, "Fan fan: must have one of index or rpmChannel, must be >= 1")
 }
 
 func TestValidateFanIndex(t *testing.T) {
@@ -505,7 +505,7 @@ func TestValidateFanChannel(t *testing.T) {
 				ID:    "fan",
 				Curve: "curve",
 				HwMon: &HwMonFanConfig{
-					Channel: -1,
+					RpmChannel: -1,
 				},
 			},
 		},
@@ -534,7 +534,7 @@ func TestValidateFanChannel(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "Fan fan: invalid channel, must be >= 1")
+	assert.EqualError(t, err, "Fan fan: invalid rpmChannel, must be >= 1")
 }
 
 func TestValidateFanPwmChannel(t *testing.T) {
@@ -545,7 +545,7 @@ func TestValidateFanPwmChannel(t *testing.T) {
 				ID:    "fan",
 				Curve: "curve",
 				HwMon: &HwMonFanConfig{
-					Channel:    1,
+					RpmChannel: 1,
 					PwmChannel: -1,
 				},
 			},
