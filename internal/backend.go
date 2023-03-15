@@ -148,7 +148,7 @@ func RunDaemon() {
 	}
 	{
 		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, os.Kill)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 
 		g.Add(func() error {
 			<-sig
