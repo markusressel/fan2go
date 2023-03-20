@@ -24,9 +24,6 @@ jobs:
         with:
           go-version: '^1.18'
 
-      - name: Test
-        run: make test
-
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v3.4.0
         with:
@@ -48,10 +45,13 @@ jobs:
           # skip-cache: true
 
           # Optional: if set to true then the action don't cache or restore ~/go/pkg.
-          skip-pkg-cache: true
+          skip-pkg-cache: false
 
           # Optional: if set to true then the action don't cache or restore ~/.cache/go-build.
           # skip-build-cache: true
+
+      - name: Test
+        run: make test
 
       - name: Build
         run: make build
