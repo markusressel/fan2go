@@ -448,7 +448,6 @@ Flags:
   -v, --verbose         More verbose output
 
 Use "fan2go [command] --help" for more information about a command.
-
 > sudo fan2go
 ```
 
@@ -614,6 +613,10 @@ configuration.
 
 To reduce the risk of runnin the whole system on low fan speeds for such a long period of time, you can force fan2go to
 initialize only one fan at a time, using the `runFanInitializationInParallel: false` config option.
+
+Some PWM controllers or fans may require more time to react to PWM changes. If fan2go is failing to characterize a fan,
+you can try increasing the fan response delay by passing `--fan-response-delay <seconds>` to the `fan init` command or
+by setting `fanResponseDelay` in the config. The default value is 2 seconds.
 
 ## Monitoring
 

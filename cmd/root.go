@@ -2,8 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/pterm/pterm/putils"
 	"os"
+
+	"github.com/pterm/pterm/putils"
 
 	"github.com/markusressel/fan2go/cmd/config"
 	"github.com/markusressel/fan2go/cmd/curve"
