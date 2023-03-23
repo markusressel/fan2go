@@ -8,6 +8,10 @@ runFanInitializationInParallel: false
 # Note: This parameter is only used for initial analysis of fan curve
 #       and has no effect during normal operation
 maxRpmDiffForSettledFan: 10
+# The time in seconds to wait before checking that a fan has responded to a control change
+# Note: This parameter is only used for initial analysis of fan curve
+#       and has no effect during normal operation
+fanResponseDelay: 10
 
 # The rate to poll temperature sensors at
 tempSensorPollingRate: 200ms
