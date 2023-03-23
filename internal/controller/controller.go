@@ -154,7 +154,9 @@ func (f *PidFanController) Run(ctx context.Context) error {
 	}
 
 	err1 := f.computePwmMap()
-	ui.Warning("Error computing PWM map: %v", err1)
+	if err1 != nil {
+		ui.Warning("Error computing PWM map: %v", err1)
+	}
 
 	f.updateDistinctPwmValues()
 
@@ -263,7 +265,9 @@ func (f *PidFanController) RunInitializationSequence() (err error) {
 	fan := f.fan
 
 	err1 := f.computePwmMap()
-	ui.Warning("Error computing PWM map: %v", err1)
+	if err1 != nil {
+		ui.Warning("Error computing PWM map: %v", err1)
+	}
 
 	err = f.persistence.SaveFanPwmMap(fan.GetId(), f.pwmMap)
 	if err != nil {
