@@ -63,7 +63,7 @@ func InitConfig(cfgFile string) {
 func setDefaultValues() {
 	viper.SetDefault("dbpath", "/etc/fan2go/fan2go.db")
 	viper.SetDefault("RunFanInitializationInParallel", true)
-	viper.SetDefault("MaxRpmDiffForSettledFan", 10.0)
+	viper.SetDefault("MaxRpmDiffForSettledFan", 20.0)
 	viper.SetDefault("FanResponseDelay", 2)
 	viper.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
 	viper.SetDefault("TempRollingWindowSize", 10)
