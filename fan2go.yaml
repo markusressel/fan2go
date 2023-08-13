@@ -7,7 +7,7 @@ runFanInitializationInParallel: false
 # consider a fan speed "settled"
 # Note: This parameter is only used for initial analysis of fan curve
 #       and has no effect during normal operation
-maxRpmDiffForSettledFan: 10
+maxRpmDiffForSettledFan: 20
 # The time in seconds to wait before checking that a fan has responded to a control change
 # Note: This parameter is only used for initial analysis of fan curve
 #       and has no effect during normal operation
