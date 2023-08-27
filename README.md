@@ -675,7 +675,7 @@ cards but is probably not limitied to them. See #64 for more detail.
 
 The initialization phase measures the RPM curve of each fan and tries to estimate the minimum and maximum
 boundaries. This can take quite a while though and can lead to overheating of components if they are
-under load. To avoid this use the `mjnPwm` and `maxPwm` fan config options to set the boundaries yourself.
+under load. To avoid this use the `minPwm` and `maxPwm` fan config options to set the boundaries yourself.
 That way the initialization phase will be skipped and the control algorithm will start right away.
 
 # Dependencies
