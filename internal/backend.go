@@ -143,7 +143,7 @@ func RunDaemon() {
 		}
 
 		if len(fans.FanMap) == 0 {
-			ui.Fatal("No valid fan configurations, exiting.")
+			ui.FatalWithoutStacktrace("No valid fan configurations, exiting.")
 		}
 	}
 	{

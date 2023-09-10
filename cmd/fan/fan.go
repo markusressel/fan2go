@@ -35,7 +35,7 @@ func getFan(id string) (fans.Fan, error) {
 	configuration.LoadConfig()
 	err := configuration.Validate(configPath)
 	if err != nil {
-		ui.Fatal(err.Error())
+		ui.FatalWithoutStacktrace(err.Error())
 	}
 
 	controllers := hwmon.GetChips()
