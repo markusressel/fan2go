@@ -24,7 +24,7 @@ var curveCmd = &cobra.Command{
 		configuration.LoadConfig()
 		err := configuration.Validate(configPath)
 		if err != nil {
-			ui.Fatal(err.Error())
+			ui.FatalWithoutStacktrace(err.Error())
 		}
 
 		persistence := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
