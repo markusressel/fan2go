@@ -14,11 +14,11 @@ build:  ## Builds the CLI
 	@go build ${GO_FLAGS} \
 	-ldflags "-w -s \
 	-X ${NAME}/cmd/global.Version=${VERSION} \
-	-X ${PACKAGE}/cmd/global.version=${VERSION} \
-	-X ${NAME}/global.commit=${GIT_REV} \
-	-X ${PACKAGE}/global.commit=${GIT_REV} \
-	-X ${NAME}/global.date=${DATE} \
-	-X ${PACKAGE}/global.date=${DATE}" \
+	-X ${PACKAGE}/cmd/global.Version=${VERSION} \
+	-X ${NAME}/cmd/global.Commit=${GIT_REV} \
+	-X ${PACKAGE}/cmd/global.Commit=${GIT_REV} \
+	-X ${NAME}/cmd/global.Date=${DATE} \
+	-X ${PACKAGE}/cmd/global.Date=${DATE}" \
 	-a -tags netgo -o ${OUTPUT_BIN} main.go
 
 run:
