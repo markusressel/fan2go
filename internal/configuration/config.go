@@ -119,6 +119,7 @@ func GetFilePath() string {
 
 func LoadConfig() {
 	// load default configuration values
+	CurrentConfig = Configuration{}
 	err := viper.Unmarshal(&CurrentConfig)
 	if err != nil {
 		ui.Fatal("unable to decode into struct, %v", err)
