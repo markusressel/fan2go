@@ -29,7 +29,8 @@ type HwMonFanConfig struct {
 }
 
 type FileFanConfig struct {
-	Path string `json:"path"`
+	Path    string `json:"path"`
+	RpmPath string `json:"rpmPath"`
 }
 
 type CmdFanConfig struct {
