@@ -161,9 +161,14 @@ func (fan *HwMonFan) IsPwmAuto() (bool, error) {
 func (fan *HwMonFan) SetPwmEnabled(value ControlMode) (err error) {
 	err = util.WriteIntToFile(int(value), fan.Config.HwMon.PwmEnablePath)
 	if err == nil {
-		currentValue, err := util.ReadIntFromFile(fan.Config.HwMon.PwmEnablePath)
-		if err != nil || ControlMode(currentValue) != value {
-			return fmt.Errorf("PWM mode stuck to %d", currentValue)
+		currentValue, err := fan.GetPwmEnabled()
+		if err != nil {
+			if errors.Is(err, os.ErrPermission) {
+				ui.Warning("Cannot read pwm_enable of fan '%s', pwm_enable state validation cannot work. Continuing assuming it worked.", fan.GetId())
+				return nil
+			} else if ControlMode(currentValue) != value {
+				return fmt.Errorf("PWM mode stuck to %d", currentValue)
+			}
 		}
 	}
 	return err
