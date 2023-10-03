@@ -173,12 +173,17 @@ fans:
 fans:
   - id: file_fan
     file:
+      # Path to a file to set the PWM target for this fan
       path: /tmp/file_fan
+      # Path to a file to read the current RPM value of this fan
+      rpmPath: /tmp/file_fan_rpm
 ```
 
 ```shell
 > cat /tmp/file_fan
 255
+> cat /tmp/file_fan_rpm
+3421
 ```
 
 #### CMD
