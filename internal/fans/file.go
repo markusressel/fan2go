@@ -16,18 +16,18 @@ type FileFan struct {
 	Pwm int `json:"pwm"`
 }
 
-func (fan FileFan) GetId() string {
+func (fan *FileFan) GetId() string {
 	return fan.Config.ID
 }
 
-func (fan FileFan) GetStartPwm() int {
+func (fan *FileFan) GetStartPwm() int {
 	return 1
 }
 
 func (fan *FileFan) SetStartPwm(pwm int, force bool) {
 }
 
-func (fan FileFan) GetMinPwm() int {
+func (fan *FileFan) GetMinPwm() int {
 	return MinPwmValue
 }
 
@@ -35,7 +35,7 @@ func (fan *FileFan) SetMinPwm(pwm int, force bool) {
 	// not supported
 }
 
-func (fan FileFan) GetMaxPwm() int {
+func (fan *FileFan) GetMaxPwm() int {
 	return MaxPwmValue
 }
 
@@ -43,11 +43,11 @@ func (fan *FileFan) SetMaxPwm(pwm int, force bool) {
 	// not supported
 }
 
-func (fan FileFan) GetRpm() (int, error) {
+func (fan *FileFan) GetRpm() (int, error) {
 	return 0, nil
 }
 
-func (fan FileFan) GetRpmAvg() float64 {
+func (fan *FileFan) GetRpmAvg() float64 {
 	return 0
 }
 
@@ -97,7 +97,7 @@ func (fan *FileFan) SetPwm(pwm int) (err error) {
 
 var interpolated = util.InterpolateLinearly(&map[int]float64{0: 0, 255: 255}, 0, 255)
 
-func (fan FileFan) GetFanCurveData() *map[int]float64 {
+func (fan *FileFan) GetFanCurveData() *map[int]float64 {
 	return &interpolated
 }
 
@@ -106,15 +106,15 @@ func (fan *FileFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
 	return
 }
 
-func (fan FileFan) GetCurveId() string {
+func (fan *FileFan) GetCurveId() string {
 	return fan.Config.Curve
 }
 
-func (fan FileFan) ShouldNeverStop() bool {
+func (fan *FileFan) ShouldNeverStop() bool {
 	return fan.Config.NeverStop
 }
 
-func (fan FileFan) GetPwmEnabled() (int, error) {
+func (fan *FileFan) GetPwmEnabled() (int, error) {
 	return 1, nil
 }
 
@@ -123,11 +123,11 @@ func (fan *FileFan) SetPwmEnabled(value ControlMode) (err error) {
 	return nil
 }
 
-func (fan FileFan) IsPwmAuto() (bool, error) {
+func (fan *FileFan) IsPwmAuto() (bool, error) {
 	return true, nil
 }
 
-func (fan FileFan) Supports(feature FeatureFlag) bool {
+func (fan *FileFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureControlMode:
 		return false

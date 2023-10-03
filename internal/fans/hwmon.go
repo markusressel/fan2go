@@ -1,6 +1,7 @@
 package fans
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -22,11 +23,11 @@ type HwMonFan struct {
 	Pwm          int                     `json:"pwm"`
 }
 
-func (fan HwMonFan) GetId() string {
+func (fan *HwMonFan) GetId() string {
 	return fan.Config.ID
 }
 
-func (fan HwMonFan) GetMinPwm() int {
+func (fan *HwMonFan) GetMinPwm() int {
 	// if the fan is never supposed to stop,
 	// use the lowest pwm value where the fan is still spinning
 	if fan.ShouldNeverStop() {
@@ -46,7 +47,7 @@ func (fan *HwMonFan) SetMinPwm(pwm int, force bool) {
 	}
 }
 
-func (fan HwMonFan) GetStartPwm() int {
+func (fan *HwMonFan) GetStartPwm() int {
 	if fan.StartPwm != nil {
 		return *fan.StartPwm
 	} else {
@@ -60,7 +61,7 @@ func (fan *HwMonFan) SetStartPwm(pwm int, force bool) {
 	}
 }
 
-func (fan HwMonFan) GetMaxPwm() int {
+func (fan *HwMonFan) GetMaxPwm() int {
 	if fan.MaxPwm != nil {
 		return *fan.MaxPwm
 	} else {
@@ -83,7 +84,7 @@ func (fan *HwMonFan) GetRpm() (int, error) {
 	}
 }
 
-func (fan HwMonFan) GetRpmAvg() float64 {
+func (fan *HwMonFan) GetRpmAvg() float64 {
 	return fan.RpmMovingAvg
 }
 
@@ -106,7 +107,7 @@ func (fan *HwMonFan) SetPwm(pwm int) (err error) {
 	return err
 }
 
-func (fan HwMonFan) GetFanCurveData() *map[int]float64 {
+func (fan *HwMonFan) GetFanCurveData() *map[int]float64 {
 	return fan.FanCurveData
 }
 
@@ -132,19 +133,19 @@ func (fan *HwMonFan) AttachFanCurveData(curveData *map[int]float64) (err error) 
 	return err
 }
 
-func (fan HwMonFan) GetCurveId() string {
+func (fan *HwMonFan) GetCurveId() string {
 	return fan.Config.Curve
 }
 
-func (fan HwMonFan) ShouldNeverStop() bool {
+func (fan *HwMonFan) ShouldNeverStop() bool {
 	return fan.Config.NeverStop
 }
 
-func (fan HwMonFan) GetPwmEnabled() (int, error) {
+func (fan *HwMonFan) GetPwmEnabled() (int, error) {
 	return util.ReadIntFromFile(fan.Config.HwMon.PwmEnablePath)
 }
 
-func (fan HwMonFan) IsPwmAuto() (bool, error) {
+func (fan *HwMonFan) IsPwmAuto() (bool, error) {
 	value, err := fan.GetPwmEnabled()
 	if err != nil {
 		return false, err
@@ -168,7 +169,7 @@ func (fan *HwMonFan) SetPwmEnabled(value ControlMode) (err error) {
 	return err
 }
 
-func (fan HwMonFan) Supports(feature FeatureFlag) bool {
+func (fan *HwMonFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureControlMode:
 		_, err := os.Stat(fan.Config.HwMon.PwmEnablePath)

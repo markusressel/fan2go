@@ -18,18 +18,18 @@ type CmdFan struct {
 	Pwm int `json:"pwm"`
 }
 
-func (fan CmdFan) GetId() string {
+func (fan *CmdFan) GetId() string {
 	return fan.Config.ID
 }
 
-func (fan CmdFan) GetStartPwm() int {
+func (fan *CmdFan) GetStartPwm() int {
 	return 1
 }
 
 func (fan *CmdFan) SetStartPwm(pwm int, force bool) {
 }
 
-func (fan CmdFan) GetMinPwm() int {
+func (fan *CmdFan) GetMinPwm() int {
 	return MinPwmValue
 }
 
@@ -37,7 +37,7 @@ func (fan *CmdFan) SetMinPwm(pwm int, force bool) {
 	// not supported
 }
 
-func (fan CmdFan) GetMaxPwm() int {
+func (fan *CmdFan) GetMaxPwm() int {
 	return MaxPwmValue
 }
 
@@ -69,7 +69,7 @@ func (fan *CmdFan) GetRpm() (int, error) {
 	return int(rpm), nil
 }
 
-func (fan CmdFan) GetRpmAvg() float64 {
+func (fan *CmdFan) GetRpmAvg() float64 {
 	return 0
 }
 
@@ -115,7 +115,7 @@ func (fan *CmdFan) SetPwm(pwm int) (err error) {
 	return nil
 }
 
-func (fan CmdFan) GetFanCurveData() *map[int]float64 {
+func (fan *CmdFan) GetFanCurveData() *map[int]float64 {
 	return &interpolated
 }
 
@@ -124,15 +124,15 @@ func (fan *CmdFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
 	return
 }
 
-func (fan CmdFan) GetCurveId() string {
+func (fan *CmdFan) GetCurveId() string {
 	return fan.Config.Curve
 }
 
-func (fan CmdFan) ShouldNeverStop() bool {
+func (fan *CmdFan) ShouldNeverStop() bool {
 	return fan.Config.NeverStop
 }
 
-func (fan CmdFan) GetPwmEnabled() (int, error) {
+func (fan *CmdFan) GetPwmEnabled() (int, error) {
 	return 1, nil
 }
 
@@ -141,11 +141,11 @@ func (fan *CmdFan) SetPwmEnabled(value ControlMode) (err error) {
 	return nil
 }
 
-func (fan CmdFan) IsPwmAuto() (bool, error) {
+func (fan *CmdFan) IsPwmAuto() (bool, error) {
 	return true, nil
 }
 
-func (fan CmdFan) Supports(feature FeatureFlag) bool {
+func (fan *CmdFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureControlMode:
 		return false
