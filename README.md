@@ -35,6 +35,15 @@
 * [x] Prometheus exporter
 * [x] (optional) REST Api
 
+# UI
+
+fan2go is a simple terminal client and controller daemon. To allow external programs to interact with it there is an API that
+can be (optionally) enabled.
+
+## UI Clients
+
+[fan2go-tui](https://github.com/markusressel/fan2go-tui) - (Official) Terminal UI for fan2go.
+
 # How to use
 
 fan2go relies on [lm-sensors](https://github.com/lm-sensors/lm-sensors) to get both temperature and RPM sensor readings,
