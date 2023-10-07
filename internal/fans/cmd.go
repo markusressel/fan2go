@@ -70,11 +70,11 @@ func (fan *CmdFan) GetRpm() (int, error) {
 }
 
 func (fan *CmdFan) GetRpmAvg() float64 {
-	return 0
+	return float64(fan.Rpm)
 }
 
 func (fan *CmdFan) SetRpmAvg(rpm float64) {
-	// not supported
+	fan.Rpm = int(rpm)
 }
 
 func (fan *CmdFan) GetPwm() (result int, err error) {
