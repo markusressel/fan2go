@@ -14,6 +14,7 @@ type FileFan struct {
 	MovingAvg float64                 `json:"movingAvg"`
 
 	Pwm int `json:"pwm"`
+	Rpm int `json:"rpm"`
 }
 
 func (fan *FileFan) GetId() string {
@@ -60,7 +61,7 @@ func (fan *FileFan) GetRpm() (result int, err error) {
 		return 0, err
 	}
 	result = integer
-	fan.Pwm = result
+	fan.Rpm = result
 	return result, err
 }
 
