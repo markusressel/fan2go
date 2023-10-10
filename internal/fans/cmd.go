@@ -11,7 +11,7 @@ import (
 )
 
 type CmdFan struct {
-	Config    configuration.FanConfig `json:"configuration"`
+	Config    configuration.FanConfig `json:"config"`
 	MovingAvg float64                 `json:"movingAvg"`
 
 	Rpm int `json:"rpm"`
