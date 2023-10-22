@@ -8,8 +8,8 @@ type FanConfig struct {
 	// StartPwm defines the lowest PWM value where the fans are able to start spinning from a standstill
 	StartPwm *int `json:"startPwm,omitempty"`
 	// MaxPwm defines the highest PWM value that yields an RPM increase
-	PwmMap      *map[int]int       `json:"pwmMap,omitempty"`
 	MaxPwm      *int               `json:"maxPwm,omitempty"`
+	PwmMap      *map[int]int       `json:"pwmMap,omitempty"`
 	Curve       string             `json:"curve"`
 	HwMon       *HwMonFanConfig    `json:"hwMon,omitempty"`
 	File        *FileFanConfig     `json:"file,omitempty"`
