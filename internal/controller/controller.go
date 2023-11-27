@@ -416,10 +416,11 @@ func (f *PidFanController) calculateTargetPwm() int {
 
 	// map the target value to the possible range of this fan
 	maxPwm := fan.GetMaxPwm()
-	minPwm := fan.GetMinPwm() + f.minPwmOffset
+	// minPwm := fan.GetMinPwm() + f.minPwmOffset
 
 	// TODO: this assumes a linear curve, but it might be something else
-	target = minPwm + int((float64(target)/fans.MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
+	// TODO: remove
+	// target = minPwm + int((float64(target)/fans.MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
 
 	if f.lastSetPwm != nil && f.pwmMap != nil {
 		lastSetPwm := *(f.lastSetPwm)
