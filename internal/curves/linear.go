@@ -1,10 +1,12 @@
 package curves
 
 import (
+	"math"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/sensors"
+	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
-	"math"
 )
 
 type LinearSpeedCurve struct {
@@ -39,6 +41,7 @@ func (c *LinearSpeedCurve) Evaluate() (value int, err error) {
 		}
 	}
 
+	ui.Debug("Evaluating curve '%s'. Sensor '%s' temp '%.0f°'. Desired PWM: %d", c.Config.ID, sensor.GetId(), sensor.GetMovingAvg()/1000, value)
 	c.Value = value
 	return value, nil
 }
