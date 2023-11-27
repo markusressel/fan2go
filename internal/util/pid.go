@@ -1,6 +1,8 @@
 package util
 
-import "time"
+import (
+	"time"
+)
 
 type PidLoop struct {
 	// Proptional Constant
@@ -30,23 +32,27 @@ func NewPidLoop(p float64, i float64, d float64) *PidLoop {
 
 // Loop advances the pid loop
 func (p *PidLoop) Loop(target float64, measured float64) float64 {
-	output := 0.0
-	err := target - measured
+	// TODO: make user configurable
+	const maxPwmAdjustmentPerSecond float64 = 10.0
 
 	loopTime := time.Now()
+	var dt float64
 	if p.lastTime.IsZero() {
-		p.lastTime = loopTime
+		dt = 1
 	} else {
-		dt := loopTime.Sub(p.lastTime).Seconds()
-
-		proportional := err
-		p.integral = p.integral + err*dt
-		derivative := (err - p.error) / dt
-		output = p.p*proportional + p.i*p.integral + p.d*derivative
+		dt = loopTime.Sub(p.lastTime).Seconds()
 	}
-
-	p.error = err
 	p.lastTime = loopTime
 
-	return output
+	// the pwm adjustment depends on the direction and
+	// the time-based change speed limit.
+	maxPwmAdjustmentThiStep := maxPwmAdjustmentPerSecond * dt
+	err := target - measured
+	if err > 0 {
+		return Coerce(maxPwmAdjustmentThiStep, 0, err)
+	} else if err < 0 {
+		return Coerce(-maxPwmAdjustmentThiStep, err, 0)
+	} else {
+		return 0
+	}
 }

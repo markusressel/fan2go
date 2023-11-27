@@ -240,14 +240,10 @@ func (f *PidFanController) UpdateFanSpeed() error {
 	target := f.calculateTargetPwm()
 
 	// ask the PID controller how to proceed
-	pidChange := math.Ceil(f.pidLoop.Loop(float64(target), float64(lastSetPwm)))
-
-	// the last value set on the pid controller target
-	pidControllerTarget := math.Ceil(f.pidLoop.Loop(float64(target), float64(lastSetPwm)))
-	pidControllerTarget = pidControllerTarget + pidChange
+	pwmChange := math.Ceil(f.pidLoop.Loop(float64(target), float64(lastSetPwm)))
 
 	// ensure we are within sane bounds
-	coerced := util.Coerce(float64(lastSetPwm)+pidControllerTarget, 0, 255)
+	coerced := util.Coerce(float64(lastSetPwm)+pwmChange, 0, 255)
 	roundedTarget := int(math.Round(coerced))
 
 	if target >= 0 {
