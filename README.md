@@ -161,8 +161,8 @@ fans:
   - id: cpu
     # The type of fan configuration, one of: hwmon | file
     hwmon:
-      # The platform of the controller which is
-      # connected to this fan (see sensor.platform below)
+      # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
+      # "nouveau", "coretemp", "it8620", "corsaircpro-*" etc.
       platform: nct6798
       # The channel of this fan's RPM sensor as displayed by `fan2go detect`
       rpmChannel: 1
