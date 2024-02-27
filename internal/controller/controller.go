@@ -65,6 +65,8 @@ type PidFanController struct {
 	pwmMap map[int]int
 	// PID loop for the PWM control
 	pidLoop *util.PidLoop
+	// alternatively: linear loop for PWM control
+	linearLoop *util.LinearLoop
 
 	// offset applied to the actual minPwm of the fan to ensure "neverStops" constraint
 	minPwmOffset int
@@ -73,7 +75,8 @@ type PidFanController struct {
 func NewFanController(
 	persistence persistence.Persistence,
 	fan fans.Fan,
-	pidLoop util.PidLoop,
+	pidLoop *util.PidLoop,
+	linearLoop *util.LinearLoop,
 	updateRate time.Duration,
 ) FanController {
 	return &PidFanController{
@@ -83,7 +86,8 @@ func NewFanController(
 		updateRate:                  updateRate,
 		pwmValuesWithDistinctTarget: []int{},
 		pwmMap:                      map[int]int{},
-		pidLoop:                     &pidLoop,
+		pidLoop:                     pidLoop,
+		linearLoop:                  linearLoop,
 		minPwmOffset:                0,
 	}
 }
@@ -239,16 +243,35 @@ func (f *PidFanController) UpdateFanSpeed() error {
 	// calculate the direct optimal target speed
 	target := f.calculateTargetPwm()
 
-	// ask the PID controller how to proceed
-	pwmChange := math.Ceil(f.pidLoop.Loop(float64(target), float64(lastSetPwm)))
+	// the target pwm, approaching the actual target smoothly
+	var stepTarget int
 
-	// ensure we are within sane bounds
-	coerced := util.Coerce(float64(lastSetPwm)+pwmChange, 0, 255)
-	roundedTarget := int(math.Round(coerced))
+	// default algorithm: use a pid controller alg to approach target
+	if fan.GetControlAlgorithm().Alg == "pid" {
+		// ask the PID controller how to proceed
+		pidChange := math.Ceil(f.pidLoop.Loop(float64(target), float64(lastSetPwm)))
+
+		// the last value set on the pid controller target
+		pidControllerTarget := math.Ceil(f.pidLoop.Loop(float64(target), float64(lastSetPwm)))
+		pidControllerTarget = pidControllerTarget + pidChange
+
+		// ensure we are within sane bounds
+		coerced := util.Coerce(float64(lastSetPwm)+pidControllerTarget, 0, 255)
+		stepTarget = int(math.Round(coerced))
+
+		// optional simple value
+	} else if fan.GetControlAlgorithm().Alg == "simple" {
+		// ask the PID controller how to proceed
+		pwmChange := math.Ceil(f.pidLoop.Loop(float64(target), float64(lastSetPwm)))
+
+		// ensure we are within sane bounds
+		coerced := util.Coerce(float64(lastSetPwm)+pwmChange, 0, 255)
+		stepTarget = int(math.Round(coerced))
+	}
 
 	if target >= 0 {
 		_ = trySetManualPwm(f.fan)
-		err := f.setPwm(roundedTarget)
+		err := f.setPwm(stepTarget)
 		if err != nil {
 			ui.Error("Error setting %s: %v", fan.GetId(), err)
 		}

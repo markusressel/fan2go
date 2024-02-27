@@ -46,6 +46,13 @@ fans:
     # The curve ID (defined above) that should be used to determine the
     # speed of this fan
     curve: cpu_curve
+    # (Optional) The algorithm how the target speed, determined by the curve is approached.
+    # default: pid: uses the PID control algorithm with default tuning variables
+    # simple: together with pwmChangePerSecond, fan speeds will approach target value 
+    # with the given max speed. Default is 10
+    controlAlgorithm:
+      alg: simple
+      pwmChangePerSecond: 10
     # (Optional) Override for the lowest PWM value at which the
     # fan is able to maintain rotation if it was spinning previously.
     minPwm: 30

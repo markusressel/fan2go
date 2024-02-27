@@ -137,6 +137,10 @@ func (fan *HwMonFan) GetCurveId() string {
 	return fan.Config.Curve
 }
 
+func (fan *HwMonFan) GetControlAlgorithm() configuration.ControlAlgorithmConfig {
+	return fan.Config.ControlAlgorithm
+}
+
 func (fan *HwMonFan) ShouldNeverStop() bool {
 	return fan.Config.NeverStop
 }
