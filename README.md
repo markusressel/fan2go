@@ -698,9 +698,8 @@ See [go.mod](go.mod)
 
 # Similar Projects
 
-* [nbfc](https://github.com/hirschmann/nbfc)
+* [nbfc](https://github.com/nbfc-linux/nbfc-linux)
 * [thinkfan](https://github.com/vmatare/thinkfan)
-* [fancon](https://github.com/hbriese/fancon)
 
 # License
 
