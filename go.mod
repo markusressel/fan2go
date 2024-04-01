@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/asecurityteam/rolling v2.0.4+incompatible
-	github.com/guptarohit/asciigraph v0.6.0
+	github.com/guptarohit/asciigraph v0.7.1
 	github.com/labstack/echo-contrib v0.16.0
 	github.com/labstack/echo/v4 v4.11.4
 	github.com/looplab/tarjan v0.1.0
