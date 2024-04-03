@@ -21,8 +21,7 @@ build:  ## Builds the CLI
 	-X ${PACKAGE}/cmd/global.Date=${DATE}" \
 	-a -tags netgo -o ${OUTPUT_BIN} main.go
 
-run:
-	go build -o ${OUTPUT_BIN} main.go
+run: build
 	./${OUTPUT_BIN}
 
 clean:
