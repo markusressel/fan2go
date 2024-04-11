@@ -97,6 +97,8 @@ func (f *PidFanController) GetStatistics() FanControllerStatistics {
 }
 
 func (f *PidFanController) Run(ctx context.Context) error {
+	f.persistence.Init()
+
 	fan := f.fan
 
 	if fan.ShouldNeverStop() && !fan.Supports(fans.FeatureRpmSensor) {

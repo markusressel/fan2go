@@ -2,11 +2,14 @@ package persistence
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/labstack/gommon/log"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/ui"
 	bolt "go.etcd.io/bbolt"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -16,6 +19,8 @@ const (
 )
 
 type Persistence interface {
+	Init() error
+
 	LoadFanPwmData(fan fans.Fan) (map[int]float64, error)
 	SaveFanPwmData(fan fans.Fan) (err error)
 	DeleteFanPwmData(fan fans.Fan) (err error)
@@ -34,6 +39,21 @@ func NewPersistence(dbPath string) Persistence {
 		dbPath: dbPath,
 	}
 	return p
+}
+
+func (p persistence) Init() (err error) {
+	// get parent path of dbPath
+	parentDir := filepath.Dir(p.dbPath)
+	_, err = os.Stat(parentDir)
+	if errors.Is(err, os.ErrNotExist) {
+		// create directory
+		log.Info("Creating directory for db: %s", parentDir)
+		err = os.MkdirAll(parentDir, 0755)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (p persistence) openPersistence() (db *bolt.DB, err error) {
