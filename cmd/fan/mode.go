@@ -39,6 +39,12 @@ var modeCmd = &cobra.Command{
 				}
 			} else {
 				pwmEnabled = fans.ControlMode(argAsInt)
+				switch pwmEnabled {
+				case fans.ControlModeAutomatic, fans.ControlModePWM, fans.ControlModeDisabled:
+					break
+				default:
+					return fmt.Errorf("unknown mode: %d, must be a integer in (1..3) or one of: 'auto', 'pwm', 'disabled'", argAsInt)
+				}
 			}
 			err = fan.SetPwmEnabled(pwmEnabled)
 			if err != nil {
