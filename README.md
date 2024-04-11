@@ -499,6 +499,12 @@ devices that you have specified within your config.
 
 > fan2go fan --id cpu rpm
 546
+
+> fan2go fan --id cpu mode
+No control, 100% all the time (0)
+
+> fan2go fan --id cpu mode auto
+Automatic control by integrated hardware (2)
 ```
 
 ### Sensors
