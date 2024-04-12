@@ -37,7 +37,8 @@
 
 # UI
 
-fan2go is a simple terminal client and controller daemon. To allow external programs to interact with it there is an API that
+fan2go is a simple terminal client and controller daemon. To allow external programs to interact with it there is an API
+that
 can be (optionally) enabled.
 
 ## UI Clients
@@ -483,6 +484,9 @@ sudo systemctl enable --now fan2go
 # follow logs
 journalctl -u fan2go -f
 ```
+
+> NOTE: If you want to use a config path that differs from the default one, make sure to edit the
+> unit file and point the `-c` flag to the correct path.
 
 ## CLI Commands
 

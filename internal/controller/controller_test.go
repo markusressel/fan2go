@@ -203,6 +203,8 @@ var (
 
 type mockPersistence struct{}
 
+func (p mockPersistence) Init() (err error) { return nil }
+
 func (p mockPersistence) SaveFanPwmData(fan fans.Fan) (err error) { return nil }
 func (p mockPersistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
 	fanCurveDataMap := map[int]float64{}

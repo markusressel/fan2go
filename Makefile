@@ -1,3 +1,5 @@
+.PHONY: help test build run clean
+
 GO_FLAGS   ?=
 NAME       := fan2go
 OUTPUT_BIN ?= bin/${NAME}
