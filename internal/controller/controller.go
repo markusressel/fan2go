@@ -97,7 +97,10 @@ func (f *PidFanController) GetStatistics() FanControllerStatistics {
 }
 
 func (f *PidFanController) Run(ctx context.Context) error {
-	f.persistence.Init()
+	err := f.persistence.Init()
+	if err != nil {
+		return err
+	}
 
 	fan := f.fan
 
