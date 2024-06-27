@@ -2,8 +2,9 @@ package fans
 
 import (
 	"fmt"
-	"github.com/markusressel/fan2go/internal/configuration"
 	"sort"
+
+	"github.com/markusressel/fan2go/internal/configuration"
 )
 
 const (
@@ -63,6 +64,8 @@ type Fan interface {
 
 	// GetCurveId returns the id of the speed curve associated with this fan
 	GetCurveId() string
+
+	GetControlAlgorithm() configuration.ControlAlgorithmConfig
 
 	// ShouldNeverStop indicated whether this fan should never stop rotating
 	ShouldNeverStop() bool
