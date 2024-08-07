@@ -95,7 +95,11 @@ func setDefaultValues() {
 	viper.SetDefault("ControllerAdjustmentTickRate", 200*time.Millisecond)
 
 	viper.SetDefault("sensors", []SensorConfig{})
-	viper.SetDefault("fans", []FanConfig{})
+	viper.SetDefault("fans", []FanConfig{
+		// the control algorithm is a string enum, so we have to set an explicit default,
+		// the rest are primitive types with a well-defined default value
+		{ControlAlgorithm: ControlAlgorithmConfig{Alg: "pid"}},
+	})
 }
 
 // DetectAndReadConfigFile detects the path of the first existing config file
