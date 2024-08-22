@@ -1,6 +1,7 @@
 module github.com/markusressel/fan2go
 
 go 1.21
+toolchain go1.22.5
 
 require (
 	github.com/asecurityteam/rolling v2.0.4+incompatible
@@ -18,7 +19,7 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
 	github.com/tomlazar/table v0.1.2
-	go.etcd.io/bbolt v1.3.10
+	go.etcd.io/bbolt v1.3.11
 	golang.org/x/exp v0.0.0-20240119083558-1b970713d09a
 )
 
