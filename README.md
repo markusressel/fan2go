@@ -205,12 +205,12 @@ Please also make sure to read the section about
 fans:
   - id: cmd_fan
     cmd:
-      # (optional) Command to apply a new PWM value (0..255)
-      #  use "%pwm%" to specify where the target pwm value should be used withing the arguments
+      # Command to apply a new PWM value (0..255)
+      # Use "%pwm%" to specify where the target pwm value should be used withing the arguments
       setPwm:
         exec: /usr/bin/some-program
         args: [ "--set", "%pwm%" ]
-      # (optional) Command to retrieve the current PWM value (0..255)
+      # Command to retrieve the current PWM value (0..255)
       getPwm:
         exec: /usr/bin/nvidia-settings
         args: [ "-a", "someargument" ]
