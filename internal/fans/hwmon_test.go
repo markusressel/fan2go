@@ -2,7 +2,9 @@ package fans
 
 import (
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
+	"os"
 	"testing"
 )
 
@@ -159,4 +161,122 @@ func TestHwMonFan_SetMaxPwm(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, expected, maxPwm)
+}
+
+func TestHwMonFan_GetRpm(t *testing.T) {
+	// GIVEN
+	expected := 2150
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			HwMon: &configuration.HwMonFanConfig{
+				RpmInputPath: "../../test/file_fan_rpm",
+			},
+		},
+	}
+
+	// WHEN
+	rpm, err := fan.GetRpm()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, expected, fan.Rpm)
+	assert.Equal(t, expected, rpm)
+}
+
+func TestHwMonFan_GetRpmAvg(t *testing.T) {
+	// GIVEN
+	expected := 2150.0
+	fan := HwMonFan{
+		RpmMovingAvg: expected,
+	}
+
+	// WHEN
+	rpm := fan.GetRpmAvg()
+
+	// THEN
+	assert.Equal(t, expected, rpm)
+}
+
+func TestHwMonFan_SetRpmAvg(t *testing.T) {
+	// GIVEN
+	expected := 2150.0
+	fan := HwMonFan{}
+
+	// WHEN
+	fan.SetRpmAvg(expected)
+	rpm := fan.GetRpmAvg()
+
+	// THEN
+	assert.Equal(t, expected, rpm)
+}
+
+func TestHwMonFan_GetPwm(t *testing.T) {
+	// GIVEN
+	expected := 152
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			HwMon: &configuration.HwMonFanConfig{
+				PwmPath: "../../test/file_fan_pwm",
+			},
+		},
+	}
+
+	// WHEN
+	pwm, err := fan.GetPwm()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, expected, pwm)
+}
+
+func TestHwMonFan_SetPwm(t *testing.T) {
+	// GIVEN
+	pwmFilePath := "./file_fan_pwm"
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(pwmFilePath)
+
+	expected := 152
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			HwMon: &configuration.HwMonFanConfig{
+				PwmPath: "../../test/file_fan_pwm",
+			},
+		},
+	}
+
+	// WHEN
+	err := fan.SetPwm(expected)
+
+	// THEN
+	assert.NoError(t, err)
+
+	result, err := fan.GetPwm()
+	assert.NoError(t, err)
+	assert.Equal(t, expected, result)
+}
+
+func TestHwMonFan_AttachFanCurveData(t *testing.T) {
+	// GIVEN
+	curveData := map[int]float64{
+		0:   0,
+		255: 255,
+	}
+	interpolated := util.InterpolateLinearly(&curveData, 10, 200)
+
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			NeverStop: true,
+		},
+	}
+
+	// WHEN
+	err := fan.AttachFanCurveData(&interpolated)
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, &interpolated, fan.GetFanCurveData())
+	assert.Equal(t, 10, fan.GetMinPwm())
+	assert.Equal(t, 10, fan.GetStartPwm())
+	assert.Equal(t, 200, fan.GetMaxPwm())
 }
