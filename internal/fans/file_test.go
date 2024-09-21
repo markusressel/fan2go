@@ -296,3 +296,21 @@ func TestFileFan_SetPwm(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, targetPwm, result)
 }
+
+func TestFileFan_SetPwm_InvalidPath(t *testing.T) {
+	// GIVEN
+	config := configuration.FanConfig{
+		File: &configuration.FileFanConfig{
+			Path:    "../..////",
+			RpmPath: "../../test/non_existent_file",
+		},
+	}
+
+	fan, _ := NewFan(config)
+
+	// WHEN
+	err := fan.SetPwm(100)
+
+	// THEN
+	assert.Error(t, err)
+}
