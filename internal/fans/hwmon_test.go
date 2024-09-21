@@ -35,6 +35,18 @@ func TestHwMonFan_GetStartPwm(t *testing.T) {
 	assert.Equal(t, expected, startPwm)
 }
 
+func TestHwMonFan_GetStartPwm_Default(t *testing.T) {
+	// GIVEN
+	expected := MaxPwmValue
+	fan := HwMonFan{}
+
+	// WHEN
+	startPwm := fan.GetStartPwm()
+
+	// THEN
+	assert.Equal(t, expected, startPwm)
+}
+
 func TestHwMonFan_SetStartPwm(t *testing.T) {
 	// GIVEN
 	expected := 30
