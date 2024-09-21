@@ -623,7 +623,6 @@ func TestFanController_ComputePwmMap_FullRange(t *testing.T) {
 		fan:        fan,
 		updateRate: time.Duration(100),
 	}
-	controller.updateDistinctPwmValues()
 
 	// WHEN
 	err := controller.computePwmMap()
