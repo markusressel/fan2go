@@ -18,3 +18,14 @@ func TestGetWindowMax(t *testing.T) {
 	// THEN
 	assert.Equal(t, 3.0, maximumm)
 }
+
+func TestFillWindow(t *testing.T) {
+	// GIVEN
+	window := CreateRollingWindow(10)
+
+	// WHEN
+	FillWindow(window, 3, 10)
+
+	// THEN
+	assert.Equal(t, 10.0, GetWindowMax(window))
+}
