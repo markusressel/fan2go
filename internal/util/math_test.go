@@ -74,3 +74,30 @@ func TestFindClosest(t *testing.T) {
 	assert.Equal(t, 90, closest)
 
 }
+
+func TestCoerce(t *testing.T) {
+	// GIVEN
+	min := 0.0
+	max := 10.0
+
+	// WHEN
+	resultMin := Coerce(-10, min, max)
+	// THEN
+	assert.Equal(t, min, resultMin)
+
+	// WHEN
+	resultValueLow := Coerce(0, min, max)
+	// THEN
+	assert.Equal(t, resultValueLow, resultValueLow)
+
+	// WHEN
+	resultValueHigh := Coerce(10, min, max)
+
+	// THEN
+	assert.Equal(t, resultValueHigh, resultValueHigh)
+
+	// WHEN
+	resultMax := Coerce(20, min, max)
+	// THEN
+	assert.Equal(t, max, resultMax)
+}
