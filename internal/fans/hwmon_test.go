@@ -139,7 +139,6 @@ func TestHwMonFan_GetMaxPwm_Default(t *testing.T) {
 	// GIVEN
 	expected := MaxPwmValue
 	fan := HwMonFan{
-		MaxPwm: &expected,
 		Config: configuration.FanConfig{},
 	}
 
@@ -181,6 +180,24 @@ func TestHwMonFan_GetRpm(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, expected, fan.Rpm)
 	assert.Equal(t, expected, rpm)
+}
+
+func TestHwMonFan_GetRpm_InvalidPath(t *testing.T) {
+	// GIVEN
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			HwMon: &configuration.HwMonFanConfig{
+				RpmInputPath: "../../not exists",
+			},
+		},
+	}
+
+	// WHEN
+	rpm, err := fan.GetRpm()
+
+	// THEN
+	assert.Error(t, err)
+	assert.Equal(t, 0, rpm)
 }
 
 func TestHwMonFan_GetRpmAvg(t *testing.T) {
