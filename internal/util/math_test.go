@@ -114,3 +114,24 @@ func TestUpdateSimpleMovingAvg(t *testing.T) {
 	// THEN
 	assert.Equal(t, 5.0, result)
 }
+
+func TestInterpolateLinearly(t *testing.T) {
+	// GIVEN
+	data := map[int]float64{
+		0:   0.0,
+		100: 100.0,
+	}
+	start := 0
+	stop := 100
+
+	expectedResult := map[int]float64{}
+	for i := 0; i <= 100; i++ {
+		expectedResult[i] = float64(i)
+	}
+
+	// WHEN
+	result := InterpolateLinearly(&data, start, stop)
+
+	// THEN
+	assert.Equal(t, expectedResult, result)
+}
