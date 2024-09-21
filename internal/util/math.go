@@ -42,12 +42,12 @@ func HexString(hex string) string {
 	return fmt.Sprintf("%X", value)
 }
 
-// Ratio calculates the ration that target has in comparison to rangeMin and rangeMax
+// Ratio calculates the ratio that target has in comparison to rangeMin and rangeMax
 // Make sure that:
 // rangeMin <= target <= rangeMax
 // rangeMax - rangeMin != 0
 func Ratio(target float64, rangeMin float64, rangeMax float64) float64 {
-	return (target - rangeMin) / (rangeMax - rangeMin)
+	return ((target - rangeMin) / (rangeMax - rangeMin) * 100) / 100
 }
 
 // UpdateSimpleMovingAvg calculates the new moving average, based on an existing average and buffer size
@@ -98,7 +98,7 @@ func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType st
 			nextY := steps[nextX]
 
 			ratio := Ratio(input, float64(currentX), float64(nextX))
-			interpolation := currentY + ratio*(nextY-currentY)
+			interpolation := float64(float32(currentY + (ratio * (nextY - currentY))))
 			return interpolation
 		}
 	}
@@ -128,7 +128,7 @@ func FindClosest(target int, arr []int) int {
 		mid = (i + j) / 2
 
 		if arr[mid] == target {
-			return arr[mid]
+			break
 		}
 
 		/* If target is less than array element,

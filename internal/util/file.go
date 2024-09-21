@@ -55,7 +55,7 @@ func ReadIntFromFile(path string) (value int, err error) {
 	}
 	text := string(data)
 	if len(text) <= 0 {
-		return 0, fmt.Errorf("file is empty: %s", path)
+		return -1, fmt.Errorf("file is empty: %s", path)
 	}
 	text = strings.TrimSpace(text)
 	value, err = strconv.Atoi(text)
