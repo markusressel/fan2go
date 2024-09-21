@@ -35,11 +35,16 @@ func TestMain(m *testing.M) {
 }
 
 func beforeEach() {
-	NewPersistence(dbTestingPath).Init()
+	err := NewPersistence(dbTestingPath).Init()
+	if err != nil {
+		panic(err)
+	}
 }
 
 func afterEach() {
-	defer os.Remove(dbTestingPath)
+	defer func() {
+		_ = os.Remove(dbTestingPath)
+	}()
 }
 
 func TestPersistence_DeleteFanPwmData(t *testing.T) {

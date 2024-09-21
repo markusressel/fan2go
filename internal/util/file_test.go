@@ -22,8 +22,12 @@ func TestFileHasPermissionsUserIsRoot(t *testing.T) {
 	err = os.Chmod(filePath, filePerm)
 	assert.NoError(t, err)
 
-	defer file.Close()
-	defer os.Remove(filePath)
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(filePath)
 
 	// WHEN
 	result, err := CheckFilePermissionsForExecution(filePath)
@@ -49,8 +53,12 @@ func TestFileHasPermissionsGroupIsRootAndHasWrite(t *testing.T) {
 	err = os.Chmod(filePath, filePerm)
 	assert.NoError(t, err)
 
-	defer file.Close()
-	defer os.Remove(filePath)
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(filePath)
 
 	// WHEN
 	result, err := CheckFilePermissionsForExecution(filePath)
@@ -76,8 +84,12 @@ func TestFileHasPermissionsGroupOtherThanRootHasWritePermission(t *testing.T) {
 	err = os.Chmod(filePath, filePerm)
 	assert.NoError(t, err)
 
-	defer file.Close()
-	defer os.Remove(filePath)
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(filePath)
 
 	// WHEN
 	result, err := CheckFilePermissionsForExecution(filePath)
@@ -103,8 +115,12 @@ func TestFileHasPermissionsOtherHasWritePermission(t *testing.T) {
 	err = os.Chmod(filePath, filePerm)
 	assert.NoError(t, err)
 
-	defer file.Close()
-	defer os.Remove(filePath)
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(filePath)
 
 	// WHEN
 	result, err := CheckFilePermissionsForExecution(filePath)
@@ -141,8 +157,10 @@ func TestReadIntFromFile_FileNotFound(t *testing.T) {
 func TestReadIntFromFile_FileEmpty(t *testing.T) {
 	// GIVEN
 	filePath := "./empty_file"
-	os.Create(filePath)
-	defer os.Remove(filePath)
+	_, _ = os.Create(filePath)
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(filePath)
 
 	// WHEN
 	result, err := ReadIntFromFile(filePath)
@@ -155,7 +173,9 @@ func TestReadIntFromFile_FileEmpty(t *testing.T) {
 func TestWriteIntToFile_Success(t *testing.T) {
 	// GIVEN
 	filePath := "./testfile"
-	defer os.Remove(filePath)
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(filePath)
 	value := 123
 
 	// WHEN
