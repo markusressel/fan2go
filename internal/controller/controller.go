@@ -557,14 +557,17 @@ func (f *PidFanController) computePwmMap() (err error) {
 		return nil
 	}
 
-	f.pwmMap, err = f.persistence.LoadFanPwmMap(f.fan.GetId())
+	savedPwmMap, err := f.persistence.LoadFanPwmMap(f.fan.GetId())
 	if err == nil && f.pwmMap != nil {
 		ui.Info("FanController: Using saved value for pwm map of Fan '%s'", f.fan.GetId())
+		f.pwmMap = savedPwmMap
 		return nil
 	}
 
-	ui.Info("Computing pwm map...")
-	f.computePwmMapAutomatically()
+	if f.pwmMap == nil {
+		ui.Info("Computing pwm map...")
+		f.computePwmMapAutomatically()
+	}
 
 	ui.Debug("Saving pwm map to fan...")
 	return f.persistence.SaveFanPwmMap(f.fan.GetId(), f.pwmMap)
