@@ -280,3 +280,111 @@ func TestHwMonFan_AttachFanCurveData(t *testing.T) {
 	assert.Equal(t, 10, fan.GetStartPwm())
 	assert.Equal(t, 200, fan.GetMaxPwm())
 }
+
+func TestHwMonFan_GetCurveId(t *testing.T) {
+	// GIVEN
+	expected := "test"
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			Curve: expected,
+		},
+	}
+
+	// WHEN
+	result := fan.GetCurveId()
+
+	// THEN
+	assert.Equal(t, expected, result)
+}
+
+func TestHwMonFan_GetPwmEnabled(t *testing.T) {
+	// GIVEN
+	expected := ControlModePWM
+	pwmEnabledPath := "./file_fan_pwm_enabled"
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(pwmEnabledPath)
+
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			HwMon: &configuration.HwMonFanConfig{
+				PwmEnablePath: pwmEnabledPath,
+			},
+		},
+	}
+	err := fan.SetPwmEnabled(ControlModePWM)
+	assert.NoError(t, err)
+
+	// WHEN
+	result, err := fan.GetPwmEnabled()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, expected, ControlMode(result))
+}
+
+func TestHwMonFan_IsPwmAuto(t *testing.T) {
+	// GIVEN
+	pwmEnabledPath := "./file_fan_pwm_enabled"
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(pwmEnabledPath)
+
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			HwMon: &configuration.HwMonFanConfig{
+				PwmEnablePath: pwmEnabledPath,
+			},
+		},
+	}
+	err := fan.SetPwmEnabled(ControlModeAutomatic)
+	assert.NoError(t, err)
+
+	// WHEN
+	result, err := fan.IsPwmAuto()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, true, result)
+}
+
+func TestHwMonFan_Supports_ControlMode(t *testing.T) {
+	// GIVEN
+	pwmEnabledPath := "./file_fan_pwm_enabled"
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(pwmEnabledPath)
+	err := util.WriteIntToFile(1, pwmEnabledPath)
+	assert.NoError(t, err)
+
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			HwMon: &configuration.HwMonFanConfig{
+				PwmEnablePath: pwmEnabledPath,
+			},
+		},
+	}
+
+	// WHEN
+	result := fan.Supports(FeatureControlMode)
+
+	// THEN
+	assert.True(t, result)
+}
+
+func TestHwMonFan_Supports_ControlMode_False(t *testing.T) {
+	// GIVEN
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			HwMon: &configuration.HwMonFanConfig{
+				PwmEnablePath: "./file_fan_pwm_enabled",
+			},
+		},
+	}
+
+	// WHEN
+	result := fan.Supports(FeatureControlMode)
+
+	// THEN
+	assert.False(t, result)
+}
