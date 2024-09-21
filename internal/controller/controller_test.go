@@ -542,7 +542,6 @@ func TestFanController_ComputePwmMap_FullRange(t *testing.T) {
 
 	// WHEN
 	err := controller.computePwmMap()
-	// controller.computePwmMapAutomatically()
 
 	// THEN
 	assert.NoError(t, err)
