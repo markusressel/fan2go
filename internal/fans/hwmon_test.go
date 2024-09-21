@@ -62,7 +62,7 @@ func TestHwMonFan_SetStartPwm(t *testing.T) {
 	assert.Equal(t, expected, startPwm)
 }
 
-func TestHwMonFan_ShouldNeverStop_GetMinPwm(t *testing.T) {
+func TestHwMonFan_GetMinPwm_ShouldNeverStop(t *testing.T) {
 	// GIVEN
 	expected := 30
 	fan := HwMonFan{
@@ -70,6 +70,23 @@ func TestHwMonFan_ShouldNeverStop_GetMinPwm(t *testing.T) {
 		Config: configuration.FanConfig{
 			NeverStop: true,
 			MinPwm:    &expected,
+			HwMon:     &configuration.HwMonFanConfig{},
+		},
+	}
+
+	// WHEN
+	minPwm := fan.GetMinPwm()
+
+	// THEN
+	assert.Equal(t, expected, minPwm)
+}
+
+func TestHwMonFan_GetMinPwm_ShouldNeverStop_Default(t *testing.T) {
+	// GIVEN
+	expected := MinPwmValue
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			NeverStop: true,
 			HwMon:     &configuration.HwMonFanConfig{},
 		},
 	}
