@@ -166,6 +166,7 @@ func (f *PidFanController) Run(ctx context.Context) error {
 	f.updateDistinctPwmValues()
 
 	ui.Debug("PWM map of fan '%s': %v", fan.GetId(), f.pwmMap)
+	ui.Debug("PWM map values with distinct target values of fan '%s': %v", fan.GetId(), f.pwmValuesWithDistinctTarget)
 	ui.Info("PWM settings of fan '%s': Min %d, Start %d, Max %d", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm(), fan.GetMaxPwm())
 	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
 
@@ -511,6 +512,12 @@ func (f *PidFanController) waitForFanToSettle(fan fans.Fan) {
 	ui.Debug("Fan %s has settled (current RPM max diff: %f)", fan.GetId(), measuredRpmDiffMax)
 }
 
+// findClosestDistinctTarget traverses the entries of the pwmMap and returns
+// the internal pwm value (key) of the entry whose value is closest (and distinct) value
+// to the requested [target] value.
+//
+// Note: The value returned by this method must be used as the key
+// to the pwmMap to get the actual target pwm value for the fan of this controller.
 func (f *PidFanController) findClosestDistinctTarget(target int) int {
 	return util.FindClosest(target, f.pwmValuesWithDistinctTarget)
 }
