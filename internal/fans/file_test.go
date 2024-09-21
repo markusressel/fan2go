@@ -2,6 +2,7 @@ package fans
 
 import (
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"
@@ -313,4 +314,30 @@ func TestFileFan_SetPwm_InvalidPath(t *testing.T) {
 
 	// THEN
 	assert.Error(t, err)
+}
+
+func TestFileFan_GetFanCurveData(t *testing.T) {
+	// GIVEN
+	config := configuration.FanConfig{
+		File: &configuration.FileFanConfig{
+			Path:    "../..////",
+			RpmPath: "../../test/non_existent_file",
+		},
+	}
+
+	fan, _ := NewFan(config)
+
+	expectedFanCurve := util.InterpolateLinearly(
+		&map[int]float64{
+			0:   0.0,
+			255: 255.0,
+		},
+		0, 255,
+	)
+
+	// WHEN
+	result := fan.GetFanCurveData()
+
+	// THEN
+	assert.Equal(t, expectedFanCurve, *result)
 }
