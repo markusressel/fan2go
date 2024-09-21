@@ -380,3 +380,117 @@ func TestFileFan_ShouldNeverStop(t *testing.T) {
 	// THEN
 	assert.Equal(t, true, result)
 }
+
+func TestFileFan_GetPwmEnabled(t *testing.T) {
+	// GIVEN
+	config := configuration.FanConfig{
+		File: &configuration.FileFanConfig{
+			Path:    "../../test/file_fan_pwm",
+			RpmPath: "../../test/file_fan_rpm",
+		},
+	}
+
+	fan, _ := NewFan(config)
+
+	// WHEN
+	result, err := fan.GetPwmEnabled()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, 1, result)
+}
+
+func TestFileFan_SetPwmEnabled(t *testing.T) {
+	// GIVEN
+	config := configuration.FanConfig{
+		File: &configuration.FileFanConfig{
+			Path:    "../../test/file_fan_pwm",
+			RpmPath: "../../test/file_fan_rpm",
+		},
+	}
+
+	fan, _ := NewFan(config)
+
+	// WHEN
+	err := fan.SetPwmEnabled(ControlModeDisabled)
+
+	// THEN
+	assert.NoError(t, err)
+
+	result, err := fan.GetPwmEnabled()
+	assert.NoError(t, err)
+	// NOTE: file fan does not support setting pwm enabled
+	assert.Equal(t, 1, result)
+}
+
+func TestFileFan_IsPwmAuto(t *testing.T) {
+	// GIVEN
+	config := configuration.FanConfig{
+		File: &configuration.FileFanConfig{
+			Path:    "../../test/file_fan_pwm",
+			RpmPath: "../../test/file_fan_rpm",
+		},
+	}
+
+	fan, _ := NewFan(config)
+
+	// WHEN
+	result, err := fan.IsPwmAuto()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, true, result)
+}
+
+func TestFileFan_Supports_ControlMode(t *testing.T) {
+	// GIVEN
+	config := configuration.FanConfig{
+		File: &configuration.FileFanConfig{
+			Path:    "../../test/file_fan_pwm",
+			RpmPath: "../../test/file_fan_rpm",
+		},
+	}
+
+	fan, _ := NewFan(config)
+
+	// WHEN
+	result := fan.Supports(FeatureControlMode)
+
+	// THEN
+	assert.Equal(t, false, result)
+}
+
+func TestFileFan_Supports_RpmSensor_True(t *testing.T) {
+	// GIVEN
+	config := configuration.FanConfig{
+		File: &configuration.FileFanConfig{
+			Path:    "../../test/file_fan_pwm",
+			RpmPath: "../../test/file_fan_rpm",
+		},
+	}
+
+	fan, _ := NewFan(config)
+
+	// WHEN
+	result := fan.Supports(FeatureRpmSensor)
+
+	// THEN
+	assert.Equal(t, true, result)
+}
+
+func TestFileFan_Supports_RpmSensor_False(t *testing.T) {
+	// GIVEN
+	config := configuration.FanConfig{
+		File: &configuration.FileFanConfig{
+			Path: "../../test/file_fan_pwm",
+		},
+	}
+
+	fan, _ := NewFan(config)
+
+	// WHEN
+	result := fan.Supports(FeatureRpmSensor)
+
+	// THEN
+	assert.Equal(t, false, result)
+}
