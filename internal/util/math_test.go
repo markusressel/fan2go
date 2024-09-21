@@ -78,6 +78,11 @@ func TestFindClosest(t *testing.T) {
 	assert.Equal(t, 60, closest)
 
 	// WHEN
+	closest = FindClosest(75, options)
+	// THEN
+	assert.Equal(t, 80, closest)
+
+	// WHEN
 	closest = FindClosest(100, options)
 	// THEN
 	assert.Equal(t, 90, closest)
