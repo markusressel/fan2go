@@ -3,6 +3,7 @@ package fans
 import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/stretchr/testify/assert"
+	"os"
 	"testing"
 )
 
@@ -272,9 +273,11 @@ func TestFileFan_GetPwm_InvalidPath(t *testing.T) {
 
 func TestFileFan_SetPwm(t *testing.T) {
 	// GIVEN
+	defer os.Remove("./file_fan_pwm")
+
 	config := configuration.FanConfig{
 		File: &configuration.FileFanConfig{
-			Path:    "../../test/file_fan_pwm",
+			Path:    "./file_fan_pwm",
 			RpmPath: "../../test/file_fan_rpm",
 		},
 	}
