@@ -152,7 +152,7 @@ func TestReadIntFromFile_FileEmpty(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestWriteIntToFile(t *testing.T) {
+func TestWriteIntToFile_Success(t *testing.T) {
 	// GIVEN
 	filePath := "./testfile"
 	defer os.Remove(filePath)
@@ -169,4 +169,16 @@ func TestWriteIntToFile(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, value, result)
+}
+
+func TestWriteIntToFile_InvalidPath(t *testing.T) {
+	// GIVEN
+	filePath := ".////"
+	value := 123
+
+	// WHEN
+	err := WriteIntToFile(value, filePath)
+
+	// THEN
+	assert.Error(t, err)
 }
