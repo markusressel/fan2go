@@ -675,3 +675,84 @@ func TestFanController_ComputePwmMap_UserOverride(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, userDefinedPwmMap, controller.pwmMap)
 }
+
+func TestFanController_SetPwm(t *testing.T) {
+	// GIVEN
+	fan := &MockFan{
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          50,
+		shouldNeverStop: true,
+		speedCurve:      &LinearFan,
+	}
+	fans.FanMap[fan.GetId()] = fan
+
+	var keys []int
+	for pwm := range DutyCycleFan {
+		keys = append(keys, pwm)
+	}
+	sort.Ints(keys)
+
+	expectedPwmMap := map[int]int{}
+	for i := 0; i <= 255; i++ {
+		expectedPwmMap[i] = i
+	}
+
+	controller := PidFanController{
+		persistence: mockPersistence{
+			hasPwmMap: false,
+		},
+		fan:        fan,
+		updateRate: time.Duration(100),
+		pwmMap:     expectedPwmMap,
+	}
+	err := controller.computePwmMap()
+	assert.NoError(t, err)
+	controller.updateDistinctPwmValues()
+
+	// WHEN
+	err = controller.setPwm(100)
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, 100, fan.PWM)
+}
+
+func TestFanController_SetPwm_UserOverridePwmMap(t *testing.T) {
+	// GIVEN
+	fan := &MockFan{
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          50,
+		shouldNeverStop: true,
+		speedCurve:      &LinearFan,
+	}
+	fans.FanMap[fan.GetId()] = fan
+
+	var keys []int
+	for pwm := range DutyCycleFan {
+		keys = append(keys, pwm)
+	}
+	sort.Ints(keys)
+
+	controller := PidFanController{
+		persistence: mockPersistence{
+			hasPwmMap: false,
+		},
+		fan:        fan,
+		updateRate: time.Duration(100),
+		pwmMap:     PwmMapForFanWithLimitedRange,
+	}
+	err := controller.computePwmMap()
+	assert.NoError(t, err)
+	controller.updateDistinctPwmValues()
+
+	// WHEN
+	err = controller.setPwm(100)
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, 39, fan.PWM)
+}
