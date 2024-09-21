@@ -113,3 +113,41 @@ func TestFileHasPermissionsOtherHasWritePermission(t *testing.T) {
 	assert.Equal(t, false, result)
 	assert.Error(t, err)
 }
+
+func TestReadIntFromFile_Success(t *testing.T) {
+	// GIVEN
+	filePath := "../../test/file_fan_rpm"
+
+	// WHEN
+	result, err := ReadIntFromFile(filePath)
+
+	// THEN
+	assert.Equal(t, 2150, result)
+	assert.NoError(t, err)
+}
+
+func TestReadIntFromFile_FileNotFound(t *testing.T) {
+	// GIVEN
+	filePath := "../../not exists"
+
+	// WHEN
+	result, err := ReadIntFromFile(filePath)
+
+	// THEN
+	assert.Equal(t, -1, result)
+	assert.Error(t, err)
+}
+
+func TestReadIntFromFile_FileEmpty(t *testing.T) {
+	// GIVEN
+	filePath := "./empty_file"
+	os.Create(filePath)
+	defer os.Remove(filePath)
+
+	// WHEN
+	result, err := ReadIntFromFile(filePath)
+
+	// THEN
+	assert.Equal(t, -1, result)
+	assert.Error(t, err)
+}
