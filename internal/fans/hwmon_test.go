@@ -388,3 +388,44 @@ func TestHwMonFan_Supports_ControlMode_False(t *testing.T) {
 	// THEN
 	assert.False(t, result)
 }
+
+func TestHwMonFan_Supports_RpmSensor(t *testing.T) {
+	// GIVEN
+	pwmEnabledPath := "./file_fan_rpm"
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(pwmEnabledPath)
+	err := util.WriteIntToFile(2000, pwmEnabledPath)
+	assert.NoError(t, err)
+
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			HwMon: &configuration.HwMonFanConfig{
+				RpmInputPath: "../../test/file_fan_rpm",
+			},
+		},
+	}
+
+	// WHEN
+	result := fan.Supports(FeatureRpmSensor)
+
+	// THEN
+	assert.True(t, result)
+}
+
+func TestHwMonFan_Supports_RpmSensor_False(t *testing.T) {
+	// GIVEN
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			HwMon: &configuration.HwMonFanConfig{
+				RpmInputPath: "./file_fan_rpm",
+			},
+		},
+	}
+
+	// WHEN
+	result := fan.Supports(FeatureRpmSensor)
+
+	// THEN
+	assert.False(t, result)
+}
