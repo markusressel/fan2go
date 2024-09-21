@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"sort"
 	"testing"
 	"time"
@@ -58,6 +59,7 @@ func (c MockCurve) Evaluate() (value int, err error) {
 
 type MockFan struct {
 	ID              string
+	ControlMode     fans.ControlMode
 	PWM             int
 	MinPWM          int
 	RPM             int
@@ -121,11 +123,12 @@ func (fan *MockFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
 }
 
 func (fan MockFan) GetPwmEnabled() (int, error) {
-	panic("implement me")
+	return int(fan.ControlMode), nil
 }
 
 func (fan *MockFan) SetPwmEnabled(value fans.ControlMode) (err error) {
-	panic("implement me")
+	fan.ControlMode = value
+	return nil
 }
 
 func (fan MockFan) IsPwmAuto() (bool, error) {
@@ -201,20 +204,31 @@ var (
 	}
 )
 
-type mockPersistence struct{}
+type mockPersistence struct {
+	hasPwmMap       bool
+	hasSavedPwmData bool
+}
 
 func (p mockPersistence) Init() (err error) { return nil }
 
 func (p mockPersistence) SaveFanPwmData(fan fans.Fan) (err error) { return nil }
 func (p mockPersistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
-	fanCurveDataMap := map[int]float64{}
-	return fanCurveDataMap, nil
+	if p.hasSavedPwmData {
+		fanCurveDataMap := map[int]float64{}
+		return fanCurveDataMap, nil
+	} else {
+		return nil, errors.New("no pwm data found")
+	}
 }
 func (p mockPersistence) DeleteFanPwmData(fan fans.Fan) (err error) { return nil }
 
 func (p mockPersistence) LoadFanPwmMap(fanId string) (map[int]int, error) {
-	pwmMap := map[int]int{}
-	return pwmMap, nil
+	if p.hasPwmMap {
+		pwmMap := map[int]int{}
+		return pwmMap, nil
+	} else {
+		return nil, errors.New("no pwm map found")
+	}
 }
 func (p mockPersistence) SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error) { return nil }
 func (p mockPersistence) DeleteFanPwmMap(fanId string) (err error)                   { return nil }
@@ -370,10 +384,11 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	fans.FanMap[fan.GetId()] = fan
 
 	controller := PidFanController{
-		persistence: mockPersistence{}, fan: fan,
-		curve:      curve,
-		updateRate: time.Duration(100),
-		pwmMap:     createOneToOnePwmMap(),
+		persistence: mockPersistence{},
+		fan:         fan,
+		curve:       curve,
+		updateRate:  time.Duration(100),
+		pwmMap:      createOneToOnePwmMap(),
 	}
 	controller.updateDistinctPwmValues()
 
@@ -456,10 +471,11 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 	}
 
 	controller := PidFanController{
-		persistence: mockPersistence{}, fan: fan,
-		curve:      curve,
-		updateRate: time.Duration(100),
-		pwmMap:     pwmMap,
+		persistence: mockPersistence{},
+		fan:         fan,
+		curve:       curve,
+		updateRate:  time.Duration(100),
+		pwmMap:      pwmMap,
 	}
 	controller.updateDistinctPwmValues()
 
@@ -471,4 +487,64 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 
 	closestTarget := controller.findClosestDistinctTarget(targetPwm)
 	assert.Equal(t, 58, closestTarget)
+}
+
+func TestFanController_ComputePwmMap_FullRange(t *testing.T) {
+	// GIVEN
+	avgTmp := 40000.0
+
+	s := MockSensor{
+		ID:        "sensor",
+		Name:      "sensor",
+		MovingAvg: avgTmp,
+	}
+	sensors.SensorMap[s.GetId()] = &s
+
+	curveValue := 5
+	curve := &MockCurve{
+		ID:    "curve",
+		Value: curveValue,
+	}
+	curves.SpeedCurveMap[curve.GetId()] = curve
+
+	fan := &MockFan{
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          50,
+		curveId:         curve.GetId(),
+		shouldNeverStop: true,
+		speedCurve:      &DutyCycleFan,
+	}
+	fans.FanMap[fan.GetId()] = fan
+
+	var keys []int
+	for pwm := range DutyCycleFan {
+		keys = append(keys, pwm)
+	}
+	sort.Ints(keys)
+
+	expectedPwmMap := map[int]int{}
+	for i := 0; i <= 255; i++ {
+		expectedPwmMap[i] = i
+	}
+
+	controller := PidFanController{
+		persistence: mockPersistence{
+			hasPwmMap: false,
+		},
+		fan:        fan,
+		curve:      curve,
+		updateRate: time.Duration(100),
+		pwmMap:     map[int]int{},
+	}
+	controller.updateDistinctPwmValues()
+
+	// WHEN
+	err := controller.computePwmMap()
+	// controller.computePwmMapAutomatically()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, expectedPwmMap, controller.pwmMap)
 }
