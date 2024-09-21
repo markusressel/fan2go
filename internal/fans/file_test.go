@@ -320,8 +320,8 @@ func TestFileFan_GetFanCurveData(t *testing.T) {
 	// GIVEN
 	config := configuration.FanConfig{
 		File: &configuration.FileFanConfig{
-			Path:    "../..////",
-			RpmPath: "../../test/non_existent_file",
+			Path:    "../../test/file_fan_pwm",
+			RpmPath: "../../test/file_fan_rpm",
 		},
 	}
 
@@ -340,4 +340,43 @@ func TestFileFan_GetFanCurveData(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, expectedFanCurve, *result)
+}
+
+func TestFileFan_GetCurveId(t *testing.T) {
+	// GIVEN
+	curveId := "curveId"
+	config := configuration.FanConfig{
+		Curve: curveId,
+		File: &configuration.FileFanConfig{
+			Path:    "../../test/file_fan_pwm",
+			RpmPath: "../../test/file_fan_rpm",
+		},
+	}
+
+	fan, _ := NewFan(config)
+
+	// WHEN
+	result := fan.GetCurveId()
+
+	// THEN
+	assert.Equal(t, curveId, result)
+}
+
+func TestFileFan_ShouldNeverStop(t *testing.T) {
+	// GIVEN
+	config := configuration.FanConfig{
+		NeverStop: true,
+		File: &configuration.FileFanConfig{
+			Path:    "../../test/file_fan_pwm",
+			RpmPath: "../../test/file_fan_rpm",
+		},
+	}
+
+	fan, _ := NewFan(config)
+
+	// WHEN
+	result := fan.ShouldNeverStop()
+
+	// THEN
+	assert.Equal(t, true, result)
 }
