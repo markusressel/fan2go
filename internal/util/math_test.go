@@ -101,3 +101,16 @@ func TestCoerce(t *testing.T) {
 	// THEN
 	assert.Equal(t, max, resultMax)
 }
+
+func TestUpdateSimpleMovingAvg(t *testing.T) {
+	// GIVEN
+	avg := 0.0
+	n := 2
+	newValue := 10.0
+
+	// WHEN
+	result := UpdateSimpleMovingAvg(avg, n, newValue)
+
+	// THEN
+	assert.Equal(t, 5.0, result)
+}
