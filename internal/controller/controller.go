@@ -82,7 +82,7 @@ func NewFanController(
 		curve:                       curves.SpeedCurveMap[fan.GetCurveId()],
 		updateRate:                  updateRate,
 		pwmValuesWithDistinctTarget: []int{},
-		pwmMap:                      map[int]int{},
+		pwmMap:                      nil,
 		pidLoop:                     &pidLoop,
 		minPwmOffset:                0,
 	}

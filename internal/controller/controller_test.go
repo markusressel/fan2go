@@ -622,7 +622,6 @@ func TestFanController_ComputePwmMap_FullRange(t *testing.T) {
 		},
 		fan:        fan,
 		updateRate: time.Duration(100),
-		pwmMap:     map[int]int{},
 	}
 	controller.updateDistinctPwmValues()
 
