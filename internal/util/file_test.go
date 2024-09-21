@@ -189,6 +189,7 @@ func TestWriteIntToFile_Success(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, value, result)
+	assert.NoError(t, err)
 }
 
 func TestWriteIntToFile_InvalidPath(t *testing.T) {
