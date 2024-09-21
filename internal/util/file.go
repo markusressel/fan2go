@@ -19,7 +19,7 @@ func CheckFilePermissionsForExecution(filePath string) (bool, error) {
 
 	file, err := filepath.EvalSymlinks(file)
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 
 	info, err := os.Stat(file)
