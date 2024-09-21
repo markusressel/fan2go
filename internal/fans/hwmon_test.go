@@ -133,6 +133,21 @@ func TestHwMonFan_GetMaxPwm(t *testing.T) {
 	assert.Equal(t, expected, maxPwm)
 }
 
+func TestHwMonFan_GetMaxPwm_Default(t *testing.T) {
+	// GIVEN
+	expected := MaxPwmValue
+	fan := HwMonFan{
+		MaxPwm: &expected,
+		Config: configuration.FanConfig{},
+	}
+
+	// WHEN
+	maxPwm := fan.GetMaxPwm()
+
+	// THEN
+	assert.Equal(t, expected, maxPwm)
+}
+
 func TestHwMonFan_SetMaxPwm(t *testing.T) {
 	// GIVEN
 	expected := 240
