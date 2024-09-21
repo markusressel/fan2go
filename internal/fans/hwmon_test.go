@@ -6,6 +6,21 @@ import (
 	"testing"
 )
 
+func TestHwMonFan_GetId(t *testing.T) {
+	// GIVEN
+	id := "test"
+	config := configuration.FanConfig{
+		ID:    id,
+		HwMon: &configuration.HwMonFanConfig{},
+	}
+	fan, _ := NewFan(config)
+
+	// WHEN
+	result := fan.GetId()
+
+	assert.Equal(t, id, result)
+}
+
 func TestHwMonFan_GetStartPwm(t *testing.T) {
 	// GIVEN
 	expected := 30
@@ -67,6 +82,25 @@ func TestHwMonFan_GetMinPwm(t *testing.T) {
 	result := fan.GetMinPwm()
 
 	// THEN
+	assert.Equal(t, expected, result)
+}
+
+func TestHwMonFan_SetMinPwm(t *testing.T) {
+	// GIVEN
+	expected := 0
+	minPwm := 30
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			NeverStop: false,
+			MinPwm:    &minPwm,
+		},
+	}
+
+	// WHEN
+	fan.SetMinPwm(expected, true)
+
+	// THEN
+	result := fan.GetMinPwm()
 	assert.Equal(t, expected, result)
 }
 
