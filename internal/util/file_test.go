@@ -151,3 +151,22 @@ func TestReadIntFromFile_FileEmpty(t *testing.T) {
 	assert.Equal(t, -1, result)
 	assert.Error(t, err)
 }
+
+func TestWriteIntToFile(t *testing.T) {
+	// GIVEN
+	filePath := "./testfile"
+	defer os.Remove(filePath)
+	value := 123
+
+	// WHEN
+	err := WriteIntToFile(value, filePath)
+
+	// THEN
+	assert.NoError(t, err)
+
+	// WHEN
+	result, err := ReadIntFromFile(filePath)
+
+	// THEN
+	assert.Equal(t, value, result)
+}
