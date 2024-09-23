@@ -21,11 +21,11 @@ func NewPidControlLoop(
 	}
 }
 
-func (l *PidControlLoop) Cycle(target int, lastSetPwm int) int {
-	result := l.pidLoop.Loop(float64(target), float64(lastSetPwm))
+func (l *PidControlLoop) Cycle(target int, current int) int {
+	result := l.pidLoop.Loop(float64(target), float64(current))
 
 	// ensure we are within sane bounds
-	coerced := util.Coerce(float64(lastSetPwm)+result, 0, 255)
+	coerced := util.Coerce(float64(current)+result, 0, 255)
 	stepTarget := int(math.Round(coerced))
 
 	return stepTarget

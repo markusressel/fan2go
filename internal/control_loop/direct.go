@@ -28,7 +28,7 @@ func NewDirectControlLoop(
 	}
 }
 
-func (l *DirectControlLoop) Cycle(target int, measured int) int {
+func (l *DirectControlLoop) Cycle(target int, current int) int {
 	loopTime := time.Now()
 
 	dt := loopTime.Sub(l.lastTime).Seconds()
@@ -41,7 +41,7 @@ func (l *DirectControlLoop) Cycle(target int, measured int) int {
 		// the time-based change speed limit.
 		stepTarget = float64(*l.maxPwmChangePerCycle) * dt
 
-		err := float64(target - measured)
+		err := float64(target - current)
 		// we can be above or below the target pwm value,
 		// so we substract or add at most the max pwm change,
 		// capped to having reached the target
