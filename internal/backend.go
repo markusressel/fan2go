@@ -238,16 +238,18 @@ func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.Fan
 				config.ControlLoop.I,
 				config.ControlLoop.D,
 			)
-		} else if config.ControlAlgorithm.Pid != nil {
-			controlLoop = control_loop.NewPidControlLoop(
-				config.ControlAlgorithm.Pid.P,
-				config.ControlAlgorithm.Pid.I,
-				config.ControlAlgorithm.Pid.D,
-			)
-		} else if config.ControlAlgorithm.Direct != nil {
-			controlLoop = control_loop.NewDirectControlLoop(
-				config.ControlAlgorithm.Direct.MaxPwmChangePerCycle,
-			)
+		} else if config.ControlAlgorithm != nil {
+			if config.ControlAlgorithm.Pid != nil {
+				controlLoop = control_loop.NewPidControlLoop(
+					config.ControlAlgorithm.Pid.P,
+					config.ControlAlgorithm.Pid.I,
+					config.ControlAlgorithm.Pid.D,
+				)
+			} else if config.ControlAlgorithm.Direct != nil {
+				controlLoop = control_loop.NewDirectControlLoop(
+					config.ControlAlgorithm.Direct.MaxPwmChangePerCycle,
+				)
+			}
 		} else {
 			controlLoop = control_loop.NewDirectControlLoop(nil)
 		}
