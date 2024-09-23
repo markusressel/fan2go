@@ -253,9 +253,9 @@ func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.Fan
 			}
 		} else {
 			controlLoop = control_loop.NewPidControlLoop(
-				0.03,
-				0.002,
-				0.0005,
+				control_loop.DefaultPidConfig.P,
+				control_loop.DefaultPidConfig.I,
+				control_loop.DefaultPidConfig.D,
 			)
 		}
 

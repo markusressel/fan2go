@@ -5,6 +5,20 @@ import (
 	"math"
 )
 
+type PidControlLoopDefaults struct {
+	P float64
+	I float64
+	D float64
+}
+
+var (
+	DefaultPidConfig = PidControlLoopDefaults{
+		P: 0.3,
+		I: 0.02,
+		D: 0.005,
+	}
+)
+
 // PidControlLoop is a PidLoop based control loop implementation.
 type PidControlLoop struct {
 	pidLoop *util.PidLoop

@@ -441,7 +441,7 @@ After successfully verifying your configuration you can launch fan2go from the C
 working as expected. Assuming you put your configuration file in `/etc/fan2go/fan2go.yaml` run:
 
 ```shell
-> fan2go help                                                                                                                                                                              2 (0.032s) < 22:43:49
+> fan2go help
 fan2go is a simple daemon that controls the fans
 on your computer based on temperature sensors.
 
@@ -695,9 +695,9 @@ fans:
 The PID control algorithm uses a PID loop to approach the target value. The default
 configuration is pretty non-aggressive using the following values:
 
-| P      | I       | D        |
-|--------|---------|----------|
-| `0.03` | `0.002` | `0.0005` |
+| P     | I      | D       |
+|-------|--------|---------|
+| `0.3` | `0.02` | `0.005` |
 
 If you don't like the default behaviour you can configure your own in the config:
 
@@ -707,9 +707,9 @@ fans:
     ...
     controlAlgorithm:
       pid:
-        p: 0.03
-        i: 0.002
-        d: 0.0005
+        p: 0.3
+        i: 0.02
+        d: 0.005
 ```
 
 The loop is advanced at a constant rate, specified by the `controllerAdjustmentTickRate` config option, which

@@ -3,6 +3,7 @@ package configuration
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/markusressel/fan2go/internal/control_loop"
 	"github.com/mitchellh/mapstructure"
 	"os"
 	"time"
@@ -149,9 +150,9 @@ func (s *ControlAlgorithmConfig) UnmarshalText(text []byte) error {
 		// default configuration for PID control algorithm
 		*s = ControlAlgorithmConfig{
 			Pid: &PidControlAlgorithmConfig{
-				0.03,
-				0.002,
-				0.0005,
+				control_loop.DefaultPidConfig.P,
+				control_loop.DefaultPidConfig.I,
+				control_loop.DefaultPidConfig.D,
 			},
 		}
 	case string(Direct):
