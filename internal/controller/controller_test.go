@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"sort"
 	"testing"
 	"time"
@@ -58,12 +59,14 @@ func (c MockCurve) Evaluate() (value int, err error) {
 
 type MockFan struct {
 	ID              string
+	ControlMode     fans.ControlMode
 	PWM             int
 	MinPWM          int
 	RPM             int
 	curveId         string
 	shouldNeverStop bool
 	speedCurve      *map[int]float64
+	PwmMap          *map[int]int
 }
 
 func (fan MockFan) GetStartPwm() int {
@@ -121,11 +124,12 @@ func (fan *MockFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
 }
 
 func (fan MockFan) GetPwmEnabled() (int, error) {
-	panic("implement me")
+	return int(fan.ControlMode), nil
 }
 
 func (fan *MockFan) SetPwmEnabled(value fans.ControlMode) (err error) {
-	panic("implement me")
+	fan.ControlMode = value
+	return nil
 }
 
 func (fan MockFan) IsPwmAuto() (bool, error) {
@@ -153,6 +157,109 @@ func (fan MockFan) Supports(feature fans.FeatureFlag) bool {
 }
 
 var (
+	PwmMapForFanWithLimitedRange = map[int]int{
+		0:   0,
+		3:   1,
+		5:   2,
+		8:   3,
+		10:  4,
+		13:  5,
+		15:  6,
+		18:  7,
+		20:  8,
+		23:  9,
+		25:  10,
+		28:  11,
+		31:  12,
+		33:  13,
+		36:  14,
+		38:  15,
+		41:  16,
+		43:  17,
+		46:  18,
+		48:  19,
+		51:  20,
+		54:  21,
+		56:  22,
+		59:  23,
+		61:  24,
+		64:  25,
+		66:  26,
+		69:  27,
+		71:  28,
+		74:  29,
+		77:  30,
+		79:  31,
+		82:  32,
+		85:  33,
+		87:  34,
+		90:  35,
+		92:  36,
+		95:  37,
+		97:  38,
+		100: 39,
+		103: 40,
+		105: 41,
+		108: 42,
+		110: 43,
+		113: 44,
+		116: 45,
+		118: 46,
+		121: 47,
+		123: 48,
+		126: 49,
+		128: 50,
+		131: 51,
+		134: 52,
+		136: 53,
+		139: 54,
+		141: 55,
+		144: 56,
+		147: 57,
+		149: 58,
+		152: 59,
+		154: 60,
+		157: 61,
+		160: 62,
+		162: 63,
+		165: 64,
+		167: 65,
+		170: 66,
+		172: 67,
+		175: 68,
+		178: 69,
+		180: 70,
+		183: 71,
+		185: 72,
+		188: 73,
+		190: 74,
+		193: 75,
+		196: 76,
+		198: 77,
+		201: 78,
+		203: 79,
+		206: 80,
+		208: 81,
+		211: 82,
+		214: 83,
+		216: 84,
+		219: 85,
+		221: 86,
+		224: 87,
+		226: 88,
+		229: 89,
+		232: 90,
+		234: 91,
+		237: 92,
+		239: 93,
+		242: 94,
+		244: 95,
+		247: 96,
+		250: 97,
+		252: 98,
+		255: 100,
+	}
+
 	LinearFan = util.InterpolateLinearly(
 		&map[int]float64{
 			0:   0.0,
@@ -201,18 +308,31 @@ var (
 	}
 )
 
-type mockPersistence struct{}
+type mockPersistence struct {
+	hasPwmMap       bool
+	hasSavedPwmData bool
+}
+
+func (p mockPersistence) Init() (err error) { return nil }
 
 func (p mockPersistence) SaveFanPwmData(fan fans.Fan) (err error) { return nil }
 func (p mockPersistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
-	fanCurveDataMap := map[int]float64{}
-	return fanCurveDataMap, nil
+	if p.hasSavedPwmData {
+		fanCurveDataMap := map[int]float64{}
+		return fanCurveDataMap, nil
+	} else {
+		return nil, errors.New("no pwm data found")
+	}
 }
 func (p mockPersistence) DeleteFanPwmData(fan fans.Fan) (err error) { return nil }
 
 func (p mockPersistence) LoadFanPwmMap(fanId string) (map[int]int, error) {
-	pwmMap := map[int]int{}
-	return pwmMap, nil
+	if p.hasPwmMap {
+		pwmMap := map[int]int{}
+		return pwmMap, nil
+	} else {
+		return nil, errors.New("no pwm map found")
+	}
 }
 func (p mockPersistence) SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error) { return nil }
 func (p mockPersistence) DeleteFanPwmMap(fanId string) (err error)                   { return nil }
@@ -368,10 +488,11 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	fans.FanMap[fan.GetId()] = fan
 
 	controller := PidFanController{
-		persistence: mockPersistence{}, fan: fan,
-		curve:      curve,
-		updateRate: time.Duration(100),
-		pwmMap:     createOneToOnePwmMap(),
+		persistence: mockPersistence{},
+		fan:         fan,
+		curve:       curve,
+		updateRate:  time.Duration(100),
+		pwmMap:      createOneToOnePwmMap(),
 	}
 	controller.updateDistinctPwmValues()
 
@@ -454,10 +575,11 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 	}
 
 	controller := PidFanController{
-		persistence: mockPersistence{}, fan: fan,
-		curve:      curve,
-		updateRate: time.Duration(100),
-		pwmMap:     pwmMap,
+		persistence: mockPersistence{},
+		fan:         fan,
+		curve:       curve,
+		updateRate:  time.Duration(100),
+		pwmMap:      pwmMap,
 	}
 	controller.updateDistinctPwmValues()
 
@@ -469,4 +591,167 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 
 	closestTarget := controller.findClosestDistinctTarget(targetPwm)
 	assert.Equal(t, 58, closestTarget)
+}
+
+func TestFanController_ComputePwmMap_FullRange(t *testing.T) {
+	// GIVEN
+	fan := &MockFan{
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          50,
+		shouldNeverStop: true,
+		speedCurve:      &DutyCycleFan,
+	}
+	fans.FanMap[fan.GetId()] = fan
+
+	var keys []int
+	for pwm := range DutyCycleFan {
+		keys = append(keys, pwm)
+	}
+	sort.Ints(keys)
+
+	expectedPwmMap := map[int]int{}
+	for i := 0; i <= 255; i++ {
+		expectedPwmMap[i] = i
+	}
+
+	controller := PidFanController{
+		persistence: mockPersistence{
+			hasPwmMap: false,
+		},
+		fan:        fan,
+		updateRate: time.Duration(100),
+	}
+
+	// WHEN
+	err := controller.computePwmMap()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, expectedPwmMap, controller.pwmMap)
+}
+
+func TestFanController_ComputePwmMap_UserOverride(t *testing.T) {
+	// GIVEN
+	userDefinedPwmMap := PwmMapForFanWithLimitedRange
+	fan := &MockFan{
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          50,
+		shouldNeverStop: true,
+		speedCurve:      &LinearFan,
+		PwmMap:          &userDefinedPwmMap,
+	}
+	fans.FanMap[fan.GetId()] = fan
+
+	var keys []int
+	for pwm := range DutyCycleFan {
+		keys = append(keys, pwm)
+	}
+	sort.Ints(keys)
+
+	expectedPwmMap := map[int]int{}
+	for i := 0; i <= 255; i++ {
+		expectedPwmMap[i] = i
+	}
+
+	controller := PidFanController{
+		persistence: mockPersistence{
+			hasPwmMap: false,
+		},
+		fan:        fan,
+		updateRate: time.Duration(100),
+		pwmMap:     userDefinedPwmMap,
+	}
+	controller.updateDistinctPwmValues()
+
+	// WHEN
+	err := controller.computePwmMap()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, userDefinedPwmMap, controller.pwmMap)
+}
+
+func TestFanController_SetPwm(t *testing.T) {
+	// GIVEN
+	fan := &MockFan{
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          50,
+		shouldNeverStop: true,
+		speedCurve:      &LinearFan,
+	}
+	fans.FanMap[fan.GetId()] = fan
+
+	var keys []int
+	for pwm := range DutyCycleFan {
+		keys = append(keys, pwm)
+	}
+	sort.Ints(keys)
+
+	expectedPwmMap := map[int]int{}
+	for i := 0; i <= 255; i++ {
+		expectedPwmMap[i] = i
+	}
+
+	controller := PidFanController{
+		persistence: mockPersistence{
+			hasPwmMap: false,
+		},
+		fan:        fan,
+		updateRate: time.Duration(100),
+		pwmMap:     expectedPwmMap,
+	}
+	err := controller.computePwmMap()
+	assert.NoError(t, err)
+	controller.updateDistinctPwmValues()
+
+	// WHEN
+	err = controller.setPwm(100)
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, 100, fan.PWM)
+}
+
+func TestFanController_SetPwm_UserOverridePwmMap(t *testing.T) {
+	// GIVEN
+	fan := &MockFan{
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          50,
+		shouldNeverStop: true,
+		speedCurve:      &LinearFan,
+	}
+	fans.FanMap[fan.GetId()] = fan
+
+	var keys []int
+	for pwm := range DutyCycleFan {
+		keys = append(keys, pwm)
+	}
+	sort.Ints(keys)
+
+	controller := PidFanController{
+		persistence: mockPersistence{
+			hasPwmMap: false,
+		},
+		fan:        fan,
+		updateRate: time.Duration(100),
+		pwmMap:     PwmMapForFanWithLimitedRange,
+	}
+	err := controller.computePwmMap()
+	assert.NoError(t, err)
+	controller.updateDistinctPwmValues()
+
+	// WHEN
+	err = controller.setPwm(100)
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, 39, fan.PWM)
 }

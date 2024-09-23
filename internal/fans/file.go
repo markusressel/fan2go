@@ -109,6 +109,7 @@ func (fan *FileFan) SetPwm(pwm int) (err error) {
 	err = util.WriteIntToFile(pwm, filePath)
 	if err != nil {
 		ui.Error("Unable to write to file: %v", fan.Config.File.Path)
+		return err
 	}
 	return nil
 }

@@ -3,7 +3,7 @@ package hwmon
 import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal/ui"
-	"io/ioutil"
+	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -80,7 +80,7 @@ func GetChips() []*HwMonController {
 // getDeviceName read the name of a device
 func getDeviceName(devicePath string) string {
 	namePath := path.Join(devicePath, "name")
-	content, _ := ioutil.ReadFile(namePath)
+	content, _ := os.ReadFile(namePath)
 	name := string(content)
 	return strings.TrimSpace(name)
 }
@@ -88,14 +88,14 @@ func getDeviceName(devicePath string) string {
 // getDeviceModalias read the modalias of a device
 func getDeviceModalias(devicePath string) string {
 	modaliasPath := path.Join(devicePath, "device", "modalias")
-	content, _ := ioutil.ReadFile(modaliasPath)
+	content, _ := os.ReadFile(modaliasPath)
 	return strings.TrimSpace(string(content))
 }
 
 // getDeviceType read the type of a device
 func getDeviceType(devicePath string) string {
 	modaliasPath := path.Join(devicePath, "device", "type")
-	content, _ := ioutil.ReadFile(modaliasPath)
+	content, _ := os.ReadFile(modaliasPath)
 	return strings.TrimSpace(string(content))
 }
 
@@ -238,7 +238,7 @@ func containsSubFeature(s []gosensors.SubFeature, e gosensors.SubFeatureType) bo
 // getLabel read the label of a feature
 func getLabel(devicePath string, featureName string) string {
 	labelPath := path.Join(devicePath, featureName) + "_label"
-	content, _ := ioutil.ReadFile(labelPath)
+	content, _ := os.ReadFile(labelPath)
 	label := string(content)
 	if len(label) <= 0 {
 		return path.Join(path.Base(devicePath), featureName)

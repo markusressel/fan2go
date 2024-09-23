@@ -37,8 +37,9 @@
 
 # UI
 
-fan2go is a simple terminal client and controller daemon. To allow external programs to interact with it there is an API that
-can be (optionally) enabled.
+fan2go is first and foremost a daemon that runs in the background. However, it also provides
+a small set of CLI commands (see [CLI Commands](#cli-commands)) as well as an optional local HTTP API to allow
+external programs to interact with it. This API can be used to create UI clients or other tools.
 
 ## UI Clients
 
@@ -161,8 +162,8 @@ fans:
   - id: cpu
     # The type of fan configuration, one of: hwmon | file
     hwmon:
-      # The platform of the controller which is
-      # connected to this fan (see sensor.platform below)
+      # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
+      # "nouveau", "coretemp", "it8620", "corsaircpro-*" etc.
       platform: nct6798
       # The channel of this fan's RPM sensor as displayed by `fan2go detect`
       rpmChannel: 1
@@ -182,7 +183,7 @@ fans:
 fans:
   - id: file_fan
     file:
-      # Path to a file to set the PWM target for this fan
+      # Path to a file to get/set the PWM target for this fan
       path: /tmp/file_fan
       # Path to a file to read the current RPM value of this fan
       rpmPath: /tmp/file_fan_rpm
@@ -204,12 +205,12 @@ Please also make sure to read the section about
 fans:
   - id: cmd_fan
     cmd:
-      # (optional) Command to apply a new PWM value (0..255)
-      #  use "%pwm%" to specify where the target pwm value should be used withing the arguments
+      # Command to apply a new PWM value (0..255)
+      # Use "%pwm%" to specify where the target pwm value should be used withing the arguments
       setPwm:
         exec: /usr/bin/some-program
         args: [ "--set", "%pwm%" ]
-      # (optional) Command to retrieve the current PWM value (0..255)
+      # Command to retrieve the current PWM value (0..255)
       getPwm:
         exec: /usr/bin/nvidia-settings
         args: [ "-a", "someargument" ]
@@ -241,11 +242,15 @@ fans:
     # an increased rotational speed compared to lower values.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
-    # (Optional) Override for the PWM map used internally by fan2go for
-    # mapping the "normal" 0-255 value range to values supported by this fan.
-    # This can be used to compensate for a very limited set of supported values
-    # (f.ex. off, low, high). If not set manually, the map will be computed
-    # automatically by fan2go during fan initialization.
+    # (Optional) Override for the PWM map used by fan2go for
+    # mapping the expected [0..255] value range to values actually supported by this fan.
+    # This can be used to compensate for fans with a very limited set of supported values
+    # (f.ex. off, low, high). If not set manually, fan2go will try to compute this mapping
+    # automatically during fan initialization. This process is not perfect though and may
+    # result in suboptimal fan control.
+    # Note: The mapping must be strictly monotonically increasing and its Key-Set should cover the full
+    # range of values from 0 to 255. If keys are missing, fan2go will select a key that most closely
+    # matches the required target value during operation.
     pwmMap:
       0: 0
       64: 128
@@ -484,6 +489,9 @@ sudo systemctl enable --now fan2go
 journalctl -u fan2go -f
 ```
 
+> NOTE: If you want to use a config path that differs from the default one, make sure to edit the
+> unit file and point the `-c` flag to the correct path.
+
 ## CLI Commands
 
 Although fan2go is a fan controller daemon at heart, it also provides some handy cli commands to interact with the
@@ -499,6 +507,12 @@ devices that you have specified within your config.
 
 > fan2go fan --id cpu rpm
 546
+
+> fan2go fan --id cpu mode
+No control, 100% all the time (0)
+
+> fan2go fan --id cpu mode auto
+Automatic control by integrated hardware (2)
 ```
 
 ### Sensors
@@ -698,9 +712,8 @@ See [go.mod](go.mod)
 
 # Similar Projects
 
-* [nbfc](https://github.com/hirschmann/nbfc)
+* [nbfc-linux](https://github.com/nbfc-linux/nbfc-linux)
 * [thinkfan](https://github.com/vmatare/thinkfan)
-* [fancon](https://github.com/hbriese/fancon)
 
 # License
 

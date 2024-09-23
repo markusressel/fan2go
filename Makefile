@@ -1,3 +1,5 @@
+.PHONY: help test build run clean
+
 GO_FLAGS   ?=
 NAME       := fan2go
 OUTPUT_BIN ?= bin/${NAME}
@@ -21,8 +23,7 @@ build:  ## Builds the CLI
 	-X ${PACKAGE}/cmd/global.Date=${DATE}" \
 	-a -tags netgo -o ${OUTPUT_BIN} main.go
 
-run:
-	go build -o ${OUTPUT_BIN} main.go
+run: build
 	./${OUTPUT_BIN}
 
 clean:

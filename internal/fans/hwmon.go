@@ -33,8 +33,6 @@ func (fan *HwMonFan) GetMinPwm() int {
 	if fan.ShouldNeverStop() {
 		if fan.MinPwm != nil {
 			return *fan.MinPwm
-		} else {
-			return MinPwmValue
 		}
 	}
 
