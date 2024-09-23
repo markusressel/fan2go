@@ -31,11 +31,7 @@ var initCmd = &cobra.Command{
 		fanController := controller.NewFanController(
 			p,
 			fan,
-			control_loop.NewPidControlLoop(
-				0.03,
-				0.002,
-				0.0005,
-			),
+			control_loop.NewDirectControlLoop(nil),
 			configuration.CurrentConfig.ControllerAdjustmentTickRate)
 
 		ui.Info("Deleting existing data for fan '%s'...", fan.GetId())

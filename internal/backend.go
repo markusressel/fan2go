@@ -230,8 +230,9 @@ func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.Fan
 
 		var controlLoop control_loop.ControlLoop
 
-		// TODO: check compatibility fallback
+		// compatibility fallback
 		if config.ControlLoop != nil {
+			ui.Warning("Using deprecated control loop configuration for fan %s. Please update your configuration to use the new control algorithm configuration.", config.ID)
 			controlLoop = control_loop.NewPidControlLoop(
 				config.ControlLoop.P,
 				config.ControlLoop.I,
@@ -247,6 +248,8 @@ func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.Fan
 			controlLoop = control_loop.NewDirectControlLoop(
 				&config.ControlAlgorithm.Direct.MaxPwmChangePerCycle,
 			)
+		} else {
+			controlLoop = control_loop.NewDirectControlLoop(nil)
 		}
 
 		fanController := controller.NewFanController(pers, fan, controlLoop, updateRate)

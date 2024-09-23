@@ -15,7 +15,13 @@ type FanConfig struct {
 	HwMon            *HwMonFanConfig         `json:"hwMon,omitempty"`
 	File             *FileFanConfig          `json:"file,omitempty"`
 	Cmd              *CmdFanConfig           `json:"cmd,omitempty"`
-	ControlLoop      *ControlLoopConfig      `json:"controlLoop,omitempty"`
+
+	// ControlLoop is a configuration for a PID control loop.
+	//
+	// Deprecated: HeaderMap exists for historical compatibility
+	// and should not be used. To access the headers returned by a handler,
+	// use the Response.Header map as returned by the Result method.
+	ControlLoop *ControlLoopConfig `json:"controlLoop,omitempty"`
 }
 
 type ControlAlgorithm string

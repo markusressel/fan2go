@@ -10,21 +10,12 @@ type PidControlLoop struct {
 	pidLoop *util.PidLoop
 }
 
-// NewPidControlLoop creates a PidControlLoop, which is a very simple control that Pidly applies the given
-// target pwm. It can also be used to gracefully approach the target by
-// utilizing the "maxPwmChangePerCycle" property.
+// NewPidControlLoop creates a PidControlLoop, which uses a PID loop to approach the target.
 func NewPidControlLoop(
 	p float64,
 	i float64,
 	d float64,
 ) *PidControlLoop {
-	// TODO: somehow incorporate default values
-	//pidLoop = util.NewPidLoop(
-	//	0.03,
-	//	0.002,
-	//	0.0005,
-	//)
-
 	return &PidControlLoop{
 		pidLoop: util.NewPidLoop(p, i, d),
 	}

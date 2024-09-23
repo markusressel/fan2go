@@ -265,6 +265,21 @@ func validateFans(config *Configuration) error {
 			return fmt.Errorf("fan %s: no curve definition with id '%s' found", fanConfig.ID, fanConfig.Curve)
 		}
 
+		if fanConfig.ControlAlgorithm != nil {
+			if fanConfig.ControlAlgorithm.Direct != nil {
+				if fanConfig.ControlAlgorithm.Direct.MaxPwmChangePerCycle <= 0 {
+					return fmt.Errorf("fan %s: invalid maxPwmChangePerCycle, must be > 0", fanConfig.ID)
+				}
+			}
+
+			if fanConfig.ControlAlgorithm.Pid != nil {
+				pidConfig := fanConfig.ControlAlgorithm.Pid
+				if pidConfig.P == 0 && pidConfig.I == 0 && pidConfig.D == 0 {
+					return fmt.Errorf("fan %s: all PID constants are zero", fanConfig.ID)
+				}
+			}
+		}
+
 		if fanConfig.HwMon != nil {
 			if (fanConfig.HwMon.Index != 0 && fanConfig.HwMon.RpmChannel != 0) || (fanConfig.HwMon.Index == 0 && fanConfig.HwMon.RpmChannel == 0) {
 				return fmt.Errorf("fan %s: must have one of index or rpmChannel, must be >= 1", fanConfig.ID)
