@@ -231,16 +231,13 @@ func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.Fan
 		var controlLoop control_loop.ControlLoop
 
 		// compatibility fallback
-		//nolint:SA1019
-		if config.ControlLoop != nil {
+		if config.ControlLoop != nil { //nolint:all
 			ui.Warning("Using deprecated control loop configuration for fan %s. Please update your configuration to use the new control algorithm configuration.", config.ID)
 			controlLoop = control_loop.NewPidControlLoop(
-				//nolint:SA1019
-				config.ControlLoop.P,
-				//nolint:SA1019
-				config.ControlLoop.I,
-				//nolint:SA1019
-				config.ControlLoop.D,
+
+				config.ControlLoop.P, //nolint:all
+				config.ControlLoop.I, //nolint:all
+				config.ControlLoop.D, //nolint:all
 			)
 		} else if config.ControlAlgorithm != nil {
 			if config.ControlAlgorithm.Pid != nil {
