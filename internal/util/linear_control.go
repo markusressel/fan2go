@@ -7,14 +7,14 @@ import "time"
 // changing the pwm speed at most by x amount per cycle
 
 type LinearLoop struct {
-	pwmChangePerSecond int
-	lastTime           time.Time
+	maxPwmChangePerCycle int
+	lastTime             time.Time
 }
 
-func NewLinearLoop(pwmChangePerSecond int) *LinearLoop {
+func NewLinearLoop(maxPwmChangePerCycle int) *LinearLoop {
 	return &LinearLoop{
-		pwmChangePerSecond: pwmChangePerSecond,
-		lastTime:           time.Now(),
+		maxPwmChangePerCycle: maxPwmChangePerCycle,
+		lastTime:             time.Now(),
 	}
 }
 
@@ -27,7 +27,7 @@ func (l *LinearLoop) Loop(target float64, measured float64) float64 {
 
 	// the pwm adjustment depends on the direction and
 	// the time-based change speed limit.
-	maxPwmChangeThiStep := float64(l.pwmChangePerSecond) * dt
+	maxPwmChangeThiStep := float64(l.maxPwmChangePerCycle) * dt
 	err := target - measured
 	// we can be above or below the target pwm value,
 	// so we substract or add at most the max pwm change,

@@ -246,7 +246,7 @@ func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.Fan
 				)
 			}
 		} else if config.ControlAlgorithm.Alg == "simple" {
-			linearLoop = util.NewLinearLoop(config.ControlAlgorithm.PwmChangePerSecond)
+			linearLoop = util.NewLinearLoop(config.ControlAlgorithm.MaxPwmChangePerCycle)
 		}
 
 		fanController := controller.NewFanController(pers, fan, pidLoop, linearLoop, updateRate)

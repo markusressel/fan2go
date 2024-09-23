@@ -33,7 +33,7 @@ func NewPidLoop(p float64, i float64, d float64) *PidLoop {
 // Loop advances the pid loop
 func (p *PidLoop) Loop(target float64, measured float64) float64 {
 	// TODO: make user configurable
-	const maxPwmAdjustmentPerSecond float64 = 10.0
+	const maxPwmChangePerCycle float64 = 10.0
 
 	loopTime := time.Now()
 	var dt float64
@@ -46,7 +46,7 @@ func (p *PidLoop) Loop(target float64, measured float64) float64 {
 
 	// the pwm adjustment depends on the direction and
 	// the time-based change speed limit.
-	maxPwmAdjustmentThiStep := maxPwmAdjustmentPerSecond * dt
+	maxPwmAdjustmentThiStep := maxPwmChangePerCycle * dt
 	err := target - measured
 	if err > 0 {
 		return Coerce(maxPwmAdjustmentThiStep, 0, err)

@@ -8,26 +8,26 @@ type FanConfig struct {
 	// StartPwm defines the lowest PWM value where the fans are able to start spinning from a standstill
 	StartPwm *int `json:"startPwm,omitempty"`
 	// MaxPwm defines the highest PWM value that yields an RPM increase
-	MaxPwm           *int                   `json:"maxPwm,omitempty"`
-	PwmMap           *map[int]int           `json:"pwmMap,omitempty"`
-	Curve            string                 `json:"curve"`
-	ControlAlgorithm ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
-	HwMon            *HwMonFanConfig        `json:"hwMon,omitempty"`
-	File             *FileFanConfig         `json:"file,omitempty"`
-	Cmd              *CmdFanConfig          `json:"cmd,omitempty"`
-	ControlLoop      *ControlLoopConfig     `json:"controlLoop,omitempty"`
+	MaxPwm           *int                    `json:"maxPwm,omitempty"`
+	PwmMap           *map[int]int            `json:"pwmMap,omitempty"`
+	Curve            string                  `json:"curve"`
+	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
+	HwMon            *HwMonFanConfig         `json:"hwMon,omitempty"`
+	File             *FileFanConfig          `json:"file,omitempty"`
+	Cmd              *CmdFanConfig           `json:"cmd,omitempty"`
+	ControlLoop      *ControlLoopConfig      `json:"controlLoop,omitempty"`
 }
 
 type ControlAlgorithm string
 
 const (
-	pid    ControlAlgorithm = "pid"
-	simple ControlAlgorithm = "simple"
+	Pid    ControlAlgorithm = "pid"
+	Direct ControlAlgorithm = "direct"
 )
 
 type ControlAlgorithmConfig struct {
-	Alg                ControlAlgorithm `json:"alg,omitempty"`
-	PwmChangePerSecond int              `json:"pwmChangePerSecond,omitempty"`
+	Alg                  ControlAlgorithm `json:"alg,omitempty"`
+	MaxPwmChangePerCycle int              `json:"maxPwmChangePerCycle,omitempty"`
 }
 
 type HwMonFanConfig struct {
