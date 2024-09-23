@@ -11,7 +11,7 @@ import (
 // utilizing the "maxPwmChangePerCycle" property.
 type DirectControlLoop struct {
 	// limits the maximum allowed pwm change per cycle
-	maxPwmChangePerCycle int
+	maxPwmChangePerCycle *int
 	lastTime             time.Time
 }
 
@@ -19,8 +19,8 @@ type DirectControlLoop struct {
 // target pwm. It can also be used to gracefully approach the target by
 // utilizing the "maxPwmChangePerCycle" property.
 func NewDirectControlLoop(
-	// can be used to limit the maximum allowed pwm change per cycle
-	maxPwmChangePerCycle int,
+	// (optional) limits the maximum allowed pwm change per cycle (in both directions)
+	maxPwmChangePerCycle *int,
 ) *DirectControlLoop {
 	return &DirectControlLoop{
 		maxPwmChangePerCycle: maxPwmChangePerCycle,
@@ -35,20 +35,23 @@ func (l *DirectControlLoop) Cycle(target int, measured int) int {
 
 	l.lastTime = loopTime
 
-	// the pwm adjustment depends on the direction and
-	// the time-based change speed limit.
-	maxPwmChangeThiStep := float64(l.maxPwmChangePerCycle) * dt
-	err := float64(target - measured)
-	// we can be above or below the target pwm value,
-	// so we substract or add at most the max pwm change,
-	// capped to having reached the target
-	var stepTarget float64
-	if err > 0 {
-		// below desired speed, add pwms
-		stepTarget = util.Coerce(maxPwmChangeThiStep, 0, err)
-	} else {
-		// above or at desired speed, subtract pwms
-		stepTarget = util.Coerce(-maxPwmChangeThiStep, err, 0)
+	var stepTarget = float64(target)
+	if l.maxPwmChangePerCycle != nil {
+		// the pwm adjustment depends on the direction and
+		// the time-based change speed limit.
+		stepTarget = float64(*l.maxPwmChangePerCycle) * dt
+
+		err := float64(target - measured)
+		// we can be above or below the target pwm value,
+		// so we substract or add at most the max pwm change,
+		// capped to having reached the target
+		if err > 0 {
+			// below desired speed, add pwms
+			stepTarget = util.Coerce(stepTarget, 0, err)
+		} else {
+			// above or at desired speed, subtract pwms
+			stepTarget = util.Coerce(-stepTarget, err, 0)
+		}
 	}
 
 	// ensure we are within sane bounds

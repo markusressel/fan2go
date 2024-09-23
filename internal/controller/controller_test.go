@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"github.com/markusressel/fan2go/internal/control_loop"
 	"sort"
 	"testing"
 	"time"
@@ -450,19 +451,23 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 	}
 	fans.FanMap[fan.GetId()] = fan
 
-	controller := PidFanController{
+	controlLoop := control_loop.NewDirectControlLoop(nil)
+
+	controller := DefaultFanController{
 		persistence: mockPersistence{},
 		fan:         fan,
 		curve:       curve,
 		updateRate:  time.Duration(100),
+		controlLoop: controlLoop,
 		pwmMap:      createOneToOnePwmMap(),
 	}
 	controller.updateDistinctPwmValues()
 
 	// WHEN
-	optimal := controller.calculateTargetPwm()
+	optimal, err := controller.calculateTargetPwm()
 
 	// THEN
+	assert.NoError(t, err)
 	assert.Equal(t, 127, optimal)
 }
 
@@ -495,19 +500,23 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	}
 	fans.FanMap[fan.GetId()] = fan
 
-	controller := PidFanController{
+	controlLoop := control_loop.NewDirectControlLoop(nil)
+
+	controller := DefaultFanController{
 		persistence: mockPersistence{},
 		fan:         fan,
 		curve:       curve,
 		updateRate:  time.Duration(100),
+		controlLoop: controlLoop,
 		pwmMap:      createOneToOnePwmMap(),
 	}
 	controller.updateDistinctPwmValues()
 
 	// WHEN
-	target := controller.calculateTargetPwm()
+	target, err := controller.calculateTargetPwm()
 
 	// THEN
+	assert.NoError(t, err)
 	assert.Greater(t, fan.GetMinPwm(), 0)
 	assert.Equal(t, fan.GetMinPwm(), target)
 }
@@ -582,19 +591,23 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 		255: 255,
 	}
 
-	controller := PidFanController{
+	controlLoop := control_loop.NewDirectControlLoop(nil)
+
+	controller := DefaultFanController{
 		persistence: mockPersistence{},
 		fan:         fan,
 		curve:       curve,
 		updateRate:  time.Duration(100),
+		controlLoop: controlLoop,
 		pwmMap:      pwmMap,
 	}
 	controller.updateDistinctPwmValues()
 
 	// WHEN
-	targetPwm := controller.calculateTargetPwm()
+	targetPwm, err := controller.calculateTargetPwm()
 
 	// THEN
+	assert.NoError(t, err)
 	assert.Equal(t, 54, targetPwm)
 
 	closestTarget := controller.findClosestDistinctTarget(targetPwm)
@@ -624,7 +637,7 @@ func TestFanController_ComputePwmMap_FullRange(t *testing.T) {
 		expectedPwmMap[i] = i
 	}
 
-	controller := PidFanController{
+	controller := DefaultFanController{
 		persistence: mockPersistence{
 			hasPwmMap: false,
 		},
@@ -665,7 +678,7 @@ func TestFanController_ComputePwmMap_UserOverride(t *testing.T) {
 		expectedPwmMap[i] = i
 	}
 
-	controller := PidFanController{
+	controller := DefaultFanController{
 		persistence: mockPersistence{
 			hasPwmMap: false,
 		},
@@ -706,7 +719,7 @@ func TestFanController_SetPwm(t *testing.T) {
 		expectedPwmMap[i] = i
 	}
 
-	controller := PidFanController{
+	controller := DefaultFanController{
 		persistence: mockPersistence{
 			hasPwmMap: false,
 		},
@@ -744,7 +757,7 @@ func TestFanController_SetPwm_UserOverridePwmMap(t *testing.T) {
 	}
 	sort.Ints(keys)
 
-	controller := PidFanController{
+	controller := DefaultFanController{
 		persistence: mockPersistence{
 			hasPwmMap: false,
 		},

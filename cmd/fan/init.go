@@ -2,10 +2,10 @@ package fan
 
 import (
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/control_loop"
 	"github.com/markusressel/fan2go/internal/controller"
 	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/markusressel/fan2go/internal/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -31,7 +31,7 @@ var initCmd = &cobra.Command{
 		fanController := controller.NewFanController(
 			p,
 			fan,
-			*util.NewPidLoop(
+			control_loop.NewPidControlLoop(
 				0.03,
 				0.002,
 				0.0005,
