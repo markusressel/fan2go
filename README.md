@@ -37,9 +37,9 @@
 
 # UI
 
-fan2go is a simple terminal client and controller daemon. To allow external programs to interact with it there is an API
-that
-can be (optionally) enabled.
+fan2go is first and foremost a daemon that runs in the background. However, it also provides
+a small set of CLI commands (see [CLI Commands](#cli-commands)) as well as an optional local HTTP API to allow
+external programs to interact with it. This API can be used to create UI clients or other tools.
 
 ## UI Clients
 
