@@ -123,7 +123,17 @@ func GetFilePath() string {
 func LoadConfig() {
 	// load default configuration values
 	CurrentConfig = Configuration{}
-	err := viper.Unmarshal(&CurrentConfig, viper.DecodeHook(mapstructure.TextUnmarshallerHookFunc()))
+
+	err := viper.Unmarshal(
+		&CurrentConfig,
+		viper.DecodeHook(
+			mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				mapstructure.StringToSliceHookFunc(","),
+				mapstructure.TextUnmarshallerHookFunc(),
+			),
+		),
+	)
 	if err != nil {
 		ui.Fatal("unable to decode into struct, %v", err)
 	}
@@ -136,15 +146,21 @@ func (s *ControlAlgorithmConfig) UnmarshalText(text []byte) error {
 	// check if the value matches one of the enum values
 	switch controlAlgorithm {
 	case string(Pid):
-		*s = ControlAlgorithmConfig{Pid: &PidControlAlgorithmConfig{}}
+		// default configuration for PID control algorithm
+		*s = ControlAlgorithmConfig{Pid: &PidControlAlgorithmConfig{
+			0.03,
+			0.002,
+			0.0005,
+		}}
 	case string(Direct):
+		// default configuration for Direct control algorithm
 		*s = ControlAlgorithmConfig{Direct: &DirectControlAlgorithmConfig{}}
 	default:
 		// if the value is not one of the enum values, try to unmarshal into a ControlAlgorithmConfig struct
 		config := ControlAlgorithmConfig{}
 		err := json.Unmarshal(text, &config)
 		if err != nil {
-			return fmt.Errorf("invalid control algorithm: %s", controlAlgorithm)
+			return fmt.Errorf("invalid control algorithm config: %s", controlAlgorithm)
 		} else {
 			*s = config
 		}

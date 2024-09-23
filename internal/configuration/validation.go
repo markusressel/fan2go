@@ -267,7 +267,8 @@ func validateFans(config *Configuration) error {
 
 		if fanConfig.ControlAlgorithm != nil {
 			if fanConfig.ControlAlgorithm.Direct != nil {
-				if fanConfig.ControlAlgorithm.Direct.MaxPwmChangePerCycle <= 0 {
+				maxPwmChangePerCycle := fanConfig.ControlAlgorithm.Direct.MaxPwmChangePerCycle
+				if maxPwmChangePerCycle != nil && *maxPwmChangePerCycle <= 0 {
 					return fmt.Errorf("fan %s: invalid maxPwmChangePerCycle, must be > 0", fanConfig.ID)
 				}
 			}

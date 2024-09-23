@@ -47,8 +47,8 @@ fans:
     # speed of this fan
     curve: cpu_curve
     # (Optional) The algorithm how the target speed, determined by the curve is approached.
-    #   default: pid: uses the PID control algorithm with default tuning variables
     #   direct: the target value will be directly applied to the fan
+    #   pid: uses a PID loop with default tuning variables
     controlAlgorithm:
       direct:
         # together with maxPwmChangePerCycle, fan speeds will approach target value
@@ -84,6 +84,7 @@ fans:
     hwmon:
       platform: it8620
       rpmChannel: 4
+    controlAlgorithm: direct
     neverStop: true
     curve: case_avg_curve
 

@@ -246,7 +246,7 @@ func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.Fan
 			)
 		} else if config.ControlAlgorithm.Direct != nil {
 			controlLoop = control_loop.NewDirectControlLoop(
-				&config.ControlAlgorithm.Direct.MaxPwmChangePerCycle,
+				config.ControlAlgorithm.Direct.MaxPwmChangePerCycle,
 			)
 		} else {
 			controlLoop = control_loop.NewDirectControlLoop(nil)

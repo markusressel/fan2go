@@ -654,7 +654,45 @@ sensor value.
 
 ## Fan Controllers
 
-Fan speed is controlled by a PID controller per each configured fan. The default
+The speed of a Fan is controlled using a combination of its curve, a control algorithm and the properties of
+the fan controller itself.
+
+The curve is used as the target value for the control algorithm to reach. The control algorithm then calculates the
+next PWM value to apply to the fan to reach this target value. The fan controller then applies this PWM value to the
+fan, while respecting constraints like the minimum and maximum PWM values, as well as the `neverStop` flag.
+
+### Control Algorithms
+
+A control algorithm
+is a function that returns the next PWM value to apply based on the target value calculated by the curve. The simplest
+control algorithm is the direct control algorithm, which simply forwards the target value to the fan.
+
+#### Direct Control Algorithm
+
+The simplest control algorithm is the direct control algorithm. It simply forwards the curve value to the fan
+controller.
+
+```yaml
+fans:
+  - id: some_fan
+    ...
+    controlAlgorithm: direct
+```
+
+This control algorithm can also be used to approach the curve value more slowly:
+
+```yaml
+fans:
+  - id: some_fan
+    ...
+    controlAlgorithm:
+      direct:
+        maxPwmChangePerCycle: 10
+```
+
+### PID Control Algorithm
+
+The PID control algorithm uses a PID loop to approach the target value. The default
 configuration is pretty non-aggressive using the following values:
 
 | P      | I       | D        |
@@ -667,10 +705,11 @@ If you don't like the default behaviour you can configure your own in the config
 fans:
   - id: some_fan
     ...
-    controlLoop:
-      p: 0.03
-      i: 0.002
-      d: 0.0005
+    controlAlgorithm:
+      pid:
+        p: 0.03
+        i: 0.002
+        d: 0.0005
 ```
 
 The loop is advanced at a constant rate, specified by the `controllerAdjustmentTickRate` config option, which

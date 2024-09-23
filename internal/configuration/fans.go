@@ -37,7 +37,7 @@ type ControlAlgorithmConfig struct {
 }
 
 type DirectControlAlgorithmConfig struct {
-	MaxPwmChangePerCycle int `json:"maxPwmChangePerCycle,omitempty"`
+	MaxPwmChangePerCycle *int `json:"maxPwmChangePerCycle,omitempty"`
 }
 
 type PidControlAlgorithmConfig struct {
