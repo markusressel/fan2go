@@ -156,10 +156,11 @@ func (fan MockFan) Supports(feature fans.FeatureFlag) bool {
 	return true
 }
 
-func (fan MockFan) GetControlAlgorithm() configuration.ControlAlgorithmConfig {
-	return configuration.ControlAlgorithmConfig{
-		Alg:                  configuration.Direct,
-		MaxPwmChangePerCycle: 10,
+func (fan MockFan) GetControlAlgorithm() *configuration.ControlAlgorithmConfig {
+	return &configuration.ControlAlgorithmConfig{
+		Direct: &configuration.DirectControlAlgorithmConfig{
+			MaxPwmChangePerCycle: 10,
+		},
 	}
 }
 

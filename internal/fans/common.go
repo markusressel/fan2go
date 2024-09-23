@@ -65,8 +65,6 @@ type Fan interface {
 	// GetCurveId returns the id of the speed curve associated with this fan
 	GetCurveId() string
 
-	GetControlAlgorithm() configuration.ControlAlgorithmConfig
-
 	// ShouldNeverStop indicated whether this fan should never stop rotating
 	ShouldNeverStop() bool
 

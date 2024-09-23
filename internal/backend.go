@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"github.com/markusressel/fan2go/internal/control_loop"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -23,7 +24,6 @@ import (
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/statistics"
 	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
 )
 
@@ -228,28 +228,26 @@ func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.Fan
 	for config, fan := range initializeFans(controllers) {
 		updateRate := configuration.CurrentConfig.ControllerAdjustmentTickRate
 
-		var pidLoop *util.PidLoop
-		var linearLoop *util.LinearLoop
-		if config.ControlAlgorithm.Alg == "pid" {
+		var controlLoop control_loop.ControlLoop
 
-			if config.ControlLoop != nil {
-				pidLoop = util.NewPidLoop(
-					config.ControlLoop.P,
-					config.ControlLoop.I,
-					config.ControlLoop.D,
-				)
-			} else {
-				pidLoop = util.NewPidLoop(
-					0.03,
-					0.002,
-					0.0005,
-				)
-			}
-		} else if config.ControlAlgorithm.Alg == "simple" {
-			linearLoop = util.NewLinearLoop(config.ControlAlgorithm.MaxPwmChangePerCycle)
+		// TODO: check compatibility fallback
+		if config.ControlLoop != nil {
+			controlLoop = control_loop.NewPidControlLoop(
+				config.ControlLoop.P,
+				config.ControlLoop.I,
+				config.ControlLoop.D,
+			)
+		} else if config.ControlAlgorithm.Pid != nil {
+			controlLoop = control_loop.NewPidControlLoop(
+				config.ControlAlgorithm.Pid.P,
+				config.ControlAlgorithm.Pid.I,
+				config.ControlAlgorithm.Pid.D,
+			)
+		} else if config.ControlAlgorithm.Direct != nil {
+			controlLoop = control_loop.NewDirectControlLoop(config.ControlAlgorithm.Direct.MaxPwmChangePerCycle)
 		}
 
-		fanController := controller.NewFanController(pers, fan, pidLoop, linearLoop, updateRate)
+		fanController := controller.NewFanController(pers, fan, controlLoop, updateRate)
 		result[fan] = fanController
 	}
 

@@ -1,6 +1,10 @@
 package configuration
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/mitchellh/mapstructure"
 	"os"
 	"time"
 
@@ -95,11 +99,7 @@ func setDefaultValues() {
 	viper.SetDefault("ControllerAdjustmentTickRate", 200*time.Millisecond)
 
 	viper.SetDefault("sensors", []SensorConfig{})
-	viper.SetDefault("fans", []FanConfig{
-		// the control algorithm is a string enum, so we have to set an explicit default,
-		// the rest are primitive types with a well-defined default value
-		{ControlAlgorithm: ControlAlgorithmConfig{Alg: "pid"}},
-	})
+	viper.SetDefault("fans", []FanConfig{})
 }
 
 // DetectAndReadConfigFile detects the path of the first existing config file
@@ -124,8 +124,32 @@ func GetFilePath() string {
 func LoadConfig() {
 	// load default configuration values
 	CurrentConfig = Configuration{}
-	err := viper.Unmarshal(&CurrentConfig)
+	err := viper.Unmarshal(&CurrentConfig, viper.DecodeHook(mapstructure.TextUnmarshallerHookFunc()))
 	if err != nil {
 		ui.Fatal("unable to decode into struct, %v", err)
 	}
+}
+
+// UnmarshalText is a custom unmarshaler for ControlAlgorithmConfig to handle string enum values
+func (s *ControlAlgorithmConfig) UnmarshalText(text []byte) error {
+	controlAlgorithm := string(text)
+
+	// check if the value matches one of the enum values
+	switch controlAlgorithm {
+	case string(Pid):
+		*s = ControlAlgorithmConfig{Pid: &PidControlAlgorithmConfig{}}
+	case string(Direct):
+		*s = ControlAlgorithmConfig{Direct: &DirectControlAlgorithmConfig{}}
+	default:
+		// if the value is not one of the enum values, try to unmarshal into a ControlAlgorithmConfig struct
+		config := ControlAlgorithmConfig{}
+		err := json.Unmarshal(text, &config)
+		if err != nil {
+			return errors.New(fmt.Sprintf("invalid control algorithm: %s", controlAlgorithm))
+		} else {
+			*s = config
+		}
+	}
+
+	return nil
 }

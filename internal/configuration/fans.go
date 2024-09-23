@@ -26,8 +26,18 @@ const (
 )
 
 type ControlAlgorithmConfig struct {
-	Alg                  ControlAlgorithm `json:"alg,omitempty"`
-	MaxPwmChangePerCycle int              `json:"maxPwmChangePerCycle,omitempty"`
+	Direct *DirectControlAlgorithmConfig `json:"direct,omitempty"`
+	Pid    *PidControlAlgorithmConfig    `json:"pid,omitempty"`
+}
+
+type DirectControlAlgorithmConfig struct {
+	MaxPwmChangePerCycle int `json:"maxPwmChangePerCycle,omitempty"`
+}
+
+type PidControlAlgorithmConfig struct {
+	P float64 `json:"p"`
+	I float64 `json:"i"`
+	D float64 `json:"d"`
 }
 
 type HwMonFanConfig struct {

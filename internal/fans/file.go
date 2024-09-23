@@ -21,10 +21,6 @@ func (fan *FileFan) GetId() string {
 	return fan.Config.ID
 }
 
-func (fan *FileFan) GetControlAlgorithm() configuration.ControlAlgorithmConfig {
-	return fan.Config.ControlAlgorithm
-}
-
 func (fan *FileFan) GetStartPwm() int {
 	return 1
 }
