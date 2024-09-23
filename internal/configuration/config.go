@@ -2,7 +2,6 @@ package configuration
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/mitchellh/mapstructure"
 	"os"
@@ -145,7 +144,7 @@ func (s *ControlAlgorithmConfig) UnmarshalText(text []byte) error {
 		config := ControlAlgorithmConfig{}
 		err := json.Unmarshal(text, &config)
 		if err != nil {
-			return errors.New(fmt.Sprintf("invalid control algorithm: %s", controlAlgorithm))
+			return fmt.Errorf("invalid control algorithm: %s", controlAlgorithm)
 		} else {
 			*s = config
 		}
