@@ -154,7 +154,10 @@ func (s *ControlAlgorithmConfig) UnmarshalText(text []byte) error {
 		}}
 	case string(Direct):
 		// default configuration for Direct control algorithm
-		*s = ControlAlgorithmConfig{Direct: &DirectControlAlgorithmConfig{}}
+		var maxPwmChangePerCycle = 10
+		*s = ControlAlgorithmConfig{Direct: &DirectControlAlgorithmConfig{
+			&maxPwmChangePerCycle,
+		}}
 	default:
 		// if the value is not one of the enum values, try to unmarshal into a ControlAlgorithmConfig struct
 		config := ControlAlgorithmConfig{}
