@@ -157,14 +157,6 @@ func (fan MockFan) Supports(feature fans.FeatureFlag) bool {
 	return true
 }
 
-func (fan MockFan) GetControlAlgorithm() *configuration.ControlAlgorithmConfig {
-	return &configuration.ControlAlgorithmConfig{
-		Direct: &configuration.DirectControlAlgorithmConfig{
-			MaxPwmChangePerCycle: 10,
-		},
-	}
-}
-
 var (
 	PwmMapForFanWithLimitedRange = map[int]int{
 		0:   0,
