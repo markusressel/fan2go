@@ -252,7 +252,11 @@ func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.Fan
 				)
 			}
 		} else {
-			controlLoop = control_loop.NewDirectControlLoop(nil)
+			controlLoop = control_loop.NewPidControlLoop(
+				0.03,
+				0.002,
+				0.0005,
+			)
 		}
 
 		fanController := controller.NewFanController(pers, fan, controlLoop, updateRate)
