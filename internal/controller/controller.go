@@ -248,7 +248,7 @@ func (f *PidFanController) UpdateFanSpeed() error {
 	target := f.calculateTargetPwm()
 
 	// the target pwm, approaching the actual target smoothly
-	stepTarget := int(f.controlLoop.Loop(float64(target), float64(lastSetPwm)))
+	stepTarget := f.controlLoop.Cycle(target, lastSetPwm)
 
 	if target >= 0 {
 		_ = trySetManualPwm(f.fan)
