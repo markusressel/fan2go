@@ -183,7 +183,7 @@ fans:
 fans:
   - id: file_fan
     file:
-      # Path to a file to set the PWM target for this fan
+      # Path to a file to get/set the PWM target for this fan
       path: /tmp/file_fan
       # Path to a file to read the current RPM value of this fan
       rpmPath: /tmp/file_fan_rpm
@@ -242,11 +242,15 @@ fans:
     # an increased rotational speed compared to lower values.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
-    # (Optional) Override for the PWM map used internally by fan2go for
-    # mapping the "normal" 0-255 value range to values supported by this fan.
-    # This can be used to compensate for a very limited set of supported values
-    # (f.ex. off, low, high). If not set manually, the map will be computed
-    # automatically by fan2go during fan initialization.
+    # (Optional) Override for the PWM map used by fan2go for
+    # mapping the expected [0..255] value range to values actually supported by this fan.
+    # This can be used to compensate for fans with a very limited set of supported values
+    # (f.ex. off, low, high). If not set manually, fan2go will try to compute this mapping
+    # automatically during fan initialization. This process is not perfect though and may
+    # result in suboptimal fan control.
+    # Note: The mapping must be strictly monotonically increasing and its Key-Set should cover the full
+    # range of values from 0 to 255. If keys are missing, fan2go will select a key that most closely
+    # matches the required target value during operation.
     pwmMap:
       0: 0
       64: 128
