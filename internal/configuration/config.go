@@ -147,17 +147,20 @@ func (s *ControlAlgorithmConfig) UnmarshalText(text []byte) error {
 	switch controlAlgorithm {
 	case string(Pid):
 		// default configuration for PID control algorithm
-		*s = ControlAlgorithmConfig{Pid: &PidControlAlgorithmConfig{
-			0.03,
-			0.002,
-			0.0005,
-		}}
+		*s = ControlAlgorithmConfig{
+			Pid: &PidControlAlgorithmConfig{
+				0.03,
+				0.002,
+				0.0005,
+			},
+		}
 	case string(Direct):
 		// default configuration for Direct control algorithm
-		var maxPwmChangePerCycle = 10
-		*s = ControlAlgorithmConfig{Direct: &DirectControlAlgorithmConfig{
-			&maxPwmChangePerCycle,
-		}}
+		*s = ControlAlgorithmConfig{
+			Direct: &DirectControlAlgorithmConfig{
+				nil,
+			},
+		}
 	default:
 		// if the value is not one of the enum values, try to unmarshal into a ControlAlgorithmConfig struct
 		config := ControlAlgorithmConfig{}
