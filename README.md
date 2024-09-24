@@ -373,7 +373,7 @@ curves:
 
 Unlike the other curve types, this one does not use the average of the sensor data
 to calculate its value, which allows you to create a completely custom behaviour.
-Keep in mind though that the fan controller is also PID based and will also affect
+Keep in mind though that the fan controller may also be PID based which could also affect
 how the curve is applied to the fan.
 
 #### Function
