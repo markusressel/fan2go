@@ -336,7 +336,7 @@ func TestFileFan_GetFanCurveData(t *testing.T) {
 	)
 
 	// WHEN
-	result := fan.GetFanCurveData()
+	result := fan.GetFanRpmCurveData()
 
 	// THEN
 	assert.Equal(t, expectedFanCurve, *result)

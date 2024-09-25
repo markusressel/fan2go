@@ -115,13 +115,20 @@ func (fan *MockFan) SetPwm(pwm int) (err error) {
 	return nil
 }
 
-func (fan MockFan) GetFanCurveData() *map[int]float64 {
+func (fan MockFan) GetFanRpmCurveData() *map[int]float64 {
 	return fan.speedCurve
 }
 
-func (fan *MockFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
+func (fan *MockFan) AttachFanRpmCurveData(curveData *map[int]float64) (err error) {
 	fan.speedCurve = curveData
 	return err
+}
+
+func (fan *MockFan) UpdateFanRpmCurveValue(pwm int, rpm float64) {
+	if (fan.speedCurve) == nil {
+		fan.speedCurve = &map[int]float64{}
+	}
+	(*fan.speedCurve)[pwm] = rpm
 }
 
 func (fan MockFan) GetPwmEnabled() (int, error) {
@@ -364,7 +371,7 @@ func CreateFan(neverStop bool, curveData map[int]float64, startPwm *int) (fan fa
 	}
 	fans.RegisterFan(fan)
 
-	err = fan.AttachFanCurveData(&curveData)
+	err = fan.AttachFanRpmCurveData(&curveData)
 
 	return fan, err
 }

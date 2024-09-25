@@ -165,7 +165,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 		return err
 	}
 
-	err = fan.AttachFanCurveData(&fanPwmData)
+	err = fan.AttachFanRpmCurveData(&fanPwmData)
 	if err != nil {
 		return err
 	}
@@ -328,7 +328,7 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 		ui.Debug("Measured RPM of %d at PWM %d for fan %s", int(fan.GetRpmAvg()), pwm, fan.GetId())
 	}
 
-	err = fan.AttachFanCurveData(&curveData)
+	err = fan.AttachFanRpmCurveData(&curveData)
 	if err != nil {
 		ui.Error("Failed to attach fan curve data to fan %s: %v", fan.GetId(), err)
 		return err
@@ -356,8 +356,7 @@ func measureRpm(fan fans.Fan) {
 	updatedRpmAvg := util.UpdateSimpleMovingAvg(fan.GetRpmAvg(), configuration.CurrentConfig.RpmRollingWindowSize, float64(rpm))
 	fan.SetRpmAvg(updatedRpmAvg)
 
-	pwmRpmMap := fan.GetFanCurveData()
-	(*pwmRpmMap)[pwm] = float64(rpm)
+	fan.UpdateFanRpmCurveValue(pwm, float64(rpm))
 }
 
 func trySetManualPwm(fan fans.Fan) error {

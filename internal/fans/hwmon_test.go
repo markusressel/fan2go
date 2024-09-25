@@ -305,11 +305,11 @@ func TestHwMonFan_AttachFanCurveData(t *testing.T) {
 	}
 
 	// WHEN
-	err := fan.AttachFanCurveData(&interpolated)
+	err := fan.AttachFanRpmCurveData(&interpolated)
 
 	// THEN
 	assert.NoError(t, err)
-	assert.Equal(t, &interpolated, fan.GetFanCurveData())
+	assert.Equal(t, &interpolated, fan.GetFanRpmCurveData())
 	assert.Equal(t, 10, fan.GetMinPwm())
 	assert.Equal(t, 10, fan.GetStartPwm())
 	assert.Equal(t, 200, fan.GetMaxPwm())

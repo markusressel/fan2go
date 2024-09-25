@@ -60,9 +60,12 @@ type Fan interface {
 	GetPwm() (int, error)
 	SetPwm(pwm int) (err error)
 
-	// GetFanCurveData returns the fan curve data for this fan
-	GetFanCurveData() *map[int]float64
-	AttachFanCurveData(curveData *map[int]float64) (err error)
+	// GetFanRpmCurveData returns the fan curve data for this fan
+	GetFanRpmCurveData() *map[int]float64
+	// AttachFanRpmCurveData attaches a complete set of PWM -> RPM mapping values to this fan
+	AttachFanRpmCurveData(curveData *map[int]float64) (err error)
+	// UpdateFanRpmCurveValue updates a single PWM -> RPM mapping value
+	UpdateFanRpmCurveValue(pwm int, rpm float64)
 
 	// GetCurveId returns the id of the speed curve associated with this fan
 	GetCurveId() string
@@ -111,7 +114,7 @@ func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 	userStartPwm := fan.GetStartPwm()
 	startPwm = 255
 	maxPwm = 255
-	pwmRpmMap := fan.GetFanCurveData()
+	pwmRpmMap := fan.GetFanRpmCurveData()
 
 	var keys []int
 	for pwm := range *pwmRpmMap {
