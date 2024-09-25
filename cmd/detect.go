@@ -124,7 +124,7 @@ var detectCmd = &cobra.Command{
 				if idx < (len(tables) - 1) {
 					ui.Printf(tableString)
 				} else {
-					ui.Printfln(tableString)
+					ui.Println(tableString)
 				}
 			}
 		}

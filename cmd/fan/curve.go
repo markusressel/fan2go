@@ -24,7 +24,7 @@ var curveCmd = &cobra.Command{
 		configuration.LoadConfig()
 		err := configuration.Validate(configPath)
 		if err != nil {
-			ui.FatalWithoutStacktrace(err.Error())
+			ui.FatalWithoutStacktrace("%v", err)
 		}
 
 		persistence := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
@@ -54,7 +54,7 @@ var curveCmd = &cobra.Command{
 			}
 
 			// print table
-			ui.Printfln(fan.GetId())
+			ui.Println(fan.GetId())
 			tab := table.Table{
 				Headers: []string{"", ""},
 				Rows: [][]string{

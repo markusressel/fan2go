@@ -68,7 +68,7 @@ func RunDaemon() {
 				return nil
 			}, func(err error) {
 				if err != nil {
-					ui.Warning("Error stopping parca webserver: " + err.Error())
+					ui.Warning("Error stopping parca webserver: %v", err)
 				} else {
 					ui.Debug("Webservers stopped.")
 				}
@@ -97,7 +97,7 @@ func RunDaemon() {
 				return nil
 			}, func(err error) {
 				if err != nil {
-					ui.Warning("Error stopping webservers: " + err.Error())
+					ui.Warning("Error stopping webservers: %v", err)
 				} else {
 					ui.Debug("Webservers stopped.")
 				}

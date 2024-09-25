@@ -10,6 +10,10 @@ func SetDebugEnabled(enabled bool) {
 	pterm.PrintDebugMessages = enabled
 }
 
+func Println(format string) {
+	pterm.Println(format)
+}
+
 func Printf(format string, a ...interface{}) {
 	pterm.Printf(format, a...)
 }
