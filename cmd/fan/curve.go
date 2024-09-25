@@ -78,11 +78,11 @@ var curveCmd = &cobra.Command{
 				panic(tableErr)
 			}
 			tableString := buf.String()
-			ui.Printfln(tableString)
+			ui.Println(tableString)
 
 			// print graph
 			if fanCurveErr != nil {
-				ui.Printfln("No fan curve data yet...")
+				ui.Println("No fan curve data yet...")
 				continue
 			}
 
@@ -99,7 +99,7 @@ var curveCmd = &cobra.Command{
 
 			caption := "RPM / PWM"
 			graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(100), asciigraph.Caption(caption))
-			ui.Printfln(graph)
+			ui.Println(graph)
 		}
 	},
 }

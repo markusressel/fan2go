@@ -26,7 +26,7 @@ var curveCmd = &cobra.Command{
 
 		err = configuration.Validate(configPath)
 		if err != nil {
-			ui.FatalWithoutStacktrace("configuration validation failed: %w", err)
+			ui.FatalWithoutStacktrace("configuration validation failed: %v", err)
 		}
 
 		curveConfigsToPrint := []configuration.CurveConfig{}
