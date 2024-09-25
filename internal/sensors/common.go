@@ -3,10 +3,11 @@ package sensors
 import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
+	cmap "github.com/orcaman/concurrent-map/v2"
 )
 
 var (
-	SensorMap = map[string]Sensor{}
+	SensorMap = cmap.New[Sensor]()
 )
 
 type Sensor interface {

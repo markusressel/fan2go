@@ -2,6 +2,7 @@ package fans
 
 import (
 	"fmt"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"sort"
 
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -31,7 +32,7 @@ const (
 )
 
 var (
-	FanMap = map[string]Fan{}
+	FanMap = cmap.New[Fan]()
 )
 
 type Fan interface {

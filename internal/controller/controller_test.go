@@ -362,7 +362,7 @@ func CreateFan(neverStop bool, curveData map[int]float64, startPwm *int) (fan fa
 		},
 		StartPwm: startPwm,
 	}
-	fans.FanMap[fan.GetId()] = fan
+	fans.FanMap.Set(fan.GetId(), fan)
 
 	err = fan.AttachFanCurveData(&curveData)
 
@@ -425,14 +425,14 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.SensorMap.Set(s.GetId(), &s)
 
 	curveValue := 127
-	curve := MockCurve{
+	curve := &MockCurve{
 		ID:    "curve",
 		Value: curveValue,
 	}
-	curves.SpeedCurveMap[curve.GetId()] = &curve
+	curves.SpeedCurveMap.Set(curve.GetId(), curve)
 
 	fan := &MockFan{
 		ID:              "fan",
@@ -441,7 +441,7 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 		curveId:         curve.GetId(),
 		speedCurve:      &LinearFan,
 	}
-	fans.FanMap[fan.GetId()] = fan
+	fans.FanMap.Set(fan.GetId(), fan)
 
 	controlLoop := control_loop.NewDirectControlLoop(nil)
 
@@ -467,19 +467,19 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	// GIVEN
 	avgTmp := 40000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		ID:        "sensor",
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.SensorMap.Set(s.GetId(), s)
 
 	curveValue := 0
 	curve := &MockCurve{
 		ID:    "curve",
 		Value: curveValue,
 	}
-	curves.SpeedCurveMap[curve.GetId()] = curve
+	curves.SpeedCurveMap.Set(curve.GetId(), curve)
 
 	fan := &MockFan{
 		ID:              "fan",
@@ -490,7 +490,7 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 		shouldNeverStop: true,
 		speedCurve:      &NeverStoppingFan,
 	}
-	fans.FanMap[fan.GetId()] = fan
+	fans.FanMap.Set(fan.GetId(), fan)
 
 	controlLoop := control_loop.NewDirectControlLoop(nil)
 
@@ -542,19 +542,19 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 	// GIVEN
 	avgTmp := 40000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		ID:        "sensor",
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.SensorMap.Set(s.GetId(), s)
 
 	curveValue := 5
 	curve := &MockCurve{
 		ID:    "curve",
 		Value: curveValue,
 	}
-	curves.SpeedCurveMap[curve.GetId()] = curve
+	curves.SpeedCurveMap.Set(curve.GetId(), curve)
 
 	fan := &MockFan{
 		ID:              "fan",
@@ -565,7 +565,7 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 		shouldNeverStop: true,
 		speedCurve:      &DutyCycleFan,
 	}
-	fans.FanMap[fan.GetId()] = fan
+	fans.FanMap.Set(fan.GetId(), fan)
 
 	var keys []int
 	for pwm := range DutyCycleFan {
@@ -616,7 +616,7 @@ func TestFanController_ComputePwmMap_FullRange(t *testing.T) {
 		shouldNeverStop: true,
 		speedCurve:      &DutyCycleFan,
 	}
-	fans.FanMap[fan.GetId()] = fan
+	fans.FanMap.Set(fan.GetId(), fan)
 
 	var keys []int
 	for pwm := range DutyCycleFan {
@@ -657,7 +657,7 @@ func TestFanController_ComputePwmMap_UserOverride(t *testing.T) {
 		speedCurve:      &LinearFan,
 		PwmMap:          &userDefinedPwmMap,
 	}
-	fans.FanMap[fan.GetId()] = fan
+	fans.FanMap.Set(fan.GetId(), fan)
 
 	var keys []int
 	for pwm := range DutyCycleFan {
@@ -698,7 +698,7 @@ func TestFanController_SetPwm(t *testing.T) {
 		shouldNeverStop: true,
 		speedCurve:      &LinearFan,
 	}
-	fans.FanMap[fan.GetId()] = fan
+	fans.FanMap.Set(fan.GetId(), fan)
 
 	var keys []int
 	for pwm := range DutyCycleFan {
@@ -741,7 +741,7 @@ func TestFanController_SetPwm_UserOverridePwmMap(t *testing.T) {
 		shouldNeverStop: true,
 		speedCurve:      &LinearFan,
 	}
-	fans.FanMap[fan.GetId()] = fan
+	fans.FanMap.Set(fan.GetId(), fan)
 
 	var keys []int
 	for pwm := range DutyCycleFan {

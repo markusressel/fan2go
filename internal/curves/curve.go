@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/util"
+	cmap "github.com/orcaman/concurrent-map/v2"
 )
 
 type SpeedCurve interface {
@@ -14,7 +15,7 @@ type SpeedCurve interface {
 }
 
 var (
-	SpeedCurveMap = map[string]SpeedCurve{}
+	SpeedCurveMap = cmap.New[SpeedCurve]()
 )
 
 func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {

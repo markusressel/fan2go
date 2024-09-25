@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/labstack/echo/v4"
 	"github.com/markusressel/fan2go/internal/sensors"
+	"github.com/qdm12/reprint"
 	"net/http"
 )
 
@@ -17,14 +18,14 @@ func registerSensorEndpoints(rest *echo.Echo) {
 }
 
 func getSensors(c echo.Context) error {
-	data := sensors.SensorMap
+	data := reprint.This(sensors.SensorMap.Items())
 	return c.JSONPretty(http.StatusOK, data, indentationChar)
 }
 
 func getSensor(c echo.Context) error {
 	id := c.Param(urlParamId)
 
-	data, exists := sensors.SensorMap[id]
+	data, exists := sensors.SensorMap.Get(id)
 	if !exists {
 		return returnNotFound(c, id)
 	} else {

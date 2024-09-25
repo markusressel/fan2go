@@ -19,7 +19,7 @@ func (c *LinearSpeedCurve) GetId() string {
 }
 
 func (c *LinearSpeedCurve) Evaluate() (value int, err error) {
-	sensor := sensors.SensorMap[c.Config.Linear.Sensor]
+	sensor, _ := sensors.SensorMap.Get(c.Config.Linear.Sensor)
 	var avgTemp = sensor.GetMovingAvg()
 
 	steps := c.Config.Linear.Steps
