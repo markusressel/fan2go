@@ -143,7 +143,7 @@ func createFan(neverStop bool, curveData map[int]float64) (fan fans.Fan, err err
 			Curve:     "curve",
 		},
 	}
-	fans.FanMap.Set(fan.GetId(), fan)
+	fans.RegisterFan(fan)
 
 	err = fan.AttachFanCurveData(&curveData)
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/control_loop"
-	"github.com/qdm12/reprint"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -104,9 +103,8 @@ func RunDaemon() {
 	}
 	{
 		// === sensor monitoring
-		sensorMapData := reprint.This(sensors.SensorMap.Items())
-		castedSensorMapData := sensorMapData.(map[string]sensors.Sensor)
-		for _, sensor := range castedSensorMapData {
+		sensorMapData := sensors.SnapshotSensorMap()
+		for _, sensor := range sensorMapData {
 			s := sensor
 			pollingRate := configuration.CurrentConfig.TempSensorPollingRate
 			mon := NewSensorMonitor(s, pollingRate)
@@ -145,7 +143,7 @@ func RunDaemon() {
 			})
 		}
 
-		if len(fans.FanMap.Keys()) == 0 {
+		if len(fans.SnapshotFanMap()) == 0 {
 			ui.FatalWithoutStacktrace("No valid fan configurations, exiting.")
 		}
 	}
@@ -308,7 +306,7 @@ func initializeSensors(controllers []*hwmon.HwMonController) {
 		}
 		sensor.SetMovingAvg(currentValue)
 
-		sensors.SensorMap.Set(config.ID, sensor)
+		sensors.RegisterSensor(sensor)
 	}
 
 	sensorCollector := statistics.NewSensorCollector(sensorList)
@@ -323,7 +321,7 @@ func initializeCurves() {
 			ui.Fatal("Unable to process curve configuration: %s", config.ID)
 		}
 		curveList = append(curveList, curve)
-		curves.SpeedCurveMap.Set(config.ID, curve)
+		curves.RegisterSpeedCurve(curve)
 	}
 
 	curveCollector := statistics.NewCurveCollector(curveList)
@@ -347,7 +345,7 @@ func initializeFans(controllers []*hwmon.HwMonController) map[configuration.FanC
 		if err != nil {
 			ui.Fatal("Unable to process fan configuration of '%s': %v", config.ID, err)
 		}
-		fans.FanMap.Set(config.ID, fan)
+		fans.RegisterFan(fan)
 		result[config] = fan
 
 		fanList = append(fanList, fan)

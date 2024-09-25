@@ -19,13 +19,13 @@ func registerFanEndpoints(rest *echo.Echo) {
 
 // returns a list of all currently configured fans
 func getFans(c echo.Context) error {
-	data := reprint.This(fans.FanMap.Items())
+	data := reprint.This(fans.SnapshotFanMap())
 	return c.JSONPretty(http.StatusOK, data, indentationChar)
 }
 
 func getFan(c echo.Context) error {
 	id := c.Param(urlParamId)
-	data, exists := fans.FanMap.Get(id)
+	data, exists := fans.GetFan(id)
 	if !exists {
 		return returnNotFound(c, id)
 	} else {

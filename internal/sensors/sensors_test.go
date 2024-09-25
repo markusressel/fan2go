@@ -16,6 +16,6 @@ func CreateSensor(
 		},
 		MovingAvg: avgTmp,
 	}
-	SensorMap.Set(sensor.GetId(), sensor)
+	RegisterSensor(sensor)
 	return sensor
 }

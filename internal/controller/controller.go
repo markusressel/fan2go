@@ -84,7 +84,7 @@ func NewFanController(
 	controlLoop control_loop.ControlLoop,
 	updateRate time.Duration,
 ) FanController {
-	curve, ok := curves.SpeedCurveMap.Get(fan.GetCurveId())
+	curve, ok := curves.GetSpeedCurve(fan.GetCurveId())
 	if !ok {
 		ui.Fatal("Failed to create fan controller for fan '%s': Curve with ID '%s' not found", fan.GetId(), fan.GetCurveId())
 	}

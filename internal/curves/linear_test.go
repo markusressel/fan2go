@@ -49,7 +49,7 @@ func TestLinearCurveWithMinMax(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createLinearCurveConfig(
 		"curve",
@@ -76,7 +76,7 @@ func TestLinearCurveWithSteps(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createLinearCurveConfigWithSteps(
 		"curve",

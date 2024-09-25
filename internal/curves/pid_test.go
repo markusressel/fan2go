@@ -40,7 +40,7 @@ func TestPidCurveProportionalBelowTarget(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -74,7 +74,7 @@ func TestPidCurveProportionalAboveTarget(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -108,7 +108,7 @@ func TestPidCurveProportionalWayAboveTarget(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -144,7 +144,7 @@ func TestPidCurveIntegralBelowTarget(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -178,7 +178,7 @@ func TestPidCurveIntegralAboveTarget(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -212,7 +212,7 @@ func TestPidCurveIntegralWayAboveTarget(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -248,7 +248,7 @@ func TestPidCurveDerivativeNoDiff(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -282,7 +282,7 @@ func TestPidCurveDerivativePositiveStaticDiff(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -319,7 +319,7 @@ func TestPidCurveDerivativeIncreasingDiff(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -358,7 +358,7 @@ func TestPidCurveOnTarget(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -396,7 +396,7 @@ func TestPidCurveAboveTarget(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -430,7 +430,7 @@ func TestPidCurveWayAboveTarget(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap.Set(s.GetId(), s)
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",

@@ -19,7 +19,7 @@ func (c *PidSpeedCurve) GetId() string {
 }
 
 func (c *PidSpeedCurve) Evaluate() (value int, err error) {
-	sensor, _ := sensors.SensorMap.Get(c.Config.PID.Sensor)
+	sensor, _ := sensors.GetSensor(c.Config.PID.Sensor)
 	var measured float64
 	measured, err = sensor.GetValue()
 	if err != nil {

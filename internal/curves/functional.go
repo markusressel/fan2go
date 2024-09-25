@@ -18,7 +18,7 @@ func (c *FunctionSpeedCurve) GetId() string {
 func (c *FunctionSpeedCurve) Evaluate() (value int, err error) {
 	var curves []SpeedCurve
 	for _, curveId := range c.Config.Function.Curves {
-		curve, _ := SpeedCurveMap.Get(curveId)
+		curve, _ := GetSpeedCurve(curveId)
 		curves = append(curves, curve)
 	}
 

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"github.com/labstack/echo/v4"
 	"github.com/markusressel/fan2go/internal/curves"
-	"github.com/qdm12/reprint"
 	"net/http"
 )
 
@@ -18,13 +17,13 @@ func registerCurveEndpoints(rest *echo.Echo) {
 }
 
 func getCurves(c echo.Context) error {
-	data := reprint.This(curves.SpeedCurveMap.Items())
+	data := curves.SnapshotSpeedCurveMap()
 	return c.JSONPretty(http.StatusOK, data, indentationChar)
 }
 
 func getCurve(c echo.Context) error {
 	id := c.Param(urlParamId)
-	data, exists := curves.SpeedCurveMap.Get(id)
+	data, exists := curves.GetSpeedCurve(id)
 	if !exists {
 		return returnNotFound(c, id)
 	} else {
