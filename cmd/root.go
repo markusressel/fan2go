@@ -75,6 +75,7 @@ func printHeader() {
 	if err != nil {
 		fmt.Println("fan2go")
 	}
+	ui.Info("Version: %s", global.Version)
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
