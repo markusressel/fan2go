@@ -1,8 +1,6 @@
 module github.com/markusressel/fan2go
 
-go 1.23.0
-
-toolchain go1.23.1
+go 1.23.1
 
 require (
 	github.com/asecurityteam/rolling v2.0.4+incompatible
