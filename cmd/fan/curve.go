@@ -24,7 +24,7 @@ var curveCmd = &cobra.Command{
 		configuration.LoadConfig()
 		err := configuration.Validate(configPath)
 		if err != nil {
-			ui.FatalWithoutStacktrace(err.Error())
+			ui.FatalWithoutStacktrace("%v", err)
 		}
 
 		persistence := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
@@ -45,7 +45,7 @@ var curveCmd = &cobra.Command{
 
 			pwmData, fanCurveErr := persistence.LoadFanPwmData(fan)
 			if fanCurveErr == nil {
-				_ = fan.AttachFanCurveData(&pwmData)
+				_ = fan.AttachFanRpmCurveData(&pwmData)
 			}
 
 			if idx > 0 {
@@ -54,7 +54,7 @@ var curveCmd = &cobra.Command{
 			}
 
 			// print table
-			ui.Printfln(fan.GetId())
+			ui.Println(fan.GetId())
 			tab := table.Table{
 				Headers: []string{"", ""},
 				Rows: [][]string{
@@ -78,11 +78,11 @@ var curveCmd = &cobra.Command{
 				panic(tableErr)
 			}
 			tableString := buf.String()
-			ui.Printfln(tableString)
+			ui.Println(tableString)
 
 			// print graph
 			if fanCurveErr != nil {
-				ui.Printfln("No fan curve data yet...")
+				ui.Println("No fan curve data yet...")
 				continue
 			}
 
@@ -99,7 +99,7 @@ var curveCmd = &cobra.Command{
 
 			caption := "RPM / PWM"
 			graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(100), asciigraph.Caption(caption))
-			ui.Printfln(graph)
+			ui.Println(graph)
 		}
 	},
 }

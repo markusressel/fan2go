@@ -1,6 +1,10 @@
 package configuration
 
 import (
+	"encoding/json"
+	"fmt"
+	"github.com/markusressel/fan2go/internal/control_loop"
+	"github.com/mitchellh/mapstructure"
 	"os"
 	"time"
 
@@ -120,8 +124,54 @@ func GetFilePath() string {
 func LoadConfig() {
 	// load default configuration values
 	CurrentConfig = Configuration{}
-	err := viper.Unmarshal(&CurrentConfig)
+
+	err := viper.Unmarshal(
+		&CurrentConfig,
+		viper.DecodeHook(
+			mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				mapstructure.StringToSliceHookFunc(","),
+				mapstructure.TextUnmarshallerHookFunc(),
+			),
+		),
+	)
 	if err != nil {
 		ui.Fatal("unable to decode into struct, %v", err)
 	}
+}
+
+// UnmarshalText is a custom unmarshaler for ControlAlgorithmConfig to handle string enum values
+func (s *ControlAlgorithmConfig) UnmarshalText(text []byte) error {
+	controlAlgorithm := string(text)
+
+	// check if the value matches one of the enum values
+	switch controlAlgorithm {
+	case string(Pid):
+		// default configuration for PID control algorithm
+		*s = ControlAlgorithmConfig{
+			Pid: &PidControlAlgorithmConfig{
+				control_loop.DefaultPidConfig.P,
+				control_loop.DefaultPidConfig.I,
+				control_loop.DefaultPidConfig.D,
+			},
+		}
+	case string(Direct):
+		// default configuration for Direct control algorithm
+		*s = ControlAlgorithmConfig{
+			Direct: &DirectControlAlgorithmConfig{
+				nil,
+			},
+		}
+	default:
+		// if the value is not one of the enum values, try to unmarshal into a ControlAlgorithmConfig struct
+		config := ControlAlgorithmConfig{}
+		err := json.Unmarshal(text, &config)
+		if err != nil {
+			return fmt.Errorf("invalid control algorithm config: %s", controlAlgorithm)
+		} else {
+			*s = config
+		}
+	}
+
+	return nil
 }

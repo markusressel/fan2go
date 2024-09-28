@@ -344,7 +344,7 @@ func TestCmdFan_GetFanCurveData(t *testing.T) {
 	var interpolated = util.InterpolateLinearly(&map[int]float64{0: 0, 255: 255}, 0, 255)
 
 	// WHEN
-	result := fan.GetFanCurveData()
+	result := fan.GetFanRpmCurveData()
 
 	// THEN
 	assert.Equal(t, &interpolated, result)
@@ -358,7 +358,7 @@ func TestCmdFan_AttachFanCurveData(t *testing.T) {
 	fan, _ := NewFan(config)
 
 	// WHEN
-	err := fan.AttachFanCurveData(nil)
+	err := fan.AttachFanRpmCurveData(nil)
 
 	// THEN
 	assert.NoError(t, err)

@@ -36,11 +36,11 @@ func TestPidCurveProportionalBelowTarget(t *testing.T) {
 	// GIVEN
 	avgTmp := 50000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -70,11 +70,11 @@ func TestPidCurveProportionalAboveTarget(t *testing.T) {
 	// GIVEN
 	avgTmp := 70000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -104,11 +104,11 @@ func TestPidCurveProportionalWayAboveTarget(t *testing.T) {
 	// GIVEN
 	avgTmp := 80000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -140,11 +140,11 @@ func TestPidCurveIntegralBelowTarget(t *testing.T) {
 	// GIVEN
 	avgTmp := 50000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -174,11 +174,11 @@ func TestPidCurveIntegralAboveTarget(t *testing.T) {
 	// GIVEN
 	avgTmp := 70000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -208,11 +208,11 @@ func TestPidCurveIntegralWayAboveTarget(t *testing.T) {
 	// GIVEN
 	avgTmp := 80000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -244,11 +244,11 @@ func TestPidCurveDerivativeNoDiff(t *testing.T) {
 	// GIVEN
 	avgTmp := 60000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -278,11 +278,11 @@ func TestPidCurveDerivativePositiveStaticDiff(t *testing.T) {
 	// GIVEN
 	avgTmp := 60000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -315,11 +315,11 @@ func TestPidCurveDerivativeIncreasingDiff(t *testing.T) {
 	// GIVEN
 	avgTmp := 60000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -354,11 +354,11 @@ func TestPidCurveOnTarget(t *testing.T) {
 	// GIVEN
 	avgTmp := 60000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -392,11 +392,11 @@ func TestPidCurveAboveTarget(t *testing.T) {
 	// GIVEN
 	avgTmp := 70000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",
@@ -426,11 +426,11 @@ func TestPidCurveWayAboveTarget(t *testing.T) {
 	// GIVEN
 	avgTmp := 80000.0
 
-	s := MockSensor{
+	s := &MockSensor{
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.SensorMap[s.GetId()] = &s
+	sensors.RegisterSensor(s)
 
 	curveConfig := createPidCurveConfig(
 		"curve",

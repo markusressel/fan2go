@@ -17,13 +17,13 @@ func registerCurveEndpoints(rest *echo.Echo) {
 }
 
 func getCurves(c echo.Context) error {
-	data := curves.SpeedCurveMap
+	data := curves.SnapshotSpeedCurveMap()
 	return c.JSONPretty(http.StatusOK, data, indentationChar)
 }
 
 func getCurve(c echo.Context) error {
 	id := c.Param(urlParamId)
-	data, exists := curves.SpeedCurveMap[id]
+	data, exists := curves.GetSpeedCurve(id)
 	if !exists {
 		return returnNotFound(c, id)
 	} else {

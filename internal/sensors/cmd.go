@@ -6,6 +6,7 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -13,17 +14,19 @@ type CmdSensor struct {
 	Name      string                     `json:"name"`
 	Config    configuration.SensorConfig `json:"configuration"`
 	MovingAvg float64                    `json:"movingAvg"`
+
+	mu sync.Mutex
 }
 
-func (sensor CmdSensor) GetId() string {
+func (sensor *CmdSensor) GetId() string {
 	return sensor.Config.ID
 }
 
-func (sensor CmdSensor) GetConfig() configuration.SensorConfig {
+func (sensor *CmdSensor) GetConfig() configuration.SensorConfig {
 	return sensor.Config
 }
 
-func (sensor CmdSensor) GetValue() (float64, error) {
+func (sensor *CmdSensor) GetValue() (float64, error) {
 	timeout := 2 * time.Second
 	exec := sensor.Config.Cmd.Exec
 	args := sensor.Config.Cmd.Args
@@ -41,10 +44,14 @@ func (sensor CmdSensor) GetValue() (float64, error) {
 	return temp, nil
 }
 
-func (sensor CmdSensor) GetMovingAvg() (avg float64) {
+func (sensor *CmdSensor) GetMovingAvg() (avg float64) {
+	sensor.mu.Lock()
+	defer sensor.mu.Unlock()
 	return sensor.MovingAvg
 }
 
 func (sensor *CmdSensor) SetMovingAvg(avg float64) {
+	sensor.mu.Lock()
+	defer sensor.mu.Unlock()
 	sensor.MovingAvg = avg
 }

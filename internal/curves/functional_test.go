@@ -28,19 +28,19 @@ func TestFunctionCurveSum(t *testing.T) {
 	temp1 := 50000.0
 	temp2 := 60000.0
 
-	s1 := MockSensor{
+	s1 := &MockSensor{
 		ID:        "cpu_sensor",
 		Name:      "sensor1",
 		MovingAvg: temp1,
 	}
-	sensors.SensorMap[s1.GetId()] = &s1
+	sensors.RegisterSensor(s1)
 
-	s2 := MockSensor{
+	s2 := &MockSensor{
 		ID:        "mainboard_sensor",
 		Name:      "sensor2",
 		MovingAvg: temp2,
 	}
-	sensors.SensorMap[s2.GetId()] = &s2
+	sensors.RegisterSensor(s2)
 
 	curve1 := createLinearCurveConfig(
 		"case_fan_front1",
@@ -50,7 +50,7 @@ func TestFunctionCurveSum(t *testing.T) {
 	)
 
 	c1, _ := NewSpeedCurve(curve1)
-	SpeedCurveMap[c1.GetId()] = c1
+	RegisterSpeedCurve(c1)
 
 	curve2 := createLinearCurveConfig(
 		"case_fan_back1",
@@ -61,7 +61,7 @@ func TestFunctionCurveSum(t *testing.T) {
 
 	var c2 SpeedCurve
 	c2, _ = NewSpeedCurve(curve2)
-	SpeedCurveMap[c2.GetId()] = c2
+	RegisterSpeedCurve(c2)
 
 	function := configuration.FunctionSum
 	functionCurveConfig := createFunctionCurveConfig(
@@ -73,7 +73,7 @@ func TestFunctionCurveSum(t *testing.T) {
 		},
 	)
 	functionCurve, _ := NewSpeedCurve(functionCurveConfig)
-	SpeedCurveMap[functionCurve.GetId()] = functionCurve
+	RegisterSpeedCurve(functionCurve)
 
 	// WHEN
 	result, err := functionCurve.Evaluate()
@@ -90,19 +90,19 @@ func TestFunctionCurveDifference(t *testing.T) {
 	temp1 := 60000.0
 	temp2 := 50000.0
 
-	s1 := MockSensor{
+	s1 := &MockSensor{
 		ID:        "cpu_sensor",
 		Name:      "sensor1",
 		MovingAvg: temp1,
 	}
-	sensors.SensorMap[s1.GetId()] = &s1
+	sensors.RegisterSensor(s1)
 
-	s2 := MockSensor{
+	s2 := &MockSensor{
 		ID:        "mainboard_sensor",
 		Name:      "sensor2",
 		MovingAvg: temp2,
 	}
-	sensors.SensorMap[s2.GetId()] = &s2
+	sensors.RegisterSensor(s2)
 
 	curve1 := createLinearCurveConfig(
 		"case_fan_front1",
@@ -111,7 +111,7 @@ func TestFunctionCurveDifference(t *testing.T) {
 		80,
 	)
 	c1, _ := NewSpeedCurve(curve1)
-	SpeedCurveMap[c1.GetId()] = c1
+	RegisterSpeedCurve(c1)
 
 	curve2 := createLinearCurveConfig(
 		"case_fan_back1",
@@ -120,7 +120,7 @@ func TestFunctionCurveDifference(t *testing.T) {
 		80,
 	)
 	c2, _ := NewSpeedCurve(curve2)
-	SpeedCurveMap[c2.GetId()] = c2
+	RegisterSpeedCurve(c2)
 
 	function := configuration.FunctionDifference
 	functionCurveConfig := createFunctionCurveConfig(
@@ -132,7 +132,7 @@ func TestFunctionCurveDifference(t *testing.T) {
 		},
 	)
 	functionCurve, _ := NewSpeedCurve(functionCurveConfig)
-	SpeedCurveMap[functionCurve.GetId()] = functionCurve
+	RegisterSpeedCurve(functionCurve)
 
 	// WHEN
 	result, err := functionCurve.Evaluate()
@@ -149,19 +149,19 @@ func TestFunctionCurveAverage(t *testing.T) {
 	temp1 := 40000.0
 	temp2 := 80000.0
 
-	s1 := MockSensor{
+	s1 := &MockSensor{
 		ID:        "cpu_sensor",
 		Name:      "sensor1",
 		MovingAvg: temp1,
 	}
-	sensors.SensorMap[s1.GetId()] = &s1
+	sensors.RegisterSensor(s1)
 
-	s2 := MockSensor{
+	s2 := &MockSensor{
 		ID:        "mainboard_sensor",
 		Name:      "sensor2",
 		MovingAvg: temp2,
 	}
-	sensors.SensorMap[s2.GetId()] = &s2
+	sensors.RegisterSensor(s2)
 
 	curve1 := createLinearCurveConfig(
 		"case_fan_front1",
@@ -170,7 +170,7 @@ func TestFunctionCurveAverage(t *testing.T) {
 		80,
 	)
 	c1, _ := NewSpeedCurve(curve1)
-	SpeedCurveMap[c1.GetId()] = c1
+	RegisterSpeedCurve(c1)
 
 	curve2 := createLinearCurveConfig(
 		"case_fan_back1",
@@ -179,7 +179,7 @@ func TestFunctionCurveAverage(t *testing.T) {
 		80,
 	)
 	c2, _ := NewSpeedCurve(curve2)
-	SpeedCurveMap[c2.GetId()] = c2
+	RegisterSpeedCurve(c2)
 
 	function := configuration.FunctionAverage
 	functionCurveConfig := createFunctionCurveConfig(
@@ -191,7 +191,7 @@ func TestFunctionCurveAverage(t *testing.T) {
 		},
 	)
 	functionCurve, _ := NewSpeedCurve(functionCurveConfig)
-	SpeedCurveMap[functionCurve.GetId()] = functionCurve
+	RegisterSpeedCurve(functionCurve)
 
 	// WHEN
 	result, err := functionCurve.Evaluate()
@@ -208,19 +208,19 @@ func TestFunctionCurveDelta(t *testing.T) {
 	temp1 := 20000.0
 	temp2 := 40000.0
 
-	s1 := MockSensor{
+	s1 := &MockSensor{
 		ID:        "ambient_sensor",
 		Name:      "sensor_ambient",
 		MovingAvg: temp1,
 	}
-	sensors.SensorMap[s1.GetId()] = &s1
+	sensors.RegisterSensor(s1)
 
-	s2 := MockSensor{
+	s2 := &MockSensor{
 		ID:        "water_sensor",
 		Name:      "sensor_water",
 		MovingAvg: temp2,
 	}
-	sensors.SensorMap[s2.GetId()] = &s2
+	sensors.RegisterSensor(s2)
 
 	curve1 := createLinearCurveConfig(
 		"case_fan_front2",
@@ -229,7 +229,7 @@ func TestFunctionCurveDelta(t *testing.T) {
 		60,
 	)
 	c1, _ := NewSpeedCurve(curve1)
-	SpeedCurveMap[c1.GetId()] = c1
+	RegisterSpeedCurve(c1)
 
 	curve2 := createLinearCurveConfig(
 		"case_fan_back2",
@@ -238,7 +238,7 @@ func TestFunctionCurveDelta(t *testing.T) {
 		60,
 	)
 	c2, _ := NewSpeedCurve(curve2)
-	SpeedCurveMap[c2.GetId()] = c2
+	RegisterSpeedCurve(c2)
 
 	function := configuration.FunctionDelta
 	functionCurveConfig := createFunctionCurveConfig(
@@ -250,7 +250,7 @@ func TestFunctionCurveDelta(t *testing.T) {
 		},
 	)
 	functionCurve, _ := NewSpeedCurve(functionCurveConfig)
-	SpeedCurveMap[functionCurve.GetId()] = functionCurve
+	RegisterSpeedCurve(functionCurve)
 
 	// WHEN
 	result, err := functionCurve.Evaluate()
@@ -267,19 +267,19 @@ func TestFunctionCurveMinimum(t *testing.T) {
 	temp1 := 60000.0
 	temp2 := 80000.0
 
-	s1 := MockSensor{
+	s1 := &MockSensor{
 		ID:        "s1",
 		Name:      "sensor1",
 		MovingAvg: temp1,
 	}
-	sensors.SensorMap[s1.GetId()] = &s1
+	sensors.RegisterSensor(s1)
 
-	s2 := MockSensor{
+	s2 := &MockSensor{
 		ID:        "s2",
 		Name:      "sensor2",
 		MovingAvg: temp2,
 	}
-	sensors.SensorMap[s2.GetId()] = &s2
+	sensors.RegisterSensor(s2)
 
 	curve1 := createLinearCurveConfig(
 		"case_fan_front3",
@@ -288,7 +288,7 @@ func TestFunctionCurveMinimum(t *testing.T) {
 		80,
 	)
 	c1, _ := NewSpeedCurve(curve1)
-	SpeedCurveMap[c1.GetId()] = c1
+	RegisterSpeedCurve(c1)
 
 	curve2 := createLinearCurveConfig(
 		"case_fan_back3",
@@ -297,7 +297,7 @@ func TestFunctionCurveMinimum(t *testing.T) {
 		80,
 	)
 	c2, _ := NewSpeedCurve(curve2)
-	SpeedCurveMap[c2.GetId()] = c2
+	RegisterSpeedCurve(c2)
 
 	function := configuration.FunctionMinimum
 	functionCurveConfig := createFunctionCurveConfig(
@@ -325,19 +325,19 @@ func TestFunctionCurveMaximum(t *testing.T) {
 	temp1 := 40000.0
 	temp2 := 80000.0
 
-	s1 := MockSensor{
+	s1 := &MockSensor{
 		ID:        "s1",
 		Name:      "sensor1",
 		MovingAvg: temp1,
 	}
-	sensors.SensorMap[s1.GetId()] = &s1
+	sensors.RegisterSensor(s1)
 
-	s2 := MockSensor{
+	s2 := &MockSensor{
 		ID:        "s1",
 		Name:      "sensor2",
 		MovingAvg: temp2,
 	}
-	sensors.SensorMap[s2.GetId()] = &s2
+	sensors.RegisterSensor(s2)
 
 	curve1 := createLinearCurveConfig(
 		"case_fan_front4",
@@ -346,7 +346,7 @@ func TestFunctionCurveMaximum(t *testing.T) {
 		80,
 	)
 	c1, _ := NewSpeedCurve(curve1)
-	SpeedCurveMap[c1.GetId()] = c1
+	RegisterSpeedCurve(c1)
 
 	curve2 := createLinearCurveConfig(
 		"case_fan_back4",
@@ -355,7 +355,7 @@ func TestFunctionCurveMaximum(t *testing.T) {
 		80,
 	)
 	c2, _ := NewSpeedCurve(curve2)
-	SpeedCurveMap[c2.GetId()] = c2
+	RegisterSpeedCurve(c2)
 
 	function := configuration.FunctionMaximum
 	functionCurveConfig := createFunctionCurveConfig(
