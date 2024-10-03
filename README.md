@@ -528,19 +528,21 @@ For each newly configured fan **fan2go** measures its fan curve and stores it in
 a look at this measurement using the following command:
 
 ```shell
-> sudo fan2go curve
-nct6798 -> pwm1
-
- Start PWM   0
- Max PWM     255
+> sudo fan2go fan --id cpu curve 
+cpu
+                
+  Min PWM    30 
+  Start PWM  30 
+  Max PWM    255
 
 No fan curve data yet...
 
-
+> sudo fan2go fan --id in_front curve 
 nct6798 -> pwm2
 
- Start PWM   0
- Max PWM     194
+  Min PWM     0 
+  Start PWM   0
+  Max PWM     194
 
  1994 ┤                                                                          ╭────────────────────────
  1900 ┤                                                                       ╭──╯
