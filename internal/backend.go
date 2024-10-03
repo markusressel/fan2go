@@ -38,10 +38,13 @@ func RunDaemon() {
 	pers := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
 
 	fanMap, err := InitializeObjects()
-	fanControllers, err := initializeFanControllers(pers, fanMap)
-
 	if err != nil {
 		ui.Fatal("Error initializing objects: %v", err)
+	}
+
+	fanControllers, err := initializeFanControllers(pers, fanMap)
+	if err != nil {
+		ui.Fatal("Error initializing fan controllers: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
