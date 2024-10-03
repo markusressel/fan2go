@@ -37,7 +37,7 @@ func RunDaemon() {
 
 	pers := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
 
-	fanMap, err := initializeObjects()
+	fanMap, err := InitializeObjects()
 	fanControllers, err := initializeFanControllers(pers, fanMap)
 
 	if err != nil {
@@ -223,7 +223,7 @@ func startStatisticsServer() *echo.Echo {
 	return echoPrometheus
 }
 
-func initializeObjects() (map[configuration.FanConfig]fans.Fan, error) {
+func InitializeObjects() (map[configuration.FanConfig]fans.Fan, error) {
 	controllers := hwmon.GetChips()
 
 	err := initializeSensors(controllers)
