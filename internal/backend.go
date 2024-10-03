@@ -37,9 +37,14 @@ func RunDaemon() {
 
 	pers := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
 
-	fanControllers, err := initializeObjects(pers)
+	fanMap, err := InitializeObjects()
 	if err != nil {
 		ui.Fatal("Error initializing objects: %v", err)
+	}
+
+	fanControllers, err := initializeFanControllers(pers, fanMap)
+	if err != nil {
+		ui.Fatal("Error initializing fan controllers: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -221,7 +226,7 @@ func startStatisticsServer() *echo.Echo {
 	return echoPrometheus
 }
 
-func initializeObjects(pers persistence.Persistence) (map[fans.Fan]controller.FanController, error) {
+func InitializeObjects() (map[configuration.FanConfig]fans.Fan, error) {
 	controllers := hwmon.GetChips()
 
 	err := initializeSensors(controllers)
@@ -233,12 +238,16 @@ func initializeObjects(pers persistence.Persistence) (map[fans.Fan]controller.Fa
 		return nil, fmt.Errorf("error initializing curves: %v", err)
 	}
 
-	var result = map[fans.Fan]controller.FanController{}
 	fanMap, err := initializeFans(controllers)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing fans: %v", err)
 	}
 
+	return fanMap, err
+}
+
+func initializeFanControllers(pers persistence.Persistence, fanMap map[configuration.FanConfig]fans.Fan) (result map[fans.Fan]controller.FanController, err error) {
+	result = map[fans.Fan]controller.FanController{}
 	for config, fan := range fanMap {
 		updateRate := configuration.CurrentConfig.ControllerAdjustmentTickRate
 

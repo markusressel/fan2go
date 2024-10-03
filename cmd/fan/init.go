@@ -1,6 +1,7 @@
 package fan
 
 import (
+	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/control_loop"
 	"github.com/markusressel/fan2go/internal/controller"
@@ -27,7 +28,10 @@ var initCmd = &cobra.Command{
 		ui.Info("Using persistence at: %s", dbPath)
 
 		p := persistence.NewPersistence(dbPath)
-
+		_, err = internal.InitializeObjects()
+		if err != nil {
+			return err
+		}
 		fanController := controller.NewFanController(
 			p,
 			fan,
