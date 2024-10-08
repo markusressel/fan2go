@@ -5,7 +5,14 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"os/exec"
 )
+
+func getEchoPath() string {
+	// unlikely to fail
+	p, _ := exec.LookPath("echo")
+	return p
+}
 
 func TestCmdFan_NewFan(t *testing.T) {
 	// GIVEN
@@ -132,7 +139,7 @@ func TestCmdFan_GetRpm(t *testing.T) {
 	config := configuration.FanConfig{
 		Cmd: &configuration.CmdFanConfig{
 			GetRpm: &configuration.ExecConfig{
-				Exec: "/usr/bin/echo",
+				Exec: getEchoPath(),
 				Args: []string{"1000"},
 			},
 		},
@@ -171,7 +178,7 @@ func TestCmdFan_GetRpm_ParseError(t *testing.T) {
 	config := configuration.FanConfig{
 		Cmd: &configuration.CmdFanConfig{
 			GetRpm: &configuration.ExecConfig{
-				Exec: "/usr/bin/echo",
+				Exec: getEchoPath(),
 				Args: []string{"not_a_number"},
 			},
 		},
@@ -226,7 +233,7 @@ func TestCmdFan_GetRpmAvg(t *testing.T) {
 	config := configuration.FanConfig{
 		Cmd: &configuration.CmdFanConfig{
 			GetRpm: &configuration.ExecConfig{
-				Exec: "/usr/bin/echo",
+				Exec: getEchoPath(),
 				Args: []string{"1000"},
 			},
 		},
@@ -262,7 +269,7 @@ func TestCmdFan_GetPwm(t *testing.T) {
 	config := configuration.FanConfig{
 		Cmd: &configuration.CmdFanConfig{
 			GetPwm: &configuration.ExecConfig{
-				Exec: "/usr/bin/echo",
+				Exec: getEchoPath(),
 				Args: []string{"255"},
 			},
 		},
@@ -282,7 +289,7 @@ func TestCmdFan_SetPwm(t *testing.T) {
 	config := configuration.FanConfig{
 		Cmd: &configuration.CmdFanConfig{
 			SetPwm: &configuration.ExecConfig{
-				Exec: "/usr/bin/echo",
+				Exec: getEchoPath(),
 				Args: []string{"%pwm%"},
 			},
 		},
@@ -476,7 +483,7 @@ func TestCmdFan_Supports_RpmSensor_True(t *testing.T) {
 	config := configuration.FanConfig{
 		Cmd: &configuration.CmdFanConfig{
 			GetRpm: &configuration.ExecConfig{
-				Exec: "/usr/bin/echo",
+				Exec: getEchoPath(),
 				Args: []string{"1000"},
 			},
 		},
