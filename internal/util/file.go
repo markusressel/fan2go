@@ -86,7 +86,7 @@ func WriteIntToFileAtomic(value int, path string) error {
 	}
 	valueAsString := fmt.Sprintf("%d", value)
 	valueReader := strings.NewReader(valueAsString)
-	return atomic.WriteFile(evaluatedPath, valueReader)
+	return atomic.WriteFile(path, valueReader)
 }
 
 // FindFilesMatching finds all files in a given directory, matching the given regex
