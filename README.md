@@ -45,6 +45,8 @@ external programs to interact with it. This API can be used to create UI clients
 
 [fan2go-tui](https://github.com/markusressel/fan2go-tui) - (Official) Terminal UI for fan2go.
 
+[![asciicast](https://asciinema.org/a/612087.svg)](https://asciinema.org/a/612087)
+
 # How to use
 
 fan2go relies on [lm-sensors](https://github.com/lm-sensors/lm-sensors) to get both temperature and RPM sensor readings,
