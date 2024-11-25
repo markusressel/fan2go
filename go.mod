@@ -20,7 +20,7 @@ require (
 	github.com/qdm12/reprint v0.0.0-20200326205758-722754a53494
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/tomlazar/table v0.1.2
 	go.etcd.io/bbolt v1.3.11
 	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
