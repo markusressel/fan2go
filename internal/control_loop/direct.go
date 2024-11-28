@@ -31,27 +31,19 @@ func NewDirectControlLoop(
 func (l *DirectControlLoop) Cycle(target int, current int) int {
 	loopTime := time.Now()
 
-	dt := loopTime.Sub(l.lastTime).Seconds()
+	//dt := loopTime.Sub(l.lastTime).Seconds()
 
 	l.lastTime = loopTime
 
 	var stepTarget = float64(target)
 	if l.maxPwmChangePerCycle != nil {
-		// the pwm adjustment depends on the direction and
-		// the time-based change speed limit.
-		stepTarget = float64(*l.maxPwmChangePerCycle) * dt
+		maxChangeValue := *l.maxPwmChangePerCycle
+		// TODO: figure out how to normalize the change to the timedelta
+		//stepTarget = float64(*l.maxPwmChangePerCycle) * dt
 
 		err := float64(target - current)
-		// we can be above or below the target pwm value,
-		// so we substract or add at most the max pwm change,
-		// capped to having reached the target
-		if err > 0 {
-			// below desired speed, add pwms
-			stepTarget = util.Coerce(stepTarget, 0, err)
-		} else {
-			// above or at desired speed, subtract pwms
-			stepTarget = util.Coerce(-stepTarget, err, 0)
-		}
+		clampedErr := util.Coerce(err, -float64(maxChangeValue), +float64(maxChangeValue))
+		stepTarget = float64(current) + clampedErr
 	}
 
 	// ensure we are within sane bounds
