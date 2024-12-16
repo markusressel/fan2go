@@ -438,17 +438,7 @@ func (f *DefaultFanController) calculateTargetPwm() (int, error) {
 	// TODO: remove
 	target = minPwm + int((float64(target)/fans.MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
 
-	if f.lastSetPwm != nil && f.pwmMap != nil {
-		lastSetPwm := *(f.lastSetPwm)
-		expected := f.applyPwmMapping(f.findClosestDistinctTarget(lastSetPwm))
-		if currentPwm, err := fan.GetPwm(); err == nil {
-			if currentPwm != expected {
-				f.stats.UnexpectedPwmValueCount += 1
-				ui.Warning("PWM of %s was changed by third party! Last set PWM value was: %d but is now: %d",
-					fan.GetId(), expected, currentPwm)
-			}
-		}
-	}
+	f.ensureNoThirdPartyIsMessingWithUs()
 
 	if fan.Supports(fans.FeatureRpmSensor) {
 		// make sure fans never stop by validating the current RPM
@@ -476,6 +466,23 @@ func (f *DefaultFanController) calculateTargetPwm() (int, error) {
 	}
 
 	return target, nil
+}
+
+// ensureNoThirdPartyIsMessingWithUs checks if the PWM value of the fan does not match the last
+// value PWM set by fan2go. If that is the case, it is assumed that a third party has changed the PWM value
+// of the fan, which can lead to unexpected behavior.
+func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
+	if f.lastSetPwm != nil && f.pwmMap != nil {
+		lastSetPwm := *(f.lastSetPwm)
+		expected := f.applyPwmMapping(f.findClosestDistinctTarget(lastSetPwm))
+		if currentPwm, err := f.fan.GetPwm(); err == nil {
+			if currentPwm != expected {
+				f.stats.UnexpectedPwmValueCount += 1
+				ui.Warning("PWM of %s was changed by third party! Last set PWM value was: %d but is now: %d",
+					f.fan.GetId(), expected, currentPwm)
+			}
+		}
+	}
 }
 
 // set the pwm speed of a fan to the specified value (0..255)
