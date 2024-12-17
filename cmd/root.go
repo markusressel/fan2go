@@ -56,12 +56,17 @@ func init() {
 
 func setupUi() {
 	ui.SetDebugEnabled(global.Verbose)
+	if global.Verbose {
+		pterm.Info.Println("Verbose output enabled")
+	}
 
 	if global.NoColor {
 		pterm.DisableColor()
+		pterm.Info.Println("Color output disabled")
 	}
 	if global.NoStyle {
 		pterm.DisableStyling()
+		pterm.Info.Println("Styled output disabled")
 	}
 }
 
