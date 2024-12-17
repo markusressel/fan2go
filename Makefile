@@ -1,4 +1,4 @@
-.PHONY: help test build run clean
+.PHONY: help test build deploy run clean
 
 GO_FLAGS   ?=
 NAME       := fan2go
@@ -25,6 +25,9 @@ build:  ## Builds the CLI
 
 run: build
 	./${OUTPUT_BIN}
+
+deploy: build
+	sudo cp "${OUTPUT_BIN}" "/usr/bin/${NAME}"
 
 clean:
 	go clean
