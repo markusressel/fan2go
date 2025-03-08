@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install libsensors4-dev (needed for gosensors testing)
-        run: sudo apt-get install -y libsensors4-dev
+      - name: Install libsensors-dev (needed for gosensors testing)
+        run: sudo apt-get install -y libsensors-dev
 
       - name: Checkout the repository
         uses: actions/checkout@v4
