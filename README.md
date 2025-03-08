@@ -37,12 +37,15 @@
 
 # UI
 
-fan2go is a simple terminal client and controller daemon. To allow external programs to interact with it there is an API that
-can be (optionally) enabled.
+fan2go is first and foremost a daemon that runs in the background. However, it also provides
+a small set of CLI commands (see [CLI Commands](#cli-commands)) as well as an optional local HTTP API to allow
+external programs to interact with it. This API can be used to create UI clients or other tools.
 
 ## UI Clients
 
 [fan2go-tui](https://github.com/markusressel/fan2go-tui) - (Official) Terminal UI for fan2go.
+
+[![asciicast](https://asciinema.org/a/612087.svg)](https://asciinema.org/a/612087)
 
 # How to use
 
@@ -161,8 +164,8 @@ fans:
   - id: cpu
     # The type of fan configuration, one of: hwmon | file
     hwmon:
-      # The platform of the controller which is
-      # connected to this fan (see sensor.platform below)
+      # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
+      # "nouveau", "coretemp", "it8620", "corsaircpro-*" etc.
       platform: nct6798
       # The channel of this fan's RPM sensor as displayed by `fan2go detect`
       rpmChannel: 1
@@ -182,7 +185,7 @@ fans:
 fans:
   - id: file_fan
     file:
-      # Path to a file to set the PWM target for this fan
+      # Path to a file to get/set the PWM target for this fan
       path: /tmp/file_fan
       # Path to a file to read the current RPM value of this fan
       rpmPath: /tmp/file_fan_rpm
@@ -204,12 +207,12 @@ Please also make sure to read the section about
 fans:
   - id: cmd_fan
     cmd:
-      # (optional) Command to apply a new PWM value (0..255)
-      #  use "%pwm%" to specify where the target pwm value should be used withing the arguments
+      # Command to apply a new PWM value (0..255)
+      # Use "%pwm%" to specify where the target pwm value should be used withing the arguments
       setPwm:
         exec: /usr/bin/some-program
         args: [ "--set", "%pwm%" ]
-      # (optional) Command to retrieve the current PWM value (0..255)
+      # Command to retrieve the current PWM value (0..255)
       getPwm:
         exec: /usr/bin/nvidia-settings
         args: [ "-a", "someargument" ]
@@ -241,11 +244,15 @@ fans:
     # an increased rotational speed compared to lower values.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
-    # (Optional) Override for the PWM map used internally by fan2go for
-    # mapping the "normal" 0-255 value range to values supported by this fan.
-    # This can be used to compensate for a very limited set of supported values
-    # (f.ex. off, low, high). If not set manually, the map will be computed
-    # automatically by fan2go during fan initialization.
+    # (Optional) Override for the PWM map used by fan2go for
+    # mapping the expected [0..255] value range to values actually supported by this fan.
+    # This can be used to compensate for fans with a very limited set of supported values
+    # (f.ex. off, low, high). If not set manually, fan2go will try to compute this mapping
+    # automatically during fan initialization. This process is not perfect though and may
+    # result in suboptimal fan control.
+    # Note: The mapping must be strictly monotonically increasing and its Key-Set should cover the full
+    # range of values from 0 to 255. If keys are missing, fan2go will select a key that most closely
+    # matches the required target value during operation.
     pwmMap:
       0: 0
       64: 128
@@ -368,7 +375,7 @@ curves:
 
 Unlike the other curve types, this one does not use the average of the sensor data
 to calculate its value, which allows you to create a completely custom behaviour.
-Keep in mind though that the fan controller is also PID based and will also affect
+Keep in mind though that the fan controller may also be PID based which could also affect
 how the curve is applied to the fan.
 
 #### Function
@@ -436,7 +443,7 @@ After successfully verifying your configuration you can launch fan2go from the C
 working as expected. Assuming you put your configuration file in `/etc/fan2go/fan2go.yaml` run:
 
 ```shell
-> fan2go help                                                                                                                                                                              2 (0.032s) < 22:43:49
+> fan2go help
 fan2go is a simple daemon that controls the fans
 on your computer based on temperature sensors.
 
@@ -484,6 +491,9 @@ sudo systemctl enable --now fan2go
 journalctl -u fan2go -f
 ```
 
+> NOTE: If you want to use a config path that differs from the default one, make sure to edit the
+> unit file and point the `-c` flag to the correct path.
+
 ## CLI Commands
 
 Although fan2go is a fan controller daemon at heart, it also provides some handy cli commands to interact with the
@@ -499,6 +509,12 @@ devices that you have specified within your config.
 
 > fan2go fan --id cpu rpm
 546
+
+> fan2go fan --id cpu mode
+No control, 100% all the time (0)
+
+> fan2go fan --id cpu mode auto
+Automatic control by integrated hardware (2)
 ```
 
 ### Sensors
@@ -514,19 +530,21 @@ For each newly configured fan **fan2go** measures its fan curve and stores it in
 a look at this measurement using the following command:
 
 ```shell
-> sudo fan2go curve
-nct6798 -> pwm1
-
- Start PWM   0
- Max PWM     255
+> sudo fan2go fan --id cpu curve 
+cpu
+                
+  Min PWM    30 
+  Start PWM  30 
+  Max PWM    255
 
 No fan curve data yet...
 
-
+> sudo fan2go fan --id in_front curve 
 nct6798 -> pwm2
 
- Start PWM   0
- Max PWM     194
+  Min PWM     0 
+  Start PWM   0
+  Max PWM     194
 
  1994 ┤                                                                          ╭────────────────────────
  1900 ┤                                                                       ╭──╯
@@ -640,12 +658,50 @@ sensor value.
 
 ## Fan Controllers
 
-Fan speed is controlled by a PID controller per each configured fan. The default
+The speed of a Fan is controlled using a combination of its curve, a control algorithm and the properties of
+the fan controller itself.
+
+The curve is used as the target value for the control algorithm to reach. The control algorithm then calculates the
+next PWM value to apply to the fan to reach this target value. The fan controller then applies this PWM value to the
+fan, while respecting constraints like the minimum and maximum PWM values, as well as the `neverStop` flag.
+
+### Control Algorithms
+
+A control algorithm
+is a function that returns the next PWM value to apply based on the target value calculated by the curve. The simplest
+control algorithm is the direct control algorithm, which simply forwards the target value to the fan.
+
+#### Direct Control Algorithm
+
+The simplest control algorithm is the direct control algorithm. It simply forwards the curve value to the fan
+controller.
+
+```yaml
+fans:
+  - id: some_fan
+    ...
+    controlAlgorithm: direct
+```
+
+This control algorithm can also be used to approach the curve value more slowly:
+
+```yaml
+fans:
+  - id: some_fan
+    ...
+    controlAlgorithm:
+      direct:
+        maxPwmChangePerCycle: 10
+```
+
+### PID Control Algorithm
+
+The PID control algorithm uses a PID loop to approach the target value. The default
 configuration is pretty non-aggressive using the following values:
 
-| P      | I       | D        |
-|--------|---------|----------|
-| `0.03` | `0.002` | `0.0005` |
+| P     | I      | D       |
+|-------|--------|---------|
+| `0.3` | `0.02` | `0.005` |
 
 If you don't like the default behaviour you can configure your own in the config:
 
@@ -653,10 +709,11 @@ If you don't like the default behaviour you can configure your own in the config
 fans:
   - id: some_fan
     ...
-    controlLoop:
-      p: 0.03
-      i: 0.002
-      d: 0.0005
+    controlAlgorithm:
+      pid:
+        p: 0.3
+        i: 0.02
+        d: 0.005
 ```
 
 The loop is advanced at a constant rate, specified by the `controllerAdjustmentTickRate` config option, which
@@ -698,9 +755,8 @@ See [go.mod](go.mod)
 
 # Similar Projects
 
-* [nbfc](https://github.com/hirschmann/nbfc)
+* [nbfc-linux](https://github.com/nbfc-linux/nbfc-linux)
 * [thinkfan](https://github.com/vmatare/thinkfan)
-* [fancon](https://github.com/hbriese/fancon)
 
 # License
 

@@ -58,19 +58,94 @@ func TestFindClosest(t *testing.T) {
 	assert.Equal(t, 10, closest)
 
 	// WHEN
+	closest = FindClosest(11, options)
+	// THEN
+	assert.Equal(t, 10, closest)
+
+	// WHEN
+	closest = FindClosest(50, options)
+	// THEN
+	assert.Equal(t, 50, closest)
+
+	// WHEN
 	closest = FindClosest(54, options)
 	// THEN
 	assert.Equal(t, 50, closest)
 
 	// WHEN
 	closest = FindClosest(55, options)
-
 	// THEN
 	assert.Equal(t, 60, closest)
+
+	// WHEN
+	closest = FindClosest(75, options)
+	// THEN
+	assert.Equal(t, 80, closest)
 
 	// WHEN
 	closest = FindClosest(100, options)
 	// THEN
 	assert.Equal(t, 90, closest)
 
+}
+
+func TestCoerce(t *testing.T) {
+	// GIVEN
+	min := 0.0
+	max := 10.0
+
+	// WHEN
+	resultMin := Coerce(-10, min, max)
+	// THEN
+	assert.Equal(t, min, resultMin)
+
+	// WHEN
+	resultValueLow := Coerce(0, min, max)
+	// THEN
+	assert.Equal(t, resultValueLow, resultValueLow)
+
+	// WHEN
+	resultValueHigh := Coerce(10, min, max)
+
+	// THEN
+	assert.Equal(t, resultValueHigh, resultValueHigh)
+
+	// WHEN
+	resultMax := Coerce(20, min, max)
+	// THEN
+	assert.Equal(t, max, resultMax)
+}
+
+func TestUpdateSimpleMovingAvg(t *testing.T) {
+	// GIVEN
+	avg := 0.0
+	n := 2
+	newValue := 10.0
+
+	// WHEN
+	result := UpdateSimpleMovingAvg(avg, n, newValue)
+
+	// THEN
+	assert.Equal(t, 5.0, result)
+}
+
+func TestInterpolateLinearly(t *testing.T) {
+	// GIVEN
+	data := map[int]float64{
+		0:   0.0,
+		100: 100.0,
+	}
+	start := 0
+	stop := 100
+
+	expectedResult := map[int]float64{}
+	for i := 0; i <= 100; i++ {
+		expectedResult[i] = float64(i)
+	}
+
+	// WHEN
+	result := InterpolateLinearly(&data, start, stop)
+
+	// THEN
+	assert.Equal(t, expectedResult, result)
 }

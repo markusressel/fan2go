@@ -106,22 +106,27 @@ func (fan *FileFan) SetPwm(pwm int) (err error) {
 		filePath = filepath.Join(currentUser.HomeDir, filePath[1:])
 	}
 
-	err = util.WriteIntToFile(pwm, filePath)
+	err = util.WriteIntToFileAtomic(pwm, filePath)
 	if err != nil {
 		ui.Error("Unable to write to file: %v", fan.Config.File.Path)
+		return err
 	}
 	return nil
 }
 
 var interpolated = util.InterpolateLinearly(&map[int]float64{0: 0, 255: 255}, 0, 255)
 
-func (fan *FileFan) GetFanCurveData() *map[int]float64 {
+func (fan *FileFan) GetFanRpmCurveData() *map[int]float64 {
 	return &interpolated
 }
 
-func (fan *FileFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
+func (fan *FileFan) AttachFanRpmCurveData(curveData *map[int]float64) (err error) {
 	// not supported
 	return
+}
+
+func (fan *FileFan) UpdateFanRpmCurveValue(pwm int, rpm float64) {
+	// not supported
 }
 
 func (fan *FileFan) GetCurveId() string {

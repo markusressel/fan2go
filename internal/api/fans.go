@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/labstack/echo/v4"
 	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/qdm12/reprint"
 	"net/http"
 )
 
@@ -18,13 +19,13 @@ func registerFanEndpoints(rest *echo.Echo) {
 
 // returns a list of all currently configured fans
 func getFans(c echo.Context) error {
-	data := fans.FanMap
+	data := reprint.This(fans.SnapshotFanMap())
 	return c.JSONPretty(http.StatusOK, data, indentationChar)
 }
 
 func getFan(c echo.Context) error {
 	id := c.Param(urlParamId)
-	data, exists := fans.FanMap[id]
+	data, exists := fans.GetFan(id)
 	if !exists {
 		return returnNotFound(c, id)
 	} else {

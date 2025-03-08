@@ -52,7 +52,7 @@ func getSensor(id string) (sensors.Sensor, error) {
 	configuration.LoadConfig()
 	err := configuration.Validate(configPath)
 	if err != nil {
-		ui.FatalWithoutStacktrace(err.Error())
+		ui.FatalWithoutStacktrace("%v", err)
 	}
 
 	controllers := hwmon.GetChips()

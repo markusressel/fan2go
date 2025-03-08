@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"github.com/markusressel/fan2go/internal/control_loop"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -23,7 +24,6 @@ import (
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/statistics"
 	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
 )
 
@@ -37,7 +37,15 @@ func RunDaemon() {
 
 	pers := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
 
-	fanControllers := initializeObjects(pers)
+	fanMap, err := InitializeObjects()
+	if err != nil {
+		ui.Fatal("Error initializing objects: %v", err)
+	}
+
+	fanControllers, err := initializeFanControllers(pers, fanMap)
+	if err != nil {
+		ui.Fatal("Error initializing fan controllers: %v", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -65,7 +73,7 @@ func RunDaemon() {
 				return nil
 			}, func(err error) {
 				if err != nil {
-					ui.Warning("Error stopping parca webserver: " + err.Error())
+					ui.Warning("Error stopping parca webserver: %v", err)
 				} else {
 					ui.Debug("Webservers stopped.")
 				}
@@ -94,7 +102,7 @@ func RunDaemon() {
 				return nil
 			}, func(err error) {
 				if err != nil {
-					ui.Warning("Error stopping webservers: " + err.Error())
+					ui.Warning("Error stopping webservers: %v", err)
 				} else {
 					ui.Debug("Webservers stopped.")
 				}
@@ -103,7 +111,8 @@ func RunDaemon() {
 	}
 	{
 		// === sensor monitoring
-		for _, sensor := range sensors.SensorMap {
+		sensorMapData := sensors.SnapshotSensorMap()
+		for _, sensor := range sensorMapData {
 			s := sensor
 			pollingRate := configuration.CurrentConfig.TempSensorPollingRate
 			mon := NewSensorMonitor(s, pollingRate)
@@ -142,7 +151,7 @@ func RunDaemon() {
 			})
 		}
 
-		if len(fans.FanMap) == 0 {
+		if len(fans.SnapshotFanMap()) == 0 {
 			ui.FatalWithoutStacktrace("No valid fan configurations, exiting.")
 		}
 	}
@@ -217,32 +226,63 @@ func startStatisticsServer() *echo.Echo {
 	return echoPrometheus
 }
 
-func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.FanController {
+func InitializeObjects() (map[configuration.FanConfig]fans.Fan, error) {
 	controllers := hwmon.GetChips()
 
-	initializeSensors(controllers)
-	initializeCurves()
+	err := initializeSensors(controllers)
+	if err != nil {
+		return nil, fmt.Errorf("error initializing sensors: %v", err)
+	}
+	err = initializeCurves()
+	if err != nil {
+		return nil, fmt.Errorf("error initializing curves: %v", err)
+	}
 
-	var result = map[fans.Fan]controller.FanController{}
+	fanMap, err := initializeFans(controllers)
+	if err != nil {
+		return nil, fmt.Errorf("error initializing fans: %v", err)
+	}
 
-	for config, fan := range initializeFans(controllers) {
+	return fanMap, err
+}
+
+func initializeFanControllers(pers persistence.Persistence, fanMap map[configuration.FanConfig]fans.Fan) (result map[fans.Fan]controller.FanController, err error) {
+	result = map[fans.Fan]controller.FanController{}
+	for config, fan := range fanMap {
 		updateRate := configuration.CurrentConfig.ControllerAdjustmentTickRate
 
-		var pidLoop util.PidLoop
-		if config.ControlLoop != nil {
-			pidLoop = *util.NewPidLoop(
-				config.ControlLoop.P,
-				config.ControlLoop.I,
-				config.ControlLoop.D,
+		var controlLoop control_loop.ControlLoop
+
+		// compatibility fallback
+		if config.ControlLoop != nil { //nolint:all
+			ui.Warning("Using deprecated control loop configuration for fan %s. Please update your configuration to use the new control algorithm configuration.", config.ID)
+			controlLoop = control_loop.NewPidControlLoop(
+
+				config.ControlLoop.P, //nolint:all
+				config.ControlLoop.I, //nolint:all
+				config.ControlLoop.D, //nolint:all
 			)
+		} else if config.ControlAlgorithm != nil {
+			if config.ControlAlgorithm.Pid != nil {
+				controlLoop = control_loop.NewPidControlLoop(
+					config.ControlAlgorithm.Pid.P,
+					config.ControlAlgorithm.Pid.I,
+					config.ControlAlgorithm.Pid.D,
+				)
+			} else if config.ControlAlgorithm.Direct != nil {
+				controlLoop = control_loop.NewDirectControlLoop(
+					config.ControlAlgorithm.Direct.MaxPwmChangePerCycle,
+				)
+			}
 		} else {
-			pidLoop = *util.NewPidLoop(
-				0.03,
-				0.002,
-				0.0005,
+			controlLoop = control_loop.NewPidControlLoop(
+				control_loop.DefaultPidConfig.P,
+				control_loop.DefaultPidConfig.I,
+				control_loop.DefaultPidConfig.D,
 			)
 		}
-		fanController := controller.NewFanController(pers, fan, pidLoop, updateRate)
+
+		fanController := controller.NewFanController(pers, fan, controlLoop, updateRate)
 		result[fan] = fanController
 	}
 
@@ -253,10 +293,10 @@ func initializeObjects(pers persistence.Persistence) map[fans.Fan]controller.Fan
 	controllerCollector := statistics.NewControllerCollector(fanControllers)
 	statistics.Register(controllerCollector)
 
-	return result
+	return result, nil
 }
 
-func initializeSensors(controllers []*hwmon.HwMonController) {
+func initializeSensors(controllers []*hwmon.HwMonController) error {
 	var sensorList []sensors.Sensor
 	for _, config := range configuration.CurrentConfig.Sensors {
 		if config.HwMon != nil {
@@ -264,7 +304,7 @@ func initializeSensors(controllers []*hwmon.HwMonController) {
 			for _, c := range controllers {
 				matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, c.Platform)
 				if err != nil {
-					ui.Fatal("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, c.Platform)
+					return fmt.Errorf("failed to match platform regex of %s (%s) against controller platform %s: %v", config.ID, config.HwMon.Platform, c.Platform, err)
 				}
 				if matched {
 					found = true
@@ -272,13 +312,13 @@ func initializeSensors(controllers []*hwmon.HwMonController) {
 				}
 			}
 			if !found {
-				ui.Fatal("Couldn't find hwmon device with platform '%s' for sensor: %s. Run 'fan2go detect' again and correct any mistake.", config.HwMon.Platform, config.ID)
+				return fmt.Errorf("couldn't find hwmon device with platform '%s' for sensor: %s. Run 'fan2go detect' again and correct any mistake", config.HwMon.Platform, config.ID)
 			}
 		}
 
 		sensor, err := sensors.NewSensor(config)
 		if err != nil {
-			ui.Fatal("Unable to process sensor configuration: %s", config.ID)
+			return fmt.Errorf("unable to process sensor configuration: %s", config.ID)
 		}
 		sensorList = append(sensorList, sensor)
 
@@ -288,29 +328,33 @@ func initializeSensors(controllers []*hwmon.HwMonController) {
 		}
 		sensor.SetMovingAvg(currentValue)
 
-		sensors.SensorMap[config.ID] = sensor
+		sensors.RegisterSensor(sensor)
 	}
 
 	sensorCollector := statistics.NewSensorCollector(sensorList)
 	statistics.Register(sensorCollector)
+
+	return nil
 }
 
-func initializeCurves() {
+func initializeCurves() error {
 	var curveList []curves.SpeedCurve
 	for _, config := range configuration.CurrentConfig.Curves {
 		curve, err := curves.NewSpeedCurve(config)
 		if err != nil {
-			ui.Fatal("Unable to process curve configuration: %s", config.ID)
+			return fmt.Errorf("unable to process curve configuration: %s: %v", config.ID, err)
 		}
 		curveList = append(curveList, curve)
-		curves.SpeedCurveMap[config.ID] = curve
+		curves.RegisterSpeedCurve(curve)
 	}
 
 	curveCollector := statistics.NewCurveCollector(curveList)
 	statistics.Register(curveCollector)
+
+	return nil
 }
 
-func initializeFans(controllers []*hwmon.HwMonController) map[configuration.FanConfig]fans.Fan {
+func initializeFans(controllers []*hwmon.HwMonController) (map[configuration.FanConfig]fans.Fan, error) {
 	var result = map[configuration.FanConfig]fans.Fan{}
 
 	var fanList []fans.Fan
@@ -319,15 +363,15 @@ func initializeFans(controllers []*hwmon.HwMonController) map[configuration.FanC
 		if config.HwMon != nil {
 			err := hwmon.UpdateFanConfigFromHwMonControllers(controllers, &config)
 			if err != nil {
-				ui.Fatal("Couldn't update fan config from hwmon: %s", err)
+				return nil, fmt.Errorf("couldn't update fan config from hwmon: %v", err)
 			}
 		}
 
 		fan, err := fans.NewFan(config)
 		if err != nil {
-			ui.Fatal("Unable to process fan configuration of '%s': %v", config.ID, err)
+			return nil, fmt.Errorf("unable to process fan configuration of '%s': %v", config.ID, err)
 		}
-		fans.FanMap[config.ID] = fan
+		fans.RegisterFan(fan)
 		result[config] = fan
 
 		fanList = append(fanList, fan)
@@ -336,7 +380,7 @@ func initializeFans(controllers []*hwmon.HwMonController) map[configuration.FanC
 	fanCollector := statistics.NewFanCollector(fanList)
 	statistics.Register(fanCollector)
 
-	return result
+	return result, nil
 }
 
 func getProcessOwner() (string, error) {

@@ -2,8 +2,11 @@ package fans
 
 import (
 	"fmt"
-	"github.com/markusressel/fan2go/internal/configuration"
+	cmap "github.com/orcaman/concurrent-map/v2"
+	"github.com/qdm12/reprint"
 	"sort"
+
+	"github.com/markusressel/fan2go/internal/configuration"
 )
 
 const (
@@ -30,7 +33,7 @@ const (
 )
 
 var (
-	FanMap = map[string]Fan{}
+	fanMap = cmap.New[Fan]()
 )
 
 type Fan interface {
@@ -57,9 +60,12 @@ type Fan interface {
 	GetPwm() (int, error)
 	SetPwm(pwm int) (err error)
 
-	// GetFanCurveData returns the fan curve data for this fan
-	GetFanCurveData() *map[int]float64
-	AttachFanCurveData(curveData *map[int]float64) (err error)
+	// GetFanRpmCurveData returns the fan curve data for this fan
+	GetFanRpmCurveData() *map[int]float64
+	// AttachFanRpmCurveData attaches a complete set of PWM -> RPM mapping values to this fan
+	AttachFanRpmCurveData(curveData *map[int]float64) (err error)
+	// UpdateFanRpmCurveValue updates a single PWM -> RPM mapping value
+	UpdateFanRpmCurveValue(pwm int, rpm float64)
 
 	// GetCurveId returns the id of the speed curve associated with this fan
 	GetCurveId() string
@@ -108,7 +114,7 @@ func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 	userStartPwm := fan.GetStartPwm()
 	startPwm = 255
 	maxPwm = 255
-	pwmRpmMap := fan.GetFanCurveData()
+	pwmRpmMap := fan.GetFanRpmCurveData()
 
 	var keys []int
 	for pwm := range *pwmRpmMap {
@@ -134,4 +140,19 @@ func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 	}
 
 	return startPwm, maxPwm
+}
+
+// RegisterFan registers a new fan
+func RegisterFan(fan Fan) {
+	fanMap.Set(fan.GetId(), fan)
+}
+
+// GetFan returns the fan with the given id
+func GetFan(id string) (Fan, bool) {
+	return fanMap.Get(id)
+}
+
+// SnapshotFanMap returns a snapshot of the current fan map
+func SnapshotFanMap() map[string]Fan {
+	return reprint.This(fanMap.Items()).(map[string]Fan)
 }

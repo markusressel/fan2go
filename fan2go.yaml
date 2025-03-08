@@ -46,6 +46,14 @@ fans:
     # The curve ID (defined above) that should be used to determine the
     # speed of this fan
     curve: cpu_curve
+    # (Optional) The algorithm how the target speed, determined by the curve is approached.
+    #   direct: the target value will be directly applied to the fan
+    #   pid: uses a PID loop with default tuning variables
+    controlAlgorithm:
+      direct:
+        # together with maxPwmChangePerCycle, fan speeds will approach target value
+        # with the given max speed.
+        maxPwmChangePerCycle: 10
     # (Optional) Override for the lowest PWM value at which the
     # fan is able to maintain rotation if it was spinning previously.
     minPwm: 30
@@ -58,11 +66,15 @@ fans:
     # an increased rotational speed compared to lower values.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
-    # (Optional) Override for the PWM map used internally by fan2go for
-    # mapping the "normal" 0-255 value range to values supported by this fan.
-    # This can be used to compensate for a very limited set of supported values
-    # (f.ex. off, low, high). If not set manually, the map will be computed
-    # automatically by fan2go during fan initialization.
+    # (Optional) Override for the PWM map used by fan2go for
+    # mapping the expected [0..255] value range to values actually supported by this fan.
+    # This can be used to compensate for fans with a very limited set of supported values
+    # (f.ex. off, low, high). If not set manually, fan2go will try to compute this mapping
+    # automatically during fan initialization. This process is not perfect though and may
+    # result in suboptimal fan control.
+    # Note: The mapping must be strictly monotonically increasing and its Key-Set should cover the full
+    # range of values from 0 to 255. If keys are missing, fan2go will select a key that most closely
+    # matches the required target value during operation.
     pwmMap:
       0: 0
       64: 128
@@ -72,6 +84,7 @@ fans:
     hwmon:
       platform: it8620
       rpmChannel: 4
+    controlAlgorithm: direct
     neverStop: true
     curve: case_avg_curve
 
@@ -89,8 +102,8 @@ sensors:
   - id: cpu_package
     # The type of sensor configuration
     hwmon:
-      # The controller platform as displayed by `fan2go detect`, f.ex.:
-      # "nouveau", "coretemp" or "it8620" etc.
+      # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
+      # "nouveau", "coretemp", "it8620", "corsaircpro-*" etc.
       platform: coretemp
       # The index of this sensor as displayed by `fan2go detect`
       index: 1

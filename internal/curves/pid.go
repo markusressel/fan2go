@@ -3,6 +3,7 @@ package curves
 import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/sensors"
+	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 )
 
@@ -18,10 +19,11 @@ func (c *PidSpeedCurve) GetId() string {
 }
 
 func (c *PidSpeedCurve) Evaluate() (value int, err error) {
-	sensor := sensors.SensorMap[c.Config.PID.Sensor]
+	sensor, _ := sensors.GetSensor(c.Config.PID.Sensor)
 	var measured float64
 	measured, err = sensor.GetValue()
 	if err != nil {
+		ui.Warning("Curve %s: Error getting sensor value: %v", c.Config.ID, err)
 		return c.Value, err
 	}
 	pidTarget := c.Config.PID.SetPoint
@@ -29,11 +31,7 @@ func (c *PidSpeedCurve) Evaluate() (value int, err error) {
 	loopValue := c.pidLoop.Loop(pidTarget, measured/1000.0)
 
 	// clamp to (0..1)
-	if loopValue > 1 {
-		loopValue = 1
-	} else if loopValue < 0 {
-		loopValue = 0
-	}
+	loopValue = util.Coerce(loopValue, 0, 1)
 
 	// map to expected output range
 	curveValue := int(loopValue * 255)

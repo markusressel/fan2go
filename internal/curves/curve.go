@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/util"
+	cmap "github.com/orcaman/concurrent-map/v2"
+	"github.com/qdm12/reprint"
 )
 
 type SpeedCurve interface {
@@ -14,7 +16,7 @@ type SpeedCurve interface {
 }
 
 var (
-	SpeedCurveMap = map[string]SpeedCurve{}
+	speedCurveMap = cmap.New[SpeedCurve]()
 )
 
 func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
@@ -43,4 +45,19 @@ func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
 	}
 
 	return nil, fmt.Errorf("no matching curve type for curve: %s", config.ID)
+}
+
+// RegisterSpeedCurve registers a new speed curve
+func RegisterSpeedCurve(curve SpeedCurve) {
+	speedCurveMap.Set(curve.GetId(), curve)
+}
+
+// GetSpeedCurve returns the speed curve with the given id
+func GetSpeedCurve(id string) (SpeedCurve, bool) {
+	return speedCurveMap.Get(id)
+}
+
+// SnapshotSpeedCurveMap returns a snapshot of the current speed curve map
+func SnapshotSpeedCurveMap() map[string]SpeedCurve {
+	return reprint.This(speedCurveMap.Items()).(map[string]SpeedCurve)
 }

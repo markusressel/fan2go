@@ -1,11 +1,12 @@
 package fan
 
 import (
+	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/control_loop"
 	"github.com/markusressel/fan2go/internal/controller"
 	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/markusressel/fan2go/internal/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -27,16 +28,16 @@ var initCmd = &cobra.Command{
 		ui.Info("Using persistence at: %s", dbPath)
 
 		p := persistence.NewPersistence(dbPath)
-
+		_, err = internal.InitializeObjects()
+		if err != nil {
+			return err
+		}
 		fanController := controller.NewFanController(
 			p,
 			fan,
-			*util.NewPidLoop(
-				0.03,
-				0.002,
-				0.0005,
-			),
-			configuration.CurrentConfig.ControllerAdjustmentTickRate)
+			control_loop.NewDirectControlLoop(nil),
+			configuration.CurrentConfig.ControllerAdjustmentTickRate,
+		)
 
 		ui.Info("Deleting existing data for fan '%s'...", fan.GetId())
 

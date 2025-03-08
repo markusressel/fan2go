@@ -8,13 +8,42 @@ type FanConfig struct {
 	// StartPwm defines the lowest PWM value where the fans are able to start spinning from a standstill
 	StartPwm *int `json:"startPwm,omitempty"`
 	// MaxPwm defines the highest PWM value that yields an RPM increase
-	MaxPwm      *int               `json:"maxPwm,omitempty"`
-	PwmMap      *map[int]int       `json:"pwmMap,omitempty"`
-	Curve       string             `json:"curve"`
-	HwMon       *HwMonFanConfig    `json:"hwMon,omitempty"`
-	File        *FileFanConfig     `json:"file,omitempty"`
-	Cmd         *CmdFanConfig      `json:"cmd,omitempty"`
+	MaxPwm           *int                    `json:"maxPwm,omitempty"`
+	PwmMap           *map[int]int            `json:"pwmMap,omitempty"`
+	Curve            string                  `json:"curve"`
+	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
+	HwMon            *HwMonFanConfig         `json:"hwMon,omitempty"`
+	File             *FileFanConfig          `json:"file,omitempty"`
+	Cmd              *CmdFanConfig           `json:"cmd,omitempty"`
+
+	// ControlLoop is a configuration for a PID control loop.
+	//
+	// Deprecated: HeaderMap exists for historical compatibility
+	// and should not be used. To access the headers returned by a handler,
+	// use the Response.Header map as returned by the Result method.
 	ControlLoop *ControlLoopConfig `json:"controlLoop,omitempty"`
+}
+
+type ControlAlgorithm string
+
+const (
+	Pid    ControlAlgorithm = "pid"
+	Direct ControlAlgorithm = "direct"
+)
+
+type ControlAlgorithmConfig struct {
+	Direct *DirectControlAlgorithmConfig `json:"direct,omitempty"`
+	Pid    *PidControlAlgorithmConfig    `json:"pid,omitempty"`
+}
+
+type DirectControlAlgorithmConfig struct {
+	MaxPwmChangePerCycle *int `json:"maxPwmChangePerCycle,omitempty"`
+}
+
+type PidControlAlgorithmConfig struct {
+	P float64 `json:"p"`
+	I float64 `json:"i"`
+	D float64 `json:"d"`
 }
 
 type HwMonFanConfig struct {

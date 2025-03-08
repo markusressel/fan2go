@@ -22,8 +22,12 @@ func TestFileHasPermissionsUserIsRoot(t *testing.T) {
 	err = os.Chmod(filePath, filePerm)
 	assert.NoError(t, err)
 
-	defer file.Close()
-	defer os.Remove(filePath)
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(filePath)
 
 	// WHEN
 	result, err := CheckFilePermissionsForExecution(filePath)
@@ -49,8 +53,12 @@ func TestFileHasPermissionsGroupIsRootAndHasWrite(t *testing.T) {
 	err = os.Chmod(filePath, filePerm)
 	assert.NoError(t, err)
 
-	defer file.Close()
-	defer os.Remove(filePath)
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(filePath)
 
 	// WHEN
 	result, err := CheckFilePermissionsForExecution(filePath)
@@ -76,8 +84,12 @@ func TestFileHasPermissionsGroupOtherThanRootHasWritePermission(t *testing.T) {
 	err = os.Chmod(filePath, filePerm)
 	assert.NoError(t, err)
 
-	defer file.Close()
-	defer os.Remove(filePath)
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(filePath)
 
 	// WHEN
 	result, err := CheckFilePermissionsForExecution(filePath)
@@ -103,13 +115,91 @@ func TestFileHasPermissionsOtherHasWritePermission(t *testing.T) {
 	err = os.Chmod(filePath, filePerm)
 	assert.NoError(t, err)
 
-	defer file.Close()
-	defer os.Remove(filePath)
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(filePath)
 
 	// WHEN
 	result, err := CheckFilePermissionsForExecution(filePath)
 
 	// THEN
 	assert.Equal(t, false, result)
+	assert.Error(t, err)
+}
+
+func TestReadIntFromFile_Success(t *testing.T) {
+	// GIVEN
+	filePath := "../../test/file_fan_rpm"
+
+	// WHEN
+	result, err := ReadIntFromFile(filePath)
+
+	// THEN
+	assert.Equal(t, 2150, result)
+	assert.NoError(t, err)
+}
+
+func TestReadIntFromFile_FileNotFound(t *testing.T) {
+	// GIVEN
+	filePath := "../../not exists"
+
+	// WHEN
+	result, err := ReadIntFromFile(filePath)
+
+	// THEN
+	assert.Equal(t, -1, result)
+	assert.Error(t, err)
+}
+
+func TestReadIntFromFile_FileEmpty(t *testing.T) {
+	// GIVEN
+	filePath := "./empty_file"
+	_, _ = os.Create(filePath)
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(filePath)
+
+	// WHEN
+	result, err := ReadIntFromFile(filePath)
+
+	// THEN
+	assert.Equal(t, -1, result)
+	assert.Error(t, err)
+}
+
+func TestWriteIntToFile_Success(t *testing.T) {
+	// GIVEN
+	filePath := "./testfile"
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(filePath)
+	value := 123
+
+	// WHEN
+	err := WriteIntToFile(value, filePath)
+
+	// THEN
+	assert.NoError(t, err)
+
+	// WHEN
+	result, err := ReadIntFromFile(filePath)
+
+	// THEN
+	assert.Equal(t, value, result)
+	assert.NoError(t, err)
+}
+
+func TestWriteIntToFile_InvalidPath(t *testing.T) {
+	// GIVEN
+	filePath := ".////"
+	value := 123
+
+	// WHEN
+	err := WriteIntToFile(value, filePath)
+
+	// THEN
 	assert.Error(t, err)
 }

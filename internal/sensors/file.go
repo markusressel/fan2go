@@ -7,22 +7,25 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 type FileSensor struct {
 	Config    configuration.SensorConfig `json:"configuration"`
 	MovingAvg float64                    `json:"movingAvg"`
+
+	mu sync.Mutex
 }
 
-func (sensor FileSensor) GetId() string {
+func (sensor *FileSensor) GetId() string {
 	return sensor.Config.ID
 }
 
-func (sensor FileSensor) GetConfig() configuration.SensorConfig {
+func (sensor *FileSensor) GetConfig() configuration.SensorConfig {
 	return sensor.Config
 }
 
-func (sensor FileSensor) GetValue() (float64, error) {
+func (sensor *FileSensor) GetValue() (float64, error) {
 	filePath := sensor.Config.File.Path
 	// resolve home dir path
 	if strings.HasPrefix(filePath, "~") {
@@ -44,10 +47,14 @@ func (sensor FileSensor) GetValue() (float64, error) {
 	return result, nil
 }
 
-func (sensor FileSensor) GetMovingAvg() (avg float64) {
+func (sensor *FileSensor) GetMovingAvg() (avg float64) {
+	sensor.mu.Lock()
+	defer sensor.mu.Unlock()
 	return sensor.MovingAvg
 }
 
 func (sensor *FileSensor) SetMovingAvg(avg float64) {
+	sensor.mu.Lock()
+	defer sensor.mu.Unlock()
 	sensor.MovingAvg = avg
 }

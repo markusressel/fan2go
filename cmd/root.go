@@ -33,7 +33,7 @@ on your computer based on temperature sensors.`,
 		configuration.LoadConfig()
 		err := configuration.Validate(configPath)
 		if err != nil {
-			ui.ErrorAndNotify("Config Validation Error", err.Error())
+			ui.ErrorAndNotify("Config Validation Error: %v", "%v", err)
 			return
 		}
 
@@ -56,12 +56,17 @@ func init() {
 
 func setupUi() {
 	ui.SetDebugEnabled(global.Verbose)
+	if global.Verbose {
+		pterm.Info.Println("Verbose output enabled")
+	}
 
 	if global.NoColor {
 		pterm.DisableColor()
+		pterm.Info.Println("Color output disabled")
 	}
 	if global.NoStyle {
 		pterm.DisableStyling()
+		pterm.Info.Println("Styled output disabled")
 	}
 }
 
@@ -75,6 +80,7 @@ func printHeader() {
 	if err != nil {
 		fmt.Println("fan2go")
 	}
+	ui.Info("Version: %s", global.Version)
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

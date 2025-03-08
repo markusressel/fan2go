@@ -26,7 +26,7 @@ var curveCmd = &cobra.Command{
 
 		err = configuration.Validate(configPath)
 		if err != nil {
-			ui.FatalWithoutStacktrace(err.Error())
+			ui.FatalWithoutStacktrace("configuration validation failed: %v", err)
 		}
 
 		curveConfigsToPrint := []configuration.CurveConfig{}
@@ -146,7 +146,7 @@ func drawGraph(graphValues map[int]float64, caption string) {
 	}
 
 	graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(100), asciigraph.Caption(caption))
-	ui.Printfln(graph)
+	ui.Println(graph)
 }
 
 func printFunctionCurveInfo(curve curves.SpeedCurve, config *configuration.FunctionCurveConfig) {
@@ -195,7 +195,7 @@ func printInfoTable(headers []string, rows [][]string) {
 		panic(tableErr)
 	}
 	tableString := buf.String()
-	ui.Printfln(tableString)
+	ui.Println(tableString)
 }
 
 func init() {

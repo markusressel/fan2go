@@ -42,7 +42,7 @@ func (collector *ControllerCollector) Describe(ch chan<- *prometheus.Desc) {
 func (collector *ControllerCollector) Collect(ch chan<- prometheus.Metric) {
 	for _, contr := range collector.controllers {
 		switch contr.(type) {
-		case *controller.PidFanController:
+		case *controller.DefaultFanController:
 			fanId := contr.GetFanId()
 			ch <- prometheus.MustNewConstMetric(collector.unexpectedPwmValueCount, prometheus.CounterValue, float64(contr.GetStatistics().UnexpectedPwmValueCount), fanId)
 			ch <- prometheus.MustNewConstMetric(collector.increasedMinPwmCount, prometheus.CounterValue, float64(contr.GetStatistics().IncreasedMinPwmCount), fanId)

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/natefinch/atomic"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,7 +20,7 @@ func CheckFilePermissionsForExecution(filePath string) (bool, error) {
 
 	file, err := filepath.EvalSymlinks(file)
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 
 	info, err := os.Stat(file)
@@ -55,7 +56,7 @@ func ReadIntFromFile(path string) (value int, err error) {
 	}
 	text := string(data)
 	if len(text) <= 0 {
-		return 0, fmt.Errorf("file is empty: %s", path)
+		return -1, fmt.Errorf("file is empty: %s", path)
 	}
 	text = strings.TrimSpace(text)
 	value, err = strconv.Atoi(text)
@@ -64,13 +65,28 @@ func ReadIntFromFile(path string) (value int, err error) {
 
 // WriteIntToFile write a single integer to a file.go path
 func WriteIntToFile(value int, path string) error {
-	evaluatedPath, err := filepath.EvalSymlinks(path)
+	evaluatedPath, err := resolvePath(path)
 	if len(evaluatedPath) > 0 && err == nil {
 		path = evaluatedPath
 	}
 	valueAsString := fmt.Sprintf("%d", value)
+
 	err = os.WriteFile(path, []byte(valueAsString), 0644)
 	return err
+}
+
+func resolvePath(path string) (string, error) {
+	return filepath.EvalSymlinks(path)
+}
+
+func WriteIntToFileAtomic(value int, path string) error {
+	evaluatedPath, err := resolvePath(path)
+	if len(evaluatedPath) > 0 && err == nil {
+		path = evaluatedPath
+	}
+	valueAsString := fmt.Sprintf("%d", value)
+	valueReader := strings.NewReader(valueAsString)
+	return atomic.WriteFile(path, valueReader)
 }
 
 // FindFilesMatching finds all files in a given directory, matching the given regex

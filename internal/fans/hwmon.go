@@ -33,8 +33,6 @@ func (fan *HwMonFan) GetMinPwm() int {
 	if fan.ShouldNeverStop() {
 		if fan.MinPwm != nil {
 			return *fan.MinPwm
-		} else {
-			return MinPwmValue
 		}
 	}
 
@@ -107,7 +105,7 @@ func (fan *HwMonFan) SetPwm(pwm int) (err error) {
 	return err
 }
 
-func (fan *HwMonFan) GetFanCurveData() *map[int]float64 {
+func (fan *HwMonFan) GetFanRpmCurveData() *map[int]float64 {
 	return fan.FanCurveData
 }
 
@@ -115,7 +113,7 @@ func (fan *HwMonFan) GetFanCurveData() *map[int]float64 {
 // Note: When the given data is incomplete, all values up until the highest
 // value in the given dataset will be interpolated linearly
 // returns os.ErrInvalid if curveData is void of any data
-func (fan *HwMonFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
+func (fan *HwMonFan) AttachFanRpmCurveData(curveData *map[int]float64) (err error) {
 	if curveData == nil || len(*curveData) <= 0 {
 		ui.Error("Cant attach empty fan curve data to fan %s", fan.GetId())
 		return os.ErrInvalid
@@ -131,6 +129,13 @@ func (fan *HwMonFan) AttachFanCurveData(curveData *map[int]float64) (err error) 
 	fan.SetMinPwm(startPwm, false)
 
 	return err
+}
+
+func (fan *HwMonFan) UpdateFanRpmCurveValue(pwm int, rpm float64) {
+	if fan.FanCurveData == nil {
+		fan.FanCurveData = &map[int]float64{}
+	}
+	(*fan.FanCurveData)[pwm] = rpm
 }
 
 func (fan *HwMonFan) GetCurveId() string {

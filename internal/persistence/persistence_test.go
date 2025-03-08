@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"os"
 	"testing"
 
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -10,7 +11,7 @@ import (
 )
 
 const (
-	dbTestingPath = "./test.db"
+	dbTestingPath = "../testing/test.db"
 )
 
 var (
@@ -25,6 +26,26 @@ var (
 		255: 255.0,
 	}
 )
+
+func TestMain(m *testing.M) {
+	beforeEach()
+	code := m.Run()
+	afterEach()
+	os.Exit(code)
+}
+
+func beforeEach() {
+	err := NewPersistence(dbTestingPath).Init()
+	if err != nil {
+		panic(err)
+	}
+}
+
+func afterEach() {
+	defer func() {
+		_ = os.Remove(dbTestingPath)
+	}()
+}
 
 func TestPersistence_DeleteFanPwmData(t *testing.T) {
 	// GIVEN
@@ -122,9 +143,9 @@ func createFan(neverStop bool, curveData map[int]float64) (fan fans.Fan, err err
 			Curve:     "curve",
 		},
 	}
-	fans.FanMap[fan.GetId()] = fan
+	fans.RegisterFan(fan)
 
-	err = fan.AttachFanCurveData(&curveData)
+	err = fan.AttachFanRpmCurveData(&curveData)
 
 	return fan, err
 }

@@ -11,7 +11,7 @@ import (
 )
 
 type CmdFan struct {
-	Config    configuration.FanConfig `json:"configuration"`
+	Config    configuration.FanConfig `json:"config"`
 	MovingAvg float64                 `json:"movingAvg"`
 
 	Rpm int `json:"rpm"`
@@ -115,13 +115,17 @@ func (fan *CmdFan) SetPwm(pwm int) (err error) {
 	return nil
 }
 
-func (fan *CmdFan) GetFanCurveData() *map[int]float64 {
+func (fan *CmdFan) GetFanRpmCurveData() *map[int]float64 {
 	return &interpolated
 }
 
-func (fan *CmdFan) AttachFanCurveData(curveData *map[int]float64) (err error) {
+func (fan *CmdFan) AttachFanRpmCurveData(curveData *map[int]float64) (err error) {
 	// not supported
 	return
+}
+
+func (fan *CmdFan) UpdateFanRpmCurveValue(pwm int, rpm float64) {
+	// not supported
 }
 
 func (fan *CmdFan) GetCurveId() string {
