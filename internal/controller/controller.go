@@ -121,7 +121,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	}
 
 	// store original pwm value
-	pwm, err := fan.GetPwm()
+	pwm, err := f.getPwm()
 	if err != nil {
 		ui.Warning("Cannot read pwm value of %s", fan.GetId())
 	}
@@ -199,7 +199,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 					ui.Info("Stopping RPM monitor of fan controller for fan %s...", fan.GetId())
 					return nil
 				case <-tick.C:
-					measureRpm(fan)
+					f.measureRpm(fan)
 				}
 			}
 		}, func(err error) {
@@ -343,8 +343,8 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 }
 
 // read the current value of a fan RPM sensor and append it to the moving window
-func measureRpm(fan fans.Fan) {
-	pwm, err := fan.GetPwm()
+func (f *DefaultFanController) measureRpm(fan fans.Fan) {
+	pwm, err := f.getPwm()
 	if err != nil {
 		ui.Warning("Error reading PWM value of fan %s: %v", fan.GetId(), err)
 	}
@@ -357,6 +357,14 @@ func measureRpm(fan fans.Fan) {
 	fan.SetRpmAvg(updatedRpmAvg)
 
 	fan.UpdateFanRpmCurveValue(pwm, float64(rpm))
+}
+
+func (f *DefaultFanController) getPwm() (int, error) {
+	if f.fan.Supports(fans.FeaturePwmSensor) {
+		return f.fan.GetPwm()
+	} else {
+		return *f.lastSetPwm, nil
+	}
 }
 
 func trySetManualPwm(fan fans.Fan) error {
@@ -404,11 +412,16 @@ func (f *DefaultFanController) calculateTargetPwm() (int, error) {
 	if f.lastSetPwm != nil {
 		lastSetPwm = *(f.lastSetPwm)
 	} else {
-		pwm, err := f.fan.GetPwm()
-		if err != nil {
-			return -1, err
+		if f.fan.Supports(fans.FeaturePwmSensor) {
+			pwm, err := f.getPwm()
+			if err != nil {
+				return -1, err
+			}
+			lastSetPwm = pwm
+		} else {
+			// assume the fan was set to its MinPwm value after initialization
+			lastSetPwm = f.fan.GetMinPwm()
 		}
-		lastSetPwm = pwm
 	}
 
 	fan := f.fan
@@ -472,6 +485,11 @@ func (f *DefaultFanController) calculateTargetPwm() (int, error) {
 // value PWM set by fan2go. If that is the case, it is assumed that a third party has changed the PWM value
 // of the fan, which can lead to unexpected behavior.
 func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
+	if !f.fan.Supports(fans.FeaturePwmSensor) {
+		// TODO: check if "disablePwmSanityChecks" is set, show warning if not
+		// if we cannot read the PWM value, so we also cannot check if third party changed the PWM value
+		return
+	}
 	if f.lastSetPwm != nil && f.pwmMap != nil {
 		lastSetPwm := *(f.lastSetPwm)
 		expected := f.applyPwmMapping(f.findClosestDistinctTarget(lastSetPwm))
@@ -487,18 +505,21 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 
 // set the pwm speed of a fan to the specified value (0..255)
 func (f *DefaultFanController) setPwm(target int) (err error) {
-	current, err := f.fan.GetPwm()
+	current, err := f.getPwm()
 
 	closestTarget := f.findClosestDistinctTarget(target)
 	closestExpected := f.applyPwmMapping(closestTarget)
 
 	f.lastSetPwm = &target
-	if err == nil && closestExpected == current {
-		// nothing to do
-		return nil
-	} else {
-		return f.fan.SetPwm(closestExpected)
+	// if we can read the PWM value, we can check if the fan is already at the target value
+	// and avoid unnecessary setPwm calls
+	if f.fan.Supports(fans.FeaturePwmSensor) {
+		if err == nil && closestExpected == current {
+			// nothing to do
+			return nil
+		}
 	}
+	return f.fan.SetPwm(closestExpected)
 }
 
 func (f *DefaultFanController) waitForFanToSettle(fan fans.Fan) {
@@ -589,6 +610,13 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 
 func (f *DefaultFanController) computePwmMapAutomatically() {
 	fan := f.fan
+
+	if !fan.Supports(fans.FeaturePwmSensor) {
+		// we cannot read the PWM value, so we have to assume a default PWM map
+		ui.Warning("Fan '%s' does not support PWM sensor, using default PWM map", fan.GetId())
+		f.pwmMap = util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
+		return
+	}
 	_ = trySetManualPwm(fan)
 
 	// check every pwm value
