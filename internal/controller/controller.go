@@ -464,9 +464,9 @@ func (f *DefaultFanController) calculateTargetPwm() (int, error) {
 					ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), int(avgRpm), target)
 					return -1, ErrFanStalledAtMaxPwm
 				}
-				oldOffset := f.minPwmOffset
-				ui.Warning("WARNING: Increasing minPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d",
-					fan.GetId(), oldOffset, oldOffset+1, int(avgRpm))
+				oldMinPwm := minPwm
+				ui.Warning("Increasing minPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d at PWM %d",
+					fan.GetId(), oldMinPwm, oldMinPwm+1, int(avgRpm), lastSetPwm)
 				f.increaseMinPwmOffset()
 				fan.SetMinPwm(f.minPwmOffset, true)
 				target++
