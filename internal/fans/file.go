@@ -154,6 +154,9 @@ func (fan *FileFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureControlMode:
 		return false
+	case FeaturePwmSensor:
+		_, err := util.ReadIntFromFile(fan.Config.File.Path)
+		return err == nil
 	case FeatureRpmSensor:
 		if len(fan.Config.File.RpmPath) > 0 {
 			return true
