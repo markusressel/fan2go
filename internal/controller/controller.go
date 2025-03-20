@@ -362,8 +362,10 @@ func (f *DefaultFanController) measureRpm(fan fans.Fan) {
 func (f *DefaultFanController) getPwm() (int, error) {
 	if f.fan.Supports(fans.FeaturePwmSensor) {
 		return f.fan.GetPwm()
-	} else {
+	} else if f.lastSetPwm != nil {
 		return *f.lastSetPwm, nil
+	} else {
+		return f.fan.GetMinPwm(), nil
 	}
 }
 
