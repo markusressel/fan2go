@@ -24,6 +24,12 @@ func (c *FunctionSpeedCurve) Evaluate() (value int, err error) {
 
 	var values []int
 	for _, curve := range curves {
+		// TODO: if the curve is also used in another fan controller, this will cause multiple calls to Evaluate
+		//  which messes up the algorithm since the controller expects that the curve is evaluated only
+		//  once per cycle,
+		//  The only way to fix this that comes to mind is to update the value of each curve in a separate
+		//  goroutine that runs independently and only retrieve its current value in the fan controller.
+		//  This might cause additional race-conditions though.
 		v, err := curve.Evaluate()
 		if err != nil {
 			return 0, err
@@ -80,10 +86,18 @@ func (c *FunctionSpeedCurve) Evaluate() (value int, err error) {
 		ui.Fatal("Unknown curve function: %s", c.Config.Function.Type)
 	}
 
-	c.Value = value
+	c.SetValue(value)
 	return value, err
 }
 
+func (c *FunctionSpeedCurve) SetValue(value int) {
+	valueMu.Lock()
+	defer valueMu.Unlock()
+	c.Value = value
+}
+
 func (c *FunctionSpeedCurve) CurrentValue() int {
+	valueMu.Lock()
+	defer valueMu.Unlock()
 	return c.Value
 }
