@@ -30,7 +30,7 @@ func (collector *CurveCollector) Describe(ch chan<- *prometheus.Desc) {
 func (collector *CurveCollector) Collect(ch chan<- prometheus.Metric) {
 	for _, curve := range collector.curves {
 		curveId := curve.GetId()
-		value, _ := curve.Evaluate()
+		value := curve.CurrentValue()
 		ch <- prometheus.MustNewConstMetric(collector.value, prometheus.GaugeValue, float64(value), curveId)
 	}
 }

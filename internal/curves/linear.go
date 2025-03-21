@@ -45,3 +45,7 @@ func (c *LinearSpeedCurve) Evaluate() (value int, err error) {
 	c.Value = value
 	return value, nil
 }
+
+func (c *LinearSpeedCurve) CurrentValue() int {
+	return c.Value
+}

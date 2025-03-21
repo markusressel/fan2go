@@ -83,3 +83,7 @@ func (c *FunctionSpeedCurve) Evaluate() (value int, err error) {
 	c.Value = value
 	return value, err
 }
+
+func (c *FunctionSpeedCurve) CurrentValue() int {
+	return c.Value
+}

@@ -39,3 +39,7 @@ func (c *PidSpeedCurve) Evaluate() (value int, err error) {
 	c.Value = curveValue
 	return curveValue, nil
 }
+
+func (c *PidSpeedCurve) CurrentValue() int {
+	return c.Value
+}
