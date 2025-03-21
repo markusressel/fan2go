@@ -20,7 +20,7 @@ import (
 )
 
 // Amount of time to wait between a set-pwm and get-pwm. Used during fan initial calibration.
-const pwmSetGetDelay time.Duration = 5 * time.Millisecond
+const pwmSetGetDelay = 5 * time.Millisecond
 
 var (
 	ErrFanStalledAtMaxPwm = errors.New("fan stalled at max pwm")
