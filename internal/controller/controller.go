@@ -292,6 +292,7 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 		err = f.setPwm(pwm)
 		if err != nil {
 			ui.Error("Unable to run initialization sequence on %s: %v", fan.GetId(), err)
+			f.restorePwmEnabled()
 			return err
 		}
 		expectedPwm := f.applyPwmMapping(pwm)
