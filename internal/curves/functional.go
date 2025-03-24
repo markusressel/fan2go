@@ -86,6 +86,7 @@ func (c *FunctionSpeedCurve) Evaluate() (value int, err error) {
 		ui.Fatal("Unknown curve function: %s", c.Config.Function.Type)
 	}
 
+	ui.Debug("Evaluating curve '%s'. Curve values: '%v' Desired PWM: %d", c.Config.ID, values, value)
 	c.SetValue(value)
 	return value, err
 }
