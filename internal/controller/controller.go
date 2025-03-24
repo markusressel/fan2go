@@ -296,7 +296,7 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 		}
 		expectedPwm := f.applyPwmMapping(pwm)
 		time.Sleep(pwmSetGetDelay)
-		actualPwm, err := fan.GetPwm()
+		actualPwm, err := f.getPwm()
 		if err != nil {
 			ui.Error("Fan %s: Unable to measure current PWM", fan.GetId())
 			return err
