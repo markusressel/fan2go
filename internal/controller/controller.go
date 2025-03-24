@@ -283,6 +283,9 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 	if err != nil {
 		ui.Warning("Could not enable manual fan mode on %s, trying to continue anyway...", fan.GetId())
 	}
+	defer func() {
+		f.restorePwmEnabled()
+	}()
 
 	curveData := map[int]float64{}
 
@@ -292,7 +295,6 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 		err = f.setPwm(pwm)
 		if err != nil {
 			ui.Error("Unable to run initialization sequence on %s: %v", fan.GetId(), err)
-			f.restorePwmEnabled()
 			return err
 		}
 		expectedPwm := f.applyPwmMapping(pwm)
