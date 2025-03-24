@@ -510,7 +510,8 @@ func (f *DefaultFanController) setPwm(target int) (err error) {
 	closestTarget := f.findClosestDistinctTarget(target)
 	closestExpected := f.applyPwmMapping(closestTarget)
 
-	f.lastSetPwm = &closestExpected
+	ui.Debug("Setting PWM of %s to %d, found closest PWM distinct value at %d, applying PWM Map yields %d", f.fan.GetId(), target, closestTarget, closestExpected)
+	f.lastSetPwm = &closestTarget
 	// if we can read the PWM value, we can check if the fan is already at the target value
 	// and avoid unnecessary setPwm calls
 	if f.fan.Supports(fans.FeaturePwmSensor) {
