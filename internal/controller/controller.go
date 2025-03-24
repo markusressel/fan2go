@@ -407,7 +407,13 @@ func (f *DefaultFanController) restorePwmEnabled() {
 	}
 }
 
-// calculates the optimal pwm for a fan with the given target level.
+// Calculates the optimal pwm for the fan of this contoller by
+// - evaluating the associated curve
+// - cycling the control loop
+// - applying clamping
+// - mapping the resulting target value to the [minPwm, maxPwm] range of the fan
+// - applying sanity checks to ensure the fan never stops (if specified)
+//
 // returns ErrFanStalledAtMaxPwm if no rpm is detected even at fan.maxPwm
 func (f *DefaultFanController) calculateTargetPwm() (int, error) {
 	lastSetPwm := 0
