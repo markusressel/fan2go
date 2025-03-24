@@ -150,6 +150,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 			ui.Warning("Fan '%s' has not yet been analyzed, starting initialization sequence...", fan.GetId())
 			err = f.RunInitializationSequence()
 			if err != nil {
+				f.restorePwmEnabled()
 				return err
 			}
 		} else {
@@ -283,9 +284,6 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 	if err != nil {
 		ui.Warning("Could not enable manual fan mode on %s, trying to continue anyway...", fan.GetId())
 	}
-	defer func() {
-		f.restorePwmEnabled()
-	}()
 
 	curveData := map[int]float64{}
 
