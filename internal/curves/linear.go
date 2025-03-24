@@ -46,7 +46,7 @@ func (c *LinearSpeedCurve) Evaluate() (value int, err error) {
 		}
 	}
 
-	ui.Debug("Evaluating curve '%s'. Sensor '%s' temp '%.0f°'. Desired PWM: %d", c.Config.ID, sensor.GetId(), sensor.GetMovingAvg()/1000, value)
+	ui.Debug("Evaluating curve '%s'. Sensor '%s' temp '%.0f°'. Desired PWM: %d", c.Config.ID, sensor.GetId(), avgTemp/1000, value)
 	c.SetValue(value)
 	return value, nil
 }

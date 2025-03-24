@@ -36,7 +36,7 @@ func (c *PidSpeedCurve) Evaluate() (value int, err error) {
 	// map to expected output range
 	curveValue := int(loopValue * 255)
 
-	ui.Debug("Evaluating curve '%s'. Sensor '%s' temp '%.0f°'. Desired PWM: %d", c.Config.ID, sensor.GetId(), measured, curveValue)
+	ui.Debug("Evaluating curve '%s'. Sensor '%s' temp '%.0f°'. Desired PWM: %d", c.Config.ID, sensor.GetId(), measured/1000, curveValue)
 	c.SetValue(curveValue)
 	return curveValue, nil
 }
