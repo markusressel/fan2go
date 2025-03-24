@@ -465,7 +465,8 @@ func (f *DefaultFanController) calculateTargetPwm() (int, error) {
 		// make sure fans never stop by validating the current RPM
 		// and adjusting the target PWM value upwards if necessary
 		shouldNeverStop := fan.ShouldNeverStop()
-		if shouldNeverStop && (f.lastSetPwm != nil || f.lastSetPwm == &target) {
+		lastSetTargetEqualsNewTarget := f.lastSetPwm != nil && *f.lastSetPwm == target
+		if shouldNeverStop && lastSetTargetEqualsNewTarget {
 			avgRpm := fan.GetRpmAvg()
 			if avgRpm <= 0 {
 				if target >= maxPwm {
