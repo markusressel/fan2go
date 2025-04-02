@@ -55,6 +55,20 @@ func UpdateSimpleMovingAvg(oldAvg float64, n int, newValue float64) float64 {
 	return oldAvg + (1/float64(n))*(newValue-oldAvg)
 }
 
+// InterpolateLinearlyInt integer specific variant of InterpolateLinearly.
+func InterpolateLinearlyInt(data *map[int]int, start int, stop int) map[int]int {
+	floatData := map[int]float64{}
+	for k, v := range *data {
+		floatData[k] = float64(v)
+	}
+	interpolatedFloat := InterpolateLinearly(&floatData, start, stop)
+	interpolated := map[int]int{}
+	for k, v := range interpolatedFloat {
+		interpolated[k] = int(v)
+	}
+	return interpolated
+}
+
 // InterpolateLinearly takes the given mapping and adds interpolated values in [start;stop].
 func InterpolateLinearly(data *map[int]float64, start int, stop int) map[int]float64 {
 	interpolated := map[int]float64{}

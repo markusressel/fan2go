@@ -10,9 +10,11 @@ import (
 
 type SpeedCurve interface {
 	GetId() string
-	// Evaluate calculates the current value of the given curve,
+	// Evaluate update the value of this SpeedCurve, by calculates a new value based on the current sensor values
 	// returns a value in [0..255]
 	Evaluate() (value int, err error)
+	// CurrentValue returns the current value of the curve, which was calculated by the previous call to Evaluate
+	CurrentValue() int
 }
 
 var (

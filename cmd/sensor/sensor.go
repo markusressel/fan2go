@@ -65,7 +65,7 @@ func getSensor(id string) (sensors.Sensor, error) {
 				for _, controller := range controllers {
 					matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, controller.Platform)
 					if err != nil {
-						return nil, fmt.Errorf("Failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform)
+						return nil, fmt.Errorf("failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform)
 					}
 					if matched {
 						sensor, exists := controller.Sensors[config.HwMon.Index]

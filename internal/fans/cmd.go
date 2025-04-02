@@ -153,6 +153,8 @@ func (fan *CmdFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureControlMode:
 		return false
+	case FeaturePwmSensor:
+		return fan.Config.Cmd.GetPwm != nil
 	case FeatureRpmSensor:
 		return fan.Config.Cmd.GetRpm != nil
 	}

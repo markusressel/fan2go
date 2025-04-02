@@ -274,7 +274,9 @@ func TestFileFan_GetPwm_InvalidPath(t *testing.T) {
 
 func TestFileFan_SetPwm(t *testing.T) {
 	// GIVEN
-	defer os.Remove("./file_fan_pwm")
+	defer func() {
+		_ = os.Remove("./file_fan_pwm")
+	}()
 
 	config := configuration.FanConfig{
 		File: &configuration.FileFanConfig{

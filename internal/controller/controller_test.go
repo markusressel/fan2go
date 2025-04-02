@@ -58,6 +58,10 @@ func (c MockCurve) Evaluate() (value int, err error) {
 	return c.Value, nil
 }
 
+func (c MockCurve) CurrentValue() int {
+	return c.Value
+}
+
 type MockFan struct {
 	ID              string
 	ControlMode     fans.ControlMode
