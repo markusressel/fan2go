@@ -20,7 +20,7 @@ require (
 	github.com/pterm/pterm v0.12.79
 	github.com/qdm12/reprint v0.0.0-20200326205758-722754a53494
 	github.com/spf13/cobra v1.9.1
-	github.com/spf13/viper v1.20.0
+	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
 	github.com/tomlazar/table v0.1.2
 	go.etcd.io/bbolt v1.4.0
