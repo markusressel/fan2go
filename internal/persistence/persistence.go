@@ -69,7 +69,9 @@ func (p persistence) SaveFanPwmData(fan fans.Fan) (err error) {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func(db *bolt.DB) {
+		_ = db.Close()
+	}(db)
 
 	key := fan.GetId()
 
@@ -100,7 +102,9 @@ func (p persistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	defer func(db *bolt.DB) {
+		_ = db.Close()
+	}(db)
 
 	key := fan.GetId()
 
@@ -137,7 +141,9 @@ func (p persistence) DeleteFanPwmData(fan fans.Fan) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func(db *bolt.DB) {
+		_ = db.Close()
+	}(db)
 
 	key := fan.GetId()
 
@@ -163,7 +169,9 @@ func (p persistence) SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func(db *bolt.DB) {
+		_ = db.Close()
+	}(db)
 
 	key := fanId
 
@@ -193,7 +201,9 @@ func (p persistence) LoadFanPwmMap(fanId string) (map[int]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	defer func(db *bolt.DB) {
+		_ = db.Close()
+	}(db)
 
 	key := fanId
 
@@ -230,7 +240,9 @@ func (p persistence) DeleteFanPwmMap(fanId string) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func(db *bolt.DB) {
+		_ = db.Close()
+	}(db)
 
 	key := fanId
 
