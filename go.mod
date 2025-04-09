@@ -1,6 +1,7 @@
 module github.com/markusressel/fan2go
 
 go 1.23.1
+
 toolchain go1.24.1
 
 require (
@@ -16,7 +17,7 @@ require (
 	github.com/natefinch/atomic v1.0.1
 	github.com/oklog/run v1.1.0
 	github.com/orcaman/concurrent-map/v2 v2.0.1
-	github.com/prometheus/client_golang v1.21.1
+	github.com/prometheus/client_golang v1.22.0
 	github.com/pterm/pterm v0.12.79
 	github.com/qdm12/reprint v0.0.0-20200326205758-722754a53494
 	github.com/spf13/cobra v1.9.1
@@ -39,7 +40,6 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/gookit/color v1.5.4 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/lithammer/fuzzysearch v1.1.8 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
