@@ -264,7 +264,7 @@ func computeIdentifier(chip gosensors.Chip) (name string) {
 	identifier := name
 	switch chip.Bus.Type {
 	case BusTypeI2c:
-		identifier = fmt.Sprintf("%s-i2c-%d-%d", name, chip.Bus.Nr, chip.Addr)
+		identifier = fmt.Sprintf("%s-i2c-%d-%x", name, chip.Bus.Nr, chip.Addr)
 	case BusTypeIsa:
 		identifier = fmt.Sprintf("%s-isa-%d%03x", name, chip.Bus.Nr, chip.Addr)
 	case BusTypePci:
@@ -274,9 +274,9 @@ func computeIdentifier(chip gosensors.Chip) (name string) {
 	case BusTypeAcpi:
 		identifier = fmt.Sprintf("%s-acpi-%d", name, chip.Bus.Nr)
 	case BusTypeHid:
-		identifier = fmt.Sprintf("%s-hid-%d-%d", name, chip.Bus.Nr, chip.Addr)
+		identifier = fmt.Sprintf("%s-hid-%d-%x", name, chip.Bus.Nr, chip.Addr)
 	case BusTypeScsi:
-		identifier = fmt.Sprintf("%s-scsi-%d-%d", name, chip.Bus.Nr, chip.Addr)
+		identifier = fmt.Sprintf("%s-scsi-%d-%x", name, chip.Bus.Nr, chip.Addr)
 	}
 
 	return identifier
