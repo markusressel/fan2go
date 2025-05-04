@@ -26,7 +26,10 @@ type Configuration struct {
 	RpmPollingRate       time.Duration `json:"rpmPollingRate"`
 	RpmRollingWindowSize int           `json:"rpmRollingWindowSize"`
 
+	// Deprecated: use FanControllerConfig.AdjustmentTickRate instead
 	ControllerAdjustmentTickRate time.Duration `json:"controllerAdjustmentTickRate"`
+
+	FanController FanControllerConfig `json:"fanController"`
 
 	Fans    []FanConfig    `json:"fans"`
 	Sensors []SensorConfig `json:"sensors"`
@@ -96,7 +99,10 @@ func setDefaultValues() {
 	viper.SetDefault("Profiling.Host", "localhost")
 	viper.SetDefault("Profiling.Port", 6060)
 
-	viper.SetDefault("ControllerAdjustmentTickRate", 200*time.Millisecond)
+	// set default of deprecated value to 0 to detect unset value
+	viper.SetDefault("ControllerAdjustmentTickRate", 0*time.Millisecond)
+	viper.SetDefault("FanController.AdjustmentTickRate", 200*time.Millisecond)
+	viper.SetDefault("FanController.PwmSetDelay", 5*time.Millisecond)
 
 	viper.SetDefault("sensors", []SensorConfig{})
 	viper.SetDefault("fans", []FanConfig{})
@@ -137,6 +143,15 @@ func LoadConfig() {
 	)
 	if err != nil {
 		ui.Fatal("unable to decode into struct, %v", err)
+	}
+
+	applyDeprecations()
+}
+
+func applyDeprecations() {
+	if CurrentConfig.ControllerAdjustmentTickRate >= 0 {
+		ui.Warning("controllerAdjustmentTickRate is deprecated, use fanController.adjustmentTickRate instead")
+		CurrentConfig.FanController.AdjustmentTickRate = CurrentConfig.ControllerAdjustmentTickRate
 	}
 }
 
