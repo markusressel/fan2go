@@ -22,6 +22,8 @@ var (
 // PidControlLoop is a PidLoop based control loop implementation.
 type PidControlLoop struct {
 	pidLoop *util.PidLoop
+
+	subIntCumulativeError float64
 }
 
 // NewPidControlLoop creates a PidControlLoop, which uses a PID loop to approach the target.
@@ -38,9 +40,23 @@ func NewPidControlLoop(
 func (l *PidControlLoop) Cycle(target int, current int) int {
 	result := l.pidLoop.Loop(float64(target), float64(current))
 
-	// ensure we are within sane bounds
-	coerced := util.Coerce(float64(current)+result, 0, 255)
-	stepTarget := int(math.Round(coerced))
+	// if the result of the pid loop is in ]-1.0..1.0[ sum up values to ensure that we slowly creep up to the target, even
+	// thought the actually applied value is an integer and not a float
+	if result > -1.0 && result < 1.0 {
+		l.subIntCumulativeError += result
+	}
+	if l.subIntCumulativeError >= 1.0 || l.subIntCumulativeError <= -1.0 {
+		// add the cumulative error to the result
+		result += l.subIntCumulativeError
+		// reset the cumulative error
+		l.subIntCumulativeError = 0
+	}
 
-	return stepTarget
+	newTarget := float64(current) + result
+	// convert the result to an integer
+	stepTarget := int(math.Round(newTarget))
+	// ensure we are within sane bounds
+	coercedTarget := util.Coerce(stepTarget, 0, 255)
+
+	return coercedTarget
 }
