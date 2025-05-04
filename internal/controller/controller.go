@@ -19,9 +19,6 @@ import (
 	"github.com/oklog/run"
 )
 
-// Amount of time to wait between a set-pwm and get-pwm. Used during fan initial calibration.
-const pwmSetGetDelay = 5 * time.Millisecond
-
 var (
 	ErrFanStalledAtMaxPwm = errors.New("fan stalled at max pwm")
 )
@@ -296,7 +293,7 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 			return err
 		}
 		expectedPwm := f.applyPwmMapping(pwm)
-		time.Sleep(pwmSetGetDelay)
+		time.Sleep(configuration.CurrentConfig.FanController.PwmSetDelay)
 		actualPwm, err := f.getPwm()
 		if err != nil {
 			ui.Error("Fan %s: Unable to measure current PWM", fan.GetId())
@@ -633,7 +630,7 @@ func (f *DefaultFanController) computePwmMapAutomatically() {
 	pwmMap := map[int]int{}
 	for i := fans.MaxPwmValue; i >= fans.MinPwmValue; i-- {
 		_ = fan.SetPwm(i)
-		time.Sleep(pwmSetGetDelay)
+		time.Sleep(configuration.CurrentConfig.FanController.PwmSetDelay)
 		pwm, err := fan.GetPwm()
 		if err != nil {
 			ui.Warning("Error reading PWM value of fan %s: %v", fan.GetId(), err)

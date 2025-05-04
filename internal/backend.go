@@ -249,7 +249,7 @@ func InitializeObjects() (map[configuration.FanConfig]fans.Fan, error) {
 func initializeFanControllers(pers persistence.Persistence, fanMap map[configuration.FanConfig]fans.Fan) (result map[fans.Fan]controller.FanController, err error) {
 	result = map[fans.Fan]controller.FanController{}
 	for config, fan := range fanMap {
-		updateRate := configuration.CurrentConfig.ControllerAdjustmentTickRate
+		updateRate := configuration.CurrentConfig.FanController.AdjustmentTickRate
 
 		var controlLoop control_loop.ControlLoop
 

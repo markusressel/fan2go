@@ -23,8 +23,12 @@ rpmPollingRate: 1s
 # The number of rpm sensor values to keep in a rolling window array
 rpmRollingWindowSize: 10
 
-# The rate to update fan speed targets at
-controllerAdjustmentTickRate: 200ms
+# Configuration options for each fan controller responsible for an individual fan.
+fanController:
+  # The rate to update fan speed targets at
+  adjustmentTickRate: 200ms
+  # Time to wait for a fan to respond to a control change
+  pwmSetDelay: 5ms
 
 # A list of fans to control
 fans:
