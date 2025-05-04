@@ -1,6 +1,7 @@
 package configuration
 
 type FanConfig struct {
+	// ID is the unique identifier for the fan.
 	ID        string `json:"id"`
 	NeverStop bool   `json:"neverStop"`
 	// MinPwm defines the lowest PWM value where the fans are still spinning, when spinning previously
