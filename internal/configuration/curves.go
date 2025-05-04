@@ -29,8 +29,8 @@ type PidCurveConfig struct {
 	// P is the proportional gain
 	P float64 `json:"p"`
 	// I is the integral gain
-	I float64 `json:"i"
-	// D is the derivative gain`
+	I float64 `json:"i"`
+	// D is the derivative gain
 	D float64 `json:"d"`
 }
 
