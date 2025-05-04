@@ -38,7 +38,7 @@ func (p *PidLoop) Loop(target float64, measured float64) float64 {
 		p.lastTime = loopTime
 	} else {
 		timeSinceLastLoop := loopTime.Sub(p.lastTime)
-		dt := float64(timeSinceLastLoop.Milliseconds()) / 1000.0
+		dt := timeSinceLastLoop.Seconds()
 
 		proportional := err
 		p.integral = p.integral + err*dt
