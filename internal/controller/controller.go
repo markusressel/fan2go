@@ -515,21 +515,21 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 
 // set the pwm speed of a fan to the specified value (0..255)
 func (f *DefaultFanController) setPwm(target int) (err error) {
-	closestTarget := f.findClosestDistinctTarget(target)
-	closestExpected := f.applyPwmMapping(closestTarget)
+	closestDistinctTarget := f.findClosestDistinctTarget(target)
+	closestSupportedTarget := f.applyPwmMapping(closestDistinctTarget)
 
-	ui.Debug("Setting PWM of %s to %d, found closest distinct PWM value at %d, applying PWM Map yields %d", f.fan.GetId(), target, closestTarget, closestExpected)
+	ui.Debug("Setting PWM of %s to %d, found closest distinct PWM value at %d, applying PWM Map yields %d", f.fan.GetId(), target, closestDistinctTarget, closestSupportedTarget)
 	f.lastSetPwm = &target
 	// if we can read the PWM value, we can check if the fan is already at the target value
 	// and avoid unnecessary setPwm calls
 	if f.fan.Supports(fans.FeaturePwmSensor) {
 		current, err := f.getPwm()
-		if err == nil && closestExpected == current {
+		if err == nil && closestSupportedTarget == current {
 			// nothing to do
 			return nil
 		}
 	}
-	return f.fan.SetPwm(closestExpected)
+	return f.fan.SetPwm(closestSupportedTarget)
 }
 
 func (f *DefaultFanController) waitForFanToSettle(fan fans.Fan) {
