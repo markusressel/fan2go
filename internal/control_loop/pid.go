@@ -54,9 +54,9 @@ func (l *PidControlLoop) Cycle(target int, current int) int {
 
 	newTarget := float64(current) + result
 	// convert the result to an integer
-	stepTarget := int(math.Round(newTarget))
+	roundedTarget := int(math.Round(newTarget))
 	// ensure we are within sane bounds
-	coercedTarget := util.Coerce(stepTarget, 0, 255)
+	coercedTarget := util.Coerce(roundedTarget, 0, 255)
 
 	return coercedTarget
 }
