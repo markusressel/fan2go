@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal/ui"
+	"golang.org/x/exp/constraints"
 	"sort"
 	"strconv"
 )
@@ -11,8 +12,12 @@ const (
 	InterpolationTypeLinear = "linear"
 )
 
+type Number interface {
+	constraints.Integer | constraints.Float
+}
+
 // Coerce returns a value that is at least min and at most max, otherwise value
-func Coerce(value float64, min float64, max float64) float64 {
+func Coerce[T Number](value T, min T, max T) T {
 	if value > max {
 		return max
 	}

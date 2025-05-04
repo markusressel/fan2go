@@ -46,9 +46,10 @@ func (l *DirectControlLoop) Cycle(target int, current int) int {
 		stepTarget = float64(current) + clampedErr
 	}
 
+	// convert the result to an integer
+	rounded := int(math.Round(stepTarget))
 	// ensure we are within sane bounds
-	coerced := util.Coerce(stepTarget, 0, 255)
-	result := int(math.Round(coerced))
+	result := util.Coerce(rounded, 0, 255)
 
 	return result
 }
