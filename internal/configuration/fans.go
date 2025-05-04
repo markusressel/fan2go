@@ -19,9 +19,9 @@ type FanConfig struct {
 
 	// ControlLoop is a configuration for a PID control loop.
 	//
-	// Deprecated: HeaderMap exists for historical compatibility
-	// and should not be used. To access the headers returned by a handler,
-	// use the Response.Header map as returned by the Result method.
+	// Deprecated: ControlLoop exists for historical compatibility
+	// and should not be used. To change how the fan is controlled
+	// use ControlAlgorithm instead.
 	ControlLoop *ControlLoopConfig `json:"controlLoop,omitempty"`
 }
 
