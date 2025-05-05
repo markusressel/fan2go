@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/markusressel/fan2go/internal/control_loop"
 	"math"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/markusressel/fan2go/internal/control_loop"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/curves"
@@ -579,19 +580,40 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 
 	switch f := f.fan.(type) {
 	case *fans.HwMonFan:
-		c := f.Config.PwmMap
-		if c != nil {
-			configOverride = c
+		if f.Config.BypassPwmMap != nil && *f.Config.BypassPwmMap {
+			// if the user decides to not make use of the pwm mapping, use a default 0-0 to 255-255 map
+			defaultPwmMap := util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
+			configOverride = &defaultPwmMap
+		} else {
+			// if the user gave an explicit pwm map to use, use it
+			c := f.Config.PwmMap
+			if c != nil {
+				configOverride = c
+			}
 		}
 	case *fans.CmdFan:
-		c := f.Config.PwmMap
-		if c != nil {
-			configOverride = c
+		if f.Config.BypassPwmMap != nil && *f.Config.BypassPwmMap {
+			// if the user decides to not make use of the pwm mapping, use a default 0-0 to 255-255 map
+			defaultPwmMap := util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
+			configOverride = &defaultPwmMap
+		} else {
+			// if the user gave an explicit pwm map to use, use it
+			c := f.Config.PwmMap
+			if c != nil {
+				configOverride = c
+			}
 		}
 	case *fans.FileFan:
-		c := f.Config.PwmMap
-		if c != nil {
-			configOverride = c
+		if f.Config.BypassPwmMap != nil && *f.Config.BypassPwmMap {
+			// if the user decides to not make use of the pwm mapping, use a default 0-0 to 255-255 map
+			defaultPwmMap := util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
+			configOverride = &defaultPwmMap
+		} else {
+			// if the user gave an explicit pwm map to use, use it
+			c := f.Config.PwmMap
+			if c != nil {
+				configOverride = c
+			}
 		}
 	default:
 		// if type is other than above
