@@ -35,7 +35,7 @@ func NewPidControlLoop(
 	d float64,
 ) *PidControlLoop {
 	return &PidControlLoop{
-		pidLoop: util.NewPidLoop(p, i, d, 0, 255),
+		pidLoop: util.NewPidLoop(p, i, d, 0, 255, true, true),
 	}
 }
 

@@ -1,6 +1,8 @@
 package util
 
-import "time"
+import (
+	"time"
+)
 
 type PidLoop struct {
 	// Proportional Constant
@@ -13,6 +15,10 @@ type PidLoop struct {
 	outMin float64
 	// Maximum output value
 	outMax float64
+	// Anti-windup flag
+	antiWindup bool
+	// Anti-winddown flag
+	antiWinddown bool
 
 	// last measured value
 	lastMeasured float64
@@ -24,13 +30,15 @@ type PidLoop struct {
 	lastOutput float64
 }
 
-func NewPidLoop(p, i, d, min, max float64) *PidLoop {
+func NewPidLoop(p, i, d, min, max float64, antiWindup, antiWinddown bool) *PidLoop {
 	return &PidLoop{
-		p:      p,
-		i:      i,
-		d:      d,
-		outMin: min,
-		outMax: max,
+		p:            p,
+		i:            i,
+		d:            d,
+		outMin:       min,
+		outMax:       max,
+		antiWindup:   antiWindup,
+		antiWinddown: antiWinddown,
 	}
 }
 
@@ -70,18 +78,6 @@ func (p *PidLoop) Loop(target float64, measured float64) float64 {
 	proportionalTerm := p.p * err
 
 	// --- I Term (with basic anti-windup) ---
-	integrate := true
-	// Don't integrate if output is already saturated AND the error is trying to push it further
-	if p.lastOutput >= p.outMax && err > 0 {
-		integrate = false
-	}
-	if p.lastOutput <= p.outMin && err < 0 {
-		integrate = false
-	}
-
-	if integrate {
-		p.integral = p.integral + err*dt
-	}
 	integralTerm := p.i * p.integral
 
 	// --- D Term (on measurement) ---
@@ -98,6 +94,18 @@ func (p *PidLoop) Loop(target float64, measured float64) float64 {
 		clampedOutput = p.outMax
 	} else if clampedOutput < p.outMin {
 		clampedOutput = p.outMin
+	}
+
+	integrate := true
+	// Don't integrate if output is already saturated AND the error is trying to push it further
+	if p.antiWindup && p.lastOutput >= p.outMax && err > 0 {
+		integrate = false
+	}
+	if p.antiWinddown && p.lastOutput <= p.outMin && err < 0 {
+		integrate = false
+	}
+	if integrate {
+		p.integral = p.integral + err*dt
 	}
 
 	// --- Update State for Next Loop ---

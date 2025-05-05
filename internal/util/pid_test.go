@@ -11,7 +11,7 @@ func TestNewPidLoop(t *testing.T) {
 	p, i, d := 1.0, 2.0, 3.0
 
 	// WHEN
-	pidLoop := NewPidLoop(p, i, d)
+	pidLoop := NewPidLoop(p, i, d, 0, 255, true, true)
 
 	// THEN
 	assert.Equal(t, p, pidLoop.p)
@@ -22,28 +22,28 @@ func TestNewPidLoop(t *testing.T) {
 func TestPidLoop_Advance(t *testing.T) {
 	// GIVEN
 	p, i, d := 1.0, 2.0, 3.0
-	pidLoop := NewPidLoop(p, i, d)
+	pidLoop := NewPidLoop(p, i, d, 0, 255, true, true)
 
 	// WHEN
 	output := pidLoop.Loop(10.0, 5.0)
 	// THEN
-	assert.Equal(t, 0.0, output)
+	assert.Equal(t, 5.0, output)
 
 	// WHEN
 	output = pidLoop.Loop(10.0, 5.0)
 	// THEN
-	assert.Equal(t, 5, int(output))
+	assert.Equal(t, 5.0, output)
 }
 
 func TestPidLoop_P(t *testing.T) {
 	// GIVEN
 	p, i, d := 0.01, 0.0, 0.0
-	pidLoop := NewPidLoop(p, i, d)
+	pidLoop := NewPidLoop(p, i, d, 0, 255, true, true)
 
 	// WHEN
 	output := pidLoop.Loop(10.0, 5.0)
 	// THEN
-	assert.Equal(t, 0.0, output)
+	assert.Equal(t, 0.05, output)
 
 	time.Sleep(1 * time.Second)
 
@@ -56,7 +56,7 @@ func TestPidLoop_P(t *testing.T) {
 func TestPidLoop_I(t *testing.T) {
 	// GIVEN
 	p, i, d := 0.0, 0.01, 0.0
-	pidLoop := NewPidLoop(p, i, d)
+	pidLoop := NewPidLoop(p, i, d, 0, 255, true, true)
 
 	// WHEN
 	output := pidLoop.Loop(10.0, 5.0)
@@ -68,13 +68,13 @@ func TestPidLoop_I(t *testing.T) {
 	// WHEN
 	output = pidLoop.Loop(10.0, 5.0)
 	// THEN
-	assert.InDelta(t, 0.05, output, 0.01)
+	assert.InDelta(t, 0.0, output, 0.01)
 }
 
 func TestPidLoop_D(t *testing.T) {
 	// GIVEN
 	p, i, d := 0.0, 0.0, 0.01
-	pidLoop := NewPidLoop(p, i, d)
+	pidLoop := NewPidLoop(p, i, d, 0, 255, true, true)
 
 	// WHEN
 	output := pidLoop.Loop(10.0, 5.0)
@@ -86,5 +86,5 @@ func TestPidLoop_D(t *testing.T) {
 	// WHEN
 	output = pidLoop.Loop(10.0, 8.0)
 	// THEN
-	assert.InDelta(t, -0.03, output, 0.01)
+	assert.InDelta(t, 0, output, 0.01)
 }
