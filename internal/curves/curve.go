@@ -33,6 +33,10 @@ func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
 			config.PID.P,
 			config.PID.I,
 			config.PID.D,
+			0,
+			255,
+			true,
+			false,
 		)
 		return &PidSpeedCurve{
 			Config:  config,

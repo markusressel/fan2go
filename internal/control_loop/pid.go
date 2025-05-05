@@ -1,6 +1,7 @@
 package control_loop
 
 import (
+	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"math"
 )
@@ -13,9 +14,9 @@ type PidControlLoopDefaults struct {
 
 var (
 	DefaultPidConfig = PidControlLoopDefaults{
-		P: 0.3,
-		I: 0.02,
-		D: 0.005,
+		P: 0.05,
+		I: 0.4,
+		D: 0.01,
 	}
 )
 
@@ -23,7 +24,8 @@ var (
 type PidControlLoop struct {
 	pidLoop *util.PidLoop
 
-	subIntCumulativeError float64
+	// Store the last float64 output from the internal pidLoop (0-255 range)
+	lastPidOutput float64
 }
 
 // NewPidControlLoop creates a PidControlLoop, which uses a PID loop to approach the target.
@@ -33,31 +35,27 @@ func NewPidControlLoop(
 	d float64,
 ) *PidControlLoop {
 	return &PidControlLoop{
-		pidLoop: util.NewPidLoop(p, i, d),
+		pidLoop: util.NewPidLoop(p, i, d, 0, 255, true, true),
 	}
 }
 
-func (l *PidControlLoop) Cycle(target int, current int) int {
-	result := l.pidLoop.Loop(float64(target), float64(current))
+func (l *PidControlLoop) Cycle(target int) int {
+	// Convert the desired target value from the curve to float64
+	floatTarget := float64(target)
+	// Use the *previous output* of this PID loop as the 'measured' value for smoothing
+	floatMeasured := l.lastPidOutput
 
-	// if the result of the pid loop is in ]-1.0..1.0[ sum up values to ensure that we slowly creep up to the target, even
-	// thought the actually applied value is an integer and not a float
-	if result > -1.0 && result < 1.0 {
-		l.subIntCumulativeError += result
-		if l.subIntCumulativeError >= 1.0 || l.subIntCumulativeError <= -1.0 {
-			// add the cumulative error to the result
-			result += l.subIntCumulativeError
-			// reset the cumulative error
-			l.subIntCumulativeError = 0
-		}
-	} else {
-		// if the result is outside the range, reset the cumulative error
-		l.subIntCumulativeError = 0
-	}
+	// Calculate the next PID output (float64, clamped 0-255 internally by pidLoop)
+	floatResult := l.pidLoop.Loop(floatTarget, floatMeasured)
 
-	newTarget := float64(current) + result
+	// Store the *float* result as the internal state for the next cycle's feedback
+	l.lastPidOutput = floatResult
+
+	ui.Debug("PidControlLoop: target(curve): %d, measured(lastPidOutput): %.4f, result(float): %.4f", target, floatMeasured, floatResult)
+
 	// convert the result to an integer
-	roundedTarget := int(math.Round(newTarget))
+	roundedTarget := int(math.Round(floatResult))
+
 	// ensure we are within sane bounds
 	coercedTarget := util.Coerce(roundedTarget, 0, 255)
 

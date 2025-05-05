@@ -5,6 +5,7 @@ import (
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
+	"math"
 )
 
 type PidSpeedCurve struct {
@@ -29,12 +30,7 @@ func (c *PidSpeedCurve) Evaluate() (value int, err error) {
 	pidTarget := c.Config.PID.SetPoint
 
 	loopValue := c.pidLoop.Loop(pidTarget, measured/1000.0)
-
-	// clamp to (0..1)
-	loopValue = util.Coerce(loopValue, 0, 1)
-
-	// map to expected output range
-	curveValue := int(loopValue * 255)
+	curveValue := int(math.Round(loopValue))
 
 	ui.Debug("Evaluating curve '%s'. Sensor '%s' temp '%.0f°'. Desired PWM: %d", c.Config.ID, sensor.GetId(), measured/1000, curveValue)
 	c.SetValue(curveValue)

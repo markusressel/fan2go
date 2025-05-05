@@ -13,38 +13,44 @@ type DirectControlLoop struct {
 	// limits the maximum allowed pwm change per cycle
 	maxPwmChangePerCycle *int
 	lastTime             time.Time
+
+	lastOutput float64
 }
 
 // NewDirectControlLoop creates a DirectControlLoop, which is a very simple control that directly applies the given
 // target pwm. It can also be used to gracefully approach the target by
 // utilizing the "maxPwmChangePerCycle" property.
 func NewDirectControlLoop(
-	// (optional) limits the maximum allowed pwm change per cycle (in both directions)
+// (optional) limits the maximum allowed pwm change per cycle (in both directions)
 	maxPwmChangePerCycle *int,
 ) *DirectControlLoop {
 	return &DirectControlLoop{
 		maxPwmChangePerCycle: maxPwmChangePerCycle,
 		lastTime:             time.Now(),
+		lastOutput:           math.NaN(),
 	}
 }
 
-func (l *DirectControlLoop) Cycle(target int, current int) int {
+func (l *DirectControlLoop) Cycle(target int) int {
 	loopTime := time.Now()
+	targetFloat := float64(target)
+	if math.IsNaN(l.lastOutput) {
+		// first run, just return the target
+		l.lastOutput = targetFloat
+		l.lastTime = loopTime
+		return target
+	}
 
-	//dt := loopTime.Sub(l.lastTime).Seconds()
-
-	l.lastTime = loopTime
-
-	var stepTarget = float64(target)
+	var stepTarget = targetFloat
 	if l.maxPwmChangePerCycle != nil {
 		maxChangeValue := *l.maxPwmChangePerCycle
-		// TODO: figure out how to normalize the change to the timedelta
-		//stepTarget = float64(*l.maxPwmChangePerCycle) * dt
 
-		err := float64(target - current)
+		err := targetFloat - l.lastOutput
 		clampedErr := util.Coerce(err, -float64(maxChangeValue), +float64(maxChangeValue))
-		stepTarget = float64(current) + clampedErr
+		stepTarget = l.lastOutput + clampedErr
 	}
+
+	l.lastOutput = stepTarget
 
 	// convert the result to an integer
 	rounded := int(math.Round(stepTarget))

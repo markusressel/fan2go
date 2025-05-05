@@ -1,12 +1,12 @@
 package curves
 
 import (
+	"github.com/markusressel/fan2go/internal/ui"
 	"math"
 	"sync"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/sensors"
-	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 )
 
