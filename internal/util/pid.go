@@ -96,15 +96,10 @@ func (p *PidLoop) Loop(target float64, measured float64) float64 {
 		clampedOutput = p.outMin
 	}
 
-	integrate := true
 	// Don't integrate if output is already saturated AND the error is trying to push it further
-	if p.antiWindup && p.lastOutput >= p.outMax && err > 0 {
-		integrate = false
-	}
-	if p.antiWinddown && p.lastOutput <= p.outMin && err < 0 {
-		integrate = false
-	}
-	if integrate {
+	windupDetected := p.antiWindup && p.lastOutput >= p.outMax && err > 0
+	winddownDetected := p.antiWinddown && p.lastOutput <= p.outMin && err < 0
+	if !windupDetected && !winddownDetected {
 		p.integral = p.integral + err*dt
 	}
 
