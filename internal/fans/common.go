@@ -2,9 +2,10 @@ package fans
 
 import (
 	"fmt"
+	"sort"
+
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/qdm12/reprint"
-	"sort"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 )
@@ -39,6 +40,7 @@ var (
 
 type Fan interface {
 	GetId() string
+	GetConfig() configuration.FanConfig
 
 	// GetMinPwm returns the lowest PWM value where the fans are still spinning, when spinning previously
 	GetMinPwm() int
