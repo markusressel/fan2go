@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"sort"
 	"sync"
@@ -339,16 +338,20 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 			ui.Error("Unable to run initialization sequence on %s: %v", fan.GetId(), err)
 			return err
 		}
-		expectedPwm := f.applyPwmMapping(pwm)
-		time.Sleep(configuration.CurrentConfig.FanController.PwmSetDelay)
-		actualPwm, err := f.getPwm()
-		if err != nil {
-			ui.Error("Fan %s: Unable to measure current PWM", fan.GetId())
-			return err
-		}
-		if actualPwm != expectedPwm {
-			ui.Debug("Fan %s: Actual PWM value differs from requested one, skipping: requested: %d, expected: %d, actual: %d", fan.GetId(), pwm, expectedPwm, actualPwm)
-			continue
+
+		bypassPwmMap := fan.GetConfig().BypassPwmMap != nil && *fan.GetConfig().BypassPwmMap
+		if !bypassPwmMap {
+			expectedPwm := f.applyPwmMapping(pwm)
+			time.Sleep(configuration.CurrentConfig.FanController.PwmSetDelay)
+			actualPwm, err := f.getPwm()
+			if err != nil {
+				ui.Error("Fan %s: Unable to measure current PWM", fan.GetId())
+				return err
+			}
+			if actualPwm != expectedPwm {
+				ui.Debug("Fan %s: Actual PWM value differs from requested one, skipping: requested: %d, expected: %d, actual: %d", fan.GetId(), pwm, expectedPwm, actualPwm)
+				continue
+			}
 		}
 
 		if initialMeasurement {
@@ -576,53 +579,18 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 		defer InitializationSequenceMutex.Unlock()
 	}
 
-	var configOverride *map[int]int
-
-	switch f := f.fan.(type) {
-	case *fans.HwMonFan:
-		if f.Config.BypassPwmMap != nil && *f.Config.BypassPwmMap {
-			// if the user decides to not make use of the pwm mapping, use a default 0-0 to 255-255 map
-			defaultPwmMap := util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
-			configOverride = &defaultPwmMap
-		} else {
-			// if the user gave an explicit pwm map to use, use it
-			c := f.Config.PwmMap
-			if c != nil {
-				configOverride = c
-			}
-		}
-	case *fans.CmdFan:
-		if f.Config.BypassPwmMap != nil && *f.Config.BypassPwmMap {
-			// if the user decides to not make use of the pwm mapping, use a default 0-0 to 255-255 map
-			defaultPwmMap := util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
-			configOverride = &defaultPwmMap
-		} else {
-			// if the user gave an explicit pwm map to use, use it
-			c := f.Config.PwmMap
-			if c != nil {
-				configOverride = c
-			}
-		}
-	case *fans.FileFan:
-		if f.Config.BypassPwmMap != nil && *f.Config.BypassPwmMap {
-			// if the user decides to not make use of the pwm mapping, use a default 0-0 to 255-255 map
-			defaultPwmMap := util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
-			configOverride = &defaultPwmMap
-		} else {
-			// if the user gave an explicit pwm map to use, use it
-			c := f.Config.PwmMap
-			if c != nil {
-				configOverride = c
-			}
-		}
-	default:
-		// if type is other than above
-		fmt.Println("Type is unknown!")
-	}
-
-	if configOverride != nil {
+	fanConfig := f.fan.GetConfig()
+	if fanConfig.BypassPwmMap != nil && *fanConfig.BypassPwmMap {
+		// if the user decides to not make use of the pwm mapping, use a default 0-0 to 255-255 map
+		defaultPwmMap := util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
+		f.pwmMap = defaultPwmMap
+		ui.Info("Bypassing pwm map, using default map...")
+		return nil
+	} else if c := fanConfig.PwmMap; c != nil {
+		// if the user gave an explicit pwm map to use, use it
+		c := fanConfig.PwmMap
+		f.pwmMap = *c
 		ui.Info("Using pwm map override from config...")
-		f.pwmMap = *configOverride
 		return nil
 	}
 
