@@ -44,14 +44,14 @@ func (l *PidControlLoop) Cycle(target int, current int) int {
 	// thought the actually applied value is an integer and not a float
 	if result > -1.0 && result < 1.0 {
 		l.subIntCumulativeError += result
+		if l.subIntCumulativeError >= 1.0 || l.subIntCumulativeError <= -1.0 {
+			// add the cumulative error to the result
+			result += l.subIntCumulativeError
+			// reset the cumulative error
+			l.subIntCumulativeError = 0
+		}
 	} else {
 		// if the result is outside the range, reset the cumulative error
-		l.subIntCumulativeError = 0
-	}
-	if l.subIntCumulativeError >= 1.0 || l.subIntCumulativeError <= -1.0 {
-		// add the cumulative error to the result
-		result += l.subIntCumulativeError
-		// reset the cumulative error
 		l.subIntCumulativeError = 0
 	}
 
