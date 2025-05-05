@@ -14,8 +14,8 @@ type PidControlLoopDefaults struct {
 
 var (
 	DefaultPidConfig = PidControlLoopDefaults{
-		P: 0.1,
-		I: 0.5,
+		P: 0.05,
+		I: 0.4,
 		D: 0.01,
 	}
 )
