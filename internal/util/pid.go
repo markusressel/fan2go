@@ -10,6 +10,9 @@ type PidLoop struct {
 	// Derivative Constant
 	d float64
 
+	// last measured value
+	lastMeasured float64
+
 	// error from previous loop
 	error float64
 	// integral from previous loop + error, i.e. integral error
@@ -31,23 +34,29 @@ func NewPidLoop(p float64, i float64, d float64) *PidLoop {
 // Loop advances the pid loop
 func (p *PidLoop) Loop(target float64, measured float64) float64 {
 	output := 0.0
-	err := target - measured
 
 	loopTime := time.Now()
 	if p.lastTime.IsZero() {
+		p.lastMeasured = measured
 		p.lastTime = loopTime
+		return target
 	} else {
 		timeSinceLastLoop := loopTime.Sub(p.lastTime)
 		dt := timeSinceLastLoop.Seconds()
 
+		err := target - measured
+		p.error = err
+
 		proportional := err
 		p.integral = p.integral + err*dt
-		derivative := (err - p.error) / dt
-		output = p.p*proportional + p.i*p.integral + p.d*derivative
+
+		// avoid derivative kick
+		derivative := (measured - p.lastMeasured) / dt
+		output = p.p*proportional + p.i*p.integral - p.d*derivative
 	}
 
-	p.error = err
 	p.lastTime = loopTime
+	p.lastMeasured = measured
 
 	return output
 }
