@@ -246,6 +246,52 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 		return err
 	}
 
+	// ensure target value is within bounds of possible values
+	if target > fans.MaxPwmValue {
+		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", target, fan.GetId())
+		target = fans.MaxPwmValue
+	} else if target < fans.MinPwmValue {
+		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", target, fan.GetId())
+		target = fans.MinPwmValue
+	}
+
+	// map the target value to the possible range of this fan
+	maxPwm := fan.GetMaxPwm()
+	minPwm := fan.GetMinPwm() + f.minPwmOffset
+
+	// adjust the target value determined by the control algorithm to the operational needs
+	// of the fan, which includes its supported pwm range (which might be different from [0..255])
+	target = minPwm + int((float64(target)/fans.MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
+
+	f.ensureNoThirdPartyIsMessingWithUs()
+
+	if fan.Supports(fans.FeatureRpmSensor) {
+		// make sure fans never stop by validating the current RPM
+		// and adjusting the target PWM value upwards if necessary
+		shouldNeverStop := fan.ShouldNeverStop()
+		lastSetPwm, _ := f.getLastSetPwm()
+		lastSetTargetEqualsNewTarget := lastSetPwm == target
+		if shouldNeverStop && lastSetTargetEqualsNewTarget {
+			avgRpm := fan.GetRpmAvg()
+			if avgRpm <= 0 {
+				if target >= maxPwm {
+					ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), int(avgRpm), target)
+					return ErrFanStalledAtMaxPwm
+				}
+				oldMinPwm := minPwm
+				ui.Warning("Increasing minPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d at PWM %d",
+					fan.GetId(), oldMinPwm, oldMinPwm+1, int(avgRpm), lastSetPwm)
+				f.increaseMinPwmOffset()
+				fan.SetMinPwm(f.minPwmOffset, true)
+				target++
+
+				// set the moving avg to a value > 0 to prevent
+				// this increase from happening too fast
+				fan.SetRpmAvg(1)
+			}
+		}
+	}
+
 	_ = trySetManualPwm(f.fan)
 	err = f.setPwm(target)
 	if err != nil {
@@ -414,6 +460,21 @@ func (f *DefaultFanController) restorePwmEnabled() {
 //
 // returns ErrFanStalledAtMaxPwm if no rpm is detected even at fan.maxPwm
 func (f *DefaultFanController) calculateTargetPwm() (int, error) {
+	fan := f.fan
+	target, err := f.curve.Evaluate()
+	if err != nil {
+		ui.Fatal("Unable to calculate optimal PWM value for %s: %v", fan.GetId(), err)
+	}
+
+	// the target pwm, approaching the actual target smoothly
+	// TODO: using lastSetPwm directly here is wrong, because the pid loop will try to work in a 0..255 range
+	// there needs to be a mapping of the lastSetPwm value to the 0..255 range
+	newTarget := f.controlLoop.Cycle(target)
+
+	return newTarget, nil
+}
+
+func (f *DefaultFanController) getLastSetPwm() (int, error) {
 	lastSetPwm := 0
 	if f.lastSetPwm != nil {
 		lastSetPwm = *(f.lastSetPwm)
@@ -429,63 +490,7 @@ func (f *DefaultFanController) calculateTargetPwm() (int, error) {
 			lastSetPwm = f.fan.GetMinPwm()
 		}
 	}
-
-	fan := f.fan
-	target, err := f.curve.Evaluate()
-	if err != nil {
-		ui.Fatal("Unable to calculate optimal PWM value for %s: %v", fan.GetId(), err)
-	}
-
-	// the target pwm, approaching the actual target smoothly
-	target = f.controlLoop.Cycle(target, lastSetPwm)
-
-	// ensure target value is within bounds of possible values
-	if target > fans.MaxPwmValue {
-		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", target, fan.GetId())
-		target = fans.MaxPwmValue
-	} else if target < fans.MinPwmValue {
-		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", target, fan.GetId())
-		target = fans.MinPwmValue
-	}
-
-	// map the target value to the possible range of this fan
-	maxPwm := fan.GetMaxPwm()
-	minPwm := fan.GetMinPwm() + f.minPwmOffset
-
-	// determine the target value based on the pwm range as well as RPM curve of the fan
-	// TODO: this assumes a linear curve, but it might be something else
-	// TODO: remove
-	target = minPwm + int((float64(target)/fans.MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
-
-	f.ensureNoThirdPartyIsMessingWithUs()
-
-	if fan.Supports(fans.FeatureRpmSensor) {
-		// make sure fans never stop by validating the current RPM
-		// and adjusting the target PWM value upwards if necessary
-		shouldNeverStop := fan.ShouldNeverStop()
-		lastSetTargetEqualsNewTarget := f.lastSetPwm != nil && *f.lastSetPwm == target
-		if shouldNeverStop && lastSetTargetEqualsNewTarget {
-			avgRpm := fan.GetRpmAvg()
-			if avgRpm <= 0 {
-				if target >= maxPwm {
-					ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), int(avgRpm), target)
-					return -1, ErrFanStalledAtMaxPwm
-				}
-				oldMinPwm := minPwm
-				ui.Warning("Increasing minPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d at PWM %d",
-					fan.GetId(), oldMinPwm, oldMinPwm+1, int(avgRpm), lastSetPwm)
-				f.increaseMinPwmOffset()
-				fan.SetMinPwm(f.minPwmOffset, true)
-				target++
-
-				// set the moving avg to a value > 0 to prevent
-				// this increase from happening too fast
-				fan.SetRpmAvg(1)
-			}
-		}
-	}
-
-	return target, nil
+	return lastSetPwm, nil
 }
 
 // ensureNoThirdPartyIsMessingWithUs checks if the PWM value of the fan does not match the last
@@ -515,7 +520,7 @@ func (f *DefaultFanController) setPwm(target int) (err error) {
 	closestDistinctTarget := f.findClosestDistinctTarget(target)
 	closestSupportedTarget := f.applyPwmMapping(closestDistinctTarget)
 
-	ui.Debug("Setting PWM of %s to %d, found closest distinct PWM value at %d, applying PWM Map yields %d", f.fan.GetId(), target, closestDistinctTarget, closestSupportedTarget)
+	ui.Debug("Setting PWM of %s to %d, found the closest distinct PWM value at %d, applying PWM Map yields %d", f.fan.GetId(), target, closestDistinctTarget, closestSupportedTarget)
 	f.lastSetPwm = &target
 	// if we can read the PWM value, we can check if the fan is already at the target value
 	// and avoid unnecessary setPwm calls
