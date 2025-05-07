@@ -149,7 +149,7 @@ func LoadConfig() {
 }
 
 func applyDeprecations() {
-	if CurrentConfig.ControllerAdjustmentTickRate >= 0 {
+	if CurrentConfig.ControllerAdjustmentTickRate > 0 {
 		ui.Warning("controllerAdjustmentTickRate is deprecated, use fanController.adjustmentTickRate instead")
 		CurrentConfig.FanController.AdjustmentTickRate = CurrentConfig.ControllerAdjustmentTickRate
 	}
