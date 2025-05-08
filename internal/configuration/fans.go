@@ -11,6 +11,7 @@ type FanConfig struct {
 	// MaxPwm defines the highest PWM value that yields an RPM increase
 	MaxPwm           *int                    `json:"maxPwm,omitempty"`
 	PwmMap           *map[int]int            `json:"pwmMap,omitempty"`
+	BypassPwmMap     *bool                   `json:"bypassPwmMap,omitempty"`
 	Curve            string                  `json:"curve"`
 	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
 	HwMon            *HwMonFanConfig         `json:"hwMon,omitempty"`

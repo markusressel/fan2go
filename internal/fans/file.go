@@ -1,12 +1,13 @@
 package fans
 
 import (
-	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/markusressel/fan2go/internal/util"
 	"os/user"
 	"path/filepath"
 	"strings"
+
+	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 )
 
 type FileFan struct {
@@ -19,6 +20,10 @@ type FileFan struct {
 
 func (fan *FileFan) GetId() string {
 	return fan.Config.ID
+}
+
+func (fan *FileFan) GetConfig() configuration.FanConfig {
+	return fan.Config
 }
 
 func (fan *FileFan) GetStartPwm() int {

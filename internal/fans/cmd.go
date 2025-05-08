@@ -2,12 +2,13 @@ package fans
 
 import (
 	"fmt"
-	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/markusressel/fan2go/internal/util"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 )
 
 type CmdFan struct {
@@ -20,6 +21,10 @@ type CmdFan struct {
 
 func (fan *CmdFan) GetId() string {
 	return fan.Config.ID
+}
+
+func (fan *CmdFan) GetConfig() configuration.FanConfig {
+	return fan.Config
 }
 
 func (fan *CmdFan) GetStartPwm() int {
