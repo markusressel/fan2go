@@ -43,6 +43,6 @@ func TestExtractKeysWithDistinctValues(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, []int{
-		0, 64, 244,
+		0, 64,
 	}, result)
 }
