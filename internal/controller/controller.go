@@ -507,13 +507,13 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 		return
 	}
 	if f.lastTarget != nil && f.pwmMap != nil {
-		lastSetPwm := *(f.lastTarget)
-		expected := f.applyPwmMapping(f.findClosestDistinctTarget(lastSetPwm))
+		lastTarget := *(f.lastTarget)
+		expectedPwm := f.applyPwmMapping(f.findClosestDistinctTarget(lastTarget))
 		if currentPwm, err := f.fan.GetPwm(); err == nil {
-			if currentPwm != expected {
+			if currentPwm != expectedPwm {
 				f.stats.UnexpectedPwmValueCount += 1
 				ui.Warning("PWM of %s was changed by third party! Last set PWM value was: %d but is now: %d",
-					f.fan.GetId(), expected, currentPwm)
+					f.fan.GetId(), expectedPwm, currentPwm)
 			}
 		}
 	}
