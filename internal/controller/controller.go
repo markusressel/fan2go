@@ -269,25 +269,31 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 		// make sure fans never stop by validating the current RPM
 		// and adjusting the target PWM value upwards if necessary
 		shouldNeverStop := fan.ShouldNeverStop()
-		lastSetPwm, _ := f.getLastSetPwm()
-		lastSetTargetEqualsNewTarget := lastSetPwm == target
-		if shouldNeverStop && lastSetTargetEqualsNewTarget {
-			avgRpm := fan.GetRpmAvg()
-			if avgRpm <= 0 {
-				if target >= maxPwm {
-					ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), int(avgRpm), target)
-					return ErrFanStalledAtMaxPwm
-				}
-				oldMinPwm := minPwm
-				ui.Warning("Increasing minPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d at PWM %d",
-					fan.GetId(), oldMinPwm, oldMinPwm+1, int(avgRpm), lastSetPwm)
-				f.increaseMinPwmOffset()
-				fan.SetMinPwm(f.minPwmOffset, true)
-				target++
+		if f.lastTarget != nil {
+			lastTarget := *f.lastTarget
+			lastSetPwm, err := f.getLastSetPwm()
+			if err != nil {
+				ui.Warning("Error reading last set PWM value of fan %s: %v", fan.GetId(), err)
+			}
+			lastSetTargetEqualsNewTarget := lastTarget == target
+			if shouldNeverStop && lastSetTargetEqualsNewTarget {
+				avgRpm := fan.GetRpmAvg()
+				if avgRpm <= 0 {
+					if target >= maxPwm {
+						ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), int(avgRpm), lastSetPwm)
+						return ErrFanStalledAtMaxPwm
+					}
+					oldMinPwm := minPwm
+					ui.Warning("Increasing minPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d at PWM %d",
+						fan.GetId(), oldMinPwm, oldMinPwm+1, int(avgRpm), lastSetPwm)
+					f.increaseMinPwmOffset()
+					fan.SetMinPwm(f.minPwmOffset, true)
+					target++
 
-				// set the moving avg to a value > 0 to prevent
-				// this increase from happening too fast
-				fan.SetRpmAvg(1)
+					// set the moving avg to a value > 0 to prevent
+					// this increase from happening too fast
+					fan.SetRpmAvg(1)
+				}
 			}
 		}
 	}
@@ -481,7 +487,8 @@ func (f *DefaultFanController) calculateTargetPwm() (int, error) {
 func (f *DefaultFanController) getLastSetPwm() (int, error) {
 	lastSetPwm := 0
 	if f.lastTarget != nil {
-		lastSetPwm = *(f.lastTarget)
+		lastTarget := *(f.lastTarget)
+		lastSetPwm = f.applyPwmMapping(f.findClosestDistinctTarget(lastTarget))
 	} else {
 		if f.fan.Supports(fans.FeaturePwmSensor) {
 			pwm, err := f.getPwm()
