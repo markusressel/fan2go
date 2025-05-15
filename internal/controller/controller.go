@@ -488,7 +488,7 @@ func (f *DefaultFanController) getLastSetPwm() (int, error) {
 	lastSetPwm := 0
 	if f.lastTarget != nil {
 		lastTarget := *(f.lastTarget)
-		lastSetPwm = f.applyPwmMapping(f.findClosestDistinctTarget(lastTarget))
+		lastSetPwm = lastTarget
 	} else {
 		if f.fan.Supports(fans.FeaturePwmSensor) {
 			pwm, err := f.getPwm()
