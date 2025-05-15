@@ -2,16 +2,18 @@ package util
 
 import "golang.org/x/exp/constraints"
 
+// ExtractKeysWithDistinctValues extracts the keys from a map with distinct values.
+// It returns a slice of keys where each key corresponds to a unique value in the map.
 func ExtractKeysWithDistinctValues(input map[int]int) []int {
 	var result []int
+	seenValues := make(map[int]bool)
 
 	var keys = SortedKeys(input)
 
-	lastDistinctOutput := -1
 	for _, key := range keys {
 		value := input[key]
-		if lastDistinctOutput == -1 || lastDistinctOutput != value {
-			lastDistinctOutput = value
+		if !seenValues[value] {
+			seenValues[value] = true
 			result = append(result, key)
 		}
 	}
