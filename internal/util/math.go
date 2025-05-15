@@ -128,6 +128,7 @@ func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType st
 }
 
 // FindClosest finds the closest value to target in options.
+// Assumes that arr is sorted in ascending order.
 func FindClosest(target int, arr []int) int {
 	n := len(arr)
 
@@ -178,10 +179,12 @@ func FindClosest(target int, arr []int) int {
 
 // Returns the value that is closer to target.
 // Assumes that val1 < target < val2.
+// If the distance of val1 to target is equal to the distance of val2 to target,
+// the smaller value is returned.
 func getClosest(val1 int, val2 int, target int) int {
-	if target-val1 >= val2-target {
-		return val2
-	} else {
-		return val1
+	if target-val1 > val2-target { // If val1 is strictly further away than val2
+		return val2 // Then val2 is closer
+	} else { // Otherwise, val1 is closer or they are equidistant
+		return val1 // Return val1 (it's closer or it's a tie and val1 is smaller)
 	}
 }

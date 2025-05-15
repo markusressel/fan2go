@@ -518,12 +518,11 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 		if err != nil {
 			ui.Warning("Error reading last set PWM value of fan %s: %v", f.fan.GetId(), err)
 		}
-		expectedPwm := lastSetPwm
 		if currentPwm, err := f.fan.GetPwm(); err == nil {
-			if currentPwm != expectedPwm {
+			if currentPwm != lastSetPwm {
 				f.stats.UnexpectedPwmValueCount += 1
 				ui.Warning("PWM of %s was changed by third party! Last set PWM value was: %d but is now: %d",
-					f.fan.GetId(), expectedPwm, currentPwm)
+					f.fan.GetId(), lastSetPwm, currentPwm)
 			}
 		}
 	}

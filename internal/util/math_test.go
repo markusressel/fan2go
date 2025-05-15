@@ -149,3 +149,14 @@ func TestInterpolateLinearly(t *testing.T) {
 	// THEN
 	assert.Equal(t, expectedResult, result)
 }
+
+func TestGetClosest(t *testing.T) {
+	// GIVEN
+	expectedResult := -1
+
+	// WHEN
+	result := getClosest(-1, 1, 0)
+
+	// THEN
+	assert.Equal(t, expectedResult, result)
+}
