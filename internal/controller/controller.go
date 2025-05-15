@@ -514,8 +514,11 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 		return
 	}
 	if f.lastTarget != nil && f.pwmMap != nil {
-		lastTarget := *(f.lastTarget)
-		expectedPwm := f.applyPwmMapping(f.findClosestDistinctTarget(lastTarget))
+		lastSetPwm, err := f.getLastSetPwm()
+		if err != nil {
+			ui.Warning("Error reading last set PWM value of fan %s: %v", f.fan.GetId(), err)
+		}
+		expectedPwm := lastSetPwm
 		if currentPwm, err := f.fan.GetPwm(); err == nil {
 			if currentPwm != expectedPwm {
 				f.stats.UnexpectedPwmValueCount += 1
@@ -526,7 +529,9 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 	}
 }
 
-// set the pwm speed of a fan to the specified value (0..255)
+// setPwm applies the given target speed in [0..255] to the fan which is controlled
+// in this FanController. Since the fan might not support the range of [0..255]
+// the target value is mapped to a pwm value in the supported range using the pwmMap.
 func (f *DefaultFanController) setPwm(target int) (err error) {
 	closestDistinctTarget := f.findClosestDistinctTarget(target)
 	closestSupportedTarget := f.applyPwmMapping(closestDistinctTarget)
