@@ -64,7 +64,7 @@ type DefaultFanController struct {
 	// the last pwm value that was set to the fan, **before** applying the pwmMap to it
 	lastTarget *int
 	// a list of all pre-pwmMap pwm values where setPwm(x) != setPwm(y) for the controlled fan
-	pwmValuesWithDistinctTarget []int
+	targetValuesWithDistinctPWMValue []int
 	// a map of x -> getPwm() where x is setPwm(x) for the controlled fan
 	pwmMap map[int]int
 
@@ -86,14 +86,14 @@ func NewFanController(
 		ui.Fatal("Failed to create fan controller for fan '%s': Curve with ID '%s' not found", fan.GetId(), fan.GetCurveId())
 	}
 	return &DefaultFanController{
-		persistence:                 persistence,
-		fan:                         fan,
-		curve:                       curve,
-		updateRate:                  updateRate,
-		pwmValuesWithDistinctTarget: []int{},
-		pwmMap:                      nil,
-		controlLoop:                 controlLoop,
-		minPwmOffset:                0,
+		persistence:                      persistence,
+		fan:                              fan,
+		curve:                            curve,
+		updateRate:                       updateRate,
+		targetValuesWithDistinctPWMValue: []int{},
+		pwmMap:                           nil,
+		controlLoop:                      controlLoop,
+		minPwmOffset:                     0,
 	}
 }
 
@@ -175,7 +175,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 
 	f.updateDistinctPwmValues()
 
-	ui.Debug("PWM map of fan '%s': %v", fan.GetId(), f.pwmMap)
+	ui.Info("PWM map of fan '%s': %v", fan.GetId(), f.pwmMap)
 	ui.Info("PWM settings of fan '%s': Min %d, Start %d, Max %d", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm(), fan.GetMaxPwm())
 	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
 
@@ -337,7 +337,7 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 	curveData := map[int]float64{}
 
 	initialMeasurement := true
-	for _, pwm := range f.pwmValuesWithDistinctTarget {
+	for _, pwm := range f.targetValuesWithDistinctPWMValue {
 		// set a pwm
 		err = f.setPwm(pwm)
 		if err != nil {
@@ -580,7 +580,7 @@ func (f *DefaultFanController) waitForFanToSettle(fan fans.Fan) {
 // Note: The value returned by this method must be used as the key
 // to the pwmMap to get the actual target pwm value for the fan of this controller.
 func (f *DefaultFanController) findClosestDistinctTarget(target int) int {
-	return util.FindClosest(target, f.pwmValuesWithDistinctTarget)
+	return util.FindClosest(target, f.targetValuesWithDistinctPWMValue)
 }
 
 // computePwmMap computes a mapping between "requested pwm value" -> "actual set pwm value"
@@ -663,11 +663,11 @@ func (f *DefaultFanController) computePwmMapAutomatically() {
 }
 
 func (f *DefaultFanController) updateDistinctPwmValues() {
-	var keys = util.ExtractKeysWithDistinctValues(f.pwmMap)
-	sort.Ints(keys)
-	f.pwmValuesWithDistinctTarget = keys
+	var targetValues = util.ExtractKeysWithDistinctValues(f.pwmMap)
+	sort.Ints(targetValues)
+	f.targetValuesWithDistinctPWMValue = targetValues
 
-	ui.Debug("Distinct PWM value targets of fan %s: %v", f.fan.GetId(), keys)
+	ui.Debug("Target values with distinct PWM value of fan %s: %v", f.fan.GetId(), targetValues)
 }
 
 func (f *DefaultFanController) increaseMinPwmOffset() {
