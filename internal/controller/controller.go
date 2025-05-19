@@ -65,7 +65,7 @@ type DefaultFanController struct {
 	lastTarget *int
 	// a list of all pre-pwmMap pwm values where setPwm(x) != setPwm(y) for the controlled fan
 	targetValuesWithDistinctPWMValue []int
-	// a map of x -> getPwm() where x is setPwm(x) for the controlled fan
+	// a map of setPwm(x) -> getPwm() for x in [0..255] for the controlled fan
 	pwmMap map[int]int
 
 	// control loop that specifies how the target value of the curve is approached
