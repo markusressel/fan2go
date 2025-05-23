@@ -21,16 +21,16 @@
 
 * [x] Intuitive YAML based configuration
 * [x] Massive range of supported devices
-  * [x] lm-sensors (hwmon) based sensors and fans
-  * [x] File based fan/sensor for control/measurement of custom devices
-  * [x] Command based fan/sensor
+    * [x] lm-sensors (hwmon) based sensors and fans
+    * [x] File based fan/sensor for control/measurement of custom devices
+    * [x] Command based fan/sensor
 * [x] Per fan user-defined speed curves
 * [x] Fully customizable and composable curve definitions
 * [x] Works after resume from suspend
 * [x] **Stable** device paths after reboot
 * [x] Automatic analysis of fan properties, like:
-  * [x] RPM curve
-  * [x] minimum and maximum PWM
+    * [x] RPM curve
+    * [x] minimum and maximum PWM
 * [x] Error notifications
 * [x] Prometheus exporter
 * [x] (optional) REST Api

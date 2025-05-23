@@ -100,7 +100,10 @@ var curveCmd = &cobra.Command{
 			caption := "RPM / PWM"
 			graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(100), asciigraph.Caption(caption))
 			ui.Println(graph)
+			return
 		}
+
+		ui.Fatal("No fan with id found: %s", fanId)
 	},
 }
 

@@ -150,7 +150,7 @@ func drawGraph(graphValues map[int]float64, caption string) {
 }
 
 func printFunctionCurveInfo(curve curves.SpeedCurve, config *configuration.FunctionCurveConfig) {
-	curveType := "Functional"
+	curveType := "Function"
 
 	t := config.Type
 	curveIds := config.Curves

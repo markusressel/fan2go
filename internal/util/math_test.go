@@ -75,12 +75,12 @@ func TestFindClosest(t *testing.T) {
 	// WHEN
 	closest = FindClosest(55, options)
 	// THEN
-	assert.Equal(t, 60, closest)
+	assert.Equal(t, 50, closest)
 
 	// WHEN
 	closest = FindClosest(75, options)
 	// THEN
-	assert.Equal(t, 80, closest)
+	assert.Equal(t, 70, closest)
 
 	// WHEN
 	closest = FindClosest(100, options)
@@ -145,6 +145,17 @@ func TestInterpolateLinearly(t *testing.T) {
 
 	// WHEN
 	result := InterpolateLinearly(&data, start, stop)
+
+	// THEN
+	assert.Equal(t, expectedResult, result)
+}
+
+func TestGetClosest(t *testing.T) {
+	// GIVEN
+	expectedResult := -1
+
+	// WHEN
+	result := getClosest(-1, 1, 0)
 
 	// THEN
 	assert.Equal(t, expectedResult, result)

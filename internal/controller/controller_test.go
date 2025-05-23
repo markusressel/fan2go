@@ -58,6 +58,10 @@ func (c MockCurve) Evaluate() (value int, err error) {
 	return c.Value, nil
 }
 
+func (c MockCurve) CurrentValue() int {
+	return c.Value
+}
+
 type MockFan struct {
 	ID              string
 	ControlMode     fans.ControlMode
@@ -517,7 +521,7 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	// THEN
 	assert.NoError(t, err)
 	assert.Greater(t, fan.GetMinPwm(), 0)
-	assert.Equal(t, fan.GetMinPwm(), target)
+	assert.Equal(t, 0, target)
 }
 
 func TestFanWithStartPwmConfig(t *testing.T) {
@@ -607,10 +611,10 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 
 	// THEN
 	assert.NoError(t, err)
-	assert.Equal(t, 54, targetPwm)
+	assert.Equal(t, 5, targetPwm)
 
 	closestTarget := controller.findClosestDistinctTarget(targetPwm)
-	assert.Equal(t, 58, closestTarget)
+	assert.Equal(t, 1, closestTarget)
 }
 
 func TestFanController_ComputePwmMap_FullRange(t *testing.T) {

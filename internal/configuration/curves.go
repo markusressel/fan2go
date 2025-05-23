@@ -1,25 +1,37 @@
 package configuration
 
 type CurveConfig struct {
-	ID       string               `json:"id"`
+	// ID is the id of the curve
+	ID string `json:"id"`
+
+	// can be any of the following:
 	Linear   *LinearCurveConfig   `json:"linear,omitempty"`
 	PID      *PidCurveConfig      `json:"pid,omitempty"`
 	Function *FunctionCurveConfig `json:"function,omitempty"`
 }
 
 type LinearCurveConfig struct {
-	Sensor string          `json:"sensor"`
-	Min    int             `json:"min"`
-	Max    int             `json:"max"`
-	Steps  map[int]float64 `json:"steps"`
+	// Sensor is the id of the sensor to use for this curve
+	Sensor string `json:"sensor"`
+	// Min is the minimum temperature in degrees
+	Min int `json:"min"`
+	// Max is the maximum temperature in degrees
+	Max int `json:"max"`
+	// Steps is a map of temperature to PWM value
+	Steps map[int]float64 `json:"steps"`
 }
 
 type PidCurveConfig struct {
-	Sensor   string  `json:"sensor"`
+	// Sensor is the id of the sensor to use for this curve
+	Sensor string `json:"sensor"`
+	// SetPoint is the target temperature in degrees
 	SetPoint float64 `json:"setPoint"`
-	P        float64 `json:"p"`
-	I        float64 `json:"i"`
-	D        float64 `json:"d"`
+	// P is the proportional gain
+	P float64 `json:"p"`
+	// I is the integral gain
+	I float64 `json:"i"`
+	// D is the derivative gain
+	D float64 `json:"d"`
 }
 
 const (
@@ -40,6 +52,9 @@ const (
 )
 
 type FunctionCurveConfig struct {
-	Type   string   `json:"type"`
+	// Type is the type of function to use, can be one of the following:
+	// sum, difference, average, delta, minimum, maximum
+	Type string `json:"type"`
+	// Curves is a list of other curve ids to use as input for the defined function type
 	Curves []string `json:"curves"`
 }

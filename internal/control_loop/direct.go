@@ -13,42 +13,49 @@ type DirectControlLoop struct {
 	// limits the maximum allowed pwm change per cycle
 	maxPwmChangePerCycle *int
 	lastTime             time.Time
+
+	lastOutput float64
 }
 
 // NewDirectControlLoop creates a DirectControlLoop, which is a very simple control that directly applies the given
 // target pwm. It can also be used to gracefully approach the target by
 // utilizing the "maxPwmChangePerCycle" property.
 func NewDirectControlLoop(
-	// (optional) limits the maximum allowed pwm change per cycle (in both directions)
+// (optional) limits the maximum allowed pwm change per cycle (in both directions)
 	maxPwmChangePerCycle *int,
 ) *DirectControlLoop {
 	return &DirectControlLoop{
 		maxPwmChangePerCycle: maxPwmChangePerCycle,
 		lastTime:             time.Now(),
+		lastOutput:           math.NaN(),
 	}
 }
 
-func (l *DirectControlLoop) Cycle(target int, current int) int {
+func (l *DirectControlLoop) Cycle(target int) int {
 	loopTime := time.Now()
-
-	//dt := loopTime.Sub(l.lastTime).Seconds()
-
-	l.lastTime = loopTime
-
-	var stepTarget = float64(target)
-	if l.maxPwmChangePerCycle != nil {
-		maxChangeValue := *l.maxPwmChangePerCycle
-		// TODO: figure out how to normalize the change to the timedelta
-		//stepTarget = float64(*l.maxPwmChangePerCycle) * dt
-
-		err := float64(target - current)
-		clampedErr := util.Coerce(err, -float64(maxChangeValue), +float64(maxChangeValue))
-		stepTarget = float64(current) + clampedErr
+	targetFloat := float64(target)
+	if math.IsNaN(l.lastOutput) {
+		// first run, just return the target
+		l.lastOutput = targetFloat
+		l.lastTime = loopTime
+		return target
 	}
 
+	var stepTarget = targetFloat
+	if l.maxPwmChangePerCycle != nil {
+		maxChangeValue := *l.maxPwmChangePerCycle
+
+		err := targetFloat - l.lastOutput
+		clampedErr := util.Coerce(err, -float64(maxChangeValue), +float64(maxChangeValue))
+		stepTarget = l.lastOutput + clampedErr
+	}
+
+	l.lastOutput = stepTarget
+
+	// convert the result to an integer
+	rounded := int(math.Round(stepTarget))
 	// ensure we are within sane bounds
-	coerced := util.Coerce(stepTarget, 0, 255)
-	result := int(math.Round(coerced))
+	result := util.Coerce(rounded, 0, 255)
 
 	return result
 }

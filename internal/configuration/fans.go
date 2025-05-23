@@ -1,6 +1,7 @@
 package configuration
 
 type FanConfig struct {
+	// ID is the unique identifier for the fan.
 	ID        string `json:"id"`
 	NeverStop bool   `json:"neverStop"`
 	// MinPwm defines the lowest PWM value where the fans are still spinning, when spinning previously
@@ -18,9 +19,9 @@ type FanConfig struct {
 
 	// ControlLoop is a configuration for a PID control loop.
 	//
-	// Deprecated: HeaderMap exists for historical compatibility
-	// and should not be used. To access the headers returned by a handler,
-	// use the Response.Header map as returned by the Result method.
+	// Deprecated: ControlLoop exists for historical compatibility
+	// and should not be used. To change how the fan is controlled
+	// use ControlAlgorithm instead.
 	ControlLoop *ControlLoopConfig `json:"controlLoop,omitempty"`
 }
 
@@ -37,12 +38,16 @@ type ControlAlgorithmConfig struct {
 }
 
 type DirectControlAlgorithmConfig struct {
+	// MaxPwmChangePerCycle defines the maximum change of the PWM value per cycle.
 	MaxPwmChangePerCycle *int `json:"maxPwmChangePerCycle,omitempty"`
 }
 
 type PidControlAlgorithmConfig struct {
+	// P is the proportional gain.
 	P float64 `json:"p"`
+	// I is the integral gain.
 	I float64 `json:"i"`
+	// D is the derivative gain.
 	D float64 `json:"d"`
 }
 
@@ -58,18 +63,25 @@ type HwMonFanConfig struct {
 }
 
 type FileFanConfig struct {
-	Path    string `json:"path"`
+	// Path is the sysfs path to the PWM output/input
+	Path string `json:"path"`
+	// PwmPath is the sysfs path to the PWM input
 	RpmPath string `json:"rpmPath"`
 }
 
 type CmdFanConfig struct {
+	// SetPwm is the command to set a PWM value
 	SetPwm *ExecConfig `json:"setPwm,omitempty"`
+	// GetPwm is the command to get the current PWM value
 	GetPwm *ExecConfig `json:"getPwm,omitempty"`
+	// GetRpm is the command to get the current RPM value
 	GetRpm *ExecConfig `json:"getRpm,omitempty"`
 }
 
 type ExecConfig struct {
-	Exec string   `json:"exec"`
+	// Exec is the command to execute
+	Exec string `json:"exec"`
+	// Args is a list of arguments to pass to the command
 	Args []string `json:"args"`
 }
 
