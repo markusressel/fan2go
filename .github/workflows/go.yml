@@ -53,22 +53,25 @@ jobs:
       - name: Test
         run: make test
 
-      - name: Build
-        run: make build
-
-      - name: Generate build files
+      - name: Generate build files (amd64)
         run: |
           GOOS="linux"
           GOARCH="amd64"
-          filename="$GOOS-$GOARCH"
-          go build -o ./dist/fan2go-$filename -buildmode "exe" main.go
+          GOFLAGS="-buildmode=exe"
+          NAME="fan2go-${GOOS}-${GOARCH}"
+          OUTPUT_BIN="dist/${NAME}"
+          
+          make build GOOS="${GOOS}" OARCH="${GOARCH}" GOFLAGS="${GOFLAGS}" OUTPUT_BIN="${OUTPUT_BIN}"
+          ./dist/fan2go-linux-amd64 version
 
-      - name: Generate build files
-        run: |
-          GOOS="linux"
-          GOARCH="arm64"
-          filename="$GOOS-$GOARCH"
-          go build -o ./dist/fan2go-$filename -buildmode "exe" main.go
+      # due to the required system dependency on libsensors-dev, and the fact that github doesn't provide arm64 runners,
+      # arm64 builds are not possible atm :(
+      #      - name: Generate build files (arm64)
+      #        run: |
+      #          gcc_cross_path="/home/runner"
+      #          wget -P "${gcc_cross_path}" https://musl.cc/aarch64-linux-musl-cross.tgz
+      #          tar -xvf "${gcc_cross_path}/aarch64-linux-musl-cross.tgz" -C "${gcc_cross_path}"
+      #          make build CGO_ENABLED=1 CC="${gcc_cross_path}/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc" GOOS="linux" GOARCH="arm64" GOFLAGS="-buildmode=exe" filename="$GOOS-$GOARCH" NAME="fan2go-$filename" OUTPUT_BIN="dist/${NAME}"
 
       - name: Release
         uses: softprops/action-gh-release@v2
@@ -76,6 +79,5 @@ jobs:
         with:
           files: |
             dist/fan2go-linux-amd64
-            dist/fan2go-linux-arm64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
