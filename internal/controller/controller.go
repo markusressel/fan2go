@@ -547,7 +547,21 @@ func (f *DefaultFanController) setPwm(target int) (err error) {
 			return nil
 		}
 	}
-	return f.fan.SetPwm(closestDistinctTarget)
+	// TODO: there is still a conceptional issue here...
+	//  There are two different "mappings" that fan2go needs.
+	//  ---
+	//  One is for specifying what PWM values are supported by the fan driver, meaning which values can be written
+	//  to the pwmOutputPath of the fan. This info is required to avoid trying to set values that are not supported by the fan driver,
+	//  but are expected to work by the fan2go code, since it always operates within the range of [0..255].
+	//  [f.pwmMap] is supposed to be used for this purpose.
+	//  ---
+	//  The other is a mapping from the "set PWM value" (via pwmOutputPath) to the "actual PWM value" (determined by reading back pwmOutputPath right after setting it).
+	//  This info is required to feed the "Third Party is messing with us" check, and to avoid printing warning messages
+	//  due to a mismatch of the last set PWM value and the read back PWM value, when they are simply caused by the fan
+	//  driver messing with the values after the fact.
+	//  ---
+	//  Both concepts are currently not seperated in the code correctly, which still leads to erroneous warning messages.
+	return f.fan.SetPwm(expectedActualPwmValueAfterApplyingTarget)
 }
 
 func (f *DefaultFanController) waitForFanToSettle(fan fans.Fan) {
