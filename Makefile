@@ -21,7 +21,7 @@ build:  ## Builds the CLI
 	-X ${PACKAGE}/cmd/global.Commit=${GIT_REV} \
 	-X ${NAME}/cmd/global.Date=${DATE} \
 	-X ${PACKAGE}/cmd/global.Date=${DATE}" \
-	-a -tags netgo -o ${OUTPUT_BIN} main.go
+	-a -tags netgo -o "${OUTPUT_BIN}" main.go
 
 run: build
 	./${OUTPUT_BIN}
@@ -31,4 +31,4 @@ deploy: build
 
 clean:
 	go clean
-	rm ${OUTPUT_BIN}
+	rm "${OUTPUT_BIN}"
