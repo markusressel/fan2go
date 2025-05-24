@@ -13,12 +13,15 @@ type FanConfig struct {
 	// PwmMap is used to adapt how the expected [0..255] range is applied to a fan.
 	// Some fans have weird missing sections in their PWM range (e.g. 0, 1, 2, 3, 5, 6, 7, 8, 10, ...),
 	// other fans only support a very limited set of PWM values (e.g. 0, 1, 2, 3).
-	PwmMap           *map[int]int            `json:"pwmMap,omitempty"`
-	Curve            string                  `json:"curve"`
+	PwmMap *map[int]int `json:"pwmMap,omitempty"`
+	// Curve is the id of the speed curve associated with this fan.
+	Curve string `json:"curve"`
+	// ControlAlgorithm defines how the curve target is applied to the fan.
 	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
-	HwMon            *HwMonFanConfig         `json:"hwMon,omitempty"`
-	File             *FileFanConfig          `json:"file,omitempty"`
-	Cmd              *CmdFanConfig           `json:"cmd,omitempty"`
+	// HwMon, File and Cmd are the different ways to configure the respective fan types.
+	HwMon *HwMonFanConfig `json:"hwMon,omitempty"`
+	File  *FileFanConfig  `json:"file,omitempty"`
+	Cmd   *CmdFanConfig   `json:"cmd,omitempty"`
 
 	// ControlLoop is a configuration for a PID control loop.
 	//
