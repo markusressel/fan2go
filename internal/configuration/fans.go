@@ -9,7 +9,10 @@ type FanConfig struct {
 	// StartPwm defines the lowest PWM value where the fans are able to start spinning from a standstill
 	StartPwm *int `json:"startPwm,omitempty"`
 	// MaxPwm defines the highest PWM value that yields an RPM increase
-	MaxPwm           *int                    `json:"maxPwm,omitempty"`
+	MaxPwm *int `json:"maxPwm,omitempty"`
+	// PwmMap is used to adapt how the expected [0..255] range is applied to a fan.
+	// Some fans have weird missing sections in their PWM range (e.g. 0, 1, 2, 3, 5, 6, 7, 8, 10, ...),
+	// other fans only support a very limited set of PWM values (e.g. 0, 1, 2, 3).
 	PwmMap           *map[int]int            `json:"pwmMap,omitempty"`
 	Curve            string                  `json:"curve"`
 	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
