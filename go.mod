@@ -18,7 +18,7 @@ require (
 	github.com/oklog/run v1.1.0
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/prometheus/client_golang v1.22.0
-	github.com/pterm/pterm v0.12.79
+	github.com/pterm/pterm v0.12.80
 	github.com/qdm12/reprint v0.0.0-20200326205758-722754a53494
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
