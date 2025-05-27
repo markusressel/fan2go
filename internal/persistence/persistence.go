@@ -13,16 +13,21 @@ import (
 )
 
 const (
-	BucketFans      = "fans"
-	BucketFanPwmMap = "fanPwmMap"
+	BucketFans                 = "fans"
+	BucketFanPwmMap            = "fanPwmMap"
+	BucketFanSetPwmToSetPwmMap = "fanSetPwmToGetPwmMap"
 )
 
 type Persistence interface {
 	Init() error
 
-	LoadFanPwmData(fan fans.Fan) (map[int]float64, error)
-	SaveFanPwmData(fan fans.Fan) (err error)
-	DeleteFanPwmData(fan fans.Fan) (err error)
+	LoadFanRpmData(fan fans.Fan) (map[int]float64, error)
+	SaveFanRpmData(fan fans.Fan) (err error)
+	DeleteFanRpmData(fan fans.Fan) (err error)
+
+	LoadFanSetPwmToGetPwmMap(fanId string) (map[int]int, error)
+	SaveFanSetPwmToGetPwmMap(fanId string, pwmMap map[int]int) (err error)
+	DeleteFanSetPwmToGetPwmMap(fanId string) (err error)
 
 	LoadFanPwmMap(fanId string) (map[int]int, error)
 	SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error)
@@ -64,7 +69,7 @@ func (p persistence) openPersistence() (db *bolt.DB, err error) {
 }
 
 // SaveFanPwmData saves the fan curve data of the given fan to persistence
-func (p persistence) SaveFanPwmData(fan fans.Fan) (err error) {
+func (p persistence) SaveFanRpmData(fan fans.Fan) (err error) {
 	db, err := p.openPersistence()
 	if err != nil {
 		return err
@@ -96,8 +101,108 @@ func (p persistence) SaveFanPwmData(fan fans.Fan) (err error) {
 	})
 }
 
+// LoadFanSetPwmToGetPwmMap loads the "pwm requested" -> "actual pwm" map of the given fan from persistence
+func (p persistence) LoadFanSetPwmToGetPwmMap(fanId string) (map[int]int, error) {
+	db, err := p.openPersistence()
+	if err != nil {
+		return nil, err
+	}
+	defer func(db *bolt.DB) {
+		_ = db.Close()
+	}(db)
+
+	key := fanId
+
+	var pwmMap map[int]int
+	err = db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(BucketFanPwmMap))
+		if b == nil {
+			return os.ErrNotExist
+		}
+		v := b.Get([]byte(key))
+		if v == nil {
+			return os.ErrNotExist
+		}
+
+		err := json.Unmarshal(v, &pwmMap)
+		if err != nil {
+			// if we cannot read the saved data, delete it
+			ui.Warning("Unable to unmarshal saved pwmMap data for %s: %v", key, err)
+			err := b.Delete([]byte(key))
+			if err != nil {
+				ui.Error("Unable to delete corrupt data key %s: %v", key, err)
+			}
+			return nil
+		}
+
+		return err
+	})
+
+	return pwmMap, err
+}
+
+// SaveFanSetPwmToGetPwmMap saves the "pwm requested" -> "actual pwm" map of the given fan to persistence
+func (p persistence) SaveFanSetPwmToGetPwmMap(fanId string, pwmMap map[int]int) (err error) {
+	db, err := p.openPersistence()
+	if err != nil {
+		return err
+	}
+	defer func(db *bolt.DB) {
+		_ = db.Close()
+	}(db)
+
+	key := fanId
+
+	// convert the curve data moving window to a map to arrays, so we can persist them
+	for key, value := range pwmMap {
+		pwmMap[key] = value
+	}
+
+	data, err := json.Marshal(pwmMap)
+	if err != nil {
+		return err
+	}
+
+	return db.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte(BucketFanPwmMap))
+		if err != nil {
+			return fmt.Errorf("create bucket: %s", err)
+		}
+		err = b.Put([]byte(key), data)
+		return err
+	})
+}
+
+// DeleteFanSetPwmToGetPwmMap deletes the "pwm requested" -> "actual pwm" map of the given fan from persistence
+func (p persistence) DeleteFanSetPwmToGetPwmMap(fanId string) error {
+	db, err := p.openPersistence()
+	if err != nil {
+		return err
+	}
+	defer func(db *bolt.DB) {
+		_ = db.Close()
+	}(db)
+
+	key := fanId
+
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(BucketFanSetPwmToSetPwmMap))
+		if b == nil {
+			// no fan bucket yet
+			return nil
+		}
+		v := b.Get([]byte(key))
+		if v == nil {
+			// no data for given key
+			return nil
+		}
+
+		return b.Delete([]byte(key))
+	})
+}
+
 // LoadFanPwmData loads the fan curve data from persistence
-func (p persistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
+func (p persistence) LoadFanRpmData(fan fans.Fan) (map[int]float64, error) {
 	db, err := p.openPersistence()
 	if err != nil {
 		return nil, err
@@ -136,7 +241,7 @@ func (p persistence) LoadFanPwmData(fan fans.Fan) (map[int]float64, error) {
 	return fanCurveDataMap, err
 }
 
-func (p persistence) DeleteFanPwmData(fan fans.Fan) error {
+func (p persistence) DeleteFanRpmData(fan fans.Fan) error {
 	db, err := p.openPersistence()
 	if err != nil {
 		return err

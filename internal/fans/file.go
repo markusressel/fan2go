@@ -114,7 +114,7 @@ func (fan *FileFan) SetPwm(pwm int) (err error) {
 	return nil
 }
 
-var interpolated = util.InterpolateLinearly(&map[int]float64{0: 0, 255: 255}, 0, 255)
+var interpolated, _ = util.InterpolateLinearly(&map[int]float64{0: 0, 255: 255}, 0, 255)
 
 func (fan *FileFan) GetFanRpmCurveData() *map[int]float64 {
 	return &interpolated

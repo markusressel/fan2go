@@ -296,7 +296,7 @@ func TestHwMonFan_AttachFanCurveData(t *testing.T) {
 		0:   0,
 		255: 255,
 	}
-	interpolated := util.InterpolateLinearly(&curveData, 10, 200)
+	interpolated, err := util.InterpolateLinearly(&curveData, 10, 200)
 
 	fan := HwMonFan{
 		Config: configuration.FanConfig{
@@ -305,7 +305,7 @@ func TestHwMonFan_AttachFanCurveData(t *testing.T) {
 	}
 
 	// WHEN
-	err := fan.AttachFanRpmCurveData(&interpolated)
+	err = fan.AttachFanRpmCurveData(&interpolated)
 
 	// THEN
 	assert.NoError(t, err)

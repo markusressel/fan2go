@@ -51,14 +51,14 @@ func TestPersistence_DeleteFanPwmData(t *testing.T) {
 	// GIVEN
 	p := NewPersistence(dbTestingPath)
 	fan, _ := createFan(false, LinearFan)
-	_ = p.SaveFanPwmData(fan)
+	_ = p.SaveFanRpmData(fan)
 
 	// WHEN
-	err := p.DeleteFanPwmData(fan)
+	err := p.DeleteFanRpmData(fan)
 	assert.NoError(t, err)
 
 	// THEN
-	data, err := p.LoadFanPwmData(fan)
+	data, err := p.LoadFanRpmData(fan)
 	assert.Nil(t, data)
 	assert.Error(t, err)
 }
@@ -67,11 +67,11 @@ func TestPersistence_SaveFanPwmData_LinearFanInterpolated(t *testing.T) {
 	// GIVEN
 	p := NewPersistence(dbTestingPath)
 
-	expected := util.InterpolateLinearly(&LinearFan, 0, 255)
+	expected, _ := util.InterpolateLinearly(&LinearFan, 0, 255)
 	fan, _ := createFan(false, expected)
 
 	// WHEN
-	err := p.SaveFanPwmData(fan)
+	err := p.SaveFanRpmData(fan)
 
 	// THEN
 	assert.Nil(t, err)
@@ -81,14 +81,14 @@ func TestPersistence_LoadFanPwmData_LinearFanInterpolated(t *testing.T) {
 	// GIVEN
 	persistence := NewPersistence(dbTestingPath)
 
-	expected := util.InterpolateLinearly(&LinearFan, 0, 255)
+	expected, _ := util.InterpolateLinearly(&LinearFan, 0, 255)
 	fan, _ := createFan(false, expected)
 
-	err := persistence.SaveFanPwmData(fan)
+	err := persistence.SaveFanRpmData(fan)
 	assert.NoError(t, err)
 
 	// WHEN
-	fanData, err := persistence.LoadFanPwmData(fan)
+	fanData, err := persistence.LoadFanRpmData(fan)
 
 	// THEN
 	assert.Nil(t, err)
@@ -104,7 +104,7 @@ func TestPersistence_SaveFanPwmData_SamplesNotInterpolated(t *testing.T) {
 	fan, _ := createFan(false, expected)
 
 	// WHEN
-	err := p.SaveFanPwmData(fan)
+	err := p.SaveFanRpmData(fan)
 
 	// THEN
 	assert.Nil(t, err)
@@ -117,11 +117,11 @@ func TestPersistence_LoadFanPwmData_SamplesNotInterpolated(t *testing.T) {
 	expected := NeverStoppingFan
 	fan, _ := createFan(false, expected)
 
-	err := persistence.SaveFanPwmData(fan)
+	err := persistence.SaveFanRpmData(fan)
 	assert.NoError(t, err)
 
 	// WHEN
-	fanData, err := persistence.LoadFanPwmData(fan)
+	fanData, err := persistence.LoadFanRpmData(fan)
 
 	// THEN
 	assert.Nil(t, err)
