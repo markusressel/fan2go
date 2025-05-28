@@ -65,7 +65,7 @@ type SanityCheckConfig struct {
 }
 
 type PwmValueChangedByThirdPartyConfig struct {
-	Enabled *bool `json:"enabled,omitempty,default=true"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type HwMonFanConfig struct {
