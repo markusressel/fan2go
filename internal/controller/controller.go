@@ -73,7 +73,7 @@ type DefaultFanController struct {
 	// because some fans do not work in the internal value range of [0..255] expected by fan2go,
 	// but rather in a different range, e.g. [0..100] or [0..255] with some values missing, yet still
 	// require the value that is set to be in the range of [0..255].
-	// Don't aske me why, hardware drivers are weird.
+	// Don't ask me why, hardware drivers are weird.
 	//
 	// Note that this map is guaranteed to contain all values in the range of [0..255] as keys,
 	// since some fans do not support writing the full range.

@@ -114,7 +114,7 @@ func (p persistence) LoadFanRpmData(fan fans.Fan) (map[int]float64, error) {
 	key := fan.GetId()
 
 	var fanCurveDataMap map[int]float64
-	err = db.Update(func(tx *bolt.Tx) error {
+	err = db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFans))
 		if b == nil {
 			return os.ErrNotExist
@@ -181,7 +181,7 @@ func (p persistence) LoadFanSetPwmToGetPwmMap(fanId string) (map[int]int, error)
 	key := fanId
 
 	var pwmMap map[int]int
-	err = db.Update(func(tx *bolt.Tx) error {
+	err = db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFanSetPwmToSetPwmMap))
 		if b == nil {
 			return os.ErrNotExist
@@ -219,11 +219,6 @@ func (p persistence) SaveFanSetPwmToGetPwmMap(fanId string, pwmMap map[int]int) 
 	}(db)
 
 	key := fanId
-
-	// convert the curve data moving window to a map to arrays, so we can persist them
-	for key, value := range pwmMap {
-		pwmMap[key] = value
-	}
 
 	data, err := json.Marshal(pwmMap)
 	if err != nil {
@@ -280,11 +275,6 @@ func (p persistence) SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error)
 
 	key := fanId
 
-	// convert the curve data moving window to a map to arrays, so we can persist them
-	for key, value := range pwmMap {
-		pwmMap[key] = value
-	}
-
 	data, err := json.Marshal(pwmMap)
 	if err != nil {
 		return err
@@ -313,7 +303,7 @@ func (p persistence) LoadFanPwmMap(fanId string) (map[int]int, error) {
 	key := fanId
 
 	var pwmMap map[int]int
-	err = db.Update(func(tx *bolt.Tx) error {
+	err = db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFanPwmMap))
 		if b == nil {
 			return os.ErrNotExist
