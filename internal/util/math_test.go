@@ -24,9 +24,10 @@ func TestCalculateInterpolatedCurveValue(t *testing.T) {
 
 	for input, output := range expectedInputOutput {
 		// WHEN
-		result := CalculateInterpolatedCurveValue(steps, interpolationType, input)
+		result, err := CalculateInterpolatedCurveValue(steps, interpolationType, input)
 
 		// THEN
+		assert.NoError(t, err)
 		assert.Equal(t, output, result)
 	}
 }
@@ -144,9 +145,10 @@ func TestInterpolateLinearly(t *testing.T) {
 	}
 
 	// WHEN
-	result := InterpolateLinearly(&data, start, stop)
+	result, err := InterpolateLinearly(&data, start, stop)
 
 	// THEN
+	assert.NoError(t, err)
 	assert.Equal(t, expectedResult, result)
 }
 
@@ -158,5 +160,67 @@ func TestGetClosest(t *testing.T) {
 	result := getClosest(-1, 1, 0)
 
 	// THEN
+	assert.Equal(t, expectedResult, result)
+}
+
+func TestExpandMapToFullRange(t *testing.T) {
+	// GIVEN
+	data := map[int]int{0: 0, 128: 128, 255: 255}
+
+	// WHEN
+	result := ExpandMapToFullRange(data, 0, 255)
+
+	// THEN
+	expectedResult, err := InterpolateStepInt(
+		&map[int]int{
+			0:   0,
+			85:  128,
+			170: 255,
+		},
+		0,
+		255,
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedResult, result)
+}
+
+func TestExpandMapToFullRangeThreeValues(t *testing.T) {
+	// GIVEN
+	data := map[int]int{0: 0, 1: 1, 2: 2, 3: 3}
+
+	// WHEN
+	result := ExpandMapToFullRange(data, 0, 255)
+
+	// THEN
+	expectedResult, err := InterpolateStepInt(
+		&map[int]int{
+			0:   0,
+			64:  1,
+			128: 2,
+			192: 3,
+		},
+		0,
+		255,
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedResult, result)
+}
+
+func TestExpandMapToFullRangeSingleValue(t *testing.T) {
+	// GIVEN
+	data := map[int]int{100: 100}
+
+	// WHEN
+	result := ExpandMapToFullRange(data, 0, 255)
+
+	// THEN
+	expectedResult, err := InterpolateStepInt(
+		&map[int]int{
+			100: 100,
+		},
+		0,
+		255,
+	)
+	assert.NoError(t, err)
 	assert.Equal(t, expectedResult, result)
 }

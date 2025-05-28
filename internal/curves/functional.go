@@ -30,6 +30,8 @@ func (c *FunctionSpeedCurve) Evaluate() (value int, err error) {
 		//  The only way to fix this that comes to mind is to update the value of each curve in a separate
 		//  goroutine that runs independently and only retrieve its current value in the fan controller.
 		//  This might cause additional race-conditions though.
+		//  This would also allow external tools like fan2go-tui to show the current value of the curve
+		//  even if it is currently not used by any fan controller.
 		v, err := curve.Evaluate()
 		if err != nil {
 			return 0, err

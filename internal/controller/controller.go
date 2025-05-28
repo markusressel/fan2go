@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/markusressel/fan2go/internal/control_loop"
+	"golang.org/x/exp/maps"
 	"math"
 	"sort"
 	"sync"
@@ -65,7 +66,38 @@ type DefaultFanController struct {
 	lastTarget *int
 	// a list of all pre-pwmMap pwm values where setPwm(x) != setPwm(y) for the controlled fan
 	targetValuesWithDistinctPWMValue []int
-	// a map of setPwm(x) -> getPwm() for x in [0..255] for the controlled fan
+
+	// a map of setPwm(x) -> getPwm() = Y for x in [0..255] for the controlled fan
+	// this map is used to know what pwm value Y will be reported by the fan
+	// after applying a certain pwm value x to it. This is necessary
+	// because some fans do not work in the internal value range of [0..255] expected by fan2go,
+	// but rather in a different range, e.g. [0..100] or [0..255] with some values missing, yet still
+	// require the value that is set to be in the range of [0..255].
+	// Don't ask me why, hardware drivers are weird.
+	//
+	// Note that this map is guaranteed to contain all values in the range of [0..255] as keys,
+	// since some fans do not support writing the full range.
+	// Note that the values in this map also are not guaranteed to cover the entire range of [0..255],
+	// be completely distinct, or be without gaps.
+	//
+	// Examples:
+	//  [0: 0, 1: 1, 2: 2, 3: 3, ..., 100: 100, 101: 101, 102: 102, ..., 255: 255]
+	//  [0: 0, 1: 1, 2: 2, 3: 3]
+	//  [0: 0, 128: 128, 255: 255]
+	//  [0: 0, 128: 1, 255: 2]
+	//  [0: 0, 1: 128, 2: 255]
+	setPwmToGetPwmMap map[int]int
+
+	// The pwmMap is used to map a pwm value X to be applied to a fan to another value.
+	// This is used to support fans that do not support the full range of [0..255] pwm values,
+	// but rather a subset of it, e.g. [0..100] or [0..255] with some values missing.
+	// This map **always** contains the full range of [0..255] as keys, but the values
+	// are not guaranteed to be in the range of [0..255] as well.
+	//
+	// Examples:
+	//  [0: 0, 1: 1, 2: 2, 3: 3, ..., 100: 100, 101: 101, 102: 102, ..., 255: 255]
+	//  [0: 0, 1: 0, 2: 0, 3: 0, ..., 84: 0, 85: 128, ..., 169: 128, 170: 255, ..., 255: 255]
+	//  [0: 0, 1: 0, 2: 0, 3: 0, ..., 63: 0, 64: 1, ..., 127: 1, 128: 2, ..., 191: 2, 192: 3, ..., 255: 3]
 	pwmMap map[int]int
 
 	// control loop that specifies how the target value of the curve is approached
@@ -140,7 +172,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	// check if we have data for this fan in persistence,
 	// if not we need to run the initialization sequence
 	ui.Info("Loading fan curve data for fan '%s'...", fan.GetId())
-	fanPwmData, err := f.persistence.LoadFanPwmData(fan)
+	fanPwmData, err := f.persistence.LoadFanRpmData(fan)
 	if err != nil {
 		_, ok := fan.(*fans.HwMonFan)
 		if ok {
@@ -151,14 +183,14 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 				return err
 			}
 		} else {
-			err = f.persistence.SaveFanPwmData(fan)
+			err = f.persistence.SaveFanRpmData(fan)
 			if err != nil {
 				return err
 			}
 		}
 	}
 
-	fanPwmData, err = f.persistence.LoadFanPwmData(fan)
+	fanPwmData, err = f.persistence.LoadFanRpmData(fan)
 	if err != nil {
 		return err
 	}
@@ -168,12 +200,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 		return err
 	}
 
-	err1 := f.computePwmMap()
-	if err1 != nil {
-		ui.Warning("Error computing PWM map: %v", err1)
-	}
-
-	f.updateDistinctPwmValues()
+	err = f.computeFanSpecificMappings()
 
 	ui.Debug("PWM map of fan '%s': %v", fan.GetId(), f.pwmMap)
 	ui.Info("PWM settings of fan '%s': Min %d, Start %d, Max %d", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm(), fan.GetMaxPwm())
@@ -271,7 +298,8 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 		shouldNeverStop := fan.ShouldNeverStop()
 		if f.lastTarget != nil {
 			lastTarget := *f.lastTarget
-			lastSetPwm, err := f.getLastSetPwm()
+			// TODO: check this logic
+			lastSetPwm, err := f.getLastTarget()
 			if err != nil {
 				ui.Warning("Error reading last set PWM value of fan %s: %v", fan.GetId(), err)
 			}
@@ -312,16 +340,11 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 func (f *DefaultFanController) RunInitializationSequence() (err error) {
 	fan := f.fan
 
-	err1 := f.computePwmMap()
-	if err1 != nil {
-		ui.Warning("Error computing PWM map: %v", err1)
-	}
-
-	err = f.persistence.SaveFanPwmMap(fan.GetId(), f.pwmMap)
+	err = f.computeFanSpecificMappings()
 	if err != nil {
-		ui.Error("Unable to persist pwmMap for fan %s", fan.GetId())
+		ui.Error("Error computing fan specific mappings for %s: %v", fan.GetId(), err)
+		return err
 	}
-	f.updateDistinctPwmValues()
 
 	if !fan.Supports(fans.FeatureRpmSensor) {
 		ui.Info("Fan '%s' doesn't support RPM sensor, skipping fan curve measurement", fan.GetId())
@@ -339,12 +362,13 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 	initialMeasurement := true
 	for _, pwm := range f.targetValuesWithDistinctPWMValue {
 		// set a pwm
-		err = f.setPwm(pwm)
+		actualPwm := f.applyPwmMapToTarget(pwm)
+		err = f.setPwm(actualPwm)
 		if err != nil {
 			ui.Error("Unable to run initialization sequence on %s: %v", fan.GetId(), err)
 			return err
 		}
-		expectedPwm := f.getActualPwmValueForTargetPwm(pwm)
+		expectedPwm := f.getReportedPwmAfterApplyingPwm(actualPwm)
 		time.Sleep(configuration.CurrentConfig.FanController.PwmSetDelay)
 		actualPwm, err := f.getPwm()
 		if err != nil {
@@ -385,7 +409,7 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 	}
 
 	// save to database to restore it on restarts
-	err = f.persistence.SaveFanPwmData(fan)
+	err = f.persistence.SaveFanRpmData(fan)
 	if err != nil {
 		ui.Error("Failed to save fan PWM data for %s: %v", fan.GetId(), err)
 	}
@@ -417,7 +441,7 @@ func (f *DefaultFanController) getPwm() (int, error) {
 	if f.fan.Supports(fans.FeaturePwmSensor) {
 		return f.fan.GetPwm()
 	} else if f.lastTarget != nil {
-		return f.getActualPwmValueForTargetPwm(f.findClosestDistinctTarget(*f.lastTarget)), nil
+		return f.applyPwmMapToTarget(*f.lastTarget), nil
 	} else {
 		return f.fan.GetMinPwm(), nil
 	}
@@ -484,7 +508,7 @@ func (f *DefaultFanController) calculateTargetPwm() (int, error) {
 	return newTarget, nil
 }
 
-func (f *DefaultFanController) getLastSetPwm() (int, error) {
+func (f *DefaultFanController) getLastTarget() (int, error) {
 	lastSetPwm := 0
 	if f.lastTarget != nil {
 		lastTarget := *(f.lastTarget)
@@ -514,16 +538,17 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 		return
 	}
 	if f.lastTarget != nil && f.pwmMap != nil {
-		lastSetPwm, err := f.getLastSetPwm()
+		lastSetPwm, err := f.getLastTarget()
 		if err != nil {
 			ui.Warning("Error reading last set PWM value of fan %s: %v", f.fan.GetId(), err)
 		}
-		lastSetPwm = f.getActualPwmValueForTargetPwm(lastSetPwm)
+		pwmMappedValue := f.applyPwmMapToTarget(lastSetPwm)
+		expectedReportedPwm := f.getReportedPwmAfterApplyingPwm(pwmMappedValue)
 		if currentPwm, err := f.fan.GetPwm(); err == nil {
-			if currentPwm != lastSetPwm {
+			if currentPwm != expectedReportedPwm {
 				f.stats.UnexpectedPwmValueCount += 1
-				ui.Warning("PWM of %s was changed by third party! Last set PWM value was: %d but is now: %d",
-					f.fan.GetId(), lastSetPwm, currentPwm)
+				ui.Warning("PWM of %s was changed by third party! Last set PWM value was: %d, expected reported pwm is %d but is now: %d",
+					f.fan.GetId(), pwmMappedValue, expectedReportedPwm, currentPwm)
 			}
 		}
 	}
@@ -533,35 +558,22 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 // in this FanController. Since the fan might not support the range of [0..255]
 // the target value is mapped to a pwm value in the supported range using the pwmMap.
 func (f *DefaultFanController) setPwm(target int) (err error) {
-	closestDistinctTarget := f.findClosestDistinctTarget(target)
-	expectedActualPwmValueAfterApplyingTarget := f.getActualPwmValueForTargetPwm(closestDistinctTarget)
+	pwmMappedValue := f.applyPwmMapToTarget(target)
+	expectedReportedPwmValue := f.getReportedPwmAfterApplyingPwm(pwmMappedValue)
+	// setting pwmMappedValue will yield expectedReportedPwmValue when reading back the pwm value
 
-	ui.Debug("Setting PWM of %s to %d, found the closest distinct PWM value at %d, applying PWM Map yields %d", f.fan.GetId(), target, closestDistinctTarget, expectedActualPwmValueAfterApplyingTarget)
-	f.lastTarget = &closestDistinctTarget
+	ui.Debug("Setting target PWM of %s to %d, applying PWM Map yields %d, expected reported pwm is %d", f.fan.GetId(), target, pwmMappedValue, expectedReportedPwmValue)
+	f.lastTarget = &target
 	// if we can read the PWM value, we can check if the fan is already at the target value
 	// and avoid unnecessary setPwm calls
 	if f.fan.Supports(fans.FeaturePwmSensor) {
 		current, err := f.getPwm()
-		if err == nil && expectedActualPwmValueAfterApplyingTarget == current {
+		if err == nil && expectedReportedPwmValue == current {
 			// nothing to do
 			return nil
 		}
 	}
-	// TODO: there is still a conceptional issue here...
-	//  There are two different "mappings" that fan2go needs.
-	//  ---
-	//  One is for specifying what PWM values are supported by the fan driver, meaning which values can be written
-	//  to the pwmOutputPath of the fan. This info is required to avoid trying to set values that are not supported by the fan driver,
-	//  but are expected to work by the fan2go code, since it always operates within the range of [0..255].
-	//  [f.pwmMap] is supposed to be used for this purpose.
-	//  ---
-	//  The other is a mapping from the "set PWM value" (via pwmOutputPath) to the "actual PWM value" (determined by reading back pwmOutputPath right after setting it).
-	//  This info is required to feed the "Third Party is messing with us" check, and to avoid printing warning messages
-	//  due to a mismatch of the last set PWM value and the read back PWM value, when they are simply caused by the fan
-	//  driver messing with the values after the fact.
-	//  ---
-	//  Both concepts are currently not seperated in the code correctly, which still leads to erroneous warning messages.
-	return f.fan.SetPwm(expectedActualPwmValueAfterApplyingTarget)
+	return f.fan.SetPwm(pwmMappedValue)
 }
 
 func (f *DefaultFanController) waitForFanToSettle(fan fans.Fan) {
@@ -598,7 +610,29 @@ func (f *DefaultFanController) findClosestDistinctTarget(target int) int {
 	return util.FindClosest(target, f.targetValuesWithDistinctPWMValue)
 }
 
-// computePwmMap computes a mapping between "requested pwm value" -> "actual set pwm value"
+// computeSetPwmToGetPwmMap computes a mapping between "set pwm value" -> "actual pwm value"
+func (f *DefaultFanController) computeSetPwmToGetPwmMap() (err error) {
+
+	// load the setPwmToGetPwmMap from persistence, if it exists
+	f.setPwmToGetPwmMap, err = f.persistence.LoadFanSetPwmToGetPwmMap(f.fan.GetId())
+	if err == nil && f.setPwmToGetPwmMap != nil {
+		ui.Info("FanController: Using saved value for setPwmToGetPwmMap of Fan '%s'", f.fan.GetId())
+		return nil
+	}
+
+	err = f.computeSetPwmToGetPwmMapAutomatically()
+	if err != nil {
+		ui.Error("Error computing setPwmToGetPwmMap for fan %s: %v", f.fan.GetId(), err)
+		return err
+	}
+
+	ui.Debug("Saving setPwmToGetPwmMap to fan...")
+	return f.persistence.SaveFanSetPwmToGetPwmMap(f.fan.GetId(), f.setPwmToGetPwmMap)
+}
+
+// computePwmMap computes a mapping between "internal target pwm value" -> "actual set pwm value"
+// Ensure that computeSetPwmToGetPwmMap has been called before this method,
+// otherwise the pwmMap will always fall back to a linear 1:1 interpolation in the range of [0..255].
 func (f *DefaultFanController) computePwmMap() (err error) {
 	if !configuration.CurrentConfig.RunFanInitializationInParallel {
 		InitializationSequenceMutex.Lock()
@@ -643,38 +677,47 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 
 	if f.pwmMap == nil {
 		ui.Info("Computing pwm map...")
-		f.computePwmMapAutomatically()
+		err = f.computePwmMapAutomatically()
+		if err != nil {
+			ui.Error("Error computing pwm map for fan %s: %v", f.fan.GetId(), err)
+			return err
+		}
 	}
 
 	ui.Debug("Saving pwm map to fan...")
 	return f.persistence.SaveFanPwmMap(f.fan.GetId(), f.pwmMap)
 }
 
-func (f *DefaultFanController) computePwmMapAutomatically() {
+func (f *DefaultFanController) computePwmMapAutomatically() (err error) {
 	fan := f.fan
 
-	if !fan.Supports(fans.FeaturePwmSensor) {
-		// we cannot read the PWM value, so we have to assume a default PWM map
-		ui.Warning("Fan '%s' does not support PWM sensor, using default PWM map", fan.GetId())
-		f.pwmMap = util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
-		return
-	}
-	_ = trySetManualPwm(fan)
-
-	// check every pwm value
-	pwmMap := map[int]int{}
-	for i := fans.MaxPwmValue; i >= fans.MinPwmValue; i-- {
-		_ = fan.SetPwm(i)
-		time.Sleep(configuration.CurrentConfig.FanController.PwmSetDelay)
-		pwm, err := fan.GetPwm()
-		if err != nil {
-			ui.Warning("Error reading PWM value of fan %s: %v", fan.GetId(), err)
+	// since the setPwmToGetPwmMap is an indicator of what values are supported by the fan driver,
+	// we can use it to determine the pwmMap as well.
+	if f.setPwmToGetPwmMap == nil {
+		// if we don't have a setPwmToGetPwmMap, there was either an error computing it,
+		// or it is impossible to compute it due to the fan not supporting PWM sensor reading.
+		// In this case, we have to assume a default pwmMap.
+		ui.Warning("Fan '%s' does not have a setPwmToGetPwmMap, using default pwmMap", fan.GetId())
+		f.pwmMap, err = util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
+	} else {
+		// if we have a setPwmToGetPwmMap, we can use its keyset to compute the pwmMap.
+		// Since this map will be used to map the internal target pwm value
+		// to the fan range, we need to interpolate it in a way that the internal range of [0..255]
+		// is mapped to the full supported range of the fan in [minPwm, maxPwm].
+		// Since there might be gaps in the setPwmToGetPwmMap, the pwmMap will be populated
+		// so that the supported values are represented as steps, with the steps being aligned to be
+		// in the middle of two adjacent values in the supported range.
+		ui.Debug("Using setPwmToGetPwmMap to compute pwmMap for fan %s", fan.GetId())
+		keySet := maps.Keys(f.setPwmToGetPwmMap)
+		sort.Ints(keySet)
+		identityMappingOfKeyset := make(map[int]int, len(keySet))
+		for i := 0; i < len(keySet); i++ {
+			key := keySet[i]
+			identityMappingOfKeyset[key] = key
 		}
-		pwmMap[i] = pwm
+		f.pwmMap = util.ExpandMapToFullRange(identityMappingOfKeyset, fans.MinPwmValue, fans.MaxPwmValue)
 	}
-	f.pwmMap = pwmMap
-
-	_ = fan.SetPwm(f.getActualPwmValueForTargetPwm(fan.GetStartPwm()))
+	return err
 }
 
 func (f *DefaultFanController) updateDistinctPwmValues() {
@@ -691,7 +734,84 @@ func (f *DefaultFanController) increaseMinPwmOffset() {
 	f.stats.IncreasedMinPwmCount += 1
 }
 
-// getActualPwmValueForTargetPwm returns the actual PWM value returned by f.fan.GetPwm(target) for the given target value.
-func (f *DefaultFanController) getActualPwmValueForTargetPwm(target int) int {
-	return f.pwmMap[target]
+// applyPwmMapToTarget maps a given target PWM value to the actual to-be-applied PWM value.
+// This is necessary because some fans do not support the full range of [0..255] PWM values,
+// but rather a subset of it, e.g. [0..100] or [0..255] with some values missing.
+// Another reason for this is that some fans require a different PWM value to be set
+// to achieve a certain target speed.
+// See the pwmMap field for more details.
+func (f *DefaultFanController) applyPwmMapToTarget(target int) int {
+	closestToTarget := f.findClosestDistinctTarget(target)
+	return f.pwmMap[closestToTarget]
+}
+
+// getReportedPwmAfterApplyingPwm returns the expected reported PWM value after applying the given pwmMappedValue.
+// This is necessary because some fans do not report the exact value that was set,
+// but rather a different value, e.g. due to hardware limitations or driver quirks.
+// This method uses the setPwmToGetPwmMap to determine the expected reported PWM value.
+// If the setPwmToGetPwmMap is not available, it assumes a 1:1 relation between set and reported PWM values.
+// If the pwmMappedValue is not present in the setPwmToGetPwmMap, it will find the closest key
+// and return the corresponding value from the map.
+// Make sure to pass in a value that has been mapped to the fan's supported range using the pwmMap.
+func (f *DefaultFanController) getReportedPwmAfterApplyingPwm(pwmMappedValue int) int {
+	if f.setPwmToGetPwmMap == nil {
+		ui.Warning("Fan '%s' does not have a setPwmToGetPwmMap, assuming 1:1 relation.", f.fan.GetId())
+		return pwmMappedValue
+	}
+	if value, ok := f.setPwmToGetPwmMap[pwmMappedValue]; !ok {
+		ui.Warning("Fan '%s' does not have a setPwmToGetPwmMap entry for %d, assuming 1:1 relation.", f.fan.GetId(), pwmMappedValue)
+		closestKey := util.FindClosest(pwmMappedValue, maps.Keys(f.setPwmToGetPwmMap))
+		return f.setPwmToGetPwmMap[closestKey]
+	} else {
+		return value
+	}
+}
+
+func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
+
+	// TODO: should we provide a way to override this behavior via config?
+
+	if !f.fan.Supports(fans.FeaturePwmSensor) {
+		ui.Warning("Fan '%s' does not support PWM sensor, cannot compute setPwmToGetPwmMap. Assuming 1:1 relation.", f.fan.GetId())
+		f.setPwmToGetPwmMap, _ = util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
+		return nil
+	}
+
+	_ = trySetManualPwm(f.fan)
+
+	f.setPwmToGetPwmMap = map[int]int{}
+	for i := fans.MinPwmValue; i <= fans.MaxPwmValue; i++ {
+		err := f.fan.SetPwm(i)
+		if err != nil {
+			ui.Warning("Error setting PWM value %d on fan %s: %v", i, f.fan.GetId(), err)
+			continue
+		}
+		time.Sleep(configuration.CurrentConfig.FanController.PwmSetDelay)
+		pwm, err := f.getPwm()
+		if err != nil {
+			ui.Warning("Error reading PWM value of fan %s: %v", f.fan.GetId(), err)
+			continue
+		}
+		f.setPwmToGetPwmMap[i] = pwm
+	}
+
+	return nil
+}
+
+func (f *DefaultFanController) computeFanSpecificMappings() (err error) {
+	err = f.computeSetPwmToGetPwmMap()
+	if err != nil {
+		ui.Fatal("Error computing setPwm(x) -> getPwm() map: %v", err)
+		return err
+	}
+
+	err = f.computePwmMap()
+	if err != nil {
+		ui.Warning("Error computing PWM map: %v", err)
+		return err
+	}
+
+	f.updateDistinctPwmValues()
+
+	return nil
 }

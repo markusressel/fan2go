@@ -4,8 +4,8 @@ import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
-	"testing"
 	"os/exec"
+	"testing"
 )
 
 func getEchoPath() string {
@@ -348,7 +348,8 @@ func TestCmdFan_GetFanCurveData(t *testing.T) {
 	}
 	fan, _ := NewFan(config)
 
-	var interpolated = util.InterpolateLinearly(&map[int]float64{0: 0, 255: 255}, 0, 255)
+	var interpolated, err = util.InterpolateLinearly(&map[int]float64{0: 0, 255: 255}, 0, 255)
+	assert.NoError(t, err)
 
 	// WHEN
 	result := fan.GetFanRpmCurveData()

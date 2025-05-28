@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"github.com/markusressel/fan2go/internal/ui"
 	"golang.org/x/exp/constraints"
+	"math"
 	"sort"
 	"strconv"
 )
 
 const (
 	InterpolationTypeLinear = "linear"
+	InterpolationTypeStep   = "step"
 )
 
 type Number interface {
@@ -60,33 +62,135 @@ func UpdateSimpleMovingAvg(oldAvg float64, n int, newValue float64) float64 {
 	return oldAvg + (1/float64(n))*(newValue-oldAvg)
 }
 
-// InterpolateLinearlyInt integer specific variant of InterpolateLinearly.
-func InterpolateLinearlyInt(data *map[int]int, start int, stop int) map[int]int {
+// ExpandMapToFullRange takes a map with key-value "control points" and expands it
+// to a map with keys from minOutputKey to maxOutputKey (inclusive).
+// Values for the output map are determined by segmenting the output key range
+// based on the number of input control points.
+// Precondition: inputControlPoints must not be empty.
+// If minOutputKey > maxOutputKey, an empty map is returned.
+func ExpandMapToFullRange(inputControlPoints map[int]int, minOutputKey int, maxOutputKey int) map[int]int {
+	// Handle invalid output range: if min > max, return an empty map.
+	if minOutputKey > maxOutputKey {
+		return make(map[int]int)
+	}
+
+	// Extract keys from inputControlPoints and sort them for predictable value ordering.
+	inputKeys := make([]int, 0, len(inputControlPoints))
+	for k := range inputControlPoints {
+		inputKeys = append(inputKeys, k)
+	}
+	sort.Ints(inputKeys)
+
+	numInputEntries := len(inputKeys)
+
+	// The input map cannot be empty, as output values must come from its valueset.
+	if numInputEntries == 0 {
+		panic("ExpandMapToFullRange: inputControlPoints cannot be empty.")
+	}
+
+	// Create a list of values from inputControlPoints, ordered by the sorted keys.
+	sortedInputValues := make([]int, numInputEntries)
+	for i, key := range inputKeys {
+		sortedInputValues[i] = inputControlPoints[key]
+	}
+
+	// Calculate the size of the output key range.
+	outputRangeSize := maxOutputKey - minOutputKey + 1
+
+	// Initialize the output map with a capacity for the output range size.
+	outputMap := make(map[int]int, outputRangeSize)
+
+	// Calculate breakpoints that define the start of each segment within the output key range.
+	// actualBreakpoints[k] is the 0-indexed start of the k-th segment relative to minOutputKey.
+	actualBreakpoints := make([]int, numInputEntries+1)
+	for k := 0; k < numInputEntries; k++ {
+		// The k-th segment (0-indexed) starts at floor(k * outputRangeSize / numInputEntries).
+		actualBreakpoints[k] = int(math.Floor((float64(k) * float64(outputRangeSize)) / float64(numInputEntries)))
+	}
+	// This sentinel marks the exclusive end of the range for the last value (i.e., total size of the range).
+	actualBreakpoints[numInputEntries] = outputRangeSize
+
+	// Populate the outputMap by assigning values to segments.
+	currentValueIndex := 0 // Index for sortedInputValues.
+	for i := 0; i < outputRangeSize; i++ {
+		outKey := minOutputKey + i // Calculate the actual key for the output map.
+
+		// If the current position `i` has reached or crossed the start of the *next* segment, move to the next value.
+		// The check `currentValueIndex < numInputEntries-1` ensures there is a next segment.
+		if currentValueIndex < numInputEntries-1 {
+			if i >= actualBreakpoints[currentValueIndex+1] {
+				currentValueIndex++
+			}
+		}
+		outputMap[outKey] = sortedInputValues[currentValueIndex]
+	}
+
+	return outputMap
+}
+
+// InterpolateStepInt integer specific variant of InterpolateStep.
+func InterpolateStepInt(data *map[int]int, start int, stop int) (map[int]int, error) {
 	floatData := map[int]float64{}
 	for k, v := range *data {
 		floatData[k] = float64(v)
 	}
-	interpolatedFloat := InterpolateLinearly(&floatData, start, stop)
+	interpolatedFloat, err := InterpolateStep(&floatData, start, stop)
+	if err != nil {
+		return map[int]int{}, fmt.Errorf("error interpolating flat: %w", err)
+	}
 	interpolated := map[int]int{}
 	for k, v := range interpolatedFloat {
 		interpolated[k] = int(v)
 	}
-	return interpolated
+	return interpolated, nil
+}
+
+// InterpolateLinearlyInt integer specific variant of InterpolateLinearly.
+func InterpolateLinearlyInt(data *map[int]int, start int, stop int) (map[int]int, error) {
+	floatData := map[int]float64{}
+	for k, v := range *data {
+		floatData[k] = float64(v)
+	}
+	interpolatedFloat, err := InterpolateLinearly(&floatData, start, stop)
+	if err != nil {
+		return map[int]int{}, fmt.Errorf("error interpolating linearly: %w", err)
+	}
+	interpolated := map[int]int{}
+	for k, v := range interpolatedFloat {
+		interpolated[k] = int(v)
+	}
+	return interpolated, nil
+}
+
+// InterpolateStep takes the given mapping and adds flat values in [start;stop].
+func InterpolateStep(data *map[int]float64, start int, stop int) (map[int]float64, error) {
+	interpolated := map[int]float64{}
+	for i := start; i <= stop; i++ {
+		interpolatedValue, err := CalculateInterpolatedCurveValue(*data, InterpolationTypeStep, float64(i))
+		if err != nil {
+			return interpolated, fmt.Errorf("error calculating interpolated value for %d: %w", i, err)
+		}
+		interpolated[i] = interpolatedValue
+	}
+	return interpolated, nil
 }
 
 // InterpolateLinearly takes the given mapping and adds interpolated values in [start;stop].
-func InterpolateLinearly(data *map[int]float64, start int, stop int) map[int]float64 {
+func InterpolateLinearly(data *map[int]float64, start int, stop int) (map[int]float64, error) {
 	interpolated := map[int]float64{}
 	for i := start; i <= stop; i++ {
-		interpolatedValue := CalculateInterpolatedCurveValue(*data, InterpolationTypeLinear, float64(i))
+		interpolatedValue, err := CalculateInterpolatedCurveValue(*data, InterpolationTypeLinear, float64(i))
+		if err != nil {
+			return interpolated, fmt.Errorf("error calculating interpolated value for %d: %w", i, err)
+		}
 		interpolated[i] = interpolatedValue
 	}
-	return interpolated
+	return interpolated, nil
 }
 
 // CalculateInterpolatedCurveValue creates an interpolated function from the given map of x-values -> y-values
 // as specified by the interpolationType and returns the y-value for the given input
-func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType string, input float64) float64 {
+func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType string, input float64) (float64, error) {
 	xValues := make([]int, 0, len(steps))
 	for x := range steps {
 		xValues = append(xValues, x)
@@ -102,7 +206,7 @@ func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType st
 		if input <= float64(currentX) && i == 0 {
 			// input is below the smallest given step, so
 			// we fall back to the value of the smallest step
-			return steps[currentX]
+			return steps[currentX], nil
 		}
 
 		if input >= float64(nextX) {
@@ -110,21 +214,33 @@ func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType st
 		}
 
 		if input == float64(currentX) {
-			return steps[currentX]
+			return steps[currentX], nil
 		} else {
 			// input is somewhere in between currentX and nextX
 			currentY := steps[currentX]
 			nextY := steps[nextX]
 
-			ratio := Ratio(input, float64(currentX), float64(nextX))
-			interpolation := float64(float32(currentY + (ratio * (nextY - currentY))))
-			return interpolation
+			switch interpolationType {
+			case InterpolationTypeLinear:
+				ratio := Ratio(input, float64(currentX), float64(nextX))
+				interpolation := currentY + (ratio * (nextY - currentY))
+				const epsilonSnapping = 1e-8
+				roundedInterpolation := math.Round(interpolation)
+				if math.Abs(interpolation-roundedInterpolation) < epsilonSnapping {
+					interpolation = roundedInterpolation
+				}
+				return interpolation, nil
+			case InterpolationTypeStep:
+				return currentY, nil
+			default:
+				return 0.0, fmt.Errorf("unknown interpolation type: %s", interpolationType)
+			}
 		}
 	}
 
 	// input is above (or equal to) the largest given
 	// step, so we fall back to the value of the largest step
-	return steps[xValues[len(xValues)-1]]
+	return steps[xValues[len(xValues)-1]], nil
 }
 
 // FindClosest finds the closest value to target in options.

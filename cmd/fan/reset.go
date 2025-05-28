@@ -22,7 +22,11 @@ var resetCmd = &cobra.Command{
 		ui.Info("Using persistence at: %s", dbPath)
 
 		p := persistence.NewPersistence(dbPath)
-		err = p.DeleteFanPwmData(fan)
+		err = p.DeleteFanRpmData(fan)
+		if err != nil {
+			return err
+		}
+		err = p.DeleteFanSetPwmToGetPwmMap(fan.GetId())
 		if err != nil {
 			return err
 		}

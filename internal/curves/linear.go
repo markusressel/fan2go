@@ -29,7 +29,12 @@ func (c *LinearSpeedCurve) Evaluate() (value int, err error) {
 
 	steps := c.Config.Linear.Steps
 	if steps != nil {
-		value = int(math.Round(util.CalculateInterpolatedCurveValue(steps, util.InterpolationTypeLinear, avgTemp/1000)))
+		interpolatedCurveValue, err := util.CalculateInterpolatedCurveValue(steps, util.InterpolationTypeLinear, avgTemp/1000)
+		if err != nil {
+			ui.Error("Error calculating interpolated curve value for sensor '%s': %v", sensor.GetId(), err)
+			return 0, err
+		}
+		value = int(math.Round(interpolatedCurveValue))
 	} else {
 		minTemp := float64(c.Config.Linear.Min) * 1000 // degree to milli-degree
 		maxTemp := float64(c.Config.Linear.Max) * 1000

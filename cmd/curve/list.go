@@ -85,7 +85,11 @@ func printLinearCurveInfo(curve curves.SpeedCurve, config *configuration.LinearC
 
 		printInfoTable(headers, rows)
 
-		interpolated := util.InterpolateLinearly(&stepMappings, 0, 255)
+		interpolated, err := util.InterpolateLinearly(&stepMappings, 0, 255)
+		if err != nil {
+			ui.Error("Error interpolating curve values: %v", err)
+			return
+		}
 		drawGraph(interpolated, "Temp / Curve Value")
 	} else {
 		headers := []string{"ID", "Type", "Sensor", "Min", "Max"}

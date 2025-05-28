@@ -43,7 +43,7 @@ var curveCmd = &cobra.Command{
 				continue
 			}
 
-			pwmData, fanCurveErr := persistence.LoadFanPwmData(fan)
+			pwmData, fanCurveErr := persistence.LoadFanRpmData(fan)
 			if fanCurveErr == nil {
 				_ = fan.AttachFanRpmCurveData(&pwmData)
 			}
