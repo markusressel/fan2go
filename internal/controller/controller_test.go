@@ -163,6 +163,23 @@ func (fan MockFan) ShouldNeverStop() bool {
 	return fan.shouldNeverStop
 }
 
+func (fan MockFan) GetConfig() configuration.FanConfig {
+	startPwm := 0
+	maxPwm := fans.MaxPwmValue
+	return configuration.FanConfig{
+		ID:        fan.ID,
+		Curve:     fan.curveId,
+		NeverStop: fan.shouldNeverStop,
+		StartPwm:  &startPwm,
+		MinPwm:    &fan.MinPWM,
+		MaxPwm:    &maxPwm,
+		PwmMap:    fan.PwmMap,
+		HwMon:     nil, // Not used in this mock
+		File:      nil, // Not used in this mock
+		Cmd:       nil, // Not used in this mock
+	}
+}
+
 func (fan MockFan) Supports(feature fans.FeatureFlag) bool {
 	return true
 }
@@ -861,6 +878,23 @@ func (fan MockFanWithOffsetPwm) GetCurveId() string {
 
 func (fan MockFanWithOffsetPwm) ShouldNeverStop() bool {
 	return fan.shouldNeverStop
+}
+
+func (fan MockFanWithOffsetPwm) GetConfig() configuration.FanConfig {
+	startPwm := 0
+	maxPwm := fans.MaxPwmValue
+	return configuration.FanConfig{
+		ID:        fan.ID,
+		Curve:     fan.curveId,
+		NeverStop: fan.shouldNeverStop,
+		StartPwm:  &startPwm,
+		MinPwm:    &fan.MinPWM,
+		MaxPwm:    &maxPwm,
+		PwmMap:    fan.PwmMap,
+		HwMon:     nil, // Not used in this mock
+		File:      nil, // Not used in this mock
+		Cmd:       nil, // Not used in this mock
+	}
 }
 
 func (fan MockFanWithOffsetPwm) Supports(feature fans.FeatureFlag) bool {

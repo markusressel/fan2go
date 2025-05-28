@@ -80,6 +80,8 @@ type Fan interface {
 	// IsPwmAuto indicates whether this fan is in "Auto" mode
 	IsPwmAuto() (bool, error)
 
+	GetConfig() configuration.FanConfig
+
 	Supports(feature FeatureFlag) bool
 }
 

@@ -532,11 +532,27 @@ func (f *DefaultFanController) getLastTarget() (int, error) {
 // value PWM set by fan2go. If that is the case, it is assumed that a third party has changed the PWM value
 // of the fan, which can lead to unexpected behavior.
 func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
+	fanConfig := f.fan.GetConfig()
+	sanityCheckConfig := fanConfig.SanityCheck
+	if sanityCheckConfig != nil {
+		if sanityCheckConfig.PwmValueChangedByThirdParty != nil {
+			pwmValuwChngedByThirdPartyCheckConfig := sanityCheckConfig.PwmValueChangedByThirdParty
+			if pwmValuwChngedByThirdPartyCheckConfig.Enabled != nil {
+				if !*pwmValuwChngedByThirdPartyCheckConfig.Enabled {
+					// sanity checks are disabled, so we don't check for third party changes
+					return
+				}
+			}
+		}
+
+	}
+
 	if !f.fan.Supports(fans.FeaturePwmSensor) {
-		// TODO: check if "disablePwmSanityChecks" is set, show warning if not
-		// if we cannot read the PWM value, so we also cannot check if third party changed the PWM value
+		// we cannot read the PWM value, so we also cannot check if third party changed the PWM value
+		ui.Warning("Fan %s does not support PWM sensor reading, cannot check for third party changes to the PWM value", f.fan.GetId())
 		return
 	}
+
 	if f.lastTarget != nil && f.pwmMap != nil {
 		lastSetPwm, err := f.getLastTarget()
 		if err != nil {

@@ -18,6 +18,8 @@ type FanConfig struct {
 	Curve string `json:"curve"`
 	// ControlAlgorithm defines how the curve target is applied to the fan.
 	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
+	// SanityCheck defines Configuration options for sanity checks
+	SanityCheck *SanityCheckConfig `json:"sanityCheck,omitempty"`
 	// HwMon, File and Cmd are the different ways to configure the respective fan types.
 	HwMon *HwMonFanConfig `json:"hwMon,omitempty"`
 	File  *FileFanConfig  `json:"file,omitempty"`
@@ -55,6 +57,15 @@ type PidControlAlgorithmConfig struct {
 	I float64 `json:"i"`
 	// D is the derivative gain.
 	D float64 `json:"d"`
+}
+
+type SanityCheckConfig struct {
+	// Enabled defines whether the sanity check is enabled.
+	PwmValueChangedByThirdParty *PwmValueChangedByThirdPartyConfig `json:"pwmValueChangedByThirdParty,omitempty"`
+}
+
+type PwmValueChangedByThirdPartyConfig struct {
+	Enabled *bool `json:"enabled,omitempty,default=true"`
 }
 
 type HwMonFanConfig struct {
