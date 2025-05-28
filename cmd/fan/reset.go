@@ -26,6 +26,10 @@ var resetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		err = p.DeleteFanSetPwmToGetPwmMap(fan.GetId())
+		if err != nil {
+			return err
+		}
 		err = p.DeleteFanPwmMap(fan.GetId())
 
 		if err == nil {

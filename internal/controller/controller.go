@@ -346,12 +346,6 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 		return err
 	}
 
-	err = f.persistence.SaveFanPwmMap(fan.GetId(), f.pwmMap)
-	if err != nil {
-		ui.Error("Unable to persist pwmMap for fan %s", fan.GetId())
-	}
-	f.updateDistinctPwmValues()
-
 	if !fan.Supports(fans.FeatureRpmSensor) {
 		ui.Info("Fan '%s' doesn't support RPM sensor, skipping fan curve measurement", fan.GetId())
 		return nil
