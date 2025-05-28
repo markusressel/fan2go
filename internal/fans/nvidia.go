@@ -10,17 +10,19 @@ import (
 )
 
 type NvidiaFan struct {
-	Label         string                  `json:"label"`
-	Index         int                     `json:"index"`
-	RpmMovingAvg  float64                 `json:"rpmMovingAvg"`
-	Config        configuration.FanConfig `json:"config"`
-	MinPwm        *int                    `json:"minPwm"`
-	StartPwm      *int                    `json:"startPwm"`
-	MaxPwm        *int                    `json:"maxPwm"`
-	FanCurveData  *map[int]float64        `json:"fanCurveData"`
-	Rpm           int                     `json:"rpm"`
-	Pwm           int                     `json:"pwm"`
-	RunAtMaxSpeed bool                    // to emulate PWM mode 0
+	Label             string                  `json:"label"`
+	Index             int                     `json:"index"`
+	RpmMovingAvg      float64                 `json:"rpmMovingAvg"`
+	Config            configuration.FanConfig `json:"config"`
+	MinPwm            *int                    `json:"minPwm"`
+	StartPwm          *int                    `json:"startPwm"`
+	MaxPwm            *int                    `json:"maxPwm"`
+	FanCurveData      *map[int]float64        `json:"fanCurveData"`
+	Rpm               int                     `json:"rpm"`
+	Pwm               int                     `json:"pwm"`
+	RunAtMaxSpeed     bool                    // to emulate PWM mode 0
+	SupportedFeatures int                     // (1 << FeaturePwmSensor) | (1 << FeatureRpmSensor) or similar
+	// TODO: probably SupportedFeatures doesn't have to be saved to config? set in GetDevices()
 	// TODO: put nvml.Device here? though in reality it should be shared
 	//   between all fans and sensors of that device (but multiple devices can exist
 	//   when the system has multiple GPUs)
@@ -221,15 +223,6 @@ func (fan *NvidiaFan) SetPwmEnabled(value ControlMode) (err error) {
 }
 
 func (fan *NvidiaFan) Supports(feature FeatureFlag) bool {
-	switch feature {
-	case FeatureControlMode:
-		// TODO: get FanControlPolicy and set it again and see if it fails?
-		return true
-	case FeaturePwmSensor:
-		_, err := fan.GetPwm()
-		return err == nil
-	case FeatureRpmSensor:
-		return true // because it's faked by returning PWM/speed in percent instead
-	}
-	return false
+	return (fan.SupportedFeatures & (1 << feature)) != 0
+	// TODO: always return true for FeatureRpmSensor because it's faked by returning PWM/speed?
 }
