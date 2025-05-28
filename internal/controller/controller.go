@@ -745,6 +745,14 @@ func (f *DefaultFanController) applyPwmMapToTarget(target int) int {
 	return f.pwmMap[closestToTarget]
 }
 
+// getReportedPwmAfterApplyingPwm returns the expected reported PWM value after applying the given pwmMappedValue.
+// This is necessary because some fans do not report the exact value that was set,
+// but rather a different value, e.g. due to hardware limitations or driver quirks.
+// This method uses the setPwmToGetPwmMap to determine the expected reported PWM value.
+// If the setPwmToGetPwmMap is not available, it assumes a 1:1 relation between set and reported PWM values.
+// If the pwmMappedValue is not present in the setPwmToGetPwmMap, it will find the closest key
+// and return the corresponding value from the map.
+// Make sure to pass in a value that has been mapped to the fan's supported range using the pwmMap.
 func (f *DefaultFanController) getReportedPwmAfterApplyingPwm(pwmMappedValue int) int {
 	if f.setPwmToGetPwmMap == nil {
 		ui.Warning("Fan '%s' does not have a setPwmToGetPwmMap, assuming 1:1 relation.", f.fan.GetId())
