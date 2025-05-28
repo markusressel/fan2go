@@ -76,13 +76,23 @@ fans:
     # (f.ex. off, low, high). If not set manually, fan2go will try to compute this mapping
     # automatically during fan initialization. This process is not perfect though and may
     # result in suboptimal fan control.
-    # Note: The mapping must be strictly monotonically increasing and its Key-Set should cover the full
-    # range of values from 0 to 255. If keys are missing, fan2go will select a key that most closely
-    # matches the required target value during operation.
+    # Note: The values of the mapping must be strictly monotonically increasing. The Key-Set must
+    # be in [0..255] but may omit values. If keys are missing, fan2go will select a key that most
+    # closely matches the required target value (computed by the referenced curve) during operation.
     pwmMap:
       0: 0
       64: 128
       192: 255
+    # (Optional) Configuration options for sanity checks
+    sanityCheck:
+      # (Optional) Control the behavior of the "pwmValueChangedByThirdParty" sanity check
+      # THis check is used to detect if the PWM value of a fan has changed between two consecutive
+      # control loop cycles, which is usually an indication that an external program is trying to control the fan
+      # at the same time as fan2go. This can lead to unexpected behavior and is usually not desired, so
+      # fan2go will log a warning if this happens.
+      pwmValueChangedByThirdParty:
+        # (Optional) Whether to enable this check or not
+        enabled: true
 
   - id: in_front
     hwmon:

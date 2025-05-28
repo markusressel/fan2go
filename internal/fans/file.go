@@ -158,6 +158,10 @@ func (fan *FileFan) IsPwmAuto() (bool, error) {
 	return true, nil
 }
 
+func (fan *FileFan) GetConfig() configuration.FanConfig {
+	return fan.Config
+}
+
 func (fan *FileFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureControlMode:

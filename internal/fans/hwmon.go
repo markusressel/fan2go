@@ -179,6 +179,10 @@ func (fan *HwMonFan) SetPwmEnabled(value ControlMode) (err error) {
 	return err
 }
 
+func (fan *HwMonFan) GetConfig() configuration.FanConfig {
+	return fan.Config
+}
+
 func (fan *HwMonFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureControlMode:
