@@ -260,6 +260,10 @@ fans:
     # (Optional) Configuration options for sanity checks
     sanityCheck:
       # (Optional) Control the behavior of the "pwmValueChangedByThirdParty" sanity check
+      # THis check is used to detect if the PWM value of a fan has changed between two consecutive
+      # control loop cycles, which is usually an indication that an external program is trying to control the fan
+      # at the same time as fan2go. This can lead to unexpected behavior and is usually not desired, so 
+      # fan2go will log a warning if this happens.
       pwmValueChangedByThirdParty:
         # (Optional) Whether to enable this check or not
         enabled: true
