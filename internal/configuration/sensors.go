@@ -5,9 +5,10 @@ type SensorConfig struct {
 	ID string `json:"id"`
 
 	// Can be any of the following:
-	HwMon *HwMonSensorConfig `json:"hwMon,omitempty"`
-	File  *FileSensorConfig  `json:"file,omitempty"`
-	Cmd   *CmdSensorConfig   `json:"cmd,omitempty"`
+	HwMon  *HwMonSensorConfig  `json:"hwMon,omitempty"`
+	Nvidia *NvidiaSensorConfig `json:"nvidia,omitempty"`
+	File   *FileSensorConfig   `json:"file,omitempty"`
+	Cmd    *CmdSensorConfig    `json:"cmd,omitempty"`
 }
 
 type HwMonSensorConfig struct {
@@ -17,6 +18,11 @@ type HwMonSensorConfig struct {
 	Index int `json:"index"`
 	// TempInput is the sysfs path to the temperature input
 	TempInput string
+}
+
+type NvidiaSensorConfig struct {
+	Device string `json:"device"`
+	// Note: at least currently nvml only supports one temperature sensor per device
 }
 
 type FileSensorConfig struct {

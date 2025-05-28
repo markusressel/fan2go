@@ -128,6 +128,8 @@ var detectCmd = &cobra.Command{
 				}
 			}
 		}
+
+		// TODO: iterate nvidia cards
 	},
 }
 

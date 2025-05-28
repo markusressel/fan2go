@@ -2,9 +2,10 @@ package fans
 
 import (
 	"fmt"
+	"sort"
+
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/qdm12/reprint"
-	"sort"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 )
@@ -99,6 +100,18 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 			MaxPwm:   config.MaxPwm,
 			Config:   config,
 		}, nil
+	}
+
+	if config.Nvidia != nil {
+		return &NvidiaFan{
+			Label:    config.ID,
+			Index:    config.Nvidia.Index,
+			MinPwm:   config.MinPwm,
+			StartPwm: config.StartPwm,
+			MaxPwm:   config.MaxPwm,
+			Config:   config,
+		}, nil
+		// TODO: set nvml.Device here? or call a Init() function on NvidiaFan that sets it somehow?
 	}
 
 	if config.File != nil {

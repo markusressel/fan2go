@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"fmt"
-	"github.com/markusressel/fan2go/internal/control_loop"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"regexp"
 	"syscall"
 	"time"
+
+	"github.com/markusressel/fan2go/internal/control_loop"
 
 	"github.com/labstack/echo/v4"
 	"github.com/markusressel/fan2go/internal/api"
@@ -315,6 +316,7 @@ func initializeSensors(controllers []*hwmon.HwMonController) error {
 				return fmt.Errorf("couldn't find hwmon device with platform '%s' for sensor: %s. Run 'fan2go detect' again and correct any mistake", config.HwMon.Platform, config.ID)
 			}
 		}
+		// TODO: nvidia?
 
 		sensor, err := sensors.NewSensor(config)
 		if err != nil {
@@ -366,6 +368,7 @@ func initializeFans(controllers []*hwmon.HwMonController) (map[configuration.Fan
 				return nil, fmt.Errorf("couldn't update fan config from hwmon: %v", err)
 			}
 		}
+		// TODO: nvidia?
 
 		fan, err := fans.NewFan(config)
 		if err != nil {
