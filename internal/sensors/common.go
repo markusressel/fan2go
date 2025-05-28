@@ -2,10 +2,11 @@ package sensors
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/qdm12/reprint"
-	"sync"
 )
 
 var (
@@ -33,6 +34,16 @@ func NewSensor(config configuration.SensorConfig) (Sensor, error) {
 			Config: config,
 
 			mu: sync.Mutex{},
+		}, nil
+	}
+
+	if config.Nvidia != nil {
+		return &NvidiaSensor{
+			Index:  0, // currently nvml only supports one temp sensor/device
+			Config: config,
+
+			mu: sync.Mutex{},
+			// TODO: nvml.Device?
 		}, nil
 	}
 
