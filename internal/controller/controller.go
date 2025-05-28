@@ -711,8 +711,8 @@ func (f *DefaultFanController) computePwmMapAutomatically() (err error) {
 		// to the fan range, we need to interpolate it in a way that the internal range of [0..255]
 		// is mapped to the full supported range of the fan in [minPwm, maxPwm].
 		// Since there might be gaps in the setPwmToGetPwmMap, the pwmMap will be populated
-		// so that the supported values are represented as steps, with the steps beeing aligned to be
-		// in the midle of two adjacent values in the supported range.
+		// so that the supported values are represented as steps, with the steps being aligned to be
+		// in the middle of two adjacent values in the supported range.
 		ui.Debug("Using setPwmToGetPwmMap to compute pwmMap for fan %s", fan.GetId())
 		keySet := maps.Keys(f.setPwmToGetPwmMap)
 		sort.Ints(keySet)
