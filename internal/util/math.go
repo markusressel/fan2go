@@ -220,21 +220,20 @@ func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType st
 			currentY := steps[currentX]
 			nextY := steps[nextX]
 
-			if interpolationType == InterpolationTypeLinear {
+			switch interpolationType {
+			case InterpolationTypeLinear:
 				ratio := Ratio(input, float64(currentX), float64(nextX))
 				interpolation := currentY + (ratio * (nextY - currentY))
-
-				const epsilonSnapping = 1e-8 // A small tolerance for snapping
+				const epsilonSnapping = 1e-8
 				roundedInterpolation := math.Round(interpolation)
 				if math.Abs(interpolation-roundedInterpolation) < epsilonSnapping {
 					interpolation = roundedInterpolation
 				}
 				return interpolation, nil
-			} else if interpolationType == InterpolationTypeStep {
-				// Step interpolation means we return the value of the current step
+			case InterpolationTypeStep:
 				return currentY, nil
-			} else {
-				return 0.0, fmt.Errorf("Unknown interpolation type: %s", interpolationType)
+			default:
+				return 0.0, fmt.Errorf("unknown interpolation type: %s", interpolationType)
 			}
 		}
 	}

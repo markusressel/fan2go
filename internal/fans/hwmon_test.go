@@ -297,6 +297,7 @@ func TestHwMonFan_AttachFanCurveData(t *testing.T) {
 		255: 255,
 	}
 	interpolated, err := util.InterpolateLinearly(&curveData, 10, 200)
+	assert.NoError(t, err)
 
 	fan := HwMonFan{
 		Config: configuration.FanConfig{
