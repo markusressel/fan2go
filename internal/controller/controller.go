@@ -137,8 +137,8 @@ func (f *DefaultFanController) GetStatistics() FanControllerStatistics {
 	return f.stats
 }
 
-func (f *DefaultFanController) Run(ctx context.Context) error {
-	err := f.persistence.Init()
+func (f *DefaultFanController) prepareController() (err error) {
+	err = f.persistence.Init()
 	if err != nil {
 		return err
 	}
@@ -149,6 +149,11 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 		ui.Warning("WARN: cannot guarantee neverStop option on fan %s, since it has no RPM input.", fan.GetId())
 	}
 
+	return err
+}
+
+func (f *DefaultFanController) storeCurrentFanState() error {
+	fan := f.fan
 	// store original pwm value
 	pwm, err := f.getPwm()
 	if err != nil {
@@ -164,30 +169,31 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 		}
 		f.originalPwmEnabled = fans.ControlMode(pwmEnabled)
 	}
+	return nil
+}
+
+func (f *DefaultFanController) Run(ctx context.Context) error {
+	// prepare the controller by initializing persistence and checking the fan
+	err := f.prepareController()
+	if err != nil {
+		return err
+	}
+
+	// store the current fan state to restore it when stopping the controller
+	err = f.storeCurrentFanState()
+	if err != nil {
+		return err
+	}
+
+	fan := f.fan
 
 	ui.Info("Gathering sensor data for %s...", fan.GetId())
 	// wait a bit to gather monitoring data
 	time.Sleep(2*time.Second + configuration.CurrentConfig.TempSensorPollingRate*2)
 
-	// check if we have data for this fan in persistence,
-	// if not we need to run the initialization sequence
-	ui.Info("Loading fan curve data for fan '%s'...", fan.GetId())
-	fanPwmData, err := f.persistence.LoadFanRpmData(fan)
+	fanPwmData, err := f.runInitializationIfNeeded()
 	if err != nil {
-		_, ok := fan.(*fans.HwMonFan)
-		if ok {
-			ui.Warning("Fan '%s' has not yet been analyzed, starting initialization sequence...", fan.GetId())
-			err = f.RunInitializationSequence()
-			if err != nil {
-				f.restorePwmEnabled()
-				return err
-			}
-		} else {
-			err = f.persistence.SaveFanRpmData(fan)
-			if err != nil {
-				return err
-			}
-		}
+		return err
 	}
 
 	fanPwmData, err = f.persistence.LoadFanRpmData(fan)
@@ -264,6 +270,35 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	return err
 }
 
+func (f *DefaultFanController) runInitializationIfNeeded() (map[int]float64, error) {
+	fan := f.fan
+	// check if we have data for this fan in persistence,
+	// if not we need to run the initialization sequence
+	ui.Info("Loading fan curve data for fan '%s'...", fan.GetId())
+	fanRpmData, err := f.persistence.LoadFanRpmData(fan)
+	if err != nil {
+		_, ok := fan.(*fans.HwMonFan)
+		if ok {
+			ui.Warning("Fan '%s' has not yet been analyzed, starting initialization sequence...", fan.GetId())
+			err = f.RunInitializationSequence()
+			fanRpmData, err = f.persistence.LoadFanRpmData(fan)
+			if err != nil {
+				f.restorePwmEnabled()
+			}
+		} else {
+			err = f.persistence.SaveFanRpmData(fan)
+		}
+	}
+	return fanRpmData, err
+}
+
+// UpdateFanSpeed updates the fan speed by:
+// - calculating the target PWM value using the control loop and fan curve
+// - applying clamping
+// - mapping the resulting target value to the [minPwm, maxPwm] range of the fan
+// - applying sanity checks to ensure the fan never stops (if specified)
+//
+// returns ErrFanStalledAtMaxPwm if no rpm is detected even at fan.maxPwm
 func (f *DefaultFanController) UpdateFanSpeed() error {
 	fan := f.fan
 
@@ -485,14 +520,9 @@ func (f *DefaultFanController) restorePwmEnabled() {
 	}
 }
 
-// Calculates the optimal pwm for the fan of this contoller by
+// Calculates the next pwm for the fan of this controller by
 // - evaluating the associated curve
 // - cycling the control loop
-// - applying clamping
-// - mapping the resulting target value to the [minPwm, maxPwm] range of the fan
-// - applying sanity checks to ensure the fan never stops (if specified)
-//
-// returns ErrFanStalledAtMaxPwm if no rpm is detected even at fan.maxPwm
 func (f *DefaultFanController) calculateTargetPwm() (int, error) {
 	fan := f.fan
 	target, err := f.curve.Evaluate()
