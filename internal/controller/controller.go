@@ -281,9 +281,14 @@ func (f *DefaultFanController) runInitializationIfNeeded() (map[int]float64, err
 		if ok {
 			ui.Warning("Fan '%s' has not yet been analyzed, starting initialization sequence...", fan.GetId())
 			err = f.RunInitializationSequence()
+			if err != nil {
+				f.restorePwmEnabled()
+				return nil, err
+			}
 			fanRpmData, err = f.persistence.LoadFanRpmData(fan)
 			if err != nil {
 				f.restorePwmEnabled()
+				return nil, err
 			}
 		} else {
 			err = f.persistence.SaveFanRpmData(fan)
