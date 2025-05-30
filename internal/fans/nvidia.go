@@ -222,6 +222,10 @@ func (fan *NvidiaFan) SetPwmEnabled(value ControlMode) (err error) {
 	return nvError(ret)
 }
 
+func (fan *NvidiaFan) GetConfig() configuration.FanConfig {
+	return fan.Config
+}
+
 func (fan *NvidiaFan) Supports(feature FeatureFlag) bool {
 	return (fan.SupportedFeatures & (1 << feature)) != 0
 	// TODO: always return true for FeatureRpmSensor because it's faked by returning PWM/speed?
