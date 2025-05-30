@@ -2,6 +2,7 @@ package fans
 
 import (
 	"errors"
+	"fmt"
 	"os"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
@@ -41,9 +42,19 @@ func (fan *NvidiaFan) getNvFanIndex() int {
 	return fan.Index - 1
 }
 
-func (fan *NvidiaFan) Init() {
+func (fan *NvidiaFan) Init() error {
 	fan.device = nvidia_base.GetDevice(fan.Config.Nvidia.Device)
-	// FIXME: if device is nil, we have a problem...
+	if fan.device == nil {
+		return fmt.Errorf("Couldn't get handle for nvidia device %s - does it exist?", fan.Config.Nvidia.Device)
+	}
+	numFans, ret := fan.device.GetNumFans()
+	if ret != nvml.SUCCESS {
+		return fmt.Errorf("Couldn't get number of fans from device %s: %s", fan.Config.Nvidia.Device, nvml.ErrorString(ret))
+	}
+	if fan.Index > numFans {
+		return fmt.Errorf("Fan %d of device %s has invalid index (have only %d fans)", fan.Index, fan.Config.Nvidia.Device, numFans)
+	}
+	return nil
 }
 
 func (fan *NvidiaFan) GetId() string {

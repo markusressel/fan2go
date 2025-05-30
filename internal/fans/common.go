@@ -111,7 +111,10 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 			MaxPwm:   config.MaxPwm,
 			Config:   config,
 		}
-		ret.Init()
+		err := ret.Init()
+		if err != nil {
+			return nil, err
+		}
 		return ret, nil
 	}
 
