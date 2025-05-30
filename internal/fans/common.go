@@ -103,15 +103,16 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 	}
 
 	if config.Nvidia != nil {
-		return &NvidiaFan{
+		ret := &NvidiaFan{
 			Label:    config.ID,
 			Index:    config.Nvidia.Index,
 			MinPwm:   config.MinPwm,
 			StartPwm: config.StartPwm,
 			MaxPwm:   config.MaxPwm,
 			Config:   config,
-		}, nil
-		// TODO: set nvml.Device here? or call a Init() function on NvidiaFan that sets it somehow?
+		}
+		ret.Init()
+		return ret, nil
 	}
 
 	if config.File != nil {

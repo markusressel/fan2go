@@ -19,8 +19,13 @@ package main
 
 import (
 	"github.com/markusressel/fan2go/cmd"
+	"github.com/markusressel/fan2go/internal/nvidia_base"
 )
 
 func main() {
+	// the following is needed to make sure the nvml-lib is shutdown correctly
+	// it will do nothing if it that lib hasn't been initialized in the first place
+	// (or initialization failed, e.g. because no nvidia driver is installed)
+	defer nvidia_base.CleanupAtExit()
 	cmd.Execute()
 }
