@@ -155,17 +155,14 @@ var detectCmd = &cobra.Command{
 			var fanRows [][]string
 			for _, fan := range ctrl.Fans {
 				pwmText := "N/A"
-				//pwm, err := fan.GetPwm() // FIXME: use this once it works
-				pwm := 69
-				var err error = nil
+				pwm, err := fan.GetPwm()
 				if err == nil {
 					pwmText = strconv.Itoa(pwm)
 				}
 
 				// TODO: RPM?
 
-				//isAuto, _ := fan.IsPwmAuto()
-				isAuto := true
+				isAuto, _ := fan.IsPwmAuto()
 
 				row := []string{
 					"", strconv.Itoa(fan.Index), fan.Label, pwmText, fmt.Sprintf("%v", isAuto),
@@ -183,9 +180,7 @@ var detectCmd = &cobra.Command{
 			var sensorRows [][]string
 			if ctrl.Sensor != nil {
 				sensor := ctrl.Sensor
-				//value, err := sensor.GetValue() // FIXME: use this once it works
-				value := 42000
-				var err error = nil
+				value, err := sensor.GetValue()
 				valueText := "N/A"
 				if err == nil {
 					valueText = strconv.Itoa(int(value))

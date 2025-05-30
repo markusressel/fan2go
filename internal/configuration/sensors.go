@@ -22,6 +22,7 @@ type HwMonSensorConfig struct {
 
 type NvidiaSensorConfig struct {
 	Device string `json:"device"`
+	Index  int    `json:"index"`
 	// Note: at least currently nvml only supports one temperature sensor per device
 }
 

@@ -6,6 +6,7 @@ import (
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/nvidia_base"
 	"github.com/markusressel/fan2go/internal/sensors"
 )
 
@@ -19,28 +20,8 @@ type NvidiaController struct { // TODO: why "controller"?
 	Sensor *sensors.NvidiaSensor
 }
 
-// create identifier for nvidia devices (for config), which is like
-//
-//	nvidia-<PCI vendor ID><PCI device ID>-<PCI address>
-//
-// where PCI address is calculated in the same way as libsensor PCI device addresses
-// example: "nvidia-10de2489-0400"
-func getDeviceID(device nvml.Device) string {
-	pciInfo, ret := device.GetPciInfo()
-	if ret != nvml.SUCCESS {
-		// shouldn't really happen - display error?
-		return ""
-	}
-	var pciVendorID uint16 = uint16(pciInfo.PciDeviceId & 0xFFFF)
-	var pciDeviceID uint16 = uint16((pciInfo.PciDeviceId >> 16) & 0xFFFF)
-	// TODO: if the PCI "function" value is really needed, it could be parsed from pciInfo.BusId, I guess
-	//  for now I assume that 0 always works? (on my card function 1 is the soundcard for HDMI audio => not relevant here)
-	var devFunction uint32 = 0
-	var addr uint32 = (pciInfo.Domain << 16) + (pciInfo.Bus << 8) + (pciInfo.Device << 3) + devFunction
-	return fmt.Sprintf("nvidia-%04X%04X-%04X\n", pciVendorID, pciDeviceID, addr)
-}
-
 func GetDevices() []*NvidiaController {
+	// FIXME: refactor this to use nvidia_base, somehow..
 	ret := nvml.Init()
 	if ret != nvml.SUCCESS {
 		return nil
@@ -63,13 +44,13 @@ func GetDevices() []*NvidiaController {
 		if ret != nvml.SUCCESS {
 			continue
 		}
-		devID := getDeviceID(device)
+		devID := nvidia_base.GetDeviceID(device)
 		if len(devID) == 0 {
 			continue
 		}
 		name, ret := device.GetName()
 		if ret != nvml.SUCCESS {
-			name = "???"
+			name = "N/A"
 		}
 
 		var fanSlice = []fans.NvidiaFan{}
@@ -101,9 +82,11 @@ func GetDevices() []*NvidiaController {
 							Index:  fanIdx + 1, // 1-based index, like HwMon
 						},
 					},
-					Label: label,
-					Index: fanIdx + 1,
+					Label:             label,
+					Index:             fanIdx + 1,
+					SupportedFeatures: features,
 				}
+				fan.Init()
 
 				fanSlice = append(fanSlice, fan)
 			}
@@ -112,9 +95,17 @@ func GetDevices() []*NvidiaController {
 		var sensor *sensors.NvidiaSensor
 		if ret == nvml.SUCCESS {
 			sensor = &sensors.NvidiaSensor{
+				Config: configuration.SensorConfig{
+					ID: "N/A",
+					Nvidia: &configuration.NvidiaSensorConfig{
+						Device: devID,
+						Index:  1,
+					},
+				},
 				Label: "Temperature", // (currently?) nvml exposes only one temperature sensor
 				Index: 1,             // 1-based index, like HwMon
 			}
+			sensor.Init()
 		}
 
 		c := &NvidiaController{

@@ -6,6 +6,7 @@ import (
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/nvidia_base"
 	"github.com/markusressel/fan2go/internal/ui"
 )
 
@@ -23,9 +24,7 @@ type NvidiaFan struct {
 	RunAtMaxSpeed     bool                    // to emulate PWM mode 0
 	SupportedFeatures int                     // (1 << FeaturePwmSensor) | (1 << FeatureRpmSensor) or similar
 	// TODO: probably SupportedFeatures doesn't have to be saved to config? set in GetDevices()
-	// TODO: put nvml.Device here? though in reality it should be shared
-	//   between all fans and sensors of that device (but multiple devices can exist
-	//   when the system has multiple GPUs)
+	device nvml.Device
 }
 
 // helper function to turn an nvml error/return code into a go error
@@ -38,9 +37,13 @@ func nvError(errCode nvml.Return) error {
 }
 
 func (fan *NvidiaFan) getNvFanIndex() int {
-	// seems like fan indices in fan2go are 1-based,
-	// here we start at 0.
-	return fan.Config.Nvidia.Index - 1
+	// fan indices in fan2go are 1-based, here we start at 0.
+	return fan.Index - 1
+}
+
+func (fan *NvidiaFan) Init() {
+	fan.device = nvidia_base.GetDevice(fan.Config.Nvidia.Device)
+	// FIXME: if device is nil, we have a problem...
 }
 
 func (fan *NvidiaFan) GetId() string {
@@ -110,9 +113,8 @@ func (fan *NvidiaFan) SetRpmAvg(rpm float64) {
 }
 
 func (fan *NvidiaFan) GetPwm() (int, error) {
-	var device nvml.Device = nil // TODO!
 	fanIdx := fan.getNvFanIndex()
-	speed, ret := device.GetFanSpeed_v2(fanIdx)
+	speed, ret := fan.device.GetFanSpeed_v2(fanIdx)
 	if ret != nvml.SUCCESS {
 		speed = MinPwmValue // this is what HwMonFan does
 	}
@@ -122,12 +124,12 @@ func (fan *NvidiaFan) GetPwm() (int, error) {
 
 func (fan *NvidiaFan) SetPwm(pwm int) (err error) {
 	ui.Debug("Setting Fan PWM of '%s' to %d ...", fan.GetId(), pwm)
-	var device nvml.Device = nil // TODO!
+
 	fanIdx := fan.getNvFanIndex()
 	// TODO: translate pwm (0..255) to percent (0..100)?
 	// or just clamp to 100 and let fan2go assume that it doesn't get faster after PWM > 100?
 	pwm = min(pwm, 100)
-	ret := device.SetFanSpeed_v2(fanIdx, pwm)
+	ret := fan.device.SetFanSpeed_v2(fanIdx, pwm)
 	return nvError(ret)
 }
 
@@ -173,9 +175,8 @@ func (fan *NvidiaFan) ShouldNeverStop() bool {
 }
 
 func (fan *NvidiaFan) GetPwmEnabled() (int, error) {
-	var device nvml.Device = nil // TODO!
 	fanIdx := fan.getNvFanIndex()
-	policy, err := device.GetFanControlPolicy_v2(fanIdx)
+	policy, err := fan.device.GetFanControlPolicy_v2(fanIdx)
 	if err != nvml.SUCCESS {
 		return 2, nvError(err)
 	}
@@ -204,7 +205,7 @@ func (fan *NvidiaFan) IsPwmAuto() (bool, error) {
 // 1 - manual pwm control
 // 2 - motherboard pwm control
 func (fan *NvidiaFan) SetPwmEnabled(value ControlMode) (err error) {
-	var device nvml.Device = nil // TODO!
+	var device nvml.Device = fan.device
 	fanIdx := fan.getNvFanIndex()
 	var ret nvml.Return = nvml.SUCCESS
 	if value == 2 {

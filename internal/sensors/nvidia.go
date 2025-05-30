@@ -6,21 +6,26 @@ import (
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/nvidia_base"
 )
 
 type NvidiaSensor struct {
-	Label     string                     `json:"label"`
-	Index     int                        `json:"index"` // TODO: needed? there only is one temperature sensor per Device
+	Label string `json:"label"`
+	// Note: Index isn't used, at least currently nvml only supports one temperature sensor
+	Index     int                        `json:"index"`
 	Max       int                        `json:"max"`
 	Min       int                        `json:"min"`
 	Config    configuration.SensorConfig `json:"configuration"`
 	MovingAvg float64                    `json:"movingAvg"`
 
-	// TODO: put nvml.Device here? though in reality it should be shared
-	//   between all fans and sensors of that device (but multiple devices can exist
-	//   when the system has multiple GPUs)
+	device nvml.Device
 
 	mu sync.Mutex
+}
+
+func (sensor *NvidiaSensor) Init() {
+	sensor.device = nvidia_base.GetDevice(sensor.Config.Nvidia.Device)
+	// FIXME: if device is nil, we have a problem...
 }
 
 func (sensor *NvidiaSensor) GetId() string {
@@ -32,8 +37,7 @@ func (sensor *NvidiaSensor) GetConfig() configuration.SensorConfig {
 }
 
 func (sensor *NvidiaSensor) GetValue() (result float64, err error) {
-	var device nvml.Device = nil // TODO!
-	tempDegC, ret := device.GetTemperature(nvml.TEMPERATURE_GPU)
+	tempDegC, ret := sensor.device.GetTemperature(nvml.TEMPERATURE_GPU)
 	if ret != nvml.SUCCESS {
 		err = errors.New(nvml.ErrorString(ret))
 		return 0, err

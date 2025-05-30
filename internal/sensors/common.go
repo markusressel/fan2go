@@ -38,13 +38,14 @@ func NewSensor(config configuration.SensorConfig) (Sensor, error) {
 	}
 
 	if config.Nvidia != nil {
-		return &NvidiaSensor{
-			Index:  0, // currently nvml only supports one temp sensor/device
+		ret := &NvidiaSensor{
+			Index:  config.Nvidia.Index,
 			Config: config,
 
 			mu: sync.Mutex{},
-			// TODO: nvml.Device?
-		}, nil
+		}
+		ret.Init()
+		return ret, nil
 	}
 
 	if config.File != nil {
