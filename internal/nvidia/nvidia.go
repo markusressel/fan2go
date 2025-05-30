@@ -11,7 +11,7 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 )
 
-type NvidiaController struct { // TODO: why "controller"?
+type NvidiaController struct {
 	Identifier string // e.g. "nvidia-10de2489-0400"
 	Name       string // e.g. "NVIDIA GeForce RTX 3060 Ti"
 
@@ -36,10 +36,6 @@ func GetDevices() []*NvidiaController {
 
 	var list []*NvidiaController
 
-	var defaultFeatures int = (1 << fans.FeaturePwmSensor) | (1 << fans.FeatureControlMode)
-	// TODO: could check (with cgo) if nvmlDeviceGetFanSpeedRPM() is available and returns a value
-	//   and if so, set (1 << fans.FeatureRpmSensor)
-
 	for i := 0; i < nvDevCount; i++ {
 		device, ret := nvml.DeviceGetHandleByIndex(i)
 		if ret != nvml.SUCCESS {
@@ -59,17 +55,6 @@ func GetDevices() []*NvidiaController {
 		numFans, ret := device.GetNumFans()
 		if ret == nvml.SUCCESS && numFans > 0 {
 			for fanIdx := 0; fanIdx < numFans; fanIdx++ {
-				var features int = defaultFeatures
-				_, ret := device.GetFanControlPolicy_v2(fanIdx)
-				if ret != nvml.SUCCESS {
-					// at least nvml.ERROR_NOT_SUPPORTED means that
-					// this device doesn't support fan control (older than Maxwell)
-					features &= ^(1 << fans.FeatureControlMode)
-				}
-				_, ret = device.GetFanSpeed_v2(fanIdx)
-				if ret != nvml.SUCCESS {
-					features &= ^(1 << fans.FeaturePwmSensor)
-				}
 				max := 100
 				min := 0
 				label := fmt.Sprintf("Fan %d", fanIdx+1)
@@ -84,9 +69,8 @@ func GetDevices() []*NvidiaController {
 							Index:  fanIdx + 1, // 1-based index, like HwMon
 						},
 					},
-					Label:             label,
-					Index:             fanIdx + 1,
-					SupportedFeatures: features,
+					Label: label,
+					Index: fanIdx + 1,
 				}
 				fan.Init()
 
