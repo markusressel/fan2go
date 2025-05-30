@@ -75,7 +75,7 @@ var detectCmd = &cobra.Command{
 				continue
 			}
 
-			ui.Printfln("> platform: %s", controller.Name)
+			ui.Printfln("> Platform: %s", controller.Name)
 
 			var fanRows [][]string
 			for _, fan := range fanSlice {
@@ -149,7 +149,7 @@ var detectCmd = &cobra.Command{
 				continue
 			}
 
-			ui.Printfln("> device: %s", ctrl.Identifier)
+			ui.Printfln("> Device: %s", ctrl.Identifier)
 			// TODO: print a label for the device from device.GetName() (e.g. "NVIDIA GeForce RTX 3060 Ti")?
 
 			var fanRows [][]string
@@ -160,17 +160,21 @@ var detectCmd = &cobra.Command{
 					pwmText = strconv.Itoa(pwm)
 				}
 
-				// TODO: RPM?
+				rpmText := "N/A"
+				rpm, err := fan.GetRpm()
+				if err == nil {
+					rpmText = strconv.Itoa(rpm)
+				}
 
 				isAuto, _ := fan.IsPwmAuto()
 
 				row := []string{
-					"", strconv.Itoa(fan.Index), fan.Label, pwmText, fmt.Sprintf("%v", isAuto),
+					"", strconv.Itoa(fan.Index), fan.Label, pwmText, rpmText, fmt.Sprintf("%v", isAuto),
 				}
 				fanRows = append(fanRows, row)
 			}
-			// TODO: RPM column, if supported
-			var fanHeaders = []string{"Fans   ", "Index", "Label", "PWM", "Auto"}
+			// TODO: RPM column only if supported?
+			var fanHeaders = []string{"Fans   ", "Index", "Label", "PWM", "RPM", "Auto"}
 			fanTable := table.Table{
 				Headers: fanHeaders,
 				Rows:    fanRows,

@@ -25,7 +25,7 @@ type NvidiaSensor struct {
 }
 
 func (sensor *NvidiaSensor) Init() error {
-	sensor.device = nvidia_base.GetDevice(sensor.Config.Nvidia.Device)
+	sensor.device, _ = nvidia_base.GetDevice(sensor.Config.Nvidia.Device)
 	if sensor.device == nil {
 		return fmt.Errorf("Couldn't get handle for nvidia device %s - does it exist?", sensor.Config.Nvidia.Device)
 	}

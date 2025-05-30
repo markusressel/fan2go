@@ -28,7 +28,8 @@ type NvidiaFan struct {
 	CanReadPWM    bool
 	CanControlFan bool
 
-	device nvml.Device
+	device    nvml.Device
+	rawDevice nvidia_base.RawNvmlDevice
 }
 
 // helper function to turn an nvml error/return code into a go error
@@ -46,7 +47,7 @@ func (fan *NvidiaFan) getNvFanIndex() int {
 }
 
 func (fan *NvidiaFan) Init() error {
-	fan.device = nvidia_base.GetDevice(fan.Config.Nvidia.Device)
+	fan.device, fan.rawDevice = nvidia_base.GetDevice(fan.Config.Nvidia.Device)
 	if fan.device == nil {
 		return fmt.Errorf("Couldn't get handle for nvidia device %s - does it exist?", fan.Config.Nvidia.Device)
 	}
@@ -66,8 +67,11 @@ func (fan *NvidiaFan) Init() error {
 	_, ret = fan.device.GetFanSpeed_v2(fanIdx)
 	fan.CanReadPWM = (ret == nvml.SUCCESS)
 
-	// TODO: RPM reading
 	fan.CanReadRPM = false
+	if fan.rawDevice != nil {
+		_, ret = nvidia_base.NvmlGetFanSpeedRPM(fan.rawDevice, fanIdx)
+		fan.CanReadRPM = (ret == nvml.SUCCESS)
+	}
 
 	return nil
 }
@@ -126,11 +130,8 @@ func (fan *NvidiaFan) GetRpm() (int, error) {
 	if !fan.CanReadRPM {
 		return -1, fmt.Errorf("Fan %s doesn't support reading RPM")
 	}
-	return 0, nil
-	// TODO: for driver 565 and newer we can get the actual RPM with custom cgo
-	// code, see my_DeviceGetFanSpeedRPM() in Daniel's nvml test code.
-	// But otherwise, I guess returning the current PWM should also work as it
-	// at least allows creating a fan curve
+	rpm, err := nvidia_base.NvmlGetFanSpeedRPM(fan.rawDevice, fan.getNvFanIndex())
+	return rpm, nvError(err)
 }
 
 func (fan *NvidiaFan) GetRpmAvg() float64 {
