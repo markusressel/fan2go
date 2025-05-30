@@ -2,6 +2,7 @@ package sensors
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
@@ -23,9 +24,16 @@ type NvidiaSensor struct {
 	mu sync.Mutex
 }
 
-func (sensor *NvidiaSensor) Init() {
+func (sensor *NvidiaSensor) Init() error {
 	sensor.device = nvidia_base.GetDevice(sensor.Config.Nvidia.Device)
-	// FIXME: if device is nil, we have a problem...
+	if sensor.device == nil {
+		return fmt.Errorf("Couldn't get handle for nvidia device %s - does it exist?", sensor.Config.Nvidia.Device)
+	}
+	_, ret := sensor.device.GetTemperature(nvml.TEMPERATURE_GPU)
+	if ret != nvml.SUCCESS {
+		return fmt.Errorf("Apparently nvidia device %s doesn't support reading the temperature, error was: %s", nvml.ErrorString(ret))
+	}
+	return nil
 }
 
 func (sensor *NvidiaSensor) GetId() string {

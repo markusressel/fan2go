@@ -44,7 +44,12 @@ func NewSensor(config configuration.SensorConfig) (Sensor, error) {
 
 			mu: sync.Mutex{},
 		}
-		ret.Init()
+		err := ret.Init()
+		// if the nvidia device can't be found or its temperature sensor can't be read,
+		// return error instead of an unusable sensor
+		if err != nil {
+			return nil, err
+		}
 		return ret, nil
 	}
 
