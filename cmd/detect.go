@@ -75,7 +75,7 @@ var detectCmd = &cobra.Command{
 				continue
 			}
 
-			ui.Printfln("> %s", controller.Name)
+			ui.Printfln("> platform: %s", controller.Name)
 
 			var fanRows [][]string
 			for _, fan := range fanSlice {
@@ -145,11 +145,11 @@ var detectCmd = &cobra.Command{
 
 		for _, ctrl := range nvControllers {
 
-			if len(ctrl.Fans) <= 0 && ctrl.Sensor == nil {
+			if len(ctrl.Fans) <= 0 && len(ctrl.Sensors) <= 0 {
 				continue
 			}
 
-			ui.Printfln("> %s", ctrl.Identifier)
+			ui.Printfln("> device: %s", ctrl.Identifier)
 			// TODO: print a label for the device from device.GetName() (e.g. "NVIDIA GeForce RTX 3060 Ti")?
 
 			var fanRows [][]string
@@ -171,15 +171,13 @@ var detectCmd = &cobra.Command{
 			}
 			// TODO: RPM column, if supported
 			var fanHeaders = []string{"Fans   ", "Index", "Label", "PWM", "Auto"}
-
 			fanTable := table.Table{
 				Headers: fanHeaders,
 				Rows:    fanRows,
 			}
 
 			var sensorRows [][]string
-			if ctrl.Sensor != nil {
-				sensor := ctrl.Sensor
+			for _, sensor := range ctrl.Sensors {
 				value, err := sensor.GetValue()
 				valueText := "N/A"
 				if err == nil {
@@ -189,12 +187,12 @@ var detectCmd = &cobra.Command{
 				row := []string{"", "1", sensor.Label, valueText}
 				sensorRows = append(sensorRows, row)
 			}
-
 			var sensorHeaders = []string{"Sensors", "Index", "Label", "Value"}
 			sensorTable := table.Table{
 				Headers: sensorHeaders,
 				Rows:    sensorRows,
 			}
+
 			printTables([]table.Table{fanTable, sensorTable})
 		}
 	},

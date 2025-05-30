@@ -8,6 +8,7 @@ import (
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/nvidia_base"
 	"github.com/markusressel/fan2go/internal/sensors"
+	"github.com/markusressel/fan2go/internal/ui"
 )
 
 type NvidiaController struct { // TODO: why "controller"?
@@ -17,7 +18,7 @@ type NvidiaController struct { // TODO: why "controller"?
 	Fans []fans.NvidiaFan
 	// at least currently nvml only supports one temperature sensor
 	// (pointer in case no sensor was found at all)
-	Sensor *sensors.NvidiaSensor
+	Sensors []*sensors.NvidiaSensor
 }
 
 func GetDevices() []*NvidiaController {
@@ -42,6 +43,7 @@ func GetDevices() []*NvidiaController {
 	for i := 0; i < nvDevCount; i++ {
 		device, ret := nvml.DeviceGetHandleByIndex(i)
 		if ret != nvml.SUCCESS {
+			ui.Warning("Couldn't get Handle for NVIDIA device with index %d: %s", i, nvml.ErrorString(ret))
 			continue
 		}
 		devID := nvidia_base.GetDeviceID(device)
@@ -92,9 +94,9 @@ func GetDevices() []*NvidiaController {
 			}
 		}
 		_, ret = device.GetTemperature(nvml.TEMPERATURE_GPU)
-		var sensor *sensors.NvidiaSensor
+		var sensorSlice = []*sensors.NvidiaSensor{}
 		if ret == nvml.SUCCESS {
-			sensor = &sensors.NvidiaSensor{
+			sensor := &sensors.NvidiaSensor{
 				Config: configuration.SensorConfig{
 					ID: "N/A",
 					Nvidia: &configuration.NvidiaSensorConfig{
@@ -106,13 +108,14 @@ func GetDevices() []*NvidiaController {
 				Index: 1,             // 1-based index, like HwMon
 			}
 			sensor.Init()
+			sensorSlice = append(sensorSlice, sensor)
 		}
 
 		c := &NvidiaController{
 			Identifier: devID,
 			Name:       name,
 			Fans:       fanSlice,
-			Sensor:     sensor,
+			Sensors:    sensorSlice,
 		}
 		list = append(list, c)
 	}
