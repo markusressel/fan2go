@@ -12,19 +12,22 @@ import (
 )
 
 type NvidiaFan struct {
-	Label             string                  `json:"label"`
-	Index             int                     `json:"index"`
-	RpmMovingAvg      float64                 `json:"rpmMovingAvg"`
-	Config            configuration.FanConfig `json:"config"`
-	MinPwm            *int                    `json:"minPwm"`
-	StartPwm          *int                    `json:"startPwm"`
-	MaxPwm            *int                    `json:"maxPwm"`
-	FanCurveData      *map[int]float64        `json:"fanCurveData"`
-	Rpm               int                     `json:"rpm"`
-	Pwm               int                     `json:"pwm"`
-	RunAtMaxSpeed     bool                    // to emulate PWM mode 0
-	SupportedFeatures int                     // (1 << FeaturePwmSensor) | (1 << FeatureRpmSensor) or similar
-	// TODO: probably SupportedFeatures doesn't have to be saved to config? set in GetDevices()
+	Label        string                  `json:"label"`
+	Index        int                     `json:"index"`
+	RpmMovingAvg float64                 `json:"rpmMovingAvg"`
+	Config       configuration.FanConfig `json:"config"`
+	MinPwm       *int                    `json:"minPwm"`
+	StartPwm     *int                    `json:"startPwm"`
+	MaxPwm       *int                    `json:"maxPwm"`
+	FanCurveData *map[int]float64        `json:"fanCurveData"`
+	Rpm          int                     `json:"rpm"`
+	Pwm          int                     `json:"pwm"`
+
+	RunAtMaxSpeed bool // to emulate PWM mode 0
+	CanReadRPM    bool
+	CanReadPWM    bool
+	CanControlFan bool
+
 	device nvml.Device
 }
 
@@ -47,13 +50,25 @@ func (fan *NvidiaFan) Init() error {
 	if fan.device == nil {
 		return fmt.Errorf("Couldn't get handle for nvidia device %s - does it exist?", fan.Config.Nvidia.Device)
 	}
+	fanIdx := fan.Index - 1 // nvidia uses 0-based index
 	numFans, ret := fan.device.GetNumFans()
 	if ret != nvml.SUCCESS {
 		return fmt.Errorf("Couldn't get number of fans from device %s: %s", fan.Config.Nvidia.Device, nvml.ErrorString(ret))
 	}
-	if fan.Index > numFans {
+	if fanIdx >= numFans {
 		return fmt.Errorf("Fan %d of device %s has invalid index (have only %d fans)", fan.Index, fan.Config.Nvidia.Device, numFans)
 	}
+
+	// check available features
+	_, ret = fan.device.GetFanControlPolicy_v2(fanIdx)
+	fan.CanControlFan = (ret == nvml.SUCCESS)
+
+	_, ret = fan.device.GetFanSpeed_v2(fanIdx)
+	fan.CanReadPWM = (ret == nvml.SUCCESS)
+
+	// TODO: RPM reading
+	fan.CanReadRPM = false
+
 	return nil
 }
 
@@ -108,7 +123,10 @@ func (fan *NvidiaFan) SetMaxPwm(pwm int, force bool) {
 }
 
 func (fan *NvidiaFan) GetRpm() (int, error) {
-	return fan.GetPwm()
+	if !fan.CanReadRPM {
+		return -1, fmt.Errorf("Fan %s doesn't support reading RPM")
+	}
+	return 0, nil
 	// TODO: for driver 565 and newer we can get the actual RPM with custom cgo
 	// code, see my_DeviceGetFanSpeedRPM() in Daniel's nvml test code.
 	// But otherwise, I guess returning the current PWM should also work as it
@@ -239,6 +257,13 @@ func (fan *NvidiaFan) GetConfig() configuration.FanConfig {
 }
 
 func (fan *NvidiaFan) Supports(feature FeatureFlag) bool {
-	return (fan.SupportedFeatures & (1 << feature)) != 0
-	// TODO: always return true for FeatureRpmSensor because it's faked by returning PWM/speed?
+	switch feature {
+	case FeatureControlMode:
+		return fan.CanControlFan
+	case FeaturePwmSensor:
+		return fan.CanReadPWM
+	case FeatureRpmSensor:
+		return fan.CanReadRPM
+	}
+	return false
 }
