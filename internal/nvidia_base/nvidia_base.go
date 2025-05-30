@@ -42,12 +42,14 @@ func GetDeviceID(device nvml.Device) string {
 		ui.Warning("Couldn't get PCI Info for NVIDIA device: %s", nvml.ErrorString(ret))
 		return ""
 	}
-	var pciVendorID uint16 = uint16(pciInfo.PciDeviceId & 0xFFFF)
-	var pciDeviceID uint16 = uint16((pciInfo.PciDeviceId >> 16) & 0xFFFF)
-	// TODO: if the PCI "function" value is really needed, it could be parsed from pciInfo.BusId, I guess
-	//  for now I assume that 0 always works? (on my card function 1 is the soundcard for HDMI audio => not relevant here)
-	var devFunction uint32 = 0
-	var addr uint32 = (pciInfo.Domain << 16) + (pciInfo.Bus << 8) + (pciInfo.Device << 3) + devFunction
+	pciVendorID := uint16(pciInfo.PciDeviceId & 0xFFFF)
+	pciDeviceID := uint16((pciInfo.PciDeviceId >> 16) & 0xFFFF)
+	// NOTE: libsensor PCI adresses also add a PCI "function" to this. At the moment I don't think
+	//  that this is needed here (for the GPU it seems to be always 0, though for the HDMI soundcard
+	//  integrated in the GPU it's 1, but that's not relevant here), so I leave it out.
+	//  If it turns out to be needed after all, it could be parsed from the last part of pciInfo.BusId
+	//  (nvml.PciInfo and PciInfoExt have no integer providing this)
+	var addr uint32 = (pciInfo.Domain << 16) + (pciInfo.Bus << 8) + (pciInfo.Device << 3)
 	return fmt.Sprintf("nvidia-%04X%04X-%04X\n", pciVendorID, pciDeviceID, addr)
 }
 
@@ -80,6 +82,7 @@ func (nh *nvidiaHandlerImpl) init() {
 	for i := 0; i < nvDevCount; i++ {
 		device, ret := nvml.DeviceGetHandleByIndex(i)
 		if ret != nvml.SUCCESS {
+			ui.Warning("Couldn't get Handle for NVIDIA device with index %d: %s", i, nvml.ErrorString(ret))
 			continue
 		}
 		// TODO: raw handle for getrpm, if we have nvmlDeviceGetFanSpeedRPM
