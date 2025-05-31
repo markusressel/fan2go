@@ -310,7 +310,7 @@ func initializeSensors(controllers []*hwmon.HwMonController) error {
 				if matched {
 					sensor, exists := c.Sensors[config.HwMon.Index]
 					if !exists {
-						return fmt.Errorf("couldn't find sensor for %s in platform %s (index %i)", config.ID, c.Platform, config.HwMon.Index)
+						return fmt.Errorf("couldn't find sensor for %s in platform %s (index %d)", config.ID, c.Platform, config.HwMon.Index)
 					}
 					found = true
 					config.HwMon.TempInput = sensor.Input

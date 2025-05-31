@@ -208,6 +208,7 @@ func CleanupAtExit() {
 	if nvidiaHandler != nil && nvidiaHandler.isInitialized {
 		nvidiaHandler.devices = nil
 		nvidiaHandler.isInitialized = false
-		nvml.Shutdown()
+		// ignore error code returned by Shutdown(), can't do anything about it anyway
+		_ = nvml.Shutdown()
 	}
 }

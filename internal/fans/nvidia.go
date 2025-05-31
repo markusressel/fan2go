@@ -49,15 +49,15 @@ func (fan *NvidiaFan) getNvFanIndex() int {
 func (fan *NvidiaFan) Init() error {
 	fan.device, fan.rawDevice = nvidia_base.GetDevice(fan.Config.Nvidia.Device)
 	if fan.device == nil {
-		return fmt.Errorf("Couldn't get handle for nvidia device %s - does it exist?", fan.Config.Nvidia.Device)
+		return fmt.Errorf("couldn't get handle for nvidia device %s - does it exist?", fan.Config.Nvidia.Device)
 	}
 	fanIdx := fan.Index - 1 // nvidia uses 0-based index
 	numFans, ret := fan.device.GetNumFans()
 	if ret != nvml.SUCCESS {
-		return fmt.Errorf("Couldn't get number of fans from device %s: %s", fan.Config.Nvidia.Device, nvml.ErrorString(ret))
+		return fmt.Errorf("couldn't get number of fans from device %s: %s", fan.Config.Nvidia.Device, nvml.ErrorString(ret))
 	}
 	if fanIdx >= numFans {
-		return fmt.Errorf("Fan %d of device %s has invalid index (have only %d fans)", fan.Index, fan.Config.Nvidia.Device, numFans)
+		return fmt.Errorf("fan %s has invalid index (%s only has %d fans)", fan.GetId(), fan.Config.Nvidia.Device, numFans)
 	}
 
 	// check available features
@@ -128,7 +128,7 @@ func (fan *NvidiaFan) SetMaxPwm(pwm int, force bool) {
 
 func (fan *NvidiaFan) GetRpm() (int, error) {
 	if !fan.CanReadRPM {
-		return -1, fmt.Errorf("Fan %s doesn't support reading RPM")
+		return -1, fmt.Errorf("fan %d (%s) doesn't support reading RPM", fan.Index, fan.GetId())
 	}
 	rpm, err := nvidia_base.NvmlGetFanSpeedRPM(fan.rawDevice, fan.getNvFanIndex())
 	return rpm, nvError(err)
@@ -235,9 +235,9 @@ func (fan *NvidiaFan) IsPwmAuto() (bool, error) {
 // 1 - manual pwm control
 // 2 - motherboard pwm control
 func (fan *NvidiaFan) SetPwmEnabled(value ControlMode) (err error) {
-	var device nvml.Device = fan.device
+	device := fan.device
 	fanIdx := fan.getNvFanIndex()
-	var ret nvml.Return = nvml.SUCCESS
+	var ret nvml.Return
 	if value == 2 {
 		ret = nvml.DeviceSetDefaultFanSpeed_v2(device, fanIdx)
 	} else {
