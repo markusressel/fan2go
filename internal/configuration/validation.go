@@ -73,11 +73,14 @@ func validateSensors(config *Configuration) error {
 		if sensorConfig.Cmd != nil {
 			subConfigs++
 		}
+		if sensorConfig.Nvidia != nil {
+			subConfigs++
+		}
 		if subConfigs > 1 {
 			return fmt.Errorf("sensor %s: only one sensor type can be used per sensor definition block", sensorConfig.ID)
 		}
 		if subConfigs <= 0 {
-			return fmt.Errorf("sensor %s: sub-configuration for sensor is missing, use one of: hwmon | file | cmd", sensorConfig.ID)
+			return fmt.Errorf("sensor %s: sub-configuration for sensor is missing, use one of: hwmon | nvidia | file | cmd", sensorConfig.ID)
 		}
 
 		if !isSensorConfigInUse(sensorConfig, config.Curves) {
@@ -249,12 +252,15 @@ func validateFans(config *Configuration) error {
 		if fanConfig.Cmd != nil {
 			subConfigs++
 		}
+		if fanConfig.Nvidia != nil {
+			subConfigs++
+		}
 
 		if subConfigs > 1 {
 			return fmt.Errorf("fan %s: only one fan type can be used per fan definition block", fanConfig.ID)
 		}
 		if subConfigs <= 0 {
-			return fmt.Errorf("fan %s: sub-configuration for fan is missing, use one of: hwmon | file | cmd", fanConfig.ID)
+			return fmt.Errorf("fan %s: sub-configuration for fan is missing, use one of: hwmon | nvidia | file | cmd", fanConfig.ID)
 		}
 
 		if len(fanConfig.Curve) <= 0 {
