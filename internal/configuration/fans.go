@@ -21,9 +21,10 @@ type FanConfig struct {
 	// SanityCheck defines Configuration options for sanity checks
 	SanityCheck *SanityCheckConfig `json:"sanityCheck,omitempty"`
 	// HwMon, File and Cmd are the different ways to configure the respective fan types.
-	HwMon *HwMonFanConfig `json:"hwMon,omitempty"`
-	File  *FileFanConfig  `json:"file,omitempty"`
-	Cmd   *CmdFanConfig   `json:"cmd,omitempty"`
+	HwMon  *HwMonFanConfig  `json:"hwMon,omitempty"`
+	Nvidia *NvidiaFanConfig `json:"nvidia,omitempty"`
+	File   *FileFanConfig   `json:"file,omitempty"`
+	Cmd    *CmdFanConfig    `json:"cmd,omitempty"`
 
 	// ControlLoop is a configuration for a PID control loop.
 	//
@@ -77,6 +78,11 @@ type HwMonFanConfig struct {
 	RpmInputPath  string
 	PwmPath       string
 	PwmEnablePath string
+}
+
+type NvidiaFanConfig struct {
+	Device string `json:"device"` // e.g. "nvidia-10DE2489-0800"
+	Index  int    `json:"index"`
 }
 
 type FileFanConfig struct {

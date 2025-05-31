@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"fmt"
-	"github.com/markusressel/fan2go/internal/control_loop"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"regexp"
 	"syscall"
 	"time"
+
+	"github.com/markusressel/fan2go/internal/control_loop"
 
 	"github.com/labstack/echo/v4"
 	"github.com/markusressel/fan2go/internal/api"
@@ -307,14 +308,19 @@ func initializeSensors(controllers []*hwmon.HwMonController) error {
 					return fmt.Errorf("failed to match platform regex of %s (%s) against controller platform %s: %v", config.ID, config.HwMon.Platform, c.Platform, err)
 				}
 				if matched {
+					sensor, exists := c.Sensors[config.HwMon.Index]
+					if !exists {
+						return fmt.Errorf("couldn't find sensor for %s in platform %s (index %d)", config.ID, c.Platform, config.HwMon.Index)
+					}
 					found = true
-					config.HwMon.TempInput = c.Sensors[config.HwMon.Index].Input
+					config.HwMon.TempInput = sensor.Input
 				}
 			}
 			if !found {
 				return fmt.Errorf("couldn't find hwmon device with platform '%s' for sensor: %s. Run 'fan2go detect' again and correct any mistake", config.HwMon.Platform, config.ID)
 			}
 		}
+		// TODO: nvidia?
 
 		sensor, err := sensors.NewSensor(config)
 		if err != nil {
@@ -366,6 +372,7 @@ func initializeFans(controllers []*hwmon.HwMonController) (map[configuration.Fan
 				return nil, fmt.Errorf("couldn't update fan config from hwmon: %v", err)
 			}
 		}
+		// TODO: nvidia?
 
 		fan, err := fans.NewFan(config)
 		if err != nil {
