@@ -27,11 +27,12 @@ type NvidiaSensor struct {
 func (sensor *NvidiaSensor) Init() error {
 	sensor.device, _ = nvidia_base.GetDevice(sensor.Config.Nvidia.Device)
 	if sensor.device == nil {
-		return fmt.Errorf("Couldn't get handle for nvidia device %s - does it exist?", sensor.Config.Nvidia.Device)
+		return fmt.Errorf("couldn't get handle for nvidia device %s - does it exist?", sensor.Config.Nvidia.Device)
 	}
 	_, ret := sensor.device.GetTemperature(nvml.TEMPERATURE_GPU)
 	if ret != nvml.SUCCESS {
-		return fmt.Errorf("Apparently nvidia device %s doesn't support reading the temperature, error was: %s", nvml.ErrorString(ret))
+		return fmt.Errorf("apparently nvidia device %s doesn't support reading the temperature, error was: %s",
+			sensor.Config.Nvidia.Device, nvml.ErrorString(ret))
 	}
 	return nil
 }

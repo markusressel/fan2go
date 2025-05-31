@@ -27,7 +27,9 @@ func GetDevices() []*NvidiaController {
 	if ret != nvml.SUCCESS {
 		return nil
 	}
-	defer nvml.Shutdown()
+	// using inline-function to make the linter happy
+	// (Shutdown() is unlikely to fail, and if it does I can't do anything about it)
+	defer func() { _ = nvml.Shutdown() }()
 
 	nvDevCount, ret := nvml.DeviceGetCount()
 	if ret != nvml.SUCCESS || nvDevCount < 1 {
@@ -72,8 +74,11 @@ func GetDevices() []*NvidiaController {
 					Label: label,
 					Index: fanIdx + 1,
 				}
-				fan.Init()
-
+				err := fan.Init()
+				if err != nil {
+					ui.Warning("Skipping fan %s, it couldn't be initialized: %v", label, err)
+					continue
+				}
 				fanSlice = append(fanSlice, fan)
 			}
 		}
@@ -91,7 +96,11 @@ func GetDevices() []*NvidiaController {
 				Label: "Temperature", // (currently?) nvml exposes only one temperature sensor
 				Index: 1,             // 1-based index, like HwMon
 			}
-			sensor.Init()
+			err := sensor.Init()
+			if err != nil {
+				ui.Warning("Skipping the temperature sensor of device %s, it couldn't be initialized: %v", devID, err)
+				continue
+			}
 			sensorSlice = append(sensorSlice, sensor)
 		}
 
