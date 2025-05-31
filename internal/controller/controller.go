@@ -706,6 +706,11 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 		if c != nil {
 			configOverride = c
 		}
+	case *fans.NvidiaFan:
+		c := f.Config.PwmMap
+		if c != nil {
+			configOverride = c
+		}
 	default:
 		// if type is other than above
 		fmt.Println("Type is unknown!")
