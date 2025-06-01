@@ -183,7 +183,7 @@ fans:
     # The type of fan configuration, one of: hwmon | file
     hwmon:
       # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
-      # "nouveau", "coretemp", "it8620", "corsaircpro-*" etc.
+      # "nouveau", "coretemp", "it8620", "corsaircpro-.*" etc.
       platform: nct6798
       # The channel of this fan's RPM sensor as displayed by `fan2go detect`
       rpmChannel: 1
@@ -405,7 +405,8 @@ curves:
     linear:
       # The sensor ID to use as a temperature input
       sensor: cpu_package
-      # Sensor input value at which the curve is at minimum speed
+      # Sensor input value (in degrees Celsius)
+      # at which the curve is at minimum speed
       min: 40
       # Sensor input value at which the curve is at maximum speed
       max: 80
@@ -422,7 +423,7 @@ curves:
       sensor: cpu_package
       # Steps to define a section-wise defined speed curve function.
       steps:
-        # Sensor value -> Speed (in pwm)
+        # Sensor value (in degrees Celsius) -> Speed (0-255)
         - 40: 0
         - 50: 50
         - 80: 255

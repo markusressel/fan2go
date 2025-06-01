@@ -117,7 +117,7 @@ sensors:
     # The type of sensor configuration
     hwmon:
       # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
-      # "nouveau", "coretemp", "it8620", "corsaircpro-*" etc.
+      # "nouveau", "coretemp", "it8620", "corsaircpro-.*" etc.
       platform: coretemp
       # The index of this sensor as displayed by `fan2go detect`
       index: 1
@@ -129,7 +129,9 @@ sensors:
 
   - id: sata_ssd
     hwmon:
-      platform: acpitz
+      # at least if you have more than one SATA/SCSI disk/SSD,
+      # you should use the full platform string, not just "drivetemp"
+      platform: drivetemp-scsi-2-0
       index: 1
 
 # A list of control curves which can be utilized by fans
@@ -144,7 +146,7 @@ curves:
       sensor: cpu_package
       # Steps to define a section-wise defined speed curve function
       steps:
-        # Sensor value -> Speed (0-255)
+        # Sensor value (degrees Celsius) -> Speed (0-255)
         - 40: 0
         - 50: 50
         - 80: 255
@@ -152,7 +154,8 @@ curves:
   - id: mainboard_curve
     linear:
       sensor: mainboard
-      # Sensor input value at which the curve is at minimum speed
+      # Sensor input value (in degrees Celsius)
+      # at which the curve is at minimum speed
       min: 40
       # Sensor input value at which the curve is at maximum speed
       max: 80
