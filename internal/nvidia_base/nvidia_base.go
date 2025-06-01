@@ -88,7 +88,7 @@ import "C"
 
 import (
 	"fmt"
-	"strings"
+	"regexp"
 	"unsafe"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
@@ -133,7 +133,7 @@ func GetDeviceID(device nvml.Device) string {
 	//  If it turns out to be needed after all, it could be parsed from the last part of pciInfo.BusId
 	//  (nvml.PciInfo and PciInfoExt have no integer providing this)
 	var addr uint32 = (pciInfo.Domain << 16) + (pciInfo.Bus << 8) + (pciInfo.Device << 3)
-	return fmt.Sprintf("nvidia-%04X%04X-%04X\n", pciVendorID, pciDeviceID, addr)
+	return fmt.Sprintf("nvidia-%04X%04X-%04X", pciVendorID, pciDeviceID, addr)
 }
 
 func GetDevice(identifier string) (nvml.Device, RawNvmlDevice) {
@@ -142,8 +142,11 @@ func GetDevice(identifier string) (nvml.Device, RawNvmlDevice) {
 		nh.init()
 	}
 	for _, device := range nh.devices {
-		// TODO: use regex or whatever?
-		if strings.HasPrefix(device.Identifier, identifier) {
+		matched, err := regexp.MatchString("(?i)"+identifier, device.Identifier)
+		if err != nil {
+			ui.Warning("failed to match device regex %s against controller device %s: %v", identifier, device.Identifier, err)
+		}
+		if matched {
 			return device.DeviceHandle, device.RawDeviceHandle
 		}
 	}
