@@ -320,7 +320,6 @@ func initializeSensors(controllers []*hwmon.HwMonController) error {
 				return fmt.Errorf("couldn't find hwmon device with platform '%s' for sensor: %s. Run 'fan2go detect' again and correct any mistake", config.HwMon.Platform, config.ID)
 			}
 		}
-		// TODO: nvidia?
 
 		sensor, err := sensors.NewSensor(config)
 		if err != nil {
@@ -372,7 +371,6 @@ func initializeFans(controllers []*hwmon.HwMonController) (map[configuration.Fan
 				return nil, fmt.Errorf("couldn't update fan config from hwmon: %v", err)
 			}
 		}
-		// TODO: nvidia?
 
 		fan, err := fans.NewFan(config)
 		if err != nil {

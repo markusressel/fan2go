@@ -47,7 +47,6 @@ func getFan(id string) (fans.Fan, error) {
 			if config.HwMon != nil {
 				_ = hwmon.UpdateFanConfigFromHwMonControllers(controllers, &config)
 			}
-			// TODO: something similar for nvidia to set nvml.Device?
 
 			fan, err := fans.NewFan(config)
 			if err != nil {

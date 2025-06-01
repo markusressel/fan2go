@@ -80,7 +80,6 @@ func getSensor(id string) (sensors.Sensor, error) {
 					}
 				}
 			}
-			// TODO: nvidia?
 
 			sensor, err := sensors.NewSensor(config)
 			if err != nil {
