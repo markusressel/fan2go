@@ -262,7 +262,13 @@ func (fan *NvidiaFan) Supports(feature FeatureFlag) bool {
 	case FeatureControlMode:
 		return fan.CanControlFan
 	case FeaturePwmSensor:
-		return fan.CanReadPWM
+		// FIXME: ugly workaround. Not allowing to read the PWM sensor works around an issue in
+		// `fan init`, in the first step where it rapidly sets and gets all PWM values, which doesn't
+		// work well for NvidiaFan, because device.GetFanSpeed_v2(), used by GetPwm(), returns the
+		// *current* fan speed (in percent), so it only returns the correct value after the fan had
+		// time to spin up/down (and even then it might be off by 1 or so due to speed fluctuations)
+		return false
+		//return fan.CanReadPWM
 	case FeatureRpmSensor:
 		return fan.CanReadRPM
 	}

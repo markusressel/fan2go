@@ -5,7 +5,7 @@ import "time"
 type FanControllerConfig struct {
 	// Time to wait between a set-pwm and get-pwm call. Used to give hardware time to
 	// respond to the set-pwm command.
-	PwmSetDelay time.Duration `json:"pwmSetDelay"`
+	PwmSetDelay time.Duration `json:"pwmSetDelay"` // TODO: this should probably be per fan
 	// Time interval between each fan speed update cycle.
 	AdjustmentTickRate time.Duration `json:"adjustmentTickRate"`
 }
