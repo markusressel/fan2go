@@ -102,7 +102,10 @@ func (fan *NvidiaFan) GetStartPwm() int {
 	if fan.StartPwm != nil {
 		return *fan.StartPwm
 	} else {
-		return 100
+		// returning MaxPwmValue will make ComputePwmBoundaries()
+		// set the StartPwm measured by fan init
+		// (otherwise it assumes that the user configured MaxPwm in the config)
+		return MaxPwmValue
 	}
 }
 
@@ -122,6 +125,7 @@ func (fan *NvidiaFan) GetMaxPwm() int {
 
 func (fan *NvidiaFan) SetMaxPwm(pwm int, force bool) {
 	if fan.Config.MaxPwm == nil || force {
+		pwm = min(pwm, 100) // can't be > 100
 		fan.MaxPwm = &pwm
 	}
 }
