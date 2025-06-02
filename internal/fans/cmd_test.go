@@ -403,7 +403,7 @@ func TestCmdFan_ShouldNeverStop(t *testing.T) {
 	assert.True(t, result)
 }
 
-func TestCmdFan_GetPwmEnabled(t *testing.T) {
+func TestCmdFan_GetControlMode(t *testing.T) {
 	// GIVEN
 	config := configuration.FanConfig{
 		Cmd: &configuration.CmdFanConfig{},
@@ -411,7 +411,7 @@ func TestCmdFan_GetPwmEnabled(t *testing.T) {
 	fan, _ := NewFan(config)
 
 	// WHEN
-	result, err := fan.GetPwmEnabled()
+	result, err := fan.GetControlMode()
 
 	// THEN
 	assert.NoError(t, err)
@@ -441,11 +441,11 @@ func TestCmdFan_SetPwmEnabled(t *testing.T) {
 	fan, _ := NewFan(config)
 
 	// WHEN
-	err := fan.SetPwmEnabled(ControlModeAutomatic)
+	err := fan.SetControlMode(ControlModeAutomatic)
 
 	// THEN
 	assert.NoError(t, err)
-	result, err := fan.GetPwmEnabled()
+	result, err := fan.GetControlMode()
 	assert.NoError(t, err)
 	// Note: CmdFan does not support setting the PWM enabled value
 	assert.Equal(t, 1, result)

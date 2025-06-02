@@ -25,47 +25,47 @@ var modeCmd = &cobra.Command{
 		if len(args) > 0 {
 			firstArg := args[0]
 			argAsInt, err := strconv.Atoi(firstArg)
-			var pwmEnabled fans.ControlMode
+			var controlMode fans.ControlMode
 			if err != nil {
 				switch strings.ToLower(firstArg) {
 				case "auto":
-					pwmEnabled = fans.ControlModeAutomatic
+					controlMode = fans.ControlModeAutomatic
 				case "pwm":
-					pwmEnabled = fans.ControlModePWM
+					controlMode = fans.ControlModePWM
 				case "disabled":
-					pwmEnabled = fans.ControlModeDisabled
+					controlMode = fans.ControlModeDisabled
 				default:
 					return fmt.Errorf("unknown mode: %s, must be a integer in (1..3) or one of: 'auto', 'pwm', 'disabled'", firstArg)
 				}
 			} else {
-				pwmEnabled = fans.ControlMode(argAsInt)
-				switch pwmEnabled {
+				controlMode = fans.ControlMode(argAsInt)
+				switch controlMode {
 				case fans.ControlModeAutomatic, fans.ControlModePWM, fans.ControlModeDisabled:
 					break
 				default:
 					return fmt.Errorf("unknown mode: %d, must be a integer in (1..3) or one of: 'auto', 'pwm', 'disabled'", argAsInt)
 				}
 			}
-			err = fan.SetPwmEnabled(pwmEnabled)
+			err = fan.SetControlMode(controlMode)
 			if err != nil {
 				return err
 			}
 		}
 
-		pwmEnabled, err := fan.GetPwmEnabled()
+		controlMode, err := fan.GetControlMode()
 		if err != nil {
 			return err
 		}
 
-		switch fans.ControlMode(pwmEnabled) {
+		switch controlMode {
 		case fans.ControlModeDisabled:
-			fmt.Printf("No control, 100%% all the time (%d)", pwmEnabled)
+			fmt.Printf("No control, 100%% all the time (%d)", controlMode)
 		case fans.ControlModePWM:
-			fmt.Printf("Manual PWM control, gives fan2go control (%d)", pwmEnabled)
+			fmt.Printf("Manual PWM control, gives fan2go control (%d)", controlMode)
 		case fans.ControlModeAutomatic:
-			fmt.Printf("Automatic control by integrated hardware (%d)", pwmEnabled)
+			fmt.Printf("Automatic control by integrated hardware (%d)", controlMode)
 		default:
-			fmt.Printf("Unknown (%d)", pwmEnabled)
+			fmt.Printf("Unknown (%d)", controlMode)
 		}
 
 		return err
