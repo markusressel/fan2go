@@ -400,7 +400,7 @@ func TestFileFan_GetControlMode(t *testing.T) {
 
 	// THEN
 	assert.NoError(t, err)
-	assert.Equal(t, 1, result)
+	assert.Equal(t, ControlModePWM, result)
 }
 
 func TestFileFan_SetPwmEnabled(t *testing.T) {
@@ -422,8 +422,8 @@ func TestFileFan_SetPwmEnabled(t *testing.T) {
 
 	result, err := fan.GetControlMode()
 	assert.NoError(t, err)
-	// NOTE: file fan does not support setting pwm enabled
-	assert.Equal(t, 1, result)
+	// NOTE: file fan does not support setting the ControlMode (yet)
+	assert.Equal(t, ControlModePWM, result)
 }
 
 func TestFileFan_IsPwmAuto(t *testing.T) {
