@@ -208,7 +208,8 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 
 	err = f.computeFanSpecificMappings()
 
-	ui.Debug("PWM map of fan '%s': %v", fan.GetId(), f.pwmMap)
+	ui.Debug("setPwmToGetPwmMap of fan '%s': %v", fan.GetId(), f.setPwmToGetPwmMap)
+	ui.Debug("pwmMap of fan '%s': %v", fan.GetId(), f.pwmMap)
 	ui.Info("PWM settings of fan '%s': Min %d, Start %d, Max %d", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm(), fan.GetMaxPwm())
 	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
 
