@@ -38,11 +38,6 @@ var curveCmd = &cobra.Command{
 			fanList = append(fanList, fan)
 		}
 
-		// filter by fan id, if specified
-		if fanId != "" {
-
-		}
-
 		for idx, fan := range fanList {
 			if fan.GetId() != fanId {
 				continue
