@@ -208,51 +208,47 @@ func (fan *NvidiaFan) ShouldNeverStop() bool {
 	return fan.Config.NeverStop
 }
 
-func (fan *NvidiaFan) GetPwmEnabled() (int, error) {
+func (fan *NvidiaFan) GetControlMode() (ControlMode, error) {
 	fanIdx := fan.getNvFanIndex()
 	policy, err := fan.device.GetFanControlPolicy_v2(fanIdx)
 	if err != nvml.SUCCESS {
-		return 2, nvError(err)
+		return ControlModeUnknown, nvError(err)
 	}
-	pwm := 2 // "motherboard pwm control" as default assumption
+	ctrlMode := ControlModeAutomatic // "hardware auto pwm control" as default assumption
 	if policy == nvml.FAN_POLICY_MANUAL {
 		if fan.RunAtMaxSpeed {
-			pwm = 0 // "max speed" - "no control" in hwmon backend
+			ctrlMode = ControlModeDisabled // "max speed" - "no control" in hwmon backend
 		} else {
-			pwm = 1 // manual PWM control
+			ctrlMode = ControlModePWM // manual PWM control
 		}
 	}
-	return pwm, nil
+	return ctrlMode, nil
 }
 
 func (fan *NvidiaFan) IsPwmAuto() (bool, error) {
-	value, err := fan.GetPwmEnabled()
+	value, err := fan.GetControlMode()
 	if err != nil {
 		return true, err // assume auto control by default
 	}
-	return value == 2, nil
+	return value == ControlModeAutomatic, nil
 }
 
-// SetPwmEnabled writes the given value to pwmX_enable
-// Possible values (unsure if these are true for all scenarios):
-// 0 - no control (results in max speed)
-// 1 - manual pwm control
-// 2 - motherboard pwm control
-func (fan *NvidiaFan) SetPwmEnabled(value ControlMode) (err error) {
+// enables given control mode on this fan
+func (fan *NvidiaFan) SetControlMode(value ControlMode) (err error) {
 	device := fan.device
 	fanIdx := fan.getNvFanIndex()
 	var ret nvml.Return
-	if value == 2 {
+	switch value {
+	case ControlModeDisabled:
+		fan.RunAtMaxSpeed = true
+		ret = nvml.DeviceSetFanSpeed_v2(device, fanIdx, 100)
+	case ControlModePWM:
+		ret = device.SetFanControlPolicy(fanIdx, nvml.FAN_POLICY_MANUAL)
+		// TODO: set speed? just setting a speed also implicitly sets manual policy - if so, what speed?
+	case ControlModeUnknown:
+		fallthrough // auto is a safe default
+	case ControlModeAutomatic:
 		ret = nvml.DeviceSetDefaultFanSpeed_v2(device, fanIdx)
-	} else {
-		// TODO: really support mode 0? here mode 2 is default and mode 0 must be emulated
-		if value == 0 {
-			fan.RunAtMaxSpeed = true
-			ret = nvml.DeviceSetFanSpeed_v2(device, fanIdx, 100)
-		} else {
-			ret = device.SetFanControlPolicy(fanIdx, nvml.FAN_POLICY_MANUAL)
-			// TODO: set speed? just setting a speed implicitly sets manual policy - if so, what speed?
-		}
 	}
 	return nvError(ret)
 }
