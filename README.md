@@ -209,7 +209,7 @@ fans:
       # the following matches all nvidia devices in your system
       # (good enough if you only have one), otherwise you could
       # also use nvidia-10DE2489-0800 or similar
-      device: nvidia-
+      device: nvidia
       # The fan's index as shown by `fan2go detect`
       index: 1
     curve: gpu_curve
@@ -217,7 +217,7 @@ fans:
   # same for the second fan
   - id: gpufan2
     nvidia:
-      device: nvidia-
+      device: nvidia
       index: 2
     curve: gpu_curve
 ```

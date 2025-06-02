@@ -23,10 +23,10 @@ type NvidiaFan struct {
 	Rpm          int                     `json:"rpm"`
 	Pwm          int                     `json:"pwm"`
 
-	RunAtMaxSpeed bool // to emulate PWM mode 0
-	CanReadRPM    bool
-	CanReadPWM    bool
-	CanControlFan bool
+	RunAtMaxSpeed     bool // to emulate PWM mode 0
+	CanReadRPM        bool
+	CanReadPWM        bool
+	CanSetControlMode bool
 
 	device    nvml.Device
 	rawDevice nvidia_base.RawNvmlDevice
@@ -51,7 +51,7 @@ func (fan *NvidiaFan) Init() error {
 	if fan.device == nil {
 		return fmt.Errorf("couldn't get handle for nvidia device %s - does it exist?", fan.Config.Nvidia.Device)
 	}
-	fanIdx := fan.Index - 1 // nvidia uses 0-based index
+	fanIdx := fan.getNvFanIndex()
 	numFans, ret := fan.device.GetNumFans()
 	if ret != nvml.SUCCESS {
 		return fmt.Errorf("couldn't get number of fans from device %s: %s", fan.Config.Nvidia.Device, nvml.ErrorString(ret))
@@ -62,7 +62,7 @@ func (fan *NvidiaFan) Init() error {
 
 	// check available features
 	_, ret = fan.device.GetFanControlPolicy_v2(fanIdx)
-	fan.CanControlFan = (ret == nvml.SUCCESS)
+	fan.CanSetControlMode = (ret == nvml.SUCCESS)
 
 	_, ret = fan.device.GetFanSpeed_v2(fanIdx)
 	fan.CanReadPWM = (ret == nvml.SUCCESS)
@@ -152,7 +152,6 @@ func (fan *NvidiaFan) GetPwm() (int, error) {
 	if ret != nvml.SUCCESS {
 		speed = MinPwmValue // this is what HwMonFan does
 	}
-	// TODO: convert speed from percent (0..100) to PWM (0..255)?
 	return int(speed), nvError(ret)
 }
 
@@ -160,9 +159,7 @@ func (fan *NvidiaFan) SetPwm(pwm int) (err error) {
 	ui.Debug("Setting Fan PWM of '%s' to %d ...", fan.GetId(), pwm)
 
 	fanIdx := fan.getNvFanIndex()
-	// TODO: translate pwm (0..255) to percent (0..100)?
-	// or just clamp to 100 and let fan2go assume that it doesn't get faster after PWM > 100?
-	pwm = min(pwm, 100)
+	pwm = min(pwm, 100) // nvml speeds are in percent, so <= 100
 	ret := fan.device.SetFanSpeed_v2(fanIdx, pwm)
 	return nvError(ret)
 }
@@ -244,7 +241,10 @@ func (fan *NvidiaFan) SetControlMode(value ControlMode) (err error) {
 		ret = nvml.DeviceSetFanSpeed_v2(device, fanIdx, 100)
 	case ControlModePWM:
 		ret = device.SetFanControlPolicy(fanIdx, nvml.FAN_POLICY_MANUAL)
-		// TODO: set speed? just setting a speed also implicitly sets manual policy - if so, what speed?
+		// fan2go starts setting a curve-based PWM value very soon
+		// after calling this, but out of an abundance of caution,
+		// set a speed that makes the fans turn
+		_ = fan.SetPwm(fan.GetStartPwm())
 	case ControlModeUnknown:
 		fallthrough // auto is a safe default
 	case ControlModeAutomatic:
@@ -260,9 +260,9 @@ func (fan *NvidiaFan) GetConfig() configuration.FanConfig {
 func (fan *NvidiaFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureControlMode:
-		return fan.CanControlFan
+		return fan.CanSetControlMode
 	case FeaturePwmSensor:
-		// FIXME: ugly workaround. Not allowing to read the PWM sensor works around an issue in
+		// TODO: ugly workaround. Not allowing to read the PWM sensor works around an issue in
 		// `fan init`, in the first step where it rapidly sets and gets all PWM values, which doesn't
 		// work well for NvidiaFan, because device.GetFanSpeed_v2(), used by GetPwm(), returns the
 		// *current* fan speed (in percent), so it only returns the correct value after the fan had

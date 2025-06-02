@@ -19,7 +19,8 @@ type NvidiaSensor struct {
 	Config    configuration.SensorConfig `json:"configuration"`
 	MovingAvg float64                    `json:"movingAvg"`
 
-	device nvml.Device
+	device         nvml.Device
+	nvidiaSensorId nvml.TemperatureSensors
 
 	mu sync.Mutex
 }
@@ -29,7 +30,11 @@ func (sensor *NvidiaSensor) Init() error {
 	if sensor.device == nil {
 		return fmt.Errorf("couldn't get handle for nvidia device %s - does it exist?", sensor.Config.Nvidia.Device)
 	}
-	_, ret := sensor.device.GetTemperature(nvml.TEMPERATURE_GPU)
+	// if nvml ever supports more than one sensor, map from sensor.Index
+	// to the corresponding nvml.TEMPERATURE_* constant here
+	sensor.nvidiaSensorId = nvml.TEMPERATURE_GPU
+
+	_, ret := sensor.device.GetTemperature(sensor.nvidiaSensorId)
 	if ret != nvml.SUCCESS {
 		return fmt.Errorf("apparently nvidia device %s doesn't support reading the temperature, error was: %s",
 			sensor.Config.Nvidia.Device, nvml.ErrorString(ret))
@@ -46,7 +51,7 @@ func (sensor *NvidiaSensor) GetConfig() configuration.SensorConfig {
 }
 
 func (sensor *NvidiaSensor) GetValue() (result float64, err error) {
-	tempDegC, ret := sensor.device.GetTemperature(nvml.TEMPERATURE_GPU)
+	tempDegC, ret := sensor.device.GetTemperature(sensor.nvidiaSensorId)
 	if ret != nvml.SUCCESS {
 		err = errors.New(nvml.ErrorString(ret))
 		return 0, err

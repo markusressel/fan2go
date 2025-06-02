@@ -22,7 +22,6 @@ type NvidiaController struct {
 }
 
 func GetDevices() []*NvidiaController {
-	// FIXME: refactor this to use nvidia_base, somehow..
 	ret := nvml.Init()
 	if ret != nvml.SUCCESS {
 		return nil
@@ -93,8 +92,8 @@ func GetDevices() []*NvidiaController {
 						Index:  1,
 					},
 				},
-				Label: "Temperature", // (currently?) nvml exposes only one temperature sensor
-				Index: 1,             // 1-based index, like HwMon
+				Label: "GPU", // (currently?) nvml exposes only one temperature sensor
+				Index: 1,     // 1-based index, like HwMon
 			}
 			err := sensor.Init()
 			if err != nil {
