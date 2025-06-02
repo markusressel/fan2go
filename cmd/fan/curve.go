@@ -38,6 +38,11 @@ var curveCmd = &cobra.Command{
 			fanList = append(fanList, fan)
 		}
 
+		// filter by fan id, if specified
+		if fanId != "" {
+
+		}
+
 		for idx, fan := range fanList {
 			if fan.GetId() != fanId {
 				continue
@@ -83,7 +88,7 @@ var curveCmd = &cobra.Command{
 			// print graph
 			if fanCurveErr != nil {
 				ui.Println("No fan curve data yet...")
-				continue
+				return
 			}
 
 			keys := make([]int, 0, len(pwmData))
