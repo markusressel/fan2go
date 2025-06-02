@@ -145,11 +145,11 @@ func (fan *FileFan) ShouldNeverStop() bool {
 	return fan.Config.NeverStop
 }
 
-func (fan *FileFan) GetPwmEnabled() (int, error) {
+func (fan *FileFan) GetControlMode() (ControlMode, error) {
 	return 1, nil
 }
 
-func (fan *FileFan) SetPwmEnabled(value ControlMode) (err error) {
+func (fan *FileFan) SetControlMode(value ControlMode) (err error) {
 	// nothing to do
 	return nil
 }

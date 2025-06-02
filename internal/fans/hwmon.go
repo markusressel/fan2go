@@ -146,32 +146,73 @@ func (fan *HwMonFan) ShouldNeverStop() bool {
 	return fan.Config.NeverStop
 }
 
-func (fan *HwMonFan) GetPwmEnabled() (int, error) {
-	return util.ReadIntFromFile(fan.Config.HwMon.PwmEnablePath)
+func (fan *HwMonFan) GetControlMode() (ControlMode, error) {
+	pwmEnabledValue, err := util.ReadIntFromFile(fan.Config.HwMon.PwmEnablePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			ui.Warning("pwm_enable file for fan '%s' does not exist, assuming no control mode support", fan.GetId())
+			return ControlModeDisabled, nil
+		}
+		return ControlModeUnknown, fmt.Errorf("error reading pwm_enable for fan %s: %w", fan.GetId(), err)
+	}
+
+	switch pwmEnabledValue {
+	case 0:
+		return ControlModeDisabled, nil
+	case 1:
+		return ControlModePWM, nil
+	case 2:
+		return ControlModeAutomatic, nil
+	default:
+		return ControlModeUnknown, fmt.Errorf("cannot map pwm_enable value %d to ControlMode for fan %s", pwmEnabledValue, fan.GetId())
+	}
 }
 
 func (fan *HwMonFan) IsPwmAuto() (bool, error) {
-	value, err := fan.GetPwmEnabled()
+	value, err := fan.GetControlMode()
 	if err != nil {
 		return false, err
 	}
 	return value > 1, nil
 }
 
-// SetPwmEnabled writes the given value to pwmX_enable
-// Possible values (unsure if these are true for all scenarios):
+// SetControlMode writes the given value to pwmX_enable
+//
+// The values that are supported for pwmX_enable depend on the
+// specific hardware and driver implementation.
+//
+// The most common arrangement is:
 // 0 - no control (results in max speed)
 // 1 - manual pwm control
 // 2 - motherboard pwm control
-func (fan *HwMonFan) SetPwmEnabled(value ControlMode) (err error) {
-	err = util.WriteIntToFile(int(value), fan.Config.HwMon.PwmEnablePath)
+func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
+	// TODO: not all hwmon drivers use these values
+	// f.ex. the "nct6775" driver, which is used for the "nct6798" chip uses:
+	// 0 - Fan control disabled (fans set to maximum speed)
+	// 1 - Manual mode, write to pwm[0-5] any value 0-255
+	// 2 - "Thermal Cruise" mode (set target temperature in pwm[1-7]_target_temp and pwm[1-7]_target_temp_tolerance)
+	// 3 - "Fan Speed Cruise" mode (set target fan speed with fan[1-7]_target and fan[1-7]_tolerance)
+	// 4 - "Smart Fan III" mode (NCT6775F only) (presumably similar to 5)
+	// 5 - "Smart Fan IV" mode (uses a configurable curve)
+
+	var pwmEnabledValue int
+	switch value {
+	case ControlModeDisabled:
+		pwmEnabledValue = 0
+	case ControlModePWM:
+		pwmEnabledValue = 1
+	case ControlModeAutomatic:
+		pwmEnabledValue = 2
+	}
+
+	err = util.WriteIntToFile(pwmEnabledValue, fan.Config.HwMon.PwmEnablePath)
 	if err == nil {
-		currentValue, err := fan.GetPwmEnabled()
+		currentValue, err := fan.GetControlMode()
 		if err != nil {
 			if errors.Is(err, os.ErrPermission) {
 				ui.Warning("Cannot read pwm_enable of fan '%s', pwm_enable state validation cannot work. Continuing assuming it worked.", fan.GetId())
 				return nil
-			} else if ControlMode(currentValue) != value {
+			} else if currentValue != value {
 				return fmt.Errorf("PWM mode stuck to %d", currentValue)
 			}
 		}

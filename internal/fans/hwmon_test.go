@@ -332,7 +332,7 @@ func TestHwMonFan_GetCurveId(t *testing.T) {
 	assert.Equal(t, expected, result)
 }
 
-func TestHwMonFan_GetPwmEnabled(t *testing.T) {
+func TestHwMonFan_GetControlMode(t *testing.T) {
 	// GIVEN
 	expected := ControlModePWM
 	pwmEnabledPath := "./file_fan_pwm_enabled"
@@ -347,11 +347,11 @@ func TestHwMonFan_GetPwmEnabled(t *testing.T) {
 			},
 		},
 	}
-	err := fan.SetPwmEnabled(ControlModePWM)
+	err := fan.SetControlMode(ControlModePWM)
 	assert.NoError(t, err)
 
 	// WHEN
-	result, err := fan.GetPwmEnabled()
+	result, err := fan.GetControlMode()
 
 	// THEN
 	assert.NoError(t, err)
@@ -372,7 +372,7 @@ func TestHwMonFan_IsPwmAuto(t *testing.T) {
 			},
 		},
 	}
-	err := fan.SetPwmEnabled(ControlModeAutomatic)
+	err := fan.SetControlMode(ControlModeAutomatic)
 	assert.NoError(t, err)
 
 	// WHEN
@@ -426,11 +426,11 @@ func TestHwMonFan_Supports_ControlMode_False(t *testing.T) {
 
 func TestHwMonFan_Supports_RpmSensor(t *testing.T) {
 	// GIVEN
-	pwmEnabledPath := "./file_fan_rpm"
+	rpmPath := "./file_fan_rpm"
 	defer func(name string) {
 		_ = os.Remove(name)
-	}(pwmEnabledPath)
-	err := util.WriteIntToFile(2000, pwmEnabledPath)
+	}(rpmPath)
+	err := util.WriteIntToFile(2000, rpmPath)
 	assert.NoError(t, err)
 
 	fan := HwMonFan{

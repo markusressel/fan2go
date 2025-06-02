@@ -134,11 +134,11 @@ func (fan *MockFan) UpdateFanRpmCurveValue(pwm int, rpm float64) {
 	(*fan.speedCurve)[pwm] = rpm
 }
 
-func (fan MockFan) GetPwmEnabled() (int, error) {
-	return int(fan.ControlMode), nil
+func (fan MockFan) GetControlMode() (fans.ControlMode, error) {
+	return fan.ControlMode, nil
 }
 
-func (fan *MockFan) SetPwmEnabled(value fans.ControlMode) (err error) {
+func (fan *MockFan) SetControlMode(value fans.ControlMode) (err error) {
 	fan.ControlMode = value
 	return nil
 }
@@ -851,11 +851,11 @@ func (fan *MockFanWithOffsetPwm) UpdateFanRpmCurveValue(pwm int, rpm float64) {
 	(*fan.speedCurve)[pwm] = rpm
 }
 
-func (fan MockFanWithOffsetPwm) GetPwmEnabled() (int, error) {
-	return int(fan.ControlMode), nil
+func (fan MockFanWithOffsetPwm) GetControlMode() (fans.ControlMode, error) {
+	return fan.ControlMode, nil
 }
 
-func (fan *MockFanWithOffsetPwm) SetPwmEnabled(value fans.ControlMode) (err error) {
+func (fan *MockFanWithOffsetPwm) SetControlMode(value fans.ControlMode) (err error) {
 	fan.ControlMode = value
 	return nil
 }

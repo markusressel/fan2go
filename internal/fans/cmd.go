@@ -136,11 +136,11 @@ func (fan *CmdFan) ShouldNeverStop() bool {
 	return fan.Config.NeverStop
 }
 
-func (fan *CmdFan) GetPwmEnabled() (int, error) {
-	return 1, nil
+func (fan *CmdFan) GetControlMode() (ControlMode, error) {
+	return ControlModePWM, nil
 }
 
-func (fan *CmdFan) SetPwmEnabled(value ControlMode) (err error) {
+func (fan *CmdFan) SetControlMode(value ControlMode) (err error) {
 	// nothing to do
 	return nil
 }

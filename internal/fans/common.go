@@ -31,6 +31,9 @@ const (
 	ControlModePWM ControlMode = 1
 	// ControlModeAutomatic enables automatic control by the integrated control of the mainboard
 	ControlModeAutomatic ControlMode = 2
+
+	// ControlModeUnknown is used when the control mode cannot be determined
+	ControlModeUnknown ControlMode = -1
 )
 
 var (
@@ -74,9 +77,10 @@ type Fan interface {
 	// ShouldNeverStop indicated whether this fan should never stop rotating
 	ShouldNeverStop() bool
 
-	// GetPwmEnabled returns the current "pwm_enabled" value of this fan
-	GetPwmEnabled() (int, error)
-	SetPwmEnabled(value ControlMode) (err error)
+	// GetControlMode returns the current ControlMode of this fan
+	GetControlMode() (ControlMode, error)
+	// SetControlMode sets the ControlMode of this fan
+	SetControlMode(value ControlMode) (err error)
 	// IsPwmAuto indicates whether this fan is in "Auto" mode
 	IsPwmAuto() (bool, error)
 

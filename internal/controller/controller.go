@@ -57,8 +57,8 @@ type DefaultFanController struct {
 	curve curves.SpeedCurve
 	// rate to update the target fan speed
 	updateRate time.Duration
-	// the original pwm_enabled flag state of the fan before starting the controller
-	originalPwmEnabled fans.ControlMode
+	// the original ControlMode state of the fan before starting the controller
+	originalControlMode fans.ControlMode
 	// the original pwm value of the fan before starting the controller
 	// Note: this is the raw value read from the fan, no pwmMap is applied to it
 	originalPwmValue int
@@ -163,11 +163,11 @@ func (f *DefaultFanController) storeCurrentFanState() error {
 
 	// store original pwm_enable value
 	if f.fan.Supports(fans.FeatureControlMode) {
-		pwmEnabled, err := fan.GetPwmEnabled()
+		controlMode, err := fan.GetControlMode()
 		if err != nil {
 			ui.Warning("Cannot read pwm_enable value of %s", fan.GetId())
 		}
-		f.originalPwmEnabled = fans.ControlMode(pwmEnabled)
+		f.originalControlMode = controlMode
 	}
 	return nil
 }
@@ -248,13 +248,13 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 				select {
 				case <-ctx.Done():
 					ui.Info("Stopping fan controller for fan %s...", fan.GetId())
-					f.restorePwmEnabled()
+					f.restoreControlMode()
 					return nil
 				case <-tick.C:
 					err = f.UpdateFanSpeed()
 					if err != nil {
 						ui.ErrorAndNotify("Fan Control Error", "Fan %s: %v", fan.GetId(), err)
-						f.restorePwmEnabled()
+						f.restoreControlMode()
 						return nil
 					}
 				}
@@ -282,12 +282,12 @@ func (f *DefaultFanController) runInitializationIfNeeded() (map[int]float64, err
 			ui.Warning("Fan '%s' has not yet been analyzed, starting initialization sequence...", fan.GetId())
 			err = f.RunInitializationSequence()
 			if err != nil {
-				f.restorePwmEnabled()
+				f.restoreControlMode()
 				return nil, err
 			}
 			fanRpmData, err = f.persistence.LoadFanRpmData(fan)
 			if err != nil {
-				f.restorePwmEnabled()
+				f.restoreControlMode()
 				return nil, err
 			}
 		} else {
@@ -492,10 +492,10 @@ func trySetManualPwm(fan fans.Fan) error {
 		return nil
 	}
 
-	err := fan.SetPwmEnabled(fans.ControlModePWM)
+	err := fan.SetControlMode(fans.ControlModePWM)
 	if err != nil {
 		ui.Error("Unable to set Fan Mode of '%s' to \"%d\": %v", fan.GetId(), fans.ControlModePWM, err)
-		err = fan.SetPwmEnabled(fans.ControlModeDisabled)
+		err = fan.SetControlMode(fans.ControlModeDisabled)
 		if err != nil {
 			ui.Error("Unable to set Fan Mode of '%s' to \"%d\": %v", fan.GetId(), fans.ControlModeDisabled, err)
 		}
@@ -503,7 +503,7 @@ func trySetManualPwm(fan fans.Fan) error {
 	return err
 }
 
-func (f *DefaultFanController) restorePwmEnabled() {
+func (f *DefaultFanController) restoreControlMode() {
 	ui.Info("Trying to restore fan settings for %s...", f.fan.GetId())
 
 	err := f.fan.SetPwm(f.originalPwmValue)
@@ -512,8 +512,8 @@ func (f *DefaultFanController) restorePwmEnabled() {
 	}
 
 	// try to reset the pwm_enable value
-	if f.fan.Supports(fans.FeatureControlMode) && f.originalPwmEnabled != fans.ControlModePWM {
-		err := f.fan.SetPwmEnabled(f.originalPwmEnabled)
+	if f.fan.Supports(fans.FeatureControlMode) && f.originalControlMode != fans.ControlModePWM {
+		err := f.fan.SetControlMode(f.originalControlMode)
 		if err == nil {
 			return
 		}
