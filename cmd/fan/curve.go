@@ -83,7 +83,7 @@ var curveCmd = &cobra.Command{
 			// print graph
 			if fanCurveErr != nil {
 				ui.Println("No fan curve data yet...")
-				continue
+				return
 			}
 
 			keys := make([]int, 0, len(pwmData))
