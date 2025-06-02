@@ -535,9 +535,7 @@ func (f *DefaultFanController) calculateTargetPwm() (int, error) {
 		ui.Fatal("Unable to calculate optimal PWM value for %s: %v", fan.GetId(), err)
 	}
 
-	// the target pwm, approaching the actual target smoothly
-	// TODO: using lastTarget directly here is wrong, because the pid loop will try to work in a 0..255 range
-	// there needs to be a mapping of the lastTarget value to the 0..255 range
+	// the new target speed to set, which approaches the actual target based on the control loop
 	newTarget := f.controlLoop.Cycle(target)
 
 	return newTarget, nil
