@@ -2,9 +2,10 @@ package fans
 
 import (
 	"fmt"
+	"sort"
+
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/qdm12/reprint"
-	"sort"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 )
@@ -99,6 +100,22 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 			MaxPwm:   config.MaxPwm,
 			Config:   config,
 		}, nil
+	}
+
+	if config.Nvidia != nil {
+		ret := &NvidiaFan{
+			Label:    config.ID,
+			Index:    config.Nvidia.Index,
+			MinPwm:   config.MinPwm,
+			StartPwm: config.StartPwm,
+			MaxPwm:   config.MaxPwm,
+			Config:   config,
+		}
+		err := ret.Init()
+		if err != nil {
+			return nil, err
+		}
+		return ret, nil
 	}
 
 	if config.File != nil {

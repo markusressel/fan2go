@@ -22,6 +22,7 @@
 * [x] Intuitive YAML based configuration
 * [x] Massive range of supported devices
     * [x] lm-sensors (hwmon) based sensors and fans
+    * [x] Fans and temperature sensor on NVIDIA GPUs ([nvml](https://developer.nvidia.com/management-library-nvml))
     * [x] File based fan/sensor for control/measurement of custom devices
     * [x] Command based fan/sensor
 * [x] Per fan user-defined speed curves
@@ -125,8 +126,10 @@ Under `fans:` you need to define a list of fan devices that you want to control 
 system run `fan2go detect`, which will print a list of devices exposed by the hwmon filesystem backend:
 
 ```shell
-> fan2go detect
-nct6798
+$ fan2go detect
+=========== hwmon: ============
+
+> Platform: nct6798-isa-0290
  Fans     Index  Channel  Label        RPM   PWM  Auto
           1      1        hwmon4/fan1  0     153  false
           2      2        hwmon4/fan2  1223  104  false
@@ -135,16 +138,25 @@ nct6798
            1       SYSTIN   41000
            2       CPUTIN   64000
 
-amdgpu-pci-0031
+> Platform: amdgpu-pci-0031
  Fans     Index  Channel  Label        RPM   PWM  Auto
           1      1        hwmon8/fan1  561   43   false
  Sensors   Index   Label      Value
            1       edge       58000
            2       junction   61000
            3       mem        56000
+
+=========== nvidia: ===========
+
+> Device: nvidia-10DE2489-0800
+  Fans     Index  Label  PWM  RPM   Auto
+           1      Fan 1  36   1300  true
+           2      Fan 2  36   1298  true
+  Sensors  Index  Label        Value
+           1      Temperature  59000
 ```
 
-The fan index is based on device enumeration and is not stable for a given fan if hardware configuration changes.
+The `hwmon` fan index is based on device enumeration and is not stable for a given fan if hardware configuration changes.
 The Linux kernel hwmon channel is a better identifier for configuration as it is largely based on the fan headers
 in use.
 
@@ -152,9 +164,15 @@ Fan RPM, PWM, and temperature sensors are independent and Linux does not associa
 may control more than one fan, and a fan may not be under the control of a PWM. By default, fan2go guesses and sets
 the pwm channel number for a given fan to the fan's RPM sensor channel. You can override this in the config.
 
+For `nvidia` devices, the fan index *is* stable.
+
+Note that it can happen that the hardware only gives limited control over a fan and it, for example,
+always runs with at least 30% speed - even if in automatic mode the hardware may make it stop entirely
+if the temperature is low enough.
+
 #### HwMon
 
-To use detected devices in your configuration, use the `hwmon` fan type:
+To use detected hwmon devices in your configuration, use the `hwmon` fan type:
 
 ```yaml
 # A list of fans to control
@@ -165,7 +183,7 @@ fans:
     # The type of fan configuration, one of: hwmon | file
     hwmon:
       # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
-      # "nouveau", "coretemp", "it8620", "corsaircpro-*" etc.
+      # "nouveau", "coretemp", "it8620", "corsaircpro-.*" etc.
       platform: nct6798
       # The channel of this fan's RPM sensor as displayed by `fan2go detect`
       rpmChannel: 1
@@ -178,6 +196,35 @@ fans:
     # speed of this fan
     curve: cpu_curve
 ```
+
+#### NVIDIA
+
+To use detected NVIDIA GPUs in your configuration, use the `nvidia` fan type:
+
+```yaml
+fans:
+  - id: gpufan1
+    nvidia:
+      # A regex matching a nvidia device as displayed by `fan2go detect`
+      # the following matches all nvidia devices in your system
+      # (good enough if you only have one), otherwise you could
+      # also use nvidia-10DE2489-0800 or similar
+      device: nvidia
+      # The fan's index as shown by `fan2go detect`
+      index: 1
+    curve: gpu_curve
+
+  # same for the second fan
+  - id: gpufan2
+    nvidia:
+      device: nvidia
+      index: 2
+    curve: gpu_curve
+```
+
+Note that the fan speed can only be controlled for GPUs of the "Maxwell" generation
+(Geforce 9xx) and newer, and that reading the fan speed in RPM requires nvidia driver 565
+or newer.
 
 #### File
 
@@ -282,12 +329,25 @@ sensors:
   # A user defined ID, which is used to reference
   # a sensor in a curve configuration (see below)
   - id: cpu_package
-    # The type of sensor configuration, one of: hwmon | file | cmd
+    # The type of sensor configuration, one of: hwmon | nvidia | file | cmd
     hwmon:
       # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
       # "coretemp", "it8620", "corsaircpro-*" etc.
       platform: coretemp
       # The index of this sensor as displayed by `fan2go detect`
+      index: 1
+```
+
+#### NVIDIA
+
+```yaml
+sensors:
+  - id: gpu_temp
+    nvidia:
+      # A regex matching a nvidia device as displayed by `fan2go detect`
+      device: nvidia-10DE2489-0800
+      # The index of this sensor as displayed by `fan2go detect`
+      # (currently NVIDIA/nvml exposes only a single temperature sensor per GPU)
       index: 1
 ```
 
@@ -345,7 +405,8 @@ curves:
     linear:
       # The sensor ID to use as a temperature input
       sensor: cpu_package
-      # Sensor input value at which the curve is at minimum speed
+      # Sensor input value (in degrees Celsius)
+      # at which the curve is at minimum speed
       min: 40
       # Sensor input value at which the curve is at maximum speed
       max: 80
@@ -362,7 +423,7 @@ curves:
       sensor: cpu_package
       # Steps to define a section-wise defined speed curve function.
       steps:
-        # Sensor value -> Speed (in pwm)
+        # Sensor value (in degrees Celsius) -> Speed (0-255)
         - 40: 0
         - 50: 50
         - 80: 255

@@ -2,10 +2,11 @@ package sensors
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/qdm12/reprint"
-	"sync"
 )
 
 var (
@@ -34,6 +35,22 @@ func NewSensor(config configuration.SensorConfig) (Sensor, error) {
 
 			mu: sync.Mutex{},
 		}, nil
+	}
+
+	if config.Nvidia != nil {
+		ret := &NvidiaSensor{
+			Index:  config.Nvidia.Index,
+			Config: config,
+
+			mu: sync.Mutex{},
+		}
+		err := ret.Init()
+		// if the nvidia device can't be found or its temperature sensor can't be read,
+		// return error instead of an unusable sensor
+		if err != nil {
+			return nil, err
+		}
+		return ret, nil
 	}
 
 	if config.File != nil {

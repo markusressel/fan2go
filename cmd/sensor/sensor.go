@@ -2,13 +2,14 @@ package sensor
 
 import (
 	"fmt"
+	"regexp"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/hwmon"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"regexp"
 )
 
 var sensorId string

@@ -707,6 +707,11 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 		if c != nil {
 			configOverride = c
 		}
+	case *fans.NvidiaFan:
+		c := f.Config.PwmMap
+		if c != nil {
+			configOverride = c
+		}
 	default:
 		// if type is other than above
 		fmt.Println("Type is unknown!")
@@ -820,6 +825,8 @@ func (f *DefaultFanController) getReportedPwmAfterApplyingPwm(pwmMappedValue int
 func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
 
 	// TODO: should we provide a way to override this behavior via config?
+	// DG: yes, definitely - per fan. this is super broken if the fan doesn't apply the PWM fast enough
+	//     (see https://github.com/markusressel/fan2go/issues/358)
 
 	if !f.fan.Supports(fans.FeaturePwmSensor) {
 		ui.Warning("Fan '%s' does not support PWM sensor, cannot compute setPwmToGetPwmMap. Assuming 1:1 relation.", f.fan.GetId())

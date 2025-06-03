@@ -15,6 +15,7 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/natefinch/atomic v1.0.1
+	github.com/NVIDIA/go-nvml v0.12.4-1
 	github.com/oklog/run v1.1.0
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/prometheus/client_golang v1.22.0

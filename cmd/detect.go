@@ -11,11 +11,42 @@ import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/hwmon"
+	"github.com/markusressel/fan2go/internal/nvidia"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/mgutz/ansi"
 	"github.com/spf13/cobra"
 	"github.com/tomlazar/table"
 )
+
+func printTables(tables []table.Table) {
+	tableConfig := &table.Config{
+		ShowIndex:       false,
+		Color:           !global.NoColor,
+		AlternateColors: true,
+		TitleColorCode:  ansi.ColorCode("white+buf"),
+		AltColorCodes: []string{
+			ansi.ColorCode("white"),
+			ansi.ColorCode("white:236"),
+		},
+	}
+
+	for idx, table := range tables {
+		if table.Rows == nil {
+			continue
+		}
+		var buf bytes.Buffer
+		tableErr := table.WriteTable(&buf, tableConfig)
+		if tableErr != nil {
+			ui.Fatal("Error printing table: %v", tableErr)
+		}
+		tableString := buf.String()
+		if idx < (len(tables) - 1) {
+			ui.Print(tableString)
+		} else {
+			ui.Println(tableString)
+		}
+	}
+}
 
 var detectCmd = &cobra.Command{
 	Use:   "detect",
@@ -27,15 +58,9 @@ var detectCmd = &cobra.Command{
 		controllers := hwmon.GetChips()
 
 		// === Print detected devices ===
-		tableConfig := &table.Config{
-			ShowIndex:       false,
-			Color:           !global.NoColor,
-			AlternateColors: true,
-			TitleColorCode:  ansi.ColorCode("white+buf"),
-			AltColorCodes: []string{
-				ansi.ColorCode("white"),
-				ansi.ColorCode("white:236"),
-			},
+
+		if len(controllers) > 0 {
+			ui.Println("=========== hwmon: ============\n")
 		}
 
 		for _, controller := range controllers {
@@ -50,7 +75,7 @@ var detectCmd = &cobra.Command{
 				continue
 			}
 
-			ui.Printfln("> %s", controller.Name)
+			ui.Printfln("> Platform: %s", controller.Name)
 
 			var fanRows [][]string
 			for _, fan := range fanSlice {
@@ -109,24 +134,69 @@ var detectCmd = &cobra.Command{
 				Rows:    sensorRows,
 			}
 
-			tables := []table.Table{fanTable, sensorTable}
+			printTables([]table.Table{fanTable, sensorTable})
+		}
 
-			for idx, table := range tables {
-				if table.Rows == nil {
-					continue
-				}
-				var buf bytes.Buffer
-				tableErr := table.WriteTable(&buf, tableConfig)
-				if tableErr != nil {
-					ui.Fatal("Error printing table: %v", tableErr)
-				}
-				tableString := buf.String()
-				if idx < (len(tables) - 1) {
-					ui.Print(tableString)
-				} else {
-					ui.Println(tableString)
-				}
+		nvControllers := nvidia.GetDevices()
+
+		if len(nvControllers) > 0 {
+			ui.Println("=========== nvidia: ===========\n")
+		}
+
+		for _, ctrl := range nvControllers {
+
+			if len(ctrl.Fans) <= 0 && len(ctrl.Sensors) <= 0 {
+				continue
 			}
+
+			ui.Printfln("> Device: %s", ctrl.Identifier)
+			ui.Printfln("    Name: %s", ctrl.Name)
+
+			var fanRows [][]string
+			for _, fan := range ctrl.Fans {
+				pwmText := "N/A"
+				pwm, err := fan.GetPwm()
+				if err == nil {
+					pwmText = strconv.Itoa(pwm)
+				}
+
+				rpmText := "N/A"
+				rpm, err := fan.GetRpm()
+				if err == nil {
+					rpmText = strconv.Itoa(rpm)
+				}
+
+				isAuto, _ := fan.IsPwmAuto()
+
+				row := []string{
+					"", strconv.Itoa(fan.Index), fan.Label, pwmText, rpmText, fmt.Sprintf("%v", isAuto),
+				}
+				fanRows = append(fanRows, row)
+			}
+			var fanHeaders = []string{"Fans   ", "Index", "Label", "PWM", "RPM", "Auto"}
+			fanTable := table.Table{
+				Headers: fanHeaders,
+				Rows:    fanRows,
+			}
+
+			var sensorRows [][]string
+			for _, sensor := range ctrl.Sensors {
+				value, err := sensor.GetValue()
+				valueText := "N/A"
+				if err == nil {
+					valueText = strconv.Itoa(int(value))
+				}
+
+				row := []string{"", "1", sensor.Label, valueText}
+				sensorRows = append(sensorRows, row)
+			}
+			var sensorHeaders = []string{"Sensors", "Index", "Label", "Value"}
+			sensorTable := table.Table{
+				Headers: sensorHeaders,
+				Rows:    sensorRows,
+			}
+
+			printTables([]table.Table{fanTable, sensorTable})
 		}
 	},
 }
