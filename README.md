@@ -156,7 +156,8 @@ $ fan2go detect
            1      Temperature  59000
 ```
 
-The `hwmon` fan index is based on device enumeration and is not stable for a given fan if hardware configuration changes.
+The `hwmon` fan index is based on device enumeration and is not stable for a given fan if hardware configuration
+changes.
 The Linux kernel hwmon channel is a better identifier for configuration as it is largely based on the fan headers
 in use.
 
@@ -810,6 +811,9 @@ this yourself.
 Another common reason this message can occur is when the driver of the fan in question does not actually support
 setting the PWM directly and uses some kind of virtual PWM instead. This has been a problem mostly on AMD graphics
 cards but is probably not limitied to them. See #64 for more detail.
+
+If you are sure that this warning is not justified, you can disable this check on a per-fan basis.
+See the `sanityCheck` section in the [fan configuration](#advanced-options) for more details.
 
 ## My components are overheating during initialization, what can I do about this?
 
