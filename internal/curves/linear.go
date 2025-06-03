@@ -4,6 +4,7 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 	"math"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -24,12 +25,22 @@ func (c *LinearSpeedCurve) Init() {
 	cfg := c.Config.Linear
 	cfg.FloatSteps = make(map[int]float64)
 
-	for temp, str := range cfg.Steps {
+	for temp, origstr := range cfg.Steps {
+		str := strings.TrimSpace(origstr)
 		l := len(str)
+		isPercent := false
+		if l > 1 && str[l-1] == '%' {
+			isPercent = true
+			str = str[:l-1] // cut off '%' because ParseFloat() wouldn't like it
+		}
 		speed, err := strconv.ParseFloat(str, 64)
 		if err != nil {
-			ui.Warning("Invalid curve step value '%s' in %s", str, c.Config.ID)
+			ui.Warning("Invalid curve step value '%s' in %s", origstr, c.Config.ID)
 		} else {
+			if isPercent {
+				// convert from 1..100 percent to 0..255
+				speed = speed * 2.55
+			}
 			cfg.FloatSteps[temp] = speed
 		}
 	}
