@@ -3,6 +3,9 @@ package curve
 import (
 	"bytes"
 	"fmt"
+	"sort"
+	"strings"
+
 	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/cmd/global"
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -12,8 +15,6 @@ import (
 	"github.com/mgutz/ansi"
 	"github.com/spf13/cobra"
 	"github.com/tomlazar/table"
-	"sort"
-	"strings"
 )
 
 var curveCmd = &cobra.Command{
@@ -70,11 +71,11 @@ func printLinearCurveInfo(curve curves.SpeedCurve, config *configuration.LinearC
 
 	sensorId := config.Sensor
 
-	if config.Steps != nil {
+	if config.FloatSteps != nil {
 		stepMappings := map[int]float64{}
-		sortedStepKeys := util.SortedKeys(config.Steps)
+		sortedStepKeys := util.SortedKeys(config.FloatSteps)
 		for _, x := range sortedStepKeys {
-			y := config.Steps[x]
+			y := config.FloatSteps[x]
 			stepMappings[int(y)] = float64(x)
 		}
 

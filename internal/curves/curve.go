@@ -2,6 +2,7 @@ package curves
 
 import (
 	"fmt"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/util"
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -23,9 +24,11 @@ var (
 
 func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
 	if config.Linear != nil {
-		return &LinearSpeedCurve{
+		ret := &LinearSpeedCurve{
 			Config: config,
-		}, nil
+		}
+		ret.Init()
+		return ret, nil
 	}
 
 	if config.PID != nil {

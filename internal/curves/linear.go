@@ -3,6 +3,7 @@ package curves
 import (
 	"github.com/markusressel/fan2go/internal/ui"
 	"math"
+	"strconv"
 	"sync"
 
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -19,6 +20,21 @@ type LinearSpeedCurve struct {
 	Value  int                       `json:"value"`
 }
 
+func (c *LinearSpeedCurve) Init() {
+	cfg := c.Config.Linear
+	cfg.FloatSteps = make(map[int]float64)
+
+	for temp, str := range cfg.Steps {
+		l := len(str)
+		speed, err := strconv.ParseFloat(str, 64)
+		if err != nil {
+			ui.Warning("Invalid curve step value '%s' in %s", str, c.Config.ID)
+		} else {
+			cfg.FloatSteps[temp] = speed
+		}
+	}
+}
+
 func (c *LinearSpeedCurve) GetId() string {
 	return c.Config.ID
 }
@@ -27,7 +43,7 @@ func (c *LinearSpeedCurve) Evaluate() (value int, err error) {
 	sensor, _ := sensors.GetSensor(c.Config.Linear.Sensor)
 	var avgTemp = sensor.GetMovingAvg()
 
-	steps := c.Config.Linear.Steps
+	steps := c.Config.Linear.FloatSteps
 	if steps != nil {
 		interpolatedCurveValue, err := util.CalculateInterpolatedCurveValue(steps, util.InterpolationTypeLinear, avgTemp/1000)
 		if err != nil {
