@@ -174,7 +174,7 @@ func (fan *NvidiaFan) GetFanRpmCurveData() *map[int]float64 {
 // returns os.ErrInvalid if curveData is void of any data
 func (fan *NvidiaFan) AttachFanRpmCurveData(curveData *map[int]float64) (err error) {
 	if curveData == nil || len(*curveData) <= 0 {
-		ui.Error("Cant attach empty fan curve data to fan %s", fan.GetId())
+		ui.Error("Can't attach empty fan curve data to fan %s", fan.GetId())
 		return os.ErrInvalid
 	}
 

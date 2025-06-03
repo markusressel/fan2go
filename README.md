@@ -256,7 +256,7 @@ fans:
   - id: cmd_fan
     cmd:
       # Command to apply a new PWM value (0..255)
-      # Use "%pwm%" to specify where the target pwm value should be used withing the arguments
+      # Use "%pwm%" to specify where the target pwm value should be used within the arguments
       setPwm:
         exec: /usr/bin/some-program
         args: [ "--set", "%pwm%" ]
@@ -452,7 +452,7 @@ how the curve is applied to the fan.
 
 #### Function
 
-To create more complex curves you can combine exising curves using a curve of type `function`:
+To create more complex curves you can combine existing curves using a curve of type `function`:
 
 ```yaml
 curves:
@@ -650,7 +650,8 @@ statistics:
   port: 9000
 ```
 
-You can then see the metics on [http://localhost:9000/metrics](http://localhost:9000/metrics) while the fan2go daemon is
+You can then see the metrics on [http://localhost:9000/metrics](http://localhost:9000/metrics) while the fan2go daemon
+is
 running.
 
 ## API
@@ -715,7 +716,7 @@ fan is still running, as well as the highest PWM value that still yields a chang
 All of this is saved to a local database (path given by the `dbPath` config option), so it is only needed once per fan
 configuration.
 
-To reduce the risk of runnin the whole system on low fan speeds for such a long period of time, you can force fan2go to
+To reduce the risk of running the whole system on low fan speeds for such a long period of time, you can force fan2go to
 initialize only one fan at a time, using the `runFanInitializationInParallel: false` config option.
 
 Some PWM controllers or fans may require more time to react to PWM changes. If fan2go is failing to characterize a fan,
@@ -810,7 +811,7 @@ this yourself.
 
 Another common reason this message can occur is when the driver of the fan in question does not actually support
 setting the PWM directly and uses some kind of virtual PWM instead. This has been a problem mostly on AMD graphics
-cards but is probably not limitied to them. See #64 for more detail.
+cards but is probably not limited to them. See #64 for more detail.
 
 If you are sure that this warning is not justified, you can disable this check on a per-fan basis.
 See the `sanityCheck` section in the [fan configuration](#advanced-options) for more details.

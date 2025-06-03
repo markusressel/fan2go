@@ -127,7 +127,7 @@ func GetDeviceID(device nvml.Device) string {
 	}
 	pciVendorID := uint16(pciInfo.PciDeviceId & 0xFFFF)
 	pciDeviceID := uint16((pciInfo.PciDeviceId >> 16) & 0xFFFF)
-	// NOTE: libsensor PCI adresses also add a PCI "function" to this. At the moment I don't think
+	// NOTE: libsensor PCI addresses also add a PCI "function" to this. At the moment I don't think
 	//  that this is needed here (for the GPU it seems to be always 0, though for the HDMI soundcard
 	//  integrated in the GPU it's 1, but that's not relevant here), so I leave it out.
 	//  If it turns out to be needed after all, it could be parsed from the last part of pciInfo.BusId
