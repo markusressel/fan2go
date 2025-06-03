@@ -837,7 +837,7 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
 			continue
 		}
 		time.Sleep(configuration.CurrentConfig.FanController.PwmSetDelay)
-		pwm, err := f.getPwm()
+		pwm, err := f.fan.GetPwm()
 		if err != nil {
 			ui.Warning("Error reading PWM value of fan %s: %v", f.fan.GetId(), err)
 			continue
