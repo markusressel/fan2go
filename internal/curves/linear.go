@@ -50,6 +50,7 @@ func (c *LinearSpeedCurve) GetId() string {
 	return c.Config.ID
 }
 
+// FIXME: value should be a float - it gets interpolated anyway!
 func (c *LinearSpeedCurve) Evaluate() (value int, err error) {
 	sensor, _ := sensors.GetSensor(c.Config.Linear.Sensor)
 	var avgTemp = sensor.GetMovingAvg()
