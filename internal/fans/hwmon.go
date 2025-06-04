@@ -21,6 +21,10 @@ type HwMonFan struct {
 	FanCurveData *map[int]float64        `json:"fanCurveData"`
 	Rpm          int                     `json:"rpm"`
 	Pwm          int                     `json:"pwm"`
+
+	// lastKnownAutomaticControlMode stores the last known automatic control mode value (pwm_enable) for this fan.
+	// This value is used when fan2go requests to set the control mode to automatic.
+	lastKnownAutomaticControlMode *int
 }
 
 func (fan *HwMonFan) GetId() string {
@@ -156,13 +160,18 @@ func (fan *HwMonFan) GetControlMode() (ControlMode, error) {
 		return ControlModeUnknown, fmt.Errorf("error reading pwm_enable for fan %s: %w", fan.GetId(), err)
 	}
 
+	if pwmEnabledValue >= 2 {
+		// if we have a pwm_enable value >= 2, store it as the last known automatic control mode
+		// so that we can use it when setting the control mode to automatic later
+		fan.lastKnownAutomaticControlMode = &pwmEnabledValue
+		return ControlModeAutomatic, nil
+	}
+
 	switch pwmEnabledValue {
 	case 0:
 		return ControlModeDisabled, nil
 	case 1:
 		return ControlModePWM, nil
-	case 2:
-		return ControlModeAutomatic, nil
 	default:
 		return ControlModeUnknown, fmt.Errorf("cannot map pwm_enable value %d to ControlMode for fan %s", pwmEnabledValue, fan.GetId())
 	}
@@ -185,16 +194,19 @@ func (fan *HwMonFan) IsPwmAuto() (bool, error) {
 // 0 - no control (results in max speed)
 // 1 - manual pwm control
 // 2 - motherboard pwm control
+//
+// Note that not all drivers only use values in [0, 1, 2].
+// F.ex. the "nct6775" driver, which is used for the "nct6798" chip uses:
+// 0 - Fan control disabled (fans set to maximum speed)
+// 1 - Manual mode, write to pwm[0-5] any value 0-255
+// 2 - "Thermal Cruise" mode (set target temperature in pwm[1-7]_target_temp and pwm[1-7]_target_temp_tolerance)
+// 3 - "Fan Speed Cruise" mode (set target fan speed with fan[1-7]_target and fan[1-7]_tolerance)
+// 4 - "Smart Fan III" mode (NCT6775F only) (presumably similar to 5)
+// 5 - "Smart Fan IV" mode (uses a configurable curve)
+//
+// Any value >= 2 will be considered as "automatic control mode" by fan2go,
+// and will be stored as the last known automatic control mode for this fan.
 func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
-	// TODO: not all hwmon drivers use these values
-	// f.ex. the "nct6775" driver, which is used for the "nct6798" chip uses:
-	// 0 - Fan control disabled (fans set to maximum speed)
-	// 1 - Manual mode, write to pwm[0-5] any value 0-255
-	// 2 - "Thermal Cruise" mode (set target temperature in pwm[1-7]_target_temp and pwm[1-7]_target_temp_tolerance)
-	// 3 - "Fan Speed Cruise" mode (set target fan speed with fan[1-7]_target and fan[1-7]_tolerance)
-	// 4 - "Smart Fan III" mode (NCT6775F only) (presumably similar to 5)
-	// 5 - "Smart Fan IV" mode (uses a configurable curve)
-
 	var pwmEnabledValue int
 	switch value {
 	case ControlModeDisabled:
@@ -202,7 +214,14 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 	case ControlModePWM:
 		pwmEnabledValue = 1
 	case ControlModeAutomatic:
-		pwmEnabledValue = 2
+		if fan.lastKnownAutomaticControlMode != nil {
+			// if we have a last known automatic control mode, use that
+			pwmEnabledValue = *fan.lastKnownAutomaticControlMode
+		} else {
+			// otherwise assume 2 as default for automatic control
+			ui.Warning("No last known automatic control mode for fan '%s', assuming 2 (automatic control)", fan.GetId())
+			pwmEnabledValue = 2
+		}
 	}
 
 	err = util.WriteIntToFile(pwmEnabledValue, fan.Config.HwMon.PwmEnablePath)

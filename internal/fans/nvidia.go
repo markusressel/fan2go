@@ -32,7 +32,7 @@ type NvidiaFan struct {
 	rawDevice nvidia_base.RawNvmlDevice
 }
 
-// helper function to turn an nvml error/return code into a go error
+// helper function to turn a nvml error/return code into a go error
 // (also handles success by returning nil)
 func nvError(errCode nvml.Return) error {
 	if errCode == nvml.SUCCESS {
@@ -168,10 +168,6 @@ func (fan *NvidiaFan) GetFanRpmCurveData() *map[int]float64 {
 	return fan.FanCurveData
 }
 
-// AttachFanCurveData attaches fan curve data from persistence to a fan
-// Note: When the given data is incomplete, all values up until the highest
-// value in the given dataset will be interpolated linearly
-// returns os.ErrInvalid if curveData is void of any data
 func (fan *NvidiaFan) AttachFanRpmCurveData(curveData *map[int]float64) (err error) {
 	if curveData == nil || len(*curveData) <= 0 {
 		ui.Error("Can't attach empty fan curve data to fan %s", fan.GetId())
@@ -230,7 +226,6 @@ func (fan *NvidiaFan) IsPwmAuto() (bool, error) {
 	return value == ControlModeAutomatic, nil
 }
 
-// enables given control mode on this fan
 func (fan *NvidiaFan) SetControlMode(value ControlMode) (err error) {
 	device := fan.device
 	fanIdx := fan.getNvFanIndex()
@@ -262,13 +257,13 @@ func (fan *NvidiaFan) Supports(feature FeatureFlag) bool {
 	case FeatureControlMode:
 		return fan.CanSetControlMode
 	case FeaturePwmSensor:
-		// TODO: ugly workaround. Not allowing to read the PWM sensor works around an issue in
-		// `fan init`, in the first step where it rapidly sets and gets all PWM values, which doesn't
-		// work well for NvidiaFan, because device.GetFanSpeed_v2(), used by GetPwm(), returns the
-		// *current* fan speed (in percent), so it only returns the correct value after the fan had
-		// time to spin up/down (and even then it might be off by 1 or so due to speed fluctuations)
+		// As of today, Nvidia's driver implementation returns a dynamic PWM value based on the
+		// current RPM value of the fan (the current approximate measured fan speed in percent). This is not useful
+		// for fan2go, because it expects the PWM value to reflect the value that has last been set. This is necessary
+		// for the calculation of the setPwmToGetPwmMap, and the "pwmValueChangedByThirdParty" sanity check.
+		// Since the value is not useful for fan2go, we ignore it, even though it technically exists and contains
+		// actual data.
 		return false
-		//return fan.CanReadPWM
 	case FeatureRpmSensor:
 		return fan.CanReadRPM
 	}
