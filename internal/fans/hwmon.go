@@ -194,16 +194,19 @@ func (fan *HwMonFan) IsPwmAuto() (bool, error) {
 // 0 - no control (results in max speed)
 // 1 - manual pwm control
 // 2 - motherboard pwm control
+//
+// Note that not all drivers only use values in [0, 1, 2].
+// F.ex. the "nct6775" driver, which is used for the "nct6798" chip uses:
+// 0 - Fan control disabled (fans set to maximum speed)
+// 1 - Manual mode, write to pwm[0-5] any value 0-255
+// 2 - "Thermal Cruise" mode (set target temperature in pwm[1-7]_target_temp and pwm[1-7]_target_temp_tolerance)
+// 3 - "Fan Speed Cruise" mode (set target fan speed with fan[1-7]_target and fan[1-7]_tolerance)
+// 4 - "Smart Fan III" mode (NCT6775F only) (presumably similar to 5)
+// 5 - "Smart Fan IV" mode (uses a configurable curve)
+//
+// Any value >= 2 will be considered as "automatic control mode" by fan2go,
+// and will be stored as the last known automatic control mode for this fan.
 func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
-	// TODO: not all hwmon drivers use these values
-	// f.ex. the "nct6775" driver, which is used for the "nct6798" chip uses:
-	// 0 - Fan control disabled (fans set to maximum speed)
-	// 1 - Manual mode, write to pwm[0-5] any value 0-255
-	// 2 - "Thermal Cruise" mode (set target temperature in pwm[1-7]_target_temp and pwm[1-7]_target_temp_tolerance)
-	// 3 - "Fan Speed Cruise" mode (set target fan speed with fan[1-7]_target and fan[1-7]_tolerance)
-	// 4 - "Smart Fan III" mode (NCT6775F only) (presumably similar to 5)
-	// 5 - "Smart Fan IV" mode (uses a configurable curve)
-
 	var pwmEnabledValue int
 	switch value {
 	case ControlModeDisabled:
