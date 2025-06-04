@@ -17,9 +17,9 @@ type LinearCurveConfig struct {
 	Min int `json:"min"`
 	// Max is the maximum temperature in degrees
 	Max int `json:"max"`
-	// Steps is a map of temperature to relative speed value (in range of 0..255)
+	// Steps is a map of temperature to relative speed value (in range of 0..255 or alternatively 0%..100%)
 	Steps      map[int]string
-	FloatSteps map[int]float64 `json:"steps"` // FIXME: what is `json:"steps"` used for? should it be here or on Steps?
+	FloatSteps map[int]float64 `json:"steps"` // TODO: what is `json:"steps"` used for? should it be here or on Steps?
 }
 
 type PidCurveConfig struct {
