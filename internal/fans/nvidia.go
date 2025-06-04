@@ -218,14 +218,6 @@ func (fan *NvidiaFan) GetControlMode() (ControlMode, error) {
 	return ctrlMode, nil
 }
 
-func (fan *NvidiaFan) IsPwmAuto() (bool, error) {
-	value, err := fan.GetControlMode()
-	if err != nil {
-		return true, err // assume auto control by default
-	}
-	return value == ControlModeAutomatic, nil
-}
-
 func (fan *NvidiaFan) SetControlMode(value ControlMode) (err error) {
 	device := fan.device
 	fanIdx := fan.getNvFanIndex()

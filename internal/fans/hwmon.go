@@ -177,14 +177,6 @@ func (fan *HwMonFan) GetControlMode() (ControlMode, error) {
 	}
 }
 
-func (fan *HwMonFan) IsPwmAuto() (bool, error) {
-	value, err := fan.GetControlMode()
-	if err != nil {
-		return false, err
-	}
-	return value > 1, nil
-}
-
 // SetControlMode writes the given value to pwmX_enable
 //
 // The values that are supported for pwmX_enable depend on the

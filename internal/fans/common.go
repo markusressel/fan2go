@@ -83,8 +83,6 @@ type Fan interface {
 	GetControlMode() (ControlMode, error)
 	// SetControlMode sets the ControlMode of this fan
 	SetControlMode(value ControlMode) (err error)
-	// IsPwmAuto indicates whether this fan is in "Auto" mode
-	IsPwmAuto() (bool, error)
 
 	GetConfig() configuration.FanConfig
 

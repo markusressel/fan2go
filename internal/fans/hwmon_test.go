@@ -358,31 +358,6 @@ func TestHwMonFan_GetControlMode(t *testing.T) {
 	assert.Equal(t, expected, ControlMode(result))
 }
 
-func TestHwMonFan_IsPwmAuto(t *testing.T) {
-	// GIVEN
-	pwmEnabledPath := "./file_fan_pwm_enabled"
-	defer func(name string) {
-		_ = os.Remove(name)
-	}(pwmEnabledPath)
-
-	fan := HwMonFan{
-		Config: configuration.FanConfig{
-			HwMon: &configuration.HwMonFanConfig{
-				PwmEnablePath: pwmEnabledPath,
-			},
-		},
-	}
-	err := fan.SetControlMode(ControlModeAutomatic)
-	assert.NoError(t, err)
-
-	// WHEN
-	result, err := fan.IsPwmAuto()
-
-	// THEN
-	assert.NoError(t, err)
-	assert.Equal(t, true, result)
-}
-
 func TestHwMonFan_Supports_ControlMode(t *testing.T) {
 	// GIVEN
 	pwmEnabledPath := "./file_fan_pwm_enabled"

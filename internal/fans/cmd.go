@@ -145,10 +145,6 @@ func (fan *CmdFan) SetControlMode(value ControlMode) (err error) {
 	return nil
 }
 
-func (fan *CmdFan) IsPwmAuto() (bool, error) {
-	return true, nil
-}
-
 func (fan *CmdFan) GetConfig() configuration.FanConfig {
 	return fan.Config
 }
