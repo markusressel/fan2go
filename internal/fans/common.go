@@ -68,6 +68,7 @@ type Fan interface {
 	// GetFanRpmCurveData returns the fan curve data for this fan
 	GetFanRpmCurveData() *map[int]float64
 	// AttachFanRpmCurveData attaches a complete set of PWM -> RPM mapping values to this fan
+	// returns os.ErrInvalid if curveData is void of any data
 	AttachFanRpmCurveData(curveData *map[int]float64) (err error)
 	// UpdateFanRpmCurveValue updates a single PWM -> RPM mapping value
 	UpdateFanRpmCurveValue(pwm int, rpm float64)
