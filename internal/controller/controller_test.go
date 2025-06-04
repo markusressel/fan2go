@@ -143,10 +143,6 @@ func (fan *MockFan) SetControlMode(value fans.ControlMode) (err error) {
 	return nil
 }
 
-func (fan MockFan) IsPwmAuto() (bool, error) {
-	panic("implement me")
-}
-
 func (fan MockFan) GetId() string {
 	return fan.ID
 }
@@ -858,10 +854,6 @@ func (fan MockFanWithOffsetPwm) GetControlMode() (fans.ControlMode, error) {
 func (fan *MockFanWithOffsetPwm) SetControlMode(value fans.ControlMode) (err error) {
 	fan.ControlMode = value
 	return nil
-}
-
-func (fan MockFanWithOffsetPwm) IsPwmAuto() (bool, error) {
-	panic("implement me")
 }
 
 func (fan MockFanWithOffsetPwm) GetId() string {

@@ -93,12 +93,18 @@ var detectCmd = &cobra.Command{
 					}
 				}
 
-				isAuto, _ := fan.IsPwmAuto()
+				controlModeText := "N/A"
+				if fan.Supports(fans.FeatureControlMode) {
+					controlMode, err := fan.GetControlMode()
+					if err == nil {
+						controlModeText = controlModeToString(controlMode)
+					}
+				}
 				fanRows = append(fanRows, []string{
-					"", strconv.Itoa(fan.Index), strconv.Itoa(fan.Config.HwMon.RpmChannel), fan.Label, rpmText, pwmText, fmt.Sprintf("%v", isAuto),
+					"", strconv.Itoa(fan.Index), strconv.Itoa(fan.Config.HwMon.RpmChannel), fan.Label, rpmText, pwmText, fmt.Sprintf("%v", controlModeText),
 				})
 			}
-			var fanHeaders = []string{"Fans   ", "Index", "Channel", "Label", "RPM", "PWM", "Auto"}
+			var fanHeaders = []string{"Fans   ", "Index", "Channel", "Label", "RPM", "PWM", "Mode"}
 
 			fanTable := table.Table{
 				Headers: fanHeaders,
@@ -166,14 +172,19 @@ var detectCmd = &cobra.Command{
 					rpmText = strconv.Itoa(rpm)
 				}
 
-				isAuto, _ := fan.IsPwmAuto()
-
+				controlModeText := "N/A"
+				if fan.Supports(fans.FeatureControlMode) {
+					controlMode, err := fan.GetControlMode()
+					if err == nil {
+						controlModeText = controlModeToString(controlMode)
+					}
+				}
 				row := []string{
-					"", strconv.Itoa(fan.Index), fan.Label, pwmText, rpmText, fmt.Sprintf("%v", isAuto),
+					"", strconv.Itoa(fan.Index), fan.Label, pwmText, rpmText, fmt.Sprintf("%v", controlModeText),
 				}
 				fanRows = append(fanRows, row)
 			}
-			var fanHeaders = []string{"Fans   ", "Index", "Label", "PWM", "RPM", "Auto"}
+			var fanHeaders = []string{"Fans   ", "Index", "Label", "PWM", "RPM", "Mode"}
 			fanTable := table.Table{
 				Headers: fanHeaders,
 				Rows:    fanRows,
@@ -199,6 +210,20 @@ var detectCmd = &cobra.Command{
 			printTables([]table.Table{fanTable, sensorTable})
 		}
 	},
+}
+
+func controlModeToString(mode fans.ControlMode) string {
+	switch mode {
+	case fans.ControlModeAutomatic:
+		return "Auto"
+	case fans.ControlModePWM:
+		return "Manual"
+	case fans.ControlModeDisabled:
+		return "Disabled"
+	default:
+		return "Unknown"
+	}
+
 }
 
 func init() {

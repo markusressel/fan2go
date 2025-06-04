@@ -426,25 +426,6 @@ func TestFileFan_SetPwmEnabled(t *testing.T) {
 	assert.Equal(t, ControlModePWM, result)
 }
 
-func TestFileFan_IsPwmAuto(t *testing.T) {
-	// GIVEN
-	config := configuration.FanConfig{
-		File: &configuration.FileFanConfig{
-			Path:    "../../test/file_fan_pwm",
-			RpmPath: "../../test/file_fan_rpm",
-		},
-	}
-
-	fan, _ := NewFan(config)
-
-	// WHEN
-	result, err := fan.IsPwmAuto()
-
-	// THEN
-	assert.NoError(t, err)
-	assert.Equal(t, true, result)
-}
-
 func TestFileFan_Supports_ControlMode(t *testing.T) {
 	// GIVEN
 	config := configuration.FanConfig{
