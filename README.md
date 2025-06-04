@@ -130,17 +130,17 @@ $ fan2go detect
 =========== hwmon: ============
 
 > Platform: nct6798-isa-0290
- Fans     Index  Channel  Label        RPM   PWM  Auto
-          1      1        hwmon4/fan1  0     153  false
-          2      2        hwmon4/fan2  1223  104  false
-          3      3        hwmon4/fan3  677   107  false
+ Fans     Index  Channel  Label        RPM   PWM  Mode
+          1      1        hwmon4/fan1  0     153  Manual
+          2      2        hwmon4/fan2  1223  104  Manual
+          3      3        hwmon4/fan3  677   107  Manual
  Sensors   Index   Label    Value
            1       SYSTIN   41000
            2       CPUTIN   64000
 
 > Platform: amdgpu-pci-0031
- Fans     Index  Channel  Label        RPM   PWM  Auto
-          1      1        hwmon8/fan1  561   43   false
+ Fans     Index  Channel  Label        RPM   PWM  Mode
+          1      1        hwmon8/fan1  561   43   Manual
  Sensors   Index   Label      Value
            1       edge       58000
            2       junction   61000
@@ -149,9 +149,9 @@ $ fan2go detect
 =========== nvidia: ===========
 
 > Device: nvidia-10DE2489-0800
-  Fans     Index  Label  PWM  RPM   Auto
-           1      Fan 1  36   1300  true
-           2      Fan 2  36   1298  true
+  Fans     Index  Label  PWM  RPM   Mode
+           1      Fan 1  36   1300  Auto
+           2      Fan 2  36   1298  Auto
   Sensors  Index  Label        Value
            1      Temperature  59000
 ```
