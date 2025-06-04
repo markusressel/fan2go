@@ -368,6 +368,7 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 		}
 	}
 
+	// FIXME: does this really have to be called each time Pwm is set?!
 	_ = trySetManualPwm(f.fan)
 	err = f.setPwm(target)
 	if err != nil {
@@ -530,6 +531,7 @@ func (f *DefaultFanController) restoreControlMode() {
 // Calculates the next pwm for the fan of this controller by
 // - evaluating the associated curve
 // - cycling the control loop
+// FIXME: target should be a float
 func (f *DefaultFanController) calculateTargetPwm() (int, error) {
 	fan := f.fan
 	target, err := f.curve.Evaluate()
