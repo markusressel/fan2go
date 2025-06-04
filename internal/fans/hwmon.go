@@ -21,6 +21,10 @@ type HwMonFan struct {
 	FanCurveData *map[int]float64        `json:"fanCurveData"`
 	Rpm          int                     `json:"rpm"`
 	Pwm          int                     `json:"pwm"`
+
+	// lastKnownAutomaticControlMode stores the last known automatic control mode value (pwm_enable) for this fan.
+	// This value is used when fan2go requests to set the control mode to automatic.
+	lastKnownAutomaticControlMode *int
 }
 
 func (fan *HwMonFan) GetId() string {
@@ -156,13 +160,18 @@ func (fan *HwMonFan) GetControlMode() (ControlMode, error) {
 		return ControlModeUnknown, fmt.Errorf("error reading pwm_enable for fan %s: %w", fan.GetId(), err)
 	}
 
+	if pwmEnabledValue >= 2 {
+		// if we have a pwm_enable value >= 2, store it as the last known automatic control mode
+		// so that we can use it when setting the control mode to automatic later
+		fan.lastKnownAutomaticControlMode = &pwmEnabledValue
+		return ControlModeAutomatic, nil
+	}
+
 	switch pwmEnabledValue {
 	case 0:
 		return ControlModeDisabled, nil
 	case 1:
 		return ControlModePWM, nil
-	case 2:
-		return ControlModeAutomatic, nil
 	default:
 		return ControlModeUnknown, fmt.Errorf("cannot map pwm_enable value %d to ControlMode for fan %s", pwmEnabledValue, fan.GetId())
 	}
@@ -202,7 +211,14 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 	case ControlModePWM:
 		pwmEnabledValue = 1
 	case ControlModeAutomatic:
-		pwmEnabledValue = 2
+		if fan.lastKnownAutomaticControlMode != nil {
+			// if we have a last known automatic control mode, use that
+			pwmEnabledValue = *fan.lastKnownAutomaticControlMode
+		} else {
+			// otherwise assume 2 as default for automatic control
+			ui.Warning("No last known automatic control mode for fan '%s', assuming 2 (automatic control)", fan.GetId())
+			pwmEnabledValue = 2
+		}
 	}
 
 	err = util.WriteIntToFile(pwmEnabledValue, fan.Config.HwMon.PwmEnablePath)
