@@ -230,7 +230,6 @@ func (fan *NvidiaFan) IsPwmAuto() (bool, error) {
 	return value == ControlModeAutomatic, nil
 }
 
-// enables given control mode on this fan
 func (fan *NvidiaFan) SetControlMode(value ControlMode) (err error) {
 	device := fan.device
 	fanIdx := fan.getNvFanIndex()
