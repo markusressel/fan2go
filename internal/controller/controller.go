@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/markusressel/fan2go/internal/control_loop"
 	"golang.org/x/exp/maps"
 	"math"
@@ -694,30 +693,9 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 
 	var configOverride *map[int]int
 
-	switch f := f.fan.(type) {
-	case *fans.HwMonFan:
-		c := f.Config.PwmMap
-		if c != nil {
-			configOverride = c
-		}
-	case *fans.CmdFan:
-		c := f.Config.PwmMap
-		if c != nil {
-			configOverride = c
-		}
-	case *fans.FileFan:
-		c := f.Config.PwmMap
-		if c != nil {
-			configOverride = c
-		}
-	case *fans.NvidiaFan:
-		c := f.Config.PwmMap
-		if c != nil {
-			configOverride = c
-		}
-	default:
-		// if type is other than above
-		fmt.Println("Type is unknown!")
+	c := f.fan.GetConfig().PwmMap
+	if c != nil {
+		configOverride = c
 	}
 
 	if configOverride != nil {
