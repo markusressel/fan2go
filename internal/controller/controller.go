@@ -329,26 +329,35 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 	// map the target value to the possible range of this fan
 	maxPwm := fan.GetMaxPwm()
 	minPwm := fan.GetMinPwm()
+	shouldNeverStop := fan.ShouldNeverStop()
 
+	// TODO: in theory even pwmTarget could be a float, because f.setPwm() looks for the closest value
+	//       in the pwm map and uses that
 	var pwmTarget int
 
-	shouldNeverStop := fan.ShouldNeverStop()
-	if target < 1.0 && !shouldNeverStop {
-		// if the fan is allowed to stop and the calculated target is about 0, just set PWM 0
-		pwmTarget = 0
-	} else {
-		// other target values are mapped to minPwm..maxPwm
-		// adjust the target value determined by the control algorithm to the operational needs
-		// of the fan, which includes its supported pwm range (which might be different from [0..255])
-		pwmTarget = minPwm + int(math.Round((target/fans.MaxPwmValue)*float64(maxPwm-minPwm)))
-		// TODO: in theory even pwmTarget could be a float, because f.setPwm() looks for the closest value
-		//       in the pwm map and uses that
-
-		// if a minPwmOffset has been calculated (because the fan didn't start spinning at the
-		// configured MinPwm) add it to the pwmTarget
-		if shouldNeverStop && pwmTarget < minPwm+f.minPwmOffset {
-			pwmTarget = minPwm + f.minPwmOffset
+	if fan.GetConfig().UseUnscaledCurveValues {
+		pwmTarget = int(math.Round(target))
+		if pwmTarget > 0 && pwmTarget < minPwm {
+			// the fan wouldn't spin with this PWM value anyway, so set 0 instead
+			// (might be better for the hardware and preserve energy)
+			pwmTarget = 0
 		}
+	} else {
+		if target < 1.0 && !shouldNeverStop {
+			// if the fan is allowed to stop and the calculated target is about 0, just set PWM 0
+			pwmTarget = 0
+		} else {
+			// other target values are mapped to minPwm..maxPwm
+			// adjust the target value determined by the control algorithm to the operational needs
+			// of the fan, which includes its supported pwm range (which might be different from [0..255])
+			pwmTarget = minPwm + int(math.Round((target/fans.MaxPwmValue)*float64(maxPwm-minPwm)))
+		}
+	}
+
+	// if this fan should never stop, make sure its target is always at least minPwm+f.minPwmOffset
+	// (f.minPwmOffset is usually 0, but if the fan doesn't start at MinPwm it gets increased)
+	if shouldNeverStop && pwmTarget < minPwm+f.minPwmOffset {
+		pwmTarget = minPwm + f.minPwmOffset
 	}
 
 	if fan.Supports(fans.FeatureRpmSensor) {
