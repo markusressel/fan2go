@@ -312,17 +312,17 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 	f.ensureNoThirdPartyIsMessingWithUs()
 
 	// calculate the direct optimal target speed
-	target, err := f.calculateTargetPwm()
+	target, err := f.calculateTargetSpeed()
 	if err != nil {
 		return err
 	}
 
 	// ensure target value is within bounds of possible values
 	if target > fans.MaxPwmValue {
-		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", target, fan.GetId())
+		ui.Warning("Tried to set out-of-bounds PWM value %.2f on fan %s", target, fan.GetId())
 		target = fans.MaxPwmValue
 	} else if target < fans.MinPwmValue {
-		ui.Warning("Tried to set out-of-bounds PWM value %d on fan %s", target, fan.GetId())
+		ui.Warning("Tried to set out-of-bounds PWM value %.2f on fan %s", target, fan.GetId())
 		target = fans.MinPwmValue
 	}
 
@@ -332,7 +332,9 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 
 	// adjust the target value determined by the control algorithm to the operational needs
 	// of the fan, which includes its supported pwm range (which might be different from [0..255])
-	target = minPwm + int((float64(target)/fans.MaxPwmValue)*(float64(maxPwm)-float64(minPwm)))
+	var pwmTarget int = minPwm + int(math.Round((target/fans.MaxPwmValue)*float64(maxPwm-minPwm)))
+	// TODO: in theory even pwmTarget could be a float, because f.setPwm() looks for the closest value
+	//       in the pwm map and uses that
 
 	if fan.Supports(fans.FeatureRpmSensor) {
 		// make sure fans never stop by validating the current RPM
@@ -345,11 +347,11 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 			if err != nil {
 				ui.Warning("Error reading last set PWM value of fan %s: %v", fan.GetId(), err)
 			}
-			lastSetTargetEqualsNewTarget := lastTarget == target
-			if shouldNeverStop && lastSetTargetEqualsNewTarget {
+			lastSetTargetEqualsNewTarget := lastTarget == pwmTarget
+			if shouldNeverStop && lastSetTargetEqualsNewTarget { // TODO: also check if fan supports reading RPM?
 				avgRpm := fan.GetRpmAvg()
 				if avgRpm <= 0 {
-					if target >= maxPwm {
+					if pwmTarget >= maxPwm {
 						ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), int(avgRpm), lastSetPwm)
 						return ErrFanStalledAtMaxPwm
 					}
@@ -358,7 +360,7 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 						fan.GetId(), oldMinPwm, oldMinPwm+1, int(avgRpm), lastSetPwm)
 					f.increaseMinPwmOffset()
 					fan.SetMinPwm(f.minPwmOffset, true)
-					target++
+					pwmTarget++
 
 					// set the moving avg to a value > 0 to prevent
 					// this increase from happening too fast
@@ -370,7 +372,7 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 
 	// FIXME: does this really have to be called each time Pwm is set?!
 	_ = trySetManualPwm(f.fan)
-	err = f.setPwm(target)
+	err = f.setPwm(pwmTarget)
 	if err != nil {
 		// TODO: maybe we should add some kind of critical failure mode here
 		//  in case these errors don't resolve after a while
@@ -528,15 +530,14 @@ func (f *DefaultFanController) restoreControlMode() {
 	}
 }
 
-// Calculates the next pwm for the fan of this controller by
+// Calculates the next speed for the fan of this controller by
 // - evaluating the associated curve
 // - cycling the control loop
-// FIXME: target should be a float
-func (f *DefaultFanController) calculateTargetPwm() (int, error) {
+func (f *DefaultFanController) calculateTargetSpeed() (float64, error) {
 	fan := f.fan
 	target, err := f.curve.Evaluate()
 	if err != nil {
-		ui.Fatal("Unable to calculate optimal PWM value for %s: %v", fan.GetId(), err)
+		ui.Fatal("Unable to calculate optimal speed value for %s: %v", fan.GetId(), err)
 	}
 
 	// the new target speed to set, which approaches the actual target based on the control loop

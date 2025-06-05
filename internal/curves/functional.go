@@ -8,21 +8,21 @@ import (
 
 type FunctionSpeedCurve struct {
 	Config configuration.CurveConfig `json:"config"`
-	Value  int                       `json:"value"`
+	Value  float64                   `json:"value"`
 }
 
 func (c *FunctionSpeedCurve) GetId() string {
 	return c.Config.ID
 }
 
-func (c *FunctionSpeedCurve) Evaluate() (value int, err error) {
+func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
 	var curves []SpeedCurve
 	for _, curveId := range c.Config.Function.Curves {
 		curve, _ := GetSpeedCurve(curveId)
 		curves = append(curves, curve)
 	}
 
-	var values []int
+	var values []float64
 	for _, curve := range curves {
 		// TODO: if the curve is also used in another fan controller, this will cause multiple calls to Evaluate
 		//  which messes up the algorithm since the controller expects that the curve is evaluated only
@@ -41,13 +41,13 @@ func (c *FunctionSpeedCurve) Evaluate() (value int, err error) {
 
 	switch c.Config.Function.Type {
 	case configuration.FunctionSum:
-		sum := 0
+		sum := 0.0
 		for _, v := range values {
 			sum += v
 		}
-		value = int(math.Min(255, float64(sum)))
+		value = math.Min(255, sum)
 	case configuration.FunctionDifference:
-		difference := 0
+		difference := 0.0
 		for idx, v := range values {
 			if idx == 0 {
 				difference = v
@@ -55,51 +55,51 @@ func (c *FunctionSpeedCurve) Evaluate() (value int, err error) {
 				difference -= v
 			}
 		}
-		value = int(math.Max(0, float64(difference)))
+		value = math.Max(0, difference)
 	case configuration.FunctionDelta:
-		var dmax = float64(values[0])
-		var dmin = float64(values[0])
+		var dmax = values[0]
+		var dmin = values[0]
 		for _, v := range values {
-			dmin = math.Min(dmin, float64(v))
-			dmax = math.Max(dmax, float64(v))
+			dmin = math.Min(dmin, v)
+			dmax = math.Max(dmax, v)
 		}
 		delta := dmax - dmin
-		value = int(delta)
+		value = delta
 	case configuration.FunctionMinimum:
 		var min float64 = 255
 		for _, v := range values {
-			min = math.Min(min, float64(v))
+			min = math.Min(min, v)
 		}
-		value = int(min)
+		value = min
 	case configuration.FunctionMaximum:
 		var max float64
 		for _, v := range values {
 			max = math.Max(max, float64(v))
 		}
-		value = int(max)
+		value = max
 	case configuration.FunctionAverage:
-		var total = 0
+		var total = 0.0
 		for _, v := range values {
 			total += v
 		}
-		avg := total / len(curves)
+		avg := total / float64(len(curves))
 		value = avg
 	default:
 		ui.Fatal("Unknown curve function: %s", c.Config.Function.Type)
 	}
 
-	ui.Debug("Evaluating curve '%s'. Curve values: '%v' Desired PWM: %d", c.Config.ID, values, value)
+	ui.Debug("Evaluating curve '%s'. Curve values: '%v' Desired speed: %.2f", c.Config.ID, values, value)
 	c.SetValue(value)
 	return value, err
 }
 
-func (c *FunctionSpeedCurve) SetValue(value int) {
+func (c *FunctionSpeedCurve) SetValue(value float64) {
 	valueMu.Lock()
 	defer valueMu.Unlock()
 	c.Value = value
 }
 
-func (c *FunctionSpeedCurve) CurrentValue() int {
+func (c *FunctionSpeedCurve) CurrentValue() float64 {
 	valueMu.Lock()
 	defer valueMu.Unlock()
 	return c.Value
