@@ -45,7 +45,7 @@ type Fan interface {
 	GetId() string
 
 	// GetMinPwm returns the lowest PWM value where the fans are still spinning, when spinning previously
-	// FIXME: no it doesn't, or only if fan.ShouldNeverStop()
+	// (unless configured otherwise for this fan in fan2go.yaml)
 	GetMinPwm() int
 	SetMinPwm(pwm int, force bool)
 
