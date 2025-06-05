@@ -332,7 +332,7 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 
 	// adjust the target value determined by the control algorithm to the operational needs
 	// of the fan, which includes its supported pwm range (which might be different from [0..255])
-	var pwmTarget int = minPwm + int(math.Round((target/fans.MaxPwmValue)*float64(maxPwm-minPwm)))
+	pwmTarget := minPwm + int(math.Round((target/fans.MaxPwmValue)*float64(maxPwm-minPwm)))
 	// TODO: in theory even pwmTarget could be a float, because f.setPwm() looks for the closest value
 	//       in the pwm map and uses that
 
