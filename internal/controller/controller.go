@@ -328,18 +328,32 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 
 	// map the target value to the possible range of this fan
 	maxPwm := fan.GetMaxPwm()
-	minPwm := fan.GetMinPwm() + f.minPwmOffset
+	minPwm := fan.GetMinPwm()
 
-	// adjust the target value determined by the control algorithm to the operational needs
-	// of the fan, which includes its supported pwm range (which might be different from [0..255])
-	pwmTarget := minPwm + int(math.Round((target/fans.MaxPwmValue)*float64(maxPwm-minPwm)))
-	// TODO: in theory even pwmTarget could be a float, because f.setPwm() looks for the closest value
-	//       in the pwm map and uses that
+	var pwmTarget int
+
+	shouldNeverStop := fan.ShouldNeverStop()
+	if target < 1.0 && !shouldNeverStop {
+		// if the fan is allowed to stop and the calculated target is about 0, just set PWM 0
+		pwmTarget = 0
+	} else {
+		// other target values are mapped to minPwm..maxPwm
+		// adjust the target value determined by the control algorithm to the operational needs
+		// of the fan, which includes its supported pwm range (which might be different from [0..255])
+		pwmTarget = minPwm + int(math.Round((target/fans.MaxPwmValue)*float64(maxPwm-minPwm)))
+		// TODO: in theory even pwmTarget could be a float, because f.setPwm() looks for the closest value
+		//       in the pwm map and uses that
+
+		// if a minPwmOffset has been calculated (because the fan didn't start spinning at the
+		// configured MinPwm) add it to the pwmTarget
+		if shouldNeverStop && pwmTarget < minPwm+f.minPwmOffset {
+			pwmTarget = minPwm + f.minPwmOffset
+		}
+	}
 
 	if fan.Supports(fans.FeatureRpmSensor) {
 		// make sure fans never stop by validating the current RPM
 		// and adjusting the target PWM value upwards if necessary
-		shouldNeverStop := fan.ShouldNeverStop()
 		if f.lastTarget != nil {
 			lastTarget := *f.lastTarget
 			// TODO: check this logic
@@ -371,6 +385,7 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 	}
 
 	// FIXME: does this really have to be called each time Pwm is set?!
+	//        couldn't it be called if SetPwm() fails?
 	_ = trySetManualPwm(f.fan)
 	err = f.setPwm(pwmTarget)
 	if err != nil {
