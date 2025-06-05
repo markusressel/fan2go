@@ -373,7 +373,6 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 					ui.Warning("Increasing minPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d at PWM %d",
 						fan.GetId(), oldMinPwm, oldMinPwm+1, int(avgRpm), lastSetPwm)
 					f.increaseMinPwmOffset()
-					fan.SetMinPwm(f.minPwmOffset, true)
 					pwmTarget++
 
 					// set the moving avg to a value > 0 to prevent
