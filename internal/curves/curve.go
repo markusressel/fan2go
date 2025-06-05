@@ -13,9 +13,9 @@ type SpeedCurve interface {
 	GetId() string
 	// Evaluate update the value of this SpeedCurve, by calculates a new value based on the current sensor values
 	// returns a value in [0..255]
-	Evaluate() (value int, err error)
+	Evaluate() (value float64, err error)
 	// CurrentValue returns the current value of the curve, which was calculated by the previous call to Evaluate
-	CurrentValue() int
+	CurrentValue() float64
 }
 
 var (

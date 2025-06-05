@@ -3,7 +3,6 @@ package control_loop
 import (
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
-	"math"
 )
 
 type PidControlLoopDefaults struct {
@@ -39,9 +38,9 @@ func NewPidControlLoop(
 	}
 }
 
-func (l *PidControlLoop) Cycle(target int) int {
+func (l *PidControlLoop) Cycle(target float64) float64 {
 	// Convert the desired target value from the curve to float64
-	floatTarget := float64(target)
+	floatTarget := target
 	// Use the *previous output* of this PID loop as the 'measured' value for smoothing
 	floatMeasured := l.lastPidOutput
 
@@ -51,13 +50,10 @@ func (l *PidControlLoop) Cycle(target int) int {
 	// Store the *float* result as the internal state for the next cycle's feedback
 	l.lastPidOutput = floatResult
 
-	ui.Debug("PidControlLoop: target(curve): %d, measured(lastPidOutput): %.4f, result(float): %.4f", target, floatMeasured, floatResult)
-
-	// convert the result to an integer
-	roundedTarget := int(math.Round(floatResult))
+	ui.Debug("PidControlLoop: target(curve): %.4f, measured(lastPidOutput): %.4f, result(float): %.4f", target, floatMeasured, floatResult)
 
 	// ensure we are within sane bounds
-	coercedTarget := util.Coerce(roundedTarget, 0, 255)
+	coercedTarget := util.Coerce(floatResult, 0, 255)
 
 	return coercedTarget
 }
