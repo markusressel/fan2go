@@ -46,18 +46,18 @@ func (sensor *MockSensor) SetMovingAvg(avg float64) {
 
 type MockCurve struct {
 	ID    string
-	Value int
+	Value float64
 }
 
 func (c MockCurve) GetId() string {
 	return c.ID
 }
 
-func (c MockCurve) Evaluate() (value int, err error) {
+func (c MockCurve) Evaluate() (value float64, err error) {
 	return c.Value, nil
 }
 
-func (c MockCurve) CurrentValue() int {
+func (c MockCurve) CurrentValue() float64 {
 	return c.Value
 }
 
@@ -471,7 +471,7 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 	}
 	sensors.RegisterSensor(&s)
 
-	curveValue := 127
+	curveValue := 127.0
 	curve := &MockCurve{
 		ID:    "curve",
 		Value: curveValue,
@@ -500,11 +500,11 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 	controller.updateDistinctPwmValues()
 
 	// WHEN
-	optimal, err := controller.calculateTargetPwm()
+	optimal, err := controller.calculateTargetSpeed()
 
 	// THEN
 	assert.NoError(t, err)
-	assert.Equal(t, 127, optimal)
+	assert.Equal(t, 127.0, optimal)
 }
 
 func TestCalculateTargetSpeedNeverStop(t *testing.T) {
@@ -518,7 +518,7 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	}
 	sensors.RegisterSensor(s)
 
-	curveValue := 0
+	curveValue := 0.0
 	curve := &MockCurve{
 		ID:    "curve",
 		Value: curveValue,
@@ -549,12 +549,12 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	controller.updateDistinctPwmValues()
 
 	// WHEN
-	target, err := controller.calculateTargetPwm()
+	target, err := controller.calculateTargetSpeed()
 
 	// THEN
 	assert.NoError(t, err)
 	assert.Greater(t, fan.GetMinPwm(), 0)
-	assert.Equal(t, 0, target)
+	assert.Equal(t, 0.0, target)
 }
 
 func TestFanWithStartPwmConfig(t *testing.T) {
@@ -593,7 +593,7 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 	}
 	sensors.RegisterSensor(s)
 
-	curveValue := 5
+	curveValue := 5.0
 	curve := &MockCurve{
 		ID:    "curve",
 		Value: curveValue,
@@ -634,13 +634,13 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 	controller.updateDistinctPwmValues()
 
 	// WHEN
-	targetPwm, err := controller.calculateTargetPwm()
+	targetPwm, err := controller.calculateTargetSpeed()
 
 	// THEN
 	assert.NoError(t, err)
-	assert.Equal(t, 5, targetPwm)
+	assert.Equal(t, 5.0, targetPwm)
 
-	closestTarget := controller.findClosestDistinctTarget(targetPwm)
+	closestTarget := controller.findClosestDistinctTarget(int(targetPwm))
 	assert.Equal(t, 1, closestTarget)
 }
 
