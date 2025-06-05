@@ -66,7 +66,7 @@ func TestLinearCurveWithMinMax(t *testing.T) {
 	}
 
 	// THEN
-	assert.Equal(t, 127, result)
+	assert.Equal(t, 127.5, result)
 }
 
 func TestLinearCurveWithStepsAtMin(t *testing.T) {
@@ -97,7 +97,7 @@ func TestLinearCurveWithStepsAtMin(t *testing.T) {
 	}
 
 	// THEN
-	assert.Equal(t, 0, result)
+	assert.Equal(t, 0.0, result)
 }
 
 func TestLinearCurveWithStepsInMiddle(t *testing.T) {
@@ -128,7 +128,7 @@ func TestLinearCurveWithStepsInMiddle(t *testing.T) {
 	}
 
 	// THEN
-	assert.Equal(t, 100, result)
+	assert.Equal(t, 100.0, result)
 }
 
 func TestLinearCurveWithStepsAtMax(t *testing.T) {
@@ -159,5 +159,5 @@ func TestLinearCurveWithStepsAtMax(t *testing.T) {
 	}
 
 	// THEN
-	assert.Equal(t, 255, result)
+	assert.Equal(t, 255.0, result)
 }
