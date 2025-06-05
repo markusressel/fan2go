@@ -87,7 +87,7 @@ func TestPidCurve_SteadyState_WayBelow(t *testing.T) {
 	assert.NoError(t, err)
 	// Error = 60 - 40 = 20. P term = -20 * 20 = -400.
 	// Output should be negative, clamped to 0 by pidLoop.
-	assert.Equal(t, 0, result, "PWM should be 0 when way below setpoint")
+	assert.Equal(t, 0.0, result, "Speed should be 0 when way below setpoint")
 }
 
 func TestPidCurve_SteadyState_AtSetpoint(t *testing.T) {
@@ -96,12 +96,12 @@ func TestPidCurve_SteadyState_AtSetpoint(t *testing.T) {
 	result, err := curve.Evaluate()
 	assert.NoError(t, err)
 	// Error = 0. P=0. Assume I=0 initially. D=0. Output = 0.
-	assert.Equal(t, 0, result, "PWM should be 0 when at setpoint (assuming zero initial integral)")
+	assert.Equal(t, 0.0, result, "Speed should be 0 when at setpoint (assuming zero initial integral)")
 
 	time.Sleep(loopDelay) // Allow time for potential integral drift
 	result, err = curve.Evaluate()
 	assert.NoError(t, err)
-	assert.Equal(t, 0, result, "PWM should stay 0 when at setpoint")
+	assert.Equal(t, 0.0, result, "Speed should stay 0 when at setpoint")
 }
 
 func TestPidCurve_SteadyState_SlightlyAbove(t *testing.T) {
@@ -112,7 +112,7 @@ func TestPidCurve_SteadyState_SlightlyAbove(t *testing.T) {
 	assert.NoError(t, err)
 	// Error = 60 - 61 = -1. P term = -20 * -1 = 20. Assume I=0, D=0 initially.
 	// Output = 20. Rounded = 20.
-	assert.InDelta(t, 20, result, 1, "Initial PWM should be ~20 when slightly above setpoint") // Use InDelta
+	assert.InDelta(t, 20, result, 1, "Initial Speed should be ~20 when slightly above setpoint") // Use InDelta
 
 	// Second Evaluation (Integral Effect)
 	time.Sleep(loopDelay) // dt=0.2
@@ -120,7 +120,7 @@ func TestPidCurve_SteadyState_SlightlyAbove(t *testing.T) {
 	assert.NoError(t, err)
 	// Integral added approx: I*err*dt = -10 * -1 * 0.2 = +2.0.
 	// New Output approx = PTerm + ITerm = 20 + 2.0 = 22.0. Rounded = 22.
-	assert.InDelta(t, 20, result, 1, "PWM should still be ~20 in the second step") // Adjusted expectation
+	assert.InDelta(t, 20, result, 1, "Speed should still be ~20 in the second step") // Adjusted expectation
 
 	// Check sensor wasn't modified
 	assert.Equal(t, 61000.0, sensor.MovingAvg)
@@ -134,7 +134,7 @@ func TestPidCurve_SteadyState_ModeratelyAbove(t *testing.T) {
 	assert.NoError(t, err)
 	// Error = 60 - 65 = -5. P term = -20 * -5 = 100. Assume I=0, D=0 initially.
 	// Output = 100. Rounded = 100.
-	assert.InDelta(t, 100, result, 1, "Initial PWM should be ~100 when moderately above setpoint")
+	assert.InDelta(t, 100, result, 1, "Initial Speed should be ~100 when moderately above setpoint")
 
 	// Second Evaluation (Integral Effect)
 	time.Sleep(loopDelay) // dt=0.2
@@ -142,7 +142,7 @@ func TestPidCurve_SteadyState_ModeratelyAbove(t *testing.T) {
 	assert.NoError(t, err)
 	// Integral added approx: I*err*dt = -10 * -5 * 0.2 = +10.0.
 	// New Output approx = PTerm + ITerm = 100 + 10.0 = 110.0. Rounded = 110.
-	assert.InDelta(t, 100, result, 1, "PWM should still be ~100 in the second step")
+	assert.InDelta(t, 100, result, 1, "Speed should still be ~100 in the second step")
 }
 
 func TestPidCurve_SteadyState_WayAbove(t *testing.T) {
@@ -152,7 +152,7 @@ func TestPidCurve_SteadyState_WayAbove(t *testing.T) {
 	assert.NoError(t, err)
 	// Error = 60 - 75 = -15. P term = -20 * -15 = 300.
 	// Output clamped to 255 by pidLoop. Rounded = 255.
-	assert.Equal(t, 255, result, "PWM should saturate to 255 when way above setpoint")
+	assert.Equal(t, 255.0, result, "Speed should saturate to 255 when way above setpoint")
 }
 
 // --- Dynamic Tests ---
@@ -163,12 +163,12 @@ func TestPidCurve_IntegralAction_RampUp(t *testing.T) {
 
 	// Error = 60 - 62 = -2.
 	// Expected Output change per step = I*err*dt = -10 * -2 * 0.2 = +4.0.
-	expectedSequence := []int{0, 0, 4, 8, 12, 16} // Expected PWM values after rounding
+	expectedSequence := []int{0, 0, 4, 8, 12, 16} // Expected Speed values after rounding
 
 	for i := 0; i < len(expectedSequence); i++ {
 		result, err := curve.Evaluate()
 		assert.NoError(t, err, "Loop %d", i)
-		assert.InDelta(t, expectedSequence[i], result, 1, "PWM should ramp up. Loop %d", i)
+		assert.InDelta(t, expectedSequence[i], result, 1, "Speed should ramp up. Loop %d", i)
 		time.Sleep(loopDelay)
 	}
 	// Check sensor wasn't modified
@@ -218,7 +218,7 @@ func TestPidCurve_DerivativeAction_FallingTemp(t *testing.T) {
 	// Output = -50. Clamped to 0 by pidLoop. Rounded = 0.
 	result, err = curve.Evaluate()
 	assert.NoError(t, err)
-	assert.Equal(t, 0, result, "Step 1 - Output should be clamped to 0 due to negative D term")
+	assert.Equal(t, 0.0, result, "Step 1 - Output should be clamped to 0 due to negative D term")
 	time.Sleep(loopDelay)
 	sensor.MovingAvg -= 1000 // Temp becomes 58 (-1C again) -> Rate = -5C/s
 
@@ -226,7 +226,7 @@ func TestPidCurve_DerivativeAction_FallingTemp(t *testing.T) {
 	// D term = -50. Clamped to 0.
 	result, err = curve.Evaluate()
 	assert.NoError(t, err)
-	assert.Equal(t, 0, result, "Step 2 - Output should remain 0")
+	assert.Equal(t, 0.0, result, "Step 2 - Output should remain 0")
 }
 
 func TestPidCurve_Combined_StepUpAndHold(t *testing.T) {
