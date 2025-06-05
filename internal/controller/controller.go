@@ -99,6 +99,10 @@ type DefaultFanController struct {
 	//  [0: 0, 1: 0, 2: 0, 3: 0, ..., 63: 0, 64: 1, ..., 127: 1, 128: 2, ..., 191: 2, 192: 3, ..., 255: 3]
 	pwmMap map[int]int
 
+	// don't get and set PWMs in computeSetPwmToGetPwmMapAutomatically(), assume 1:1 mapping instead
+	// (enabled by `fan2go fan -i bla init -s`)
+	skipAutoPwmMapping bool
+
 	// control loop that specifies how the target value of the curve is approached
 	controlLoop control_loop.ControlLoop
 
@@ -111,6 +115,7 @@ func NewFanController(
 	fan fans.Fan,
 	controlLoop control_loop.ControlLoop,
 	updateRate time.Duration,
+	skipAutoPwmMapping bool,
 ) FanController {
 	curve, ok := curves.GetSpeedCurve(fan.GetCurveId())
 	if !ok {
@@ -125,6 +130,7 @@ func NewFanController(
 		pwmMap:                           nil,
 		controlLoop:                      controlLoop,
 		minPwmOffset:                     0,
+		skipAutoPwmMapping:               skipAutoPwmMapping,
 	}
 }
 
@@ -834,8 +840,12 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
 	// DG: yes, definitely - per fan. this is super broken if the fan doesn't apply the PWM fast enough
 	//     (see https://github.com/markusressel/fan2go/issues/358)
 
-	if !f.fan.Supports(fans.FeaturePwmSensor) {
-		ui.Warning("Fan '%s' does not support PWM sensor, cannot compute setPwmToGetPwmMap. Assuming 1:1 relation.", f.fan.GetId())
+	if !f.fan.Supports(fans.FeaturePwmSensor) || f.skipAutoPwmMapping {
+		if f.skipAutoPwmMapping {
+			ui.Info("Automatic calculation of setPwmToGetPwmMap disabled for Fan '%s'. Assuming 1:1 relation.", f.fan.GetId())
+		} else {
+			ui.Warning("Fan '%s' does not support PWM sensor, cannot compute setPwmToGetPwmMap. Assuming 1:1 relation.", f.fan.GetId())
+		}
 		f.setPwmToGetPwmMap, _ = util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
 		return nil
 	}
