@@ -151,7 +151,8 @@ func GetTempSensors(chip gosensors.Chip) map[int]*sensors.HwmonSensor {
 }
 
 var (
-	FeatureTypePwm gosensors.FeatureType = 7
+	FeatureTypePwm        gosensors.FeatureType    = 7
+	SubFeatureTypeFanMode gosensors.SubFeatureType = 1920
 )
 
 func GetFans(chip gosensors.Chip) []fans.HwMonFan {
@@ -184,16 +185,25 @@ func GetFans(chip gosensors.Chip) []fans.HwMonFan {
 			continue
 		}
 
-		if rpmChannel == -1 && pwmChannel == -1 {
+		if pwmChannel == -1 && rpmChannel == -1 {
 			ui.Warning("No rpmChannel or pwmChannel found for '%s', ignoring.", feature.Name)
 			continue
 		}
 
 		subfeatures := feature.GetSubFeatures()
+
+		modeSubFeature := getSubFeature(subfeatures, SubFeatureTypeFanMode)
+		if modeSubFeature != nil {
+			mode := modeSubFeature.GetValue()
+			ui.Debug("Found fan mode %d for feature '%s'", mode, feature.Name)
+		}
+
 		rpmAverage := 0.0
 		inputSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput)
 		if inputSubFeature != nil {
 			rpmAverage = inputSubFeature.GetValue()
+		} else {
+			rpmChannel = -1
 		}
 
 		max := -1
