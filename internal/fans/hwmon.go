@@ -32,12 +32,8 @@ func (fan *HwMonFan) GetId() string {
 }
 
 func (fan *HwMonFan) GetMinPwm() int {
-	// if the fan is never supposed to stop,
-	// use the lowest pwm value where the fan is still spinning
-	if fan.ShouldNeverStop() {
-		if fan.MinPwm != nil {
-			return *fan.MinPwm
-		}
+	if fan.MinPwm != nil {
+		return *fan.MinPwm
 	}
 
 	return MinPwmValue
