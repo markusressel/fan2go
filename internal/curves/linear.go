@@ -35,7 +35,7 @@ func (c *LinearSpeedCurve) Init() {
 			}
 			speed, err := strconv.ParseFloat(str, 64)
 			if err != nil {
-				ui.Warning("Invalid curve step value '%s' in %s", origstr, c.Config.ID)
+				ui.Warning("Invalid curve step value '%s' in %s - must be either just a number or a number followed by '%%'", origstr, c.Config.ID)
 			} else {
 				if isPercent {
 					// convert from 1..100 percent to 0..255
