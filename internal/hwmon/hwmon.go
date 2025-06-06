@@ -195,7 +195,7 @@ func GetFans(chip gosensors.Chip) []fans.HwMonFan {
 		modeSubFeature := getSubFeature(subfeatures, SubFeatureTypeFanMode)
 		if modeSubFeature != nil {
 			mode := modeSubFeature.GetValue()
-			ui.Debug("Found fan mode %d for feature '%s'", mode, feature.Name)
+			ui.Debug("Found fan mode %d for feature '%s'", int(mode), feature.Name)
 		}
 
 		rpmAverage := 0.0
