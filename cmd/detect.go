@@ -64,7 +64,7 @@ var detectCmd = &cobra.Command{
 		}
 
 		for _, controller := range controllers {
-			if len(controller.Name) <= 0 {
+			if len(controller.Platform) <= 0 {
 				continue
 			}
 
@@ -75,7 +75,7 @@ var detectCmd = &cobra.Command{
 				continue
 			}
 
-			ui.Printfln("> Platform: %s", controller.Name)
+			ui.Printfln("> Platform: %s", controller.Platform)
 
 			var fanRows [][]string
 			for _, fan := range fanSlice {
