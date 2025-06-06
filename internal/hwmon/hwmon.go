@@ -150,6 +150,10 @@ func GetTempSensors(chip gosensors.Chip) map[int]*sensors.HwmonSensor {
 	return result
 }
 
+var (
+	FeatureTypePwm gosensors.FeatureType = 7
+)
+
 func GetFans(chip gosensors.Chip) []fans.HwMonFan {
 	var result = []fans.HwMonFan{}
 
@@ -157,24 +161,27 @@ func GetFans(chip gosensors.Chip) []fans.HwMonFan {
 	for j := 0; j < len(features); j++ {
 		feature := features[j]
 
-		if !FeatureContainsType(feature, gosensors.FeatureTypeFan) {
-			continue
-		}
-
-		subfeatures := feature.GetSubFeatures()
-
 		var pwmChannel = -1
-		_, err := fmt.Sscanf(feature.Name, "pwm%d", &pwmChannel)
-		if err != nil {
-			//ui.Warning("No pwmChannel found for '%s', ignoring.", feature.Name)
-			//continue
-		}
-
 		var rpmChannel = -1
-		_, err = fmt.Sscanf(feature.Name, "fan%d", &rpmChannel)
-		if err != nil {
-			//ui.Warning("No rpmChannel found for '%s', ignoring.", feature.Name)
-			//continue
+		if feature.Type == FeatureTypePwm {
+			_, err := fmt.Sscanf(feature.Name, "pwm%d", &pwmChannel)
+			if err != nil {
+				ui.Warning("No pwmChannel found for '%s', ignoring.", feature.Name)
+				continue
+			}
+			// assume rpm channel is the same as pwm channel
+			rpmChannel = pwmChannel
+		} else if feature.Type == gosensors.FeatureTypeFan {
+			_, err := fmt.Sscanf(feature.Name, "fan%d", &rpmChannel)
+			if err != nil {
+				ui.Warning("No rpmChannel found for '%s', ignoring.", feature.Name)
+				continue
+			}
+			// assume pwm channel is the same as rpm channel
+			pwmChannel = rpmChannel
+		} else {
+			ui.Debug("Feature '%s' is not a fan or pwm feature, ignoring.", feature.Name)
+			continue
 		}
 
 		if rpmChannel == -1 && pwmChannel == -1 {
@@ -182,6 +189,7 @@ func GetFans(chip gosensors.Chip) []fans.HwMonFan {
 			continue
 		}
 
+		subfeatures := feature.GetSubFeatures()
 		rpmAverage := 0.0
 		inputSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput)
 		if inputSubFeature != nil {
