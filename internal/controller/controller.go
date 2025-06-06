@@ -353,7 +353,7 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 			// if the fan is allowed to stop and the calculated target is about 0, just set PWM 0
 			pwmTarget = 0
 		} else {
-			// other target values are mapped to minPwm..maxPwm
+			// other target values are mapped to [minPwm..maxPwm]
 			// adjust the target value determined by the control algorithm to the operational needs
 			// of the fan, which includes its supported pwm range (which might be different from [0..255])
 			pwmTarget = minPwm + int(math.Round((target/fans.MaxPwmValue)*float64(maxPwm-minPwm)))
@@ -377,7 +377,7 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 				ui.Warning("Error reading last set PWM value of fan %s: %v", fan.GetId(), err)
 			}
 			lastSetTargetEqualsNewTarget := lastTarget == pwmTarget
-			if shouldNeverStop && lastSetTargetEqualsNewTarget { // TODO: also check if fan supports reading RPM?
+			if shouldNeverStop && lastSetTargetEqualsNewTarget {
 				avgRpm := fan.GetRpmAvg()
 				if avgRpm <= 0 {
 					if pwmTarget >= maxPwm {
