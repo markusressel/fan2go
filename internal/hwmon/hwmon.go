@@ -110,7 +110,7 @@ func GetTempSensors(chip gosensors.Chip) map[int]*sensors.HwmonSensor {
 	for j := 0; j < len(features); j++ {
 		feature := features[j]
 
-		if feature.Type != gosensors.FeatureTypeTemp {
+		if !FeatureContainsType(feature, gosensors.FeatureTypeTemp) {
 			continue
 		}
 
@@ -157,67 +157,81 @@ func GetFans(chip gosensors.Chip) []fans.HwMonFan {
 	for j := 0; j < len(features); j++ {
 		feature := features[j]
 
-		if feature.Type != gosensors.FeatureTypeFan {
+		if !FeatureContainsType(feature, gosensors.FeatureTypeFan) {
 			continue
 		}
 
 		subfeatures := feature.GetSubFeatures()
 
-		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput) {
-			var channel int
-			_, err := fmt.Sscanf(feature.Name, "fan%d", &channel)
-			if err != nil {
-				ui.Warning("No channel found for '%s', ignoring.", feature.Name)
-				continue
-			}
-
-			rpmAverage := 0.0
-			inputSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput)
-			if inputSubFeature != nil {
-				rpmAverage = inputSubFeature.GetValue()
-			}
-
-			max := -1
-			if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanMax) {
-				maxSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanMax)
-				max = int(maxSubFeature.GetValue())
-			} else {
-				max = fans.MaxPwmValue
-			}
-
-			min := -1
-			if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanMin) {
-				minSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanMin)
-				min = int(minSubFeature.GetValue())
-			} else {
-				min = fans.MinPwmValue
-			}
-
-			label := getLabel(chip.Path, feature.Name)
-
-			fan := fans.HwMonFan{
-				Config: configuration.FanConfig{
-					ID:     label,
-					MinPwm: &min,
-					MaxPwm: &max,
-					HwMon: &configuration.HwMonFanConfig{
-						Index:      len(result) + 1,
-						RpmChannel: channel,
-						PwmChannel: channel,
-						SysfsPath:  chip.Path,
-					},
-				},
-				Label:        label,
-				Index:        len(result) + 1,
-				RpmMovingAvg: rpmAverage,
-			}
-			setFanConfigPaths(fan.Config.HwMon)
-
-			result = append(result, fan)
+		var pwmChannel = -1
+		_, err := fmt.Sscanf(feature.Name, "pwm%d", &pwmChannel)
+		if err != nil {
+			//ui.Warning("No pwmChannel found for '%s', ignoring.", feature.Name)
+			//continue
 		}
+
+		var rpmChannel = -1
+		_, err = fmt.Sscanf(feature.Name, "fan%d", &rpmChannel)
+		if err != nil {
+			//ui.Warning("No rpmChannel found for '%s', ignoring.", feature.Name)
+			//continue
+		}
+
+		if rpmChannel == -1 && pwmChannel == -1 {
+			ui.Warning("No rpmChannel or pwmChannel found for '%s', ignoring.", feature.Name)
+			continue
+		}
+
+		rpmAverage := 0.0
+		inputSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput)
+		if inputSubFeature != nil {
+			rpmAverage = inputSubFeature.GetValue()
+		}
+
+		max := -1
+		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanMax) {
+			maxSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanMax)
+			max = int(maxSubFeature.GetValue())
+		} else {
+			max = fans.MaxPwmValue
+		}
+
+		min := -1
+		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanMin) {
+			minSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanMin)
+			min = int(minSubFeature.GetValue())
+		} else {
+			min = fans.MinPwmValue
+		}
+
+		label := getLabel(chip.Path, feature.Name)
+
+		fan := fans.HwMonFan{
+			Config: configuration.FanConfig{
+				ID:     label,
+				MinPwm: &min,
+				MaxPwm: &max,
+				HwMon: &configuration.HwMonFanConfig{
+					Index:      len(result) + 1,
+					RpmChannel: rpmChannel,
+					PwmChannel: pwmChannel,
+					SysfsPath:  chip.Path,
+				},
+			},
+			Label:        label,
+			Index:        len(result) + 1,
+			RpmMovingAvg: rpmAverage,
+		}
+		setFanConfigPaths(fan.Config.HwMon)
+
+		result = append(result, fan)
 	}
 
 	return result
+}
+
+func FeatureContainsType(feature gosensors.Feature, featureType gosensors.FeatureType) bool {
+	return feature.Type&featureType != 0
 }
 
 func getSubFeature(subfeatures []gosensors.SubFeature, input gosensors.SubFeatureType) *gosensors.SubFeature {

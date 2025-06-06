@@ -79,6 +79,17 @@ var detectCmd = &cobra.Command{
 
 			var fanRows [][]string
 			for _, fan := range fanSlice {
+
+				pwmChannelText := "N/A"
+				if fan.Config.HwMon != nil && fan.Config.HwMon.PwmChannel >= 0 {
+					pwmChannelText = strconv.Itoa(fan.Config.HwMon.PwmChannel)
+				}
+
+				rpmChannelText := "N/A"
+				if fan.Config.HwMon != nil && fan.Config.HwMon.RpmChannel >= 0 {
+					rpmChannelText = strconv.Itoa(fan.Config.HwMon.RpmChannel)
+				}
+
 				pwmText := "N/A"
 				pwm, err := fan.GetPwm()
 				if err == nil {
@@ -101,10 +112,10 @@ var detectCmd = &cobra.Command{
 					}
 				}
 				fanRows = append(fanRows, []string{
-					"", strconv.Itoa(fan.Index), strconv.Itoa(fan.Config.HwMon.RpmChannel), fan.Label, rpmText, pwmText, fmt.Sprintf("%v", controlModeText),
+					"", strconv.Itoa(fan.Index), pwmChannelText, rpmChannelText, fan.Label, rpmText, pwmText, fmt.Sprintf("%v", controlModeText),
 				})
 			}
-			var fanHeaders = []string{"Fans   ", "Index", "Channel", "Label", "RPM", "PWM", "Mode"}
+			var fanHeaders = []string{"Fans   ", "Index", "PWM Channel", "RPM Channel", "Label", "RPM", "PWM", "Mode"}
 
 			fanTable := table.Table{
 				Headers: fanHeaders,
