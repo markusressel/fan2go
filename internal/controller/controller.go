@@ -278,8 +278,9 @@ func (f *DefaultFanController) runInitializationIfNeeded() (map[int]float64, err
 	ui.Info("Loading fan curve data for fan '%s'...", fan.GetId())
 	fanRpmData, err := f.persistence.LoadFanRpmData(fan)
 	if err != nil {
-		_, ok := fan.(*fans.HwMonFan)
-		if ok {
+		switch fan.(type) {
+		case *fans.HwMonFan:
+		case *fans.NvidiaFan:
 			ui.Warning("Fan '%s' has not yet been analyzed, starting initialization sequence...", fan.GetId())
 			err = f.RunInitializationSequence()
 			if err != nil {
@@ -291,8 +292,10 @@ func (f *DefaultFanController) runInitializationIfNeeded() (map[int]float64, err
 				f.restoreControlMode()
 				return nil, err
 			}
-		} else {
-			err = f.persistence.SaveFanRpmData(fan)
+		default:
+			if fan.GetFanRpmCurveData() != nil {
+				err = f.persistence.SaveFanRpmData(fan)
+			}
 		}
 	}
 	return fanRpmData, err
