@@ -795,6 +795,9 @@ fans:
 The loop is advanced at a constant rate, specified by the `controllerAdjustmentTickRate` config option, which
 defaults to `200ms`.
 
+See [PID controller on Wikipedia](https://en.wikipedia.org/wiki/Proportional%E2%80%93integral%E2%80%93derivative_controller)
+for more information on what a PID controller is.
+
 # FAQ
 
 ## Why are my SATA HDD drives not detected?
