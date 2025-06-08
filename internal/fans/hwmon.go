@@ -31,6 +31,14 @@ func (fan *HwMonFan) GetId() string {
 	return fan.Config.ID
 }
 
+func (fan *HwMonFan) GetLabel() string {
+	return fan.Label
+}
+
+func (fan *HwMonFan) GetIndex() int {
+	return fan.Index
+}
+
 func (fan *HwMonFan) GetMinPwm() int {
 	// if the fan is never supposed to stop,
 	// use the lowest pwm value where the fan is still spinning

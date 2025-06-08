@@ -22,6 +22,10 @@ func (sensor *HwmonSensor) GetId() string {
 	return sensor.Config.ID
 }
 
+func (sensor *HwmonSensor) GetLabel() string {
+	return sensor.Label
+}
+
 func (sensor *HwmonSensor) GetConfig() configuration.SensorConfig {
 	return sensor.Config
 }

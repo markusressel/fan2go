@@ -22,6 +22,14 @@ func (fan *CmdFan) GetId() string {
 	return fan.Config.ID
 }
 
+func (fan *CmdFan) GetLabel() string {
+	return "CMD Fan " + fan.Config.ID
+}
+
+func (fan *CmdFan) GetIndex() int {
+	return 1
+}
+
 func (fan *CmdFan) GetStartPwm() int {
 	return 1
 }

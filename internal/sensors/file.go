@@ -21,6 +21,10 @@ func (sensor *FileSensor) GetId() string {
 	return sensor.Config.ID
 }
 
+func (sensor *FileSensor) GetLabel() string {
+	return "File Sensor " + sensor.Config.ID
+}
+
 func (sensor *FileSensor) GetConfig() configuration.SensorConfig {
 	return sensor.Config
 }

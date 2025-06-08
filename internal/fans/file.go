@@ -21,6 +21,14 @@ func (fan *FileFan) GetId() string {
 	return fan.Config.ID
 }
 
+func (fan *FileFan) GetLabel() string {
+	return "File Fan " + fan.Config.ID
+}
+
+func (fan *FileFan) GetIndex() int {
+	return 1
+}
+
 func (fan *FileFan) GetStartPwm() int {
 	return 1
 }

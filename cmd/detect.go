@@ -191,7 +191,7 @@ var detectCmd = &cobra.Command{
 					}
 				}
 				row := []string{
-					"", strconv.Itoa(fan.Index), fan.Label, pwmText, rpmText, fmt.Sprintf("%v", controlModeText),
+					"", strconv.Itoa(fan.GetIndex()), fan.GetLabel(), pwmText, rpmText, fmt.Sprintf("%v", controlModeText),
 				}
 				fanRows = append(fanRows, row)
 			}
@@ -209,7 +209,7 @@ var detectCmd = &cobra.Command{
 					valueText = strconv.Itoa(int(value))
 				}
 
-				row := []string{"", "1", sensor.Label, valueText}
+				row := []string{"", "1", sensor.GetLabel(), valueText}
 				sensorRows = append(sensorRows, row)
 			}
 			var sensorHeaders = []string{"Sensors", "Index", "Label", "Value"}

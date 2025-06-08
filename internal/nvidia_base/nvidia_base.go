@@ -1,3 +1,5 @@
+//go:build !disable_nvml
+
 package nvidia_base
 
 // I'd prefer this to just be in nvidia/nvidia.go, but it can't, because that causes

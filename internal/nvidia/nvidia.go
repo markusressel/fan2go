@@ -1,3 +1,5 @@
+//go:build !disable_nvml
+
 package nvidia
 
 import (
@@ -10,16 +12,6 @@ import (
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
 )
-
-type NvidiaController struct {
-	Identifier string // e.g. "nvidia-10de2489-0400"
-	Name       string // e.g. "NVIDIA GeForce RTX 3060 Ti"
-
-	Fans []fans.NvidiaFan
-	// at least currently nvml only supports one temperature sensor
-	// (pointer in case no sensor was found at all)
-	Sensors []*sensors.NvidiaSensor
-}
 
 func GetDevices() []*NvidiaController {
 	ret := nvml.Init()
@@ -52,7 +44,7 @@ func GetDevices() []*NvidiaController {
 			name = "N/A"
 		}
 
-		var fanSlice = []fans.NvidiaFan{}
+		var fanSlice = []fans.Fan{}
 		numFans, ret := device.GetNumFans()
 		if ret == nvml.SUCCESS && numFans > 0 {
 			for fanIdx := 0; fanIdx < numFans; fanIdx++ {
@@ -60,7 +52,7 @@ func GetDevices() []*NvidiaController {
 				min := 0
 				label := fmt.Sprintf("Fan %d", fanIdx+1)
 
-				fan := fans.NvidiaFan{
+				fan := &fans.NvidiaFan{
 					Config: configuration.FanConfig{
 						ID:     "N/A",
 						MinPwm: &min,
@@ -82,7 +74,7 @@ func GetDevices() []*NvidiaController {
 			}
 		}
 		_, ret = device.GetTemperature(nvml.TEMPERATURE_GPU)
-		var sensorSlice = []*sensors.NvidiaSensor{}
+		var sensorSlice = []sensors.Sensor{}
 		if ret == nvml.SUCCESS {
 			sensor := &sensors.NvidiaSensor{
 				Config: configuration.SensorConfig{
