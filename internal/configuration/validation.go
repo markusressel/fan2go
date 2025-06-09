@@ -189,14 +189,14 @@ func validateCurves(config *Configuration) error {
 				}
 				speed, err := strconv.ParseFloat(str, 64)
 				if err != nil {
-					return fmt.Errorf("Invalid curve step value '%s' in %s - must be either just a number or a number followed by '%%'", origstr, curveConfig.ID)
+					return fmt.Errorf("invalid curve step value '%s' in %s - must be either just a number or a number followed by '%%'", origstr, curveConfig.ID)
 				} else {
 					if isPercent {
 						if speed < 0 || speed > 100 {
-							return fmt.Errorf("Invalid curve step value '%s' in %s - must be between 0%% and 100%%", origstr, curveConfig.ID)
+							return fmt.Errorf("invalid curve step value '%s' in %s - must be between 0%% and 100%%", origstr, curveConfig.ID)
 						}
 					} else if speed < 0 || speed > 255 {
-						return fmt.Errorf("Invalid curve step value '%s' in %s - must be between 0 and 255", origstr, curveConfig.ID)
+						return fmt.Errorf("invalid curve step value '%s' in %s - must be between 0 and 255", origstr, curveConfig.ID)
 					}
 				}
 			}
