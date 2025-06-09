@@ -100,7 +100,7 @@ type DefaultFanController struct {
 	pwmMap map[int]int
 
 	// don't get and set PWMs in computeSetPwmToGetPwmMapAutomatically(), assume 1:1 mapping instead
-	// (enabled by `fan2go fan -i bla init -s`)
+	// (enabled by `fan2go fan -i bla init -s` or with the skipAutoPwmMap option in fan configs)
 	skipAutoPwmMapping bool
 
 	// control loop that specifies how the target value of the curve is approached
@@ -835,11 +835,6 @@ func (f *DefaultFanController) getReportedPwmAfterApplyingPwm(pwmMappedValue int
 }
 
 func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
-
-	// TODO: should we provide a way to override this behavior via config?
-	// DG: yes, definitely - per fan. this is super broken if the fan doesn't apply the PWM fast enough
-	//     (see https://github.com/markusressel/fan2go/issues/358)
-
 	if !f.fan.Supports(fans.FeaturePwmSensor) || f.skipAutoPwmMapping {
 		if f.skipAutoPwmMapping {
 			ui.Info("Automatic calculation of setPwmToGetPwmMap disabled for Fan '%s'. Assuming 1:1 relation.", f.fan.GetId())
