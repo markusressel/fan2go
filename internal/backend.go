@@ -283,7 +283,7 @@ func initializeFanControllers(pers persistence.Persistence, fanMap map[configura
 			)
 		}
 
-		skipAutoPwmMapping := false // TODO: get from config? currently only used as flag of `fan2go fan init`
+		skipAutoPwmMapping := config.SkipAutoPwmMap
 		fanController := controller.NewFanController(pers, fan, controlLoop, updateRate, skipAutoPwmMapping)
 		result[fan] = fanController
 	}
