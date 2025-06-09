@@ -34,12 +34,18 @@ var initCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		skipAutoPwmMapping := skipAutoMap
+		if !skipAutoMap {
+			// the --skipAutoMap commandline option has priority,
+			// but if it's not set, use the setting from the config
+			skipAutoPwmMapping = fan.GetConfig().SkipAutoPwmMap
+		}
 		fanController := controller.NewFanController(
 			p,
 			fan,
 			control_loop.NewDirectControlLoop(nil),
 			configuration.CurrentConfig.FanController.AdjustmentTickRate,
-			skipAutoMap,
+			skipAutoPwmMapping,
 		)
 
 		ui.Info("Deleting existing data for fan '%s'...", fan.GetId())
