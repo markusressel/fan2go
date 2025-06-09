@@ -10,7 +10,7 @@ DATE       ?= $(shell date -u -d @${SOURCE_DATE_EPOCH} +"%Y-%m-%dT%H:%M:%SZ")
 VERSION    ?= 0.10.0
 
 test:   ## Run all tests
-	@go clean --testcache && go test -v ./...
+	@go clean --testcache && go test -tags disable_nvml -v ./...
 
 build:  ## Builds the CLI
 	@go build ${GO_FLAGS} \
