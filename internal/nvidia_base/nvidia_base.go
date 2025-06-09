@@ -1,3 +1,5 @@
+//go:build !disable_nvml
+
 package nvidia_base
 
 // I'd prefer this to just be in nvidia/nvidia.go, but it can't, because that causes
@@ -94,6 +96,8 @@ import (
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"github.com/markusressel/fan2go/internal/ui"
 )
+
+const IsNvmlSupported = true
 
 type RawNvmlDevice unsafe.Pointer
 

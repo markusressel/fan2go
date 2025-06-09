@@ -22,6 +22,10 @@ func (sensor *CmdSensor) GetId() string {
 	return sensor.Config.ID
 }
 
+func (sensor *CmdSensor) GetLabel() string {
+	return "CMD Sensor " + sensor.Config.ID
+}
+
 func (sensor *CmdSensor) GetConfig() configuration.SensorConfig {
 	return sensor.Config
 }

@@ -77,6 +77,14 @@ func (fan MockFan) GetStartPwm() int {
 	return 0
 }
 
+func (fan *MockFan) GetLabel() string {
+	return "Mock Fan " + fan.ID
+}
+
+func (fan *MockFan) GetIndex() int {
+	return 1
+}
+
 func (fan *MockFan) SetStartPwm(pwm int, force bool) {
 	panic("not supported")
 }
@@ -858,6 +866,14 @@ func (fan *MockFanWithOffsetPwm) SetControlMode(value fans.ControlMode) (err err
 
 func (fan MockFanWithOffsetPwm) GetId() string {
 	return fan.ID
+}
+
+func (fan *MockFanWithOffsetPwm) GetLabel() string {
+	return "Mock Fan " + fan.ID
+}
+
+func (fan *MockFanWithOffsetPwm) GetIndex() int {
+	return 1
 }
 
 func (fan MockFanWithOffsetPwm) GetName() string {

@@ -1,3 +1,5 @@
+//go:build !disable_nvml
+
 package sensors
 
 import (
@@ -25,6 +27,22 @@ type NvidiaSensor struct {
 	mu sync.Mutex
 }
 
+func CreateNvidiaSensor(config configuration.SensorConfig) (Sensor, error) {
+	ret := &NvidiaSensor{
+		Index:  config.Nvidia.Index,
+		Config: config,
+
+		mu: sync.Mutex{},
+	}
+	err := ret.Init()
+	// if the nvidia device can't be found or its temperature sensor can't be read,
+	// return error instead of an unusable sensor
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
 func (sensor *NvidiaSensor) Init() error {
 	sensor.device, _ = nvidia_base.GetDevice(sensor.Config.Nvidia.Device)
 	if sensor.device == nil {
@@ -44,6 +62,10 @@ func (sensor *NvidiaSensor) Init() error {
 
 func (sensor *NvidiaSensor) GetId() string {
 	return sensor.Config.ID
+}
+
+func (sensor *NvidiaSensor) GetLabel() string {
+	return sensor.Label
 }
 
 func (sensor *NvidiaSensor) GetConfig() configuration.SensorConfig {

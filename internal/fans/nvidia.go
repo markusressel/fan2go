@@ -1,3 +1,5 @@
+//go:build !disable_nvml
+
 package fans
 
 import (
@@ -30,6 +32,22 @@ type NvidiaFan struct {
 
 	device    nvml.Device
 	rawDevice nvidia_base.RawNvmlDevice
+}
+
+func CreateNvidiaFan(config configuration.FanConfig) (Fan, error) {
+	ret := &NvidiaFan{
+		Label:    config.ID,
+		Index:    config.Nvidia.Index,
+		MinPwm:   config.MinPwm,
+		StartPwm: config.StartPwm,
+		MaxPwm:   config.MaxPwm,
+		Config:   config,
+	}
+	err := ret.Init()
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
 
 // helper function to turn a nvml error/return code into a go error
@@ -78,6 +96,14 @@ func (fan *NvidiaFan) Init() error {
 
 func (fan *NvidiaFan) GetId() string {
 	return fan.Config.ID
+}
+
+func (fan *NvidiaFan) GetLabel() string {
+	return fan.Label
+}
+
+func (fan *NvidiaFan) GetIndex() int {
+	return fan.Index
 }
 
 func (fan *NvidiaFan) GetMinPwm() int {
