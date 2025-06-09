@@ -63,6 +63,10 @@ jobs:
           
           make build GOOS="${GOOS}" OARCH="${GOARCH}" GOFLAGS="${GOFLAGS}" OUTPUT_BIN="${OUTPUT_BIN}"
           ./dist/fan2go-linux-amd64 version
+          
+          # same for the version without nvml, to make sure it still compiles
+          make build-no-nvml GOOS="${GOOS}" OARCH="${GOARCH}" GOFLAGS="${GOFLAGS}" OUTPUT_BIN="${OUTPUT_BIN}-no-nvml"
+          ./dist/fan2go-linux-amd64-no-nvml version
 
       # due to the required system dependency on libsensors-dev, and the fact that github doesn't provide arm64 runners,
       # arm64 builds are not possible atm :(
