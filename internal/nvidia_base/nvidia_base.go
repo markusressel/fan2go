@@ -97,6 +97,8 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 )
 
+const IsNvmlSupported = true
+
 type RawNvmlDevice unsafe.Pointer
 
 type NvidiaDevice struct {

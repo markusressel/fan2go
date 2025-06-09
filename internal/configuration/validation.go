@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/looplab/tarjan"
+	"github.com/markusressel/fan2go/internal/nvidia_base"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"golang.org/x/exp/slices"
@@ -74,7 +75,11 @@ func validateSensors(config *Configuration) error {
 			subConfigs++
 		}
 		if sensorConfig.Nvidia != nil {
-			subConfigs++
+			if nvidia_base.IsNvmlSupported {
+				subConfigs++
+			} else {
+				return fmt.Errorf("sensor %s: This version of fan2go was built without NVIDIA (nvml) support", sensorConfig.ID)
+			}
 		}
 		if subConfigs > 1 {
 			return fmt.Errorf("sensor %s: only one sensor type can be used per sensor definition block", sensorConfig.ID)
@@ -253,7 +258,11 @@ func validateFans(config *Configuration) error {
 			subConfigs++
 		}
 		if fanConfig.Nvidia != nil {
-			subConfigs++
+			if nvidia_base.IsNvmlSupported {
+				subConfigs++
+			} else {
+				return fmt.Errorf("fan %s: This version of fan2go was built without NVIDIA (nvml) support", fanConfig.ID)
+			}
 		}
 
 		if subConfigs > 1 {
