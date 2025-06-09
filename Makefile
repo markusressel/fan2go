@@ -15,6 +15,7 @@ test:   ## Run all tests
 build:  ## Builds the CLI
 	@go build ${GO_FLAGS} \
 	-ldflags "-w -s \
+	-extldflags=-Wl,-z,lazy \
 	-X ${NAME}/cmd/global.Version=${VERSION} \
 	-X ${PACKAGE}/cmd/global.Version=${VERSION} \
 	-X ${NAME}/cmd/global.Commit=${GIT_REV} \
