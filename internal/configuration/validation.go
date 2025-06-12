@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/looplab/tarjan"
@@ -176,6 +177,28 @@ func validateCurves(config *Configuration) error {
 
 			if !sensorIdExists(curveConfig.Linear.Sensor, config) {
 				return fmt.Errorf("curve %s: no sensor definition with id '%s' found", curveConfig.ID, curveConfig.Linear.Sensor)
+			}
+
+			for _, origstr := range curveConfig.Linear.Steps {
+				str := strings.TrimSpace(origstr)
+				l := len(str)
+				isPercent := false
+				if l > 1 && str[l-1] == '%' {
+					isPercent = true
+					str = str[:l-1] // cut off '%' because ParseFloat() wouldn't like it
+				}
+				speed, err := strconv.ParseFloat(str, 64)
+				if err != nil {
+					return fmt.Errorf("invalid curve step value '%s' in %s - must be either just a number or a number followed by '%%'", origstr, curveConfig.ID)
+				} else {
+					if isPercent {
+						if speed < 0 || speed > 100 {
+							return fmt.Errorf("invalid curve step value '%s' in %s - must be between 0%% and 100%%", origstr, curveConfig.ID)
+						}
+					} else if speed < 0 || speed > 255 {
+						return fmt.Errorf("invalid curve step value '%s' in %s - must be between 0 and 255", origstr, curveConfig.ID)
+					}
+				}
 			}
 		}
 

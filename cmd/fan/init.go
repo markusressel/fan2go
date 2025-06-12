@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+var skipAutoMap bool
+
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Runs the initialization sequence for a fan",
@@ -32,11 +34,18 @@ var initCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		skipAutoPwmMapping := skipAutoMap
+		if !skipAutoMap {
+			// the --skipAutoMap commandline option has priority,
+			// but if it's not set, use the setting from the config
+			skipAutoPwmMapping = fan.GetConfig().SkipAutoPwmMap
+		}
 		fanController := controller.NewFanController(
 			p,
 			fan,
 			control_loop.NewDirectControlLoop(nil),
 			configuration.CurrentConfig.FanController.AdjustmentTickRate,
+			skipAutoPwmMapping,
 		)
 
 		ui.Info("Deleting existing data for fan '%s'...", fan.GetId())
@@ -66,5 +75,6 @@ var initCmd = &cobra.Command{
 func init() {
 	initCmd.Flags().IntP("fan-response-delay", "e", 2, "Delay in seconds to wait before checking that a fan has responded to a control change")
 	_ = viper.BindPFlag("FanResponseDelay", initCmd.Flags().Lookup("fan-response-delay"))
+	initCmd.Flags().BoolVarP(&skipAutoMap, "skip-auto-pwm-map", "s", false, "Skip automatic detection/calculation of PWM map")
 	Command.AddCommand(initCmd)
 }
