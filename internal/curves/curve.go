@@ -27,7 +27,6 @@ func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
 		ret := &LinearSpeedCurve{
 			Config: config,
 		}
-		ret.Init()
 		return ret, nil
 	}
 

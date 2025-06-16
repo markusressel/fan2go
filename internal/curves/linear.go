@@ -2,8 +2,6 @@ package curves
 
 import (
 	"github.com/markusressel/fan2go/internal/ui"
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -20,41 +18,6 @@ type LinearSpeedCurve struct {
 	Value  float64                   `json:"value"`
 }
 
-func (c *LinearSpeedCurve) Init() {
-	cfg := c.Config.Linear
-	if len(cfg.Steps) > 0 {
-		cfg.FloatSteps = make(map[int]float64)
-
-		for temp, origstr := range cfg.Steps {
-			str := strings.TrimSpace(origstr)
-			l := len(str)
-			isPercent := false
-			if l > 1 && str[l-1] == '%' {
-				isPercent = true
-				str = str[:l-1] // cut off '%' because ParseFloat() wouldn't like it
-			}
-			speed, err := strconv.ParseFloat(str, 64)
-			if err != nil {
-				ui.Warning("Invalid curve step value '%s' in %s", origstr, c.Config.ID)
-			} else {
-				if isPercent {
-					// convert 0-100% into [0..255]
-					if speed < 1 {
-						// less than 1% always turns into 0
-						speed = 0
-					} else {
-						// 1% turns into 1, 100% turns into 255
-						// => convert 1..100% to 1..255
-						// => 0..99 to 0..254 and then add 1
-						speed = (speed-1)*(254.0/99.0) + 1
-					}
-				}
-				cfg.FloatSteps[temp] = speed
-			}
-		}
-	}
-}
-
 func (c *LinearSpeedCurve) GetId() string {
 	return c.Config.ID
 }
@@ -63,7 +26,7 @@ func (c *LinearSpeedCurve) Evaluate() (value float64, err error) {
 	sensor, _ := sensors.GetSensor(c.Config.Linear.Sensor)
 	var avgTemp = sensor.GetMovingAvg()
 
-	steps := c.Config.Linear.FloatSteps
+	steps := c.Config.Linear.Steps
 	if steps != nil {
 		interpolatedCurveValue, err := util.CalculateInterpolatedCurveValue(steps, util.InterpolationTypeLinear, avgTemp/1000)
 		if err != nil {
