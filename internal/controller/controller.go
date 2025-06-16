@@ -350,13 +350,25 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 		}
 	} else {
 		if target < 1.0 && !shouldNeverStop {
-			// if the fan is allowed to stop and the calculated target is about 0, just set PWM 0
+			// target value 0 (or actually < 1) is mapped to PWM 0, if fan is allowed to stop
 			pwmTarget = 0
 		} else {
-			// other target values are mapped to [minPwm..maxPwm]
+			// target values [1..255] are mapped to [minPwm..maxPwm]
 			// adjust the target value determined by the control algorithm to the operational needs
 			// of the fan, which includes its supported pwm range (which might be different from [0..255])
-			pwmTarget = minPwm + int(math.Round((target/fans.MaxPwmValue)*float64(maxPwm-minPwm)))
+
+			// target values [1..255] => [0..254]
+			if target >= 1.0 {
+				target -= 1.0
+			} else {
+				// values < 1 become 0 (which becomes pwmTarget = minPwm), just like 1.
+				// Only happens if NeverStop (where 0 should map to minPwm instead of 0)
+				// is set, but shouldn't really matter and unifies the behavior
+				// for NeverStop enabled/disabled (for >= 1)
+				target = 0
+			}
+			// scale [0..254] to [minPwm..maxPwm]
+			pwmTarget = minPwm + int(math.Round((target/(fans.MaxPwmValue-1))*float64(maxPwm-minPwm)))
 		}
 	}
 
