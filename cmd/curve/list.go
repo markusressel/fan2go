@@ -71,11 +71,11 @@ func printLinearCurveInfo(curve curves.SpeedCurve, config *configuration.LinearC
 
 	sensorId := config.Sensor
 
-	if config.FloatSteps != nil {
+	if config.Steps != nil {
 		stepMappings := map[int]float64{}
-		sortedStepKeys := util.SortedKeys(config.FloatSteps)
+		sortedStepKeys := util.SortedKeys(config.Steps)
 		for _, x := range sortedStepKeys {
-			y := config.FloatSteps[x]
+			y := config.Steps[x]
 			stepMappings[int(y)] = float64(x)
 		}
 

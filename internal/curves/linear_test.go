@@ -34,8 +34,8 @@ func createLinearCurveConfigWithSteps(
 	curve = configuration.CurveConfig{
 		ID: id,
 		Linear: &configuration.LinearCurveConfig{
-			Sensor:     sensorId,
-			FloatSteps: steps,
+			Sensor: sensorId,
+			Steps:  steps,
 		},
 	}
 	return curve

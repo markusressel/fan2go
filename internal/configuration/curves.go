@@ -18,8 +18,12 @@ type LinearCurveConfig struct {
 	// Max is the maximum temperature in degrees
 	Max int `json:"max"`
 	// Steps is a map of temperature to relative speed value (in range of 0..255 or alternatively 0%..100%)
-	Steps      map[int]string
-	FloatSteps map[int]float64 `json:"steps"` // TODO: what is `json:"steps"` used for? should it be here or on Steps?
+	// InSteps contains the speed values as strings (like "42" or "11%"), as read from fan2go.yaml
+	InSteps map[int]string `mapstructure:"steps" json:"-"`
+	// Steps is created from InSteps on load (LoadConfig()), the strings are converted to floats
+	// between 0 and 255 (0% is 0, 1% is 1; from there on it's interpolated linearly so 100% is 255).
+	// If a string only contains a number (without "%"), it's just converted to float
+	Steps map[int]float64 `json:"steps" mapstructure:"-"`
 }
 
 type PidCurveConfig struct {
