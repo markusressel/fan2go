@@ -38,8 +38,16 @@ func (c *LinearSpeedCurve) Init() {
 				ui.Warning("Invalid curve step value '%s' in %s", origstr, c.Config.ID)
 			} else {
 				if isPercent {
-					// convert from 1..100 percent to 0..255
-					speed = speed * 2.55
+					// convert 0-100% into [0..255]
+					if speed < 1 {
+						// less than 1% always turns into 0
+						speed = 0
+					} else {
+						// 1% turns into 1, 100% turns into 255
+						// => convert 1..100% to 1..255
+						// => 0..99 to 0..254 and then add 1
+						speed = (speed-1)*(254.0/99.0) + 1
+					}
 				}
 				cfg.FloatSteps[temp] = speed
 			}
