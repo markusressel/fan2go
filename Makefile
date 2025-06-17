@@ -1,3 +1,4 @@
+.DEFAULT_GOAL := build
 .PHONY: help test build deploy run clean
 
 GO_FLAGS   ?=
