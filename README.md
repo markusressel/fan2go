@@ -79,6 +79,10 @@ nix profile install nixpkgs#fan2go
 nix-env -f '<nixpkgs>' -iA fan2go
 ```
 
+### Debian
+
+See: https://github.com/johnwbyrd/fan2go-package/
+
 </details>
 
 ### Manual
