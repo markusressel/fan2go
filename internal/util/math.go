@@ -304,3 +304,35 @@ func getClosest(val1 int, val2 int, target int) int {
 		return val1 // Return val1 (it's closer or it's a tie and val1 is smaller)
 	}
 }
+
+const (
+	UintMax = ^uint(0)
+	IntMax  = int(UintMax >> 1)
+	IntMin  = -IntMax - 1
+)
+
+// Returns absolute value of given int
+// returns slightly wrong result for IntMin, because -IntMin can't be represented as signed int
+func Abs(val int) int {
+	if val >= 0 {
+		return val
+	} else if val == IntMin {
+		// -IntMin can't be represented as int, so it wraps around and remains IntMin.
+		// Return IntMax instead, that's at least positive and close to the real value
+		// (but is really -(IntMin + 1) not -IntMin)
+		return IntMax
+	}
+	return -val
+}
+
+// returns absolute value of given int, as uint
+// (so it works even for IntMin)
+func AbsU(val int) uint {
+	if val >= 0 {
+		return uint(val)
+	}
+	// yes, -uint(val) and NOT uint(-val).
+	// this works even with IntMin, the other does not. an explanation can be found at:
+	// https://graphics.stanford.edu/~seander/bithacks.html#IntegerAbs
+	return -uint(val)
+}

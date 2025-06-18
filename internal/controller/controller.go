@@ -6,6 +6,7 @@ import (
 	"github.com/markusressel/fan2go/internal/control_loop"
 	"golang.org/x/exp/maps"
 	"math"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -88,16 +89,27 @@ type DefaultFanController struct {
 	setPwmToGetPwmMap map[int]int
 
 	// The pwmMap is used to map a pwm value X to be applied to a fan to another value.
+	// It can be provided by the user (in fan2go.yaml) or be generated automatically.
 	// This is used to support fans that do not support the full range of [0..255] pwm values,
 	// but rather a subset of it, e.g. [0..100] or [0..255] with some values missing.
-	// This map **always** contains the full range of [0..255] as keys, but the values
-	// are not guaranteed to be in the range of [0..255] as well.
+	//
+	// This mapping **always** contains the full range of [0..255] as keys - if the user-provided
+	// pwmMap is missing keys they're added and those added keys then map to the value of the closest
+	// user-provided key - but the values are not guaranteed to be in the range of [0..255] as well.
 	//
 	// Examples:
 	//  [0: 0, 1: 1, 2: 2, 3: 3, ..., 100: 100, 101: 101, 102: 102, ..., 255: 255]
 	//  [0: 0, 1: 0, 2: 0, 3: 0, ..., 84: 0, 85: 128, ..., 169: 128, 170: 255, ..., 255: 255]
 	//  [0: 0, 1: 0, 2: 0, 3: 0, ..., 63: 0, 64: 1, ..., 127: 1, 128: 2, ..., 191: 2, 192: 3, ..., 255: 3]
-	pwmMap map[int]int
+	//
+	//  If the user provided a map like [0: 0, 128: 3, 255: 6], meaning "the fan supports three speed values:
+	//  PWM 0 (not rotating) happens with 0, PWM 128 (running at half speed or so) happens when setting
+	//  the fan-specific speed value to 3, you get full speed (PWM 255) with fan-specific speed value 6",
+	//  then that's expanded to:
+	//   [0:0, 1: 0, ..., 63: 0, 64: 3, 65: 3, ..., 128: 3, 129: 3, ..., 190: 3, 191: 6, 192: 6, ... 255: 6]
+	//
+	// It's actually implemented as an array, where the "key" is the index
+	pwmMapping [256]int
 
 	// don't get and set PWMs in computeSetPwmToGetPwmMapAutomatically(), assume 1:1 mapping instead
 	// (enabled by `fan2go fan -i bla init -s` or with the skipAutoPwmMap option in fan configs)
@@ -127,7 +139,6 @@ func NewFanController(
 		curve:                            curve,
 		updateRate:                       updateRate,
 		targetValuesWithDistinctPWMValue: []int{},
-		pwmMap:                           nil,
 		controlLoop:                      controlLoop,
 		minPwmOffset:                     0,
 		skipAutoPwmMapping:               skipAutoPwmMapping,
@@ -214,7 +225,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	err = f.computeFanSpecificMappings()
 
 	ui.Debug("setPwmToGetPwmMap of fan '%s': %v", fan.GetId(), f.setPwmToGetPwmMap)
-	ui.Debug("pwmMap of fan '%s': %v", fan.GetId(), f.pwmMap)
+	ui.Debug("pwmMap of fan '%s': %v", fan.GetId(), f.pwmMapping)
 	ui.Info("PWM settings of fan '%s': Min %d, Start %d, Max %d", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm(), fan.GetMaxPwm())
 	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
 
@@ -632,7 +643,7 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 		return
 	}
 
-	if f.lastTarget != nil && f.pwmMap != nil {
+	if f.lastTarget != nil {
 		lastSetPwm, err := f.getLastTarget()
 		if err != nil {
 			ui.Warning("Error reading last set PWM value of fan %s: %v", f.fan.GetId(), err)
@@ -695,16 +706,6 @@ func (f *DefaultFanController) waitForFanToSettle(fan fans.Fan) {
 	ui.Debug("Fan %s has settled (current RPM max diff: %f)", fan.GetId(), measuredRpmDiffMax)
 }
 
-// findClosestDistinctTarget traverses the entries of the pwmMap and returns
-// the internal pwm value (key) of the entry whose value is closest (and distinct) value
-// to the requested [target] value.
-//
-// Note: The value returned by this method must be used as the key
-// to the pwmMap to get the actual target pwm value for the fan of this controller.
-func (f *DefaultFanController) findClosestDistinctTarget(target int) int {
-	return util.FindClosest(target, f.targetValuesWithDistinctPWMValue)
-}
-
 // computeSetPwmToGetPwmMap computes a mapping between "set pwm value" -> "actual pwm value"
 func (f *DefaultFanController) computeSetPwmToGetPwmMap() (err error) {
 
@@ -734,27 +735,50 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 		defer InitializationSequenceMutex.Unlock()
 	}
 
-	var configOverride *map[int]int
+	configOverride := f.fan.GetConfig().PwmMap
 
-	c := f.fan.GetConfig().PwmMap
-	if c != nil {
-		configOverride = c
-	}
-
-	if configOverride != nil {
+	if configOverride != nil && len(*configOverride) > 0 {
 		ui.Info("Using pwm map override from config...")
-		f.pwmMap = *configOverride
+
+		keys := maps.Keys(*configOverride)
+		slices.Sort(keys)
+
+		lastKeyIdx := 0
+		numKeys := len(keys)
+
+		for i := 0; i < 256; i++ {
+			// find the index within keys so keys[index] is closest to i
+			diff := util.Abs(keys[lastKeyIdx] - i)
+			for ki := lastKeyIdx + 1; ki < numKeys; ki++ {
+				d := util.Abs(keys[ki] - i)
+				if d <= diff { // <= to round up when at midpoint
+					diff = d
+					lastKeyIdx = ki
+				} else {
+					// if d was > diff, diff and lastKeyIdx are the optimum (as keys[] are sorted)
+					break
+				}
+			}
+			configOverrideKey := keys[lastKeyIdx]
+			// map i to the value of the user's PWM map with the key closest to i
+			f.pwmMapping[i] = (*configOverride)[configOverrideKey]
+		}
+
 		return nil
 	}
 
 	savedPwmMap, err := f.persistence.LoadFanPwmMap(f.fan.GetId())
-	if err == nil && f.pwmMap != nil {
+	if err == nil && savedPwmMap != nil {
 		ui.Info("FanController: Using saved value for pwm map of Fan '%s'", f.fan.GetId())
-		f.pwmMap = savedPwmMap
+		for i := 0; i < 256; i++ {
+			f.pwmMapping[i] = savedPwmMap[i]
+		}
 		return nil
 	}
 
-	if f.pwmMap == nil {
+	//if f.pwmMap == nil - TODO: any check needed? where would it come from anyway?
+	// and if it's calculated successfully, it gets saved anyway so next time this function will return after loading it
+	{
 		ui.Info("Computing pwm map...")
 		err = f.computePwmMapAutomatically()
 		if err != nil {
@@ -764,7 +788,7 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 	}
 
 	ui.Debug("Saving pwm map to fan...")
-	return f.persistence.SaveFanPwmMap(f.fan.GetId(), f.pwmMap)
+	return f.persistence.SaveFanPwmMap(f.fan.GetId(), f.pwmMapping[:])
 }
 
 func (f *DefaultFanController) computePwmMapAutomatically() (err error) {
@@ -777,7 +801,11 @@ func (f *DefaultFanController) computePwmMapAutomatically() (err error) {
 		// or it is impossible to compute it due to the fan not supporting PWM sensor reading.
 		// In this case, we have to assume a default pwmMap.
 		ui.Warning("Fan '%s' does not have a setPwmToGetPwmMap, using default pwmMap", fan.GetId())
-		f.pwmMap, err = util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
+		//f.pwmMap, err = util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
+
+		for i := 0; i < 256; i++ {
+			f.pwmMapping[i] = i
+		}
 	} else {
 		// if we have a setPwmToGetPwmMap, we can use its keyset to compute the pwmMap.
 		// Since this map will be used to map the internal target pwm value
@@ -794,13 +822,19 @@ func (f *DefaultFanController) computePwmMapAutomatically() (err error) {
 			key := keySet[i]
 			identityMappingOfKeyset[key] = key
 		}
-		f.pwmMap = util.ExpandMapToFullRange(identityMappingOfKeyset, fans.MinPwmValue, fans.MaxPwmValue)
+		// TODO: shouldn't this take the values into account or something?
+		pwmMap := util.ExpandMapToFullRange(identityMappingOfKeyset, fans.MinPwmValue, fans.MaxPwmValue)
+
+		// TODO: can all this be done more easily?
+		for i := 0; i < 256; i++ {
+			f.pwmMapping[i] = pwmMap[i]
+		}
 	}
 	return err
 }
 
 func (f *DefaultFanController) updateDistinctPwmValues() {
-	var targetValues = util.ExtractKeysWithDistinctValues(f.pwmMap)
+	var targetValues = util.ExtractIndicesWithDistinctValues(f.pwmMapping[:])
 	sort.Ints(targetValues)
 	f.targetValuesWithDistinctPWMValue = targetValues
 
@@ -820,8 +854,10 @@ func (f *DefaultFanController) increaseMinPwmOffset() {
 // to achieve a certain target speed.
 // See the pwmMap field for more details.
 func (f *DefaultFanController) applyPwmMapToTarget(target int) int {
-	closestToTarget := f.findClosestDistinctTarget(target)
-	return f.pwmMap[closestToTarget]
+	if target < 0 || target > 255 {
+		return 0 // TODO: panic or something? or just clamp target to [0..255]?
+	}
+	return f.pwmMapping[target]
 }
 
 // getReportedPwmAfterApplyingPwm returns the expected reported PWM value after applying the given pwmMappedValue.
@@ -839,6 +875,8 @@ func (f *DefaultFanController) getReportedPwmAfterApplyingPwm(pwmMappedValue int
 	}
 	if value, ok := f.setPwmToGetPwmMap[pwmMappedValue]; !ok {
 		ui.Warning("Fan '%s' does not have a setPwmToGetPwmMap entry for %d, assuming 1:1 relation.", f.fan.GetId(), pwmMappedValue)
+		// FIXME: the next line is broken. FindClosest() does a binary search (=> requires sorted slice),
+		//        but maps.Keys() returns the keys "in an indeterminate order"
 		closestKey := util.FindClosest(pwmMappedValue, maps.Keys(f.setPwmToGetPwmMap))
 		return f.setPwmToGetPwmMap[closestKey]
 	} else {
