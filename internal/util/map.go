@@ -20,6 +20,22 @@ func ExtractKeysWithDistinctValues(input map[int]int) []int {
 	return result
 }
 
+// ExtractIndicesWithDistinctValues extracts the keys from a map with distinct values.
+// It returns a slice of keys where each key corresponds to a unique value in the map.
+func ExtractIndicesWithDistinctValues(input []int) []int {
+	var result []int
+	seenValues := make(map[int]bool)
+
+	for index := range input {
+		value := input[index]
+		if !seenValues[value] {
+			seenValues[value] = true
+			result = append(result, index)
+		}
+	}
+	return result
+}
+
 func Values[A constraints.Ordered, B any](input map[A]B) []B {
 	var result []B
 	for _, b := range input {

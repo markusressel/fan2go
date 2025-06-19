@@ -2,6 +2,7 @@ package curves
 
 import (
 	"fmt"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/util"
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -12,9 +13,9 @@ type SpeedCurve interface {
 	GetId() string
 	// Evaluate update the value of this SpeedCurve, by calculates a new value based on the current sensor values
 	// returns a value in [0..255]
-	Evaluate() (value int, err error)
+	Evaluate() (value float64, err error)
 	// CurrentValue returns the current value of the curve, which was calculated by the previous call to Evaluate
-	CurrentValue() int
+	CurrentValue() float64
 }
 
 var (
@@ -23,9 +24,10 @@ var (
 
 func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
 	if config.Linear != nil {
-		return &LinearSpeedCurve{
+		ret := &LinearSpeedCurve{
 			Config: config,
-		}, nil
+		}
+		return ret, nil
 	}
 
 	if config.PID != nil {
