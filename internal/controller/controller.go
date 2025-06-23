@@ -227,10 +227,30 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	ui.Debug("setPwmToGetPwmMap of fan '%s': %v", fan.GetId(), f.setPwmToGetPwmMap)
 	ui.Debug("pwmMap of fan '%s': %v", fan.GetId(), f.pwmMapping)
 	ui.Info("PWM settings of fan '%s': Min %d, Start %d, Max %d", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm(), fan.GetMaxPwm())
-	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
+	alwaysSetPwmStr := ""
+	if fan.GetConfig().AlwaysSetPwmMode {
+		alwaysSetPwmStr = "with AlwaysSetPwmMode enabled: Will (re)set the PWM mode to manual each cycle"
+	}
+	ui.Info("Starting controller loop for fan '%s' %s", fan.GetId(), alwaysSetPwmStr)
 
 	if fan.GetMinPwm() > fan.GetStartPwm() {
 		ui.Warning("Suspicious pwm config of fan '%s': MinPwm (%d) > StartPwm (%d)", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm())
+	}
+
+	// TODO: check if fan.Supports(fans.FeatureControlMode) - or is it ok if it doesn't and our
+	//       default assumption is that it will always be in manual mode then?
+	//       (trySetManualPwm() just returns nil in that case)
+	//       Alternatively, should fans that don't support switching the mode but run in manual mode
+	//       by default (cmd or file fans?) just always return ControlModePWM in fan.GetControlMode()
+	//       so we can check that?
+	err = trySetManualPwm(fan)
+	if err != nil {
+		cm, e := fan.GetControlMode()
+		// if the control mode is PWM even though trySetManualPwm() failed, ignore that error
+		if e != nil || cm != fans.ControlModePWM {
+			// ... otherwise cancel here, FanController can't do anything if manual fan control doesn't work
+			return err
+		}
 	}
 
 	var g run.Group
@@ -421,9 +441,6 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 		}
 	}
 
-	// FIXME: does this really have to be called each time Pwm is set?!
-	//        couldn't it be called if SetPwm() fails?
-	_ = trySetManualPwm(f.fan)
 	err = f.setPwm(pwmTarget)
 	if err != nil {
 		// TODO: maybe we should add some kind of critical failure mode here
@@ -667,6 +684,10 @@ func (f *DefaultFanController) setPwm(target int) (err error) {
 	pwmMappedValue := f.applyPwmMapToTarget(target)
 	expectedReportedPwmValue := f.getReportedPwmAfterApplyingPwm(pwmMappedValue)
 	// setting pwmMappedValue will yield expectedReportedPwmValue when reading back the pwm value
+
+	if f.fan.GetConfig().AlwaysSetPwmMode {
+		_ = trySetManualPwm(f.fan)
+	}
 
 	ui.Debug("Setting target PWM of %s to %d, applying PWM Map yields %d, expected reported pwm is %d", f.fan.GetId(), target, pwmMappedValue, expectedReportedPwmValue)
 	f.lastTarget = &target

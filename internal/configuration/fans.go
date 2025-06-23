@@ -28,6 +28,9 @@ type FanConfig struct {
 	SkipAutoPwmMap bool `json:"skipAutoPwmMap"`
 	// ControlAlgorithm defines how the curve target is applied to the fan.
 	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
+	// If enabled, (re)sets the PWM mode to manual each cycle. Works around buggy BIOS and similar
+	// that overwrites fan2go's settings. Disabled by default.
+	AlwaysSetPwmMode bool `json:"alwaysSetPwmMode"`
 	// SanityCheck defines Configuration options for sanity checks
 	SanityCheck *SanityCheckConfig `json:"sanityCheck,omitempty"`
 	// HwMon, File and Cmd are the different ways to configure the respective fan types.
