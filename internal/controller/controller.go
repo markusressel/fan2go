@@ -261,7 +261,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 			}
 		}, func(err error) {
 			if err != nil {
-				ui.Fatal("Error monitoring fan rpm: %v", err)
+				ui.Fatal("Error in fan controller fan %s: %v", fan.GetId(), err)
 			}
 		})
 	}
