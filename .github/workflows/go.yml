@@ -94,5 +94,6 @@ jobs:
         with:
           files: |
             dist/fan2go-linux-amd64
+            dist/fan2go-linux-amd64-no-nvml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
