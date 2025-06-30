@@ -82,7 +82,7 @@ func TestFunctionCurveSum(t *testing.T) {
 	}
 
 	// THEN
-	assert.Equal(t, 63+127, result)
+	assert.Equal(t, 63.75+127.5, result)
 }
 
 func TestFunctionCurveDifference(t *testing.T) {
@@ -141,7 +141,7 @@ func TestFunctionCurveDifference(t *testing.T) {
 	}
 
 	// THEN
-	assert.Equal(t, 127-63, result)
+	assert.Equal(t, 127.5-63.75, result)
 }
 
 func TestFunctionCurveAverage(t *testing.T) {
@@ -200,7 +200,7 @@ func TestFunctionCurveAverage(t *testing.T) {
 	}
 
 	// THEN
-	assert.Equal(t, 127, result)
+	assert.Equal(t, 127.5, result)
 }
 
 func TestFunctionCurveDelta(t *testing.T) {
@@ -259,7 +259,8 @@ func TestFunctionCurveDelta(t *testing.T) {
 	}
 
 	// THEN
-	assert.Equal(t, 121, result)
+	// 20 => ~12.143 ; 40 => ~133.571
+	assert.InDeltaf(t, 133.571-12.143, result, 0.001, "The speed difference should be about 121.428")
 }
 
 func TestFunctionCurveMinimum(t *testing.T) {
@@ -317,7 +318,7 @@ func TestFunctionCurveMinimum(t *testing.T) {
 	}
 
 	// THEN
-	assert.Equal(t, 127, result)
+	assert.Equal(t, 127.5, result)
 }
 
 func TestFunctionCurveMaximum(t *testing.T) {
@@ -375,5 +376,5 @@ func TestFunctionCurveMaximum(t *testing.T) {
 	}
 
 	// THEN
-	assert.Equal(t, 255, result)
+	assert.Equal(t, 255.0, result)
 }

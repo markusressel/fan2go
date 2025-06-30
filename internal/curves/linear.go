@@ -2,7 +2,6 @@ package curves
 
 import (
 	"github.com/markusressel/fan2go/internal/ui"
-	"math"
 	"sync"
 
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -16,14 +15,14 @@ var (
 
 type LinearSpeedCurve struct {
 	Config configuration.CurveConfig `json:"config"`
-	Value  int                       `json:"value"`
+	Value  float64                   `json:"value"`
 }
 
 func (c *LinearSpeedCurve) GetId() string {
 	return c.Config.ID
 }
 
-func (c *LinearSpeedCurve) Evaluate() (value int, err error) {
+func (c *LinearSpeedCurve) Evaluate() (value float64, err error) {
 	sensor, _ := sensors.GetSensor(c.Config.Linear.Sensor)
 	var avgTemp = sensor.GetMovingAvg()
 
@@ -34,7 +33,7 @@ func (c *LinearSpeedCurve) Evaluate() (value int, err error) {
 			ui.Error("Error calculating interpolated curve value for sensor '%s': %v", sensor.GetId(), err)
 			return 0, err
 		}
-		value = int(math.Round(interpolatedCurveValue))
+		value = interpolatedCurveValue
 	} else {
 		minTemp := float64(c.Config.Linear.Min) * 1000 // degree to milli-degree
 		maxTemp := float64(c.Config.Linear.Max) * 1000
@@ -47,22 +46,22 @@ func (c *LinearSpeedCurve) Evaluate() (value int, err error) {
 			value = 0
 		} else {
 			ratio := (avgTemp - minTemp) / (maxTemp - minTemp)
-			value = int(ratio * 255)
+			value = ratio * 255
 		}
 	}
 
-	ui.Debug("Evaluating curve '%s'. Sensor '%s' temp '%.0f°'. Desired PWM: %d", c.Config.ID, sensor.GetId(), avgTemp/1000, value)
+	ui.Debug("Evaluating curve '%s'. Sensor '%s' temp '%.0f°'. Desired speed: %.2f", c.Config.ID, sensor.GetId(), avgTemp/1000, value)
 	c.SetValue(value)
 	return value, nil
 }
 
-func (c *LinearSpeedCurve) SetValue(value int) {
+func (c *LinearSpeedCurve) SetValue(value float64) {
 	valueMu.Lock()
 	defer valueMu.Unlock()
 	c.Value = value
 }
 
-func (c *LinearSpeedCurve) CurrentValue() int {
+func (c *LinearSpeedCurve) CurrentValue() float64 {
 	valueMu.Lock()
 	defer valueMu.Unlock()
 	return c.Value

@@ -16,8 +16,21 @@ type FanConfig struct {
 	PwmMap *map[int]int `json:"pwmMap,omitempty"`
 	// Curve is the id of the speed curve associated with this fan.
 	Curve string `json:"curve"`
+	// By default speed values from the curve are scaled from 0..255 (or 0%..100%) to MinPwm..MaxPwm
+	// before they're mapped with PwmMap (the value looked up in PwmMap is then used to actually
+	// set the speed in the fan's controlling device).
+	// If UseUnscaledCurveValues is set to true, the values from the curve for a specific temperature
+	// are directly mapped with PwmMap, **without** scaling them first.
+	// Note: If NeverStop is also set to true, values smaller than MinPwm are replaced with MinPwm
+	UseUnscaledCurveValues bool `json:"useUnscaledCurveValues"`
+	// Skip automatic detection/calculation of setPwmToGetPwmMap in fan initialization,
+	// assume 1:1 mapping instead (user's pwmMap is still used, if it exists)
+	SkipAutoPwmMap bool `json:"skipAutoPwmMap"`
 	// ControlAlgorithm defines how the curve target is applied to the fan.
 	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
+	// If enabled, (re)sets the PWM mode to manual each cycle. Works around buggy BIOS and similar
+	// that overwrites fan2go's settings. Disabled by default.
+	AlwaysSetPwmMode bool `json:"alwaysSetPwmMode"`
 	// SanityCheck defines Configuration options for sanity checks
 	SanityCheck *SanityCheckConfig `json:"sanityCheck,omitempty"`
 	// HwMon, File and Cmd are the different ways to configure the respective fan types.
