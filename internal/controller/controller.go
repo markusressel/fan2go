@@ -223,6 +223,9 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	}
 
 	err = f.computeFanSpecificMappings()
+	if err != nil {
+		return err
+	}
 
 	ui.Debug("setPwmToGetPwmMap of fan '%s': %v", fan.GetId(), f.setPwmToGetPwmMap)
 	ui.Debug("pwmMap of fan '%s': %v", fan.GetId(), f.pwmMapping)
