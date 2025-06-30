@@ -46,7 +46,7 @@ func (sensor *MockSensor) SetMovingAvg(avg float64) {
 
 type MockCurve struct {
 	ID    string
-	Value float64
+	Value *float64
 }
 
 func (c MockCurve) GetId() string {
@@ -54,23 +54,25 @@ func (c MockCurve) GetId() string {
 }
 
 func (c MockCurve) Evaluate() (value float64, err error) {
-	return c.Value, nil
+	return *c.Value, nil
 }
 
 func (c MockCurve) CurrentValue() float64 {
-	return c.Value
+	return *c.Value
 }
 
 type MockFan struct {
-	ID              string
-	ControlMode     fans.ControlMode
-	PWM             int
-	MinPWM          int
-	RPM             int
-	curveId         string
-	shouldNeverStop bool
-	speedCurve      *map[int]float64
-	PwmMap          *map[int]int
+	ID               string
+	ControlMode      fans.ControlMode
+	PWM              int
+	MinPWM           int
+	MaxPWM           int
+	RPM              int
+	curveId          string
+	shouldNeverStop  bool
+	alwaysSetPwmMode bool
+	speedCurve       *map[int]float64
+	PwmMap           *map[int]int
 }
 
 func (fan MockFan) GetStartPwm() int {
@@ -98,7 +100,11 @@ func (fan *MockFan) SetMinPwm(pwm int, force bool) {
 }
 
 func (fan MockFan) GetMaxPwm() int {
-	return fans.MaxPwmValue
+	if fan.MaxPWM == 0 { // test didn't set an explicit value, use default
+		return fans.MaxPwmValue
+	} else {
+		return fan.MaxPWM
+	}
 }
 
 func (fan *MockFan) SetMaxPwm(pwm int, force bool) {
@@ -169,18 +175,19 @@ func (fan MockFan) ShouldNeverStop() bool {
 
 func (fan MockFan) GetConfig() configuration.FanConfig {
 	startPwm := 0
-	maxPwm := fans.MaxPwmValue
+	maxPwm := fan.GetMaxPwm()
 	return configuration.FanConfig{
-		ID:        fan.ID,
-		Curve:     fan.curveId,
-		NeverStop: fan.shouldNeverStop,
-		StartPwm:  &startPwm,
-		MinPwm:    &fan.MinPWM,
-		MaxPwm:    &maxPwm,
-		PwmMap:    fan.PwmMap,
-		HwMon:     nil, // Not used in this mock
-		File:      nil, // Not used in this mock
-		Cmd:       nil, // Not used in this mock
+		ID:               fan.ID,
+		Curve:            fan.curveId,
+		NeverStop:        fan.shouldNeverStop,
+		StartPwm:         &startPwm,
+		MinPwm:           &fan.MinPWM,
+		MaxPwm:           &maxPwm,
+		PwmMap:           fan.PwmMap,
+		AlwaysSetPwmMode: fan.alwaysSetPwmMode,
+		HwMon:            nil, // Not used in this mock
+		File:             nil, // Not used in this mock
+		Cmd:              nil, // Not used in this mock
 	}
 }
 
@@ -735,7 +742,7 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 	curveValue := 127.0
 	curve := &MockCurve{
 		ID:    "curve",
-		Value: curveValue,
+		Value: &curveValue,
 	}
 	curves.RegisterSpeedCurve(curve)
 
@@ -782,7 +789,7 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	curveValue := 0.0
 	curve := &MockCurve{
 		ID:    "curve",
-		Value: curveValue,
+		Value: &curveValue,
 	}
 	curves.RegisterSpeedCurve(curve)
 
@@ -857,7 +864,7 @@ func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 	curveValue := 5.0
 	curve := &MockCurve{
 		ID:    "curve",
-		Value: curveValue,
+		Value: &curveValue,
 	}
 	curves.RegisterSpeedCurve(curve)
 
@@ -1029,6 +1036,289 @@ func TestFanController_SetPwm_UserOverridePwmMap(t *testing.T) {
 	// THEN
 	assert.NoError(t, err)
 	assert.Equal(t, 39, fan.PWM)
+}
+
+func TestFanController_PwmMapping(t *testing.T) {
+	// GIVEN
+	fan := &MockFan{
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          50,
+		shouldNeverStop: true,
+		speedCurve:      &LinearFan,
+		PwmMap: &map[int]int{
+			0:   0,
+			64:  1,
+			128: 2,
+		},
+	}
+	fans.RegisterFan(fan)
+
+	controller := DefaultFanController{
+		persistence: mockPersistence{
+			hasPwmMap: false,
+		},
+		fan:        fan,
+		updateRate: time.Duration(100),
+	}
+
+	// WHEN
+	err := controller.computeFanSpecificMappings()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, controller.pwmMapping[0], 0)
+	assert.Equal(t, controller.pwmMapping[1], 0)
+	assert.Equal(t, controller.pwmMapping[2], 0)
+	assert.Equal(t, controller.pwmMapping[31], 0)
+	assert.Equal(t, controller.pwmMapping[32], 1)
+	assert.Equal(t, controller.pwmMapping[33], 1)
+	assert.Equal(t, controller.pwmMapping[64], 1)
+	assert.Equal(t, controller.pwmMapping[65], 1)
+	assert.Equal(t, controller.pwmMapping[95], 1)
+	assert.Equal(t, controller.pwmMapping[96], 2)
+	assert.Equal(t, controller.pwmMapping[97], 2)
+	assert.Equal(t, controller.pwmMapping[128], 2)
+	assert.Equal(t, controller.pwmMapping[129], 2)
+	assert.Equal(t, controller.pwmMapping[130], 2)
+	assert.Equal(t, controller.pwmMapping[180], 2)
+	assert.Equal(t, controller.pwmMapping[254], 2)
+	assert.Equal(t, controller.pwmMapping[255], 2)
+}
+
+func tryUpdateFanSpeed(t *testing.T, controller *DefaultFanController) {
+	err := controller.UpdateFanSpeed()
+	assert.NoError(t, err)
+}
+
+func assertPwm(t *testing.T, expectedPWM int, fan fans.Fan) {
+	pwm, err := fan.GetPwm()
+	assert.NoError(t, err)
+	assert.Equal(t, expectedPWM, pwm)
+}
+
+func TestFanController_PwmMapping2(t *testing.T) {
+	// GIVEN
+	fan := &MockFan{
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          1,
+		MaxPWM:          3,
+		shouldNeverStop: true,
+		PwmMap: &map[int]int{
+			0: 0,
+			1: 1,
+			2: 2,
+			3: 3,
+		},
+	}
+	fans.RegisterFan(fan)
+
+	curveValue := 0.0
+
+	controller := DefaultFanController{
+		persistence: mockPersistence{
+			hasPwmMap: false,
+		},
+		fan:        fan,
+		updateRate: time.Duration(100),
+		curve: MockCurve{
+			ID:    "MC",
+			Value: &curveValue,
+		},
+		controlLoop: control_loop.NewDirectControlLoop(nil),
+	}
+
+	// WHEN
+	err := controller.computeFanSpecificMappings()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, 0, controller.pwmMapping[0])
+	assert.Equal(t, 1, controller.pwmMapping[1])
+	assert.Equal(t, 2, controller.pwmMapping[2])
+	assert.Equal(t, 3, controller.pwmMapping[3])
+	assert.Equal(t, 3, controller.pwmMapping[4])
+	assert.Equal(t, 3, controller.pwmMapping[255])
+
+	// several WHEN/THENs
+	tryUpdateFanSpeed(t, &controller)
+	assertPwm(t, 1, fan) // even if the curve returns 0, PWM should be 1 because shouldNeverStop is true
+
+	curveValue = 20
+	assert.Equal(t, 20.0, controller.curve.CurrentValue())
+	tryUpdateFanSpeed(t, &controller)
+	assertPwm(t, 1, fan) // 20 is about at the beginning of the range from 0-255, so it should use speed 1
+
+	curveValue = 120
+	tryUpdateFanSpeed(t, &controller)
+	assertPwm(t, 2, fan) // 120 is about at the mid of the range from 0-255, so it should use speed 2
+
+	curveValue = 210
+	tryUpdateFanSpeed(t, &controller)
+	assertPwm(t, 3, fan) // 210 is at the end of the range from 0-255, so it should use speed 3
+}
+
+func TestFanController_PwmMapping3(t *testing.T) {
+	// GIVEN
+	fan := &MockFan{
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          1,
+		MaxPWM:          3,
+		shouldNeverStop: true,
+	}
+	fans.RegisterFan(fan)
+
+	curveValue := 0.0
+
+	controller := DefaultFanController{
+		persistence: mockPersistence{
+			hasPwmMap: false,
+		},
+		fan:        fan,
+		updateRate: time.Duration(100),
+		curve: MockCurve{
+			ID:    "MC",
+			Value: &curveValue,
+		},
+		controlLoop: control_loop.NewDirectControlLoop(nil),
+	}
+
+	// WHEN
+	err := controller.computeFanSpecificMappings()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, 0, controller.pwmMapping[0])
+	assert.Equal(t, 1, controller.pwmMapping[1])
+	assert.Equal(t, 2, controller.pwmMapping[2])
+	assert.Equal(t, 3, controller.pwmMapping[3])
+	// basically the same as before, except here pwmMapping[i] = i for all cases
+	// because it's initialized to standard 1-to-1 mapping (as PwmMap wasn't set)
+	// however all the actual PWM checks below behave just like in TestFanController_PwmMapping2
+	assert.Equal(t, 4, controller.pwmMapping[4])
+	assert.Equal(t, 255, controller.pwmMapping[255])
+
+	// several WHEN/THENs
+	tryUpdateFanSpeed(t, &controller)
+	assertPwm(t, 1, fan) // even if the curve returns 0, PWM should be 1 because shouldNeverStop is true
+
+	curveValue = 20
+	assert.Equal(t, 20.0, controller.curve.CurrentValue())
+	tryUpdateFanSpeed(t, &controller)
+	assertPwm(t, 1, fan) // 20 is about at the beginning of the range from 0-255, so it should use speed 1
+
+	curveValue = 120
+	tryUpdateFanSpeed(t, &controller)
+	assertPwm(t, 2, fan) // 120 is about at the mid of the range from 0-255, so it should use speed 2
+
+	curveValue = 210
+	tryUpdateFanSpeed(t, &controller)
+	assertPwm(t, 3, fan) // 210 is at the end of the range from 0-255, so it should use speed 3
+}
+
+func assertControlMode(t *testing.T, expectedMode fans.ControlMode, fan fans.Fan) {
+	cm, err := fan.GetControlMode()
+	assert.NoError(t, err)
+	assert.Equal(t, expectedMode, cm)
+}
+
+func TestFanController_AlwaysSetPwmMode(t *testing.T) {
+	fan := &MockFan{
+		ID:               "fan",
+		PWM:              0,
+		RPM:              100,
+		MinPWM:           1,
+		MaxPWM:           3,
+		shouldNeverStop:  true,
+		alwaysSetPwmMode: true,
+		// usually Run() in controller.go sets the control mode to PWM at startup,
+		// for testing set it here in initialization
+		ControlMode: fans.ControlModePWM,
+	}
+	fans.RegisterFan(fan)
+
+	curveValue := 0.0
+
+	controller := DefaultFanController{
+		persistence: mockPersistence{
+			hasPwmMap: false,
+		},
+		fan:        fan,
+		updateRate: time.Duration(100),
+		curve: MockCurve{
+			ID:    "MC",
+			Value: &curveValue,
+		},
+		controlLoop: control_loop.NewDirectControlLoop(nil),
+	}
+
+	err := controller.computeFanSpecificMappings()
+	assert.NoError(t, err)
+
+	assertControlMode(t, fans.ControlModePWM, controller.fan)
+
+	tryUpdateFanSpeed(t, &controller)
+	assertControlMode(t, fans.ControlModePWM, controller.fan) // should still be ControlModePWM after UpdateFanSpeed()
+
+	_ = controller.fan.SetControlMode(fans.ControlModeAutomatic)
+	assertControlMode(t, fans.ControlModeAutomatic, controller.fan)
+
+	// UpdateFanSpeed() should reset the control mode to manual/ControlModePWM
+	// because alwaysSetPwmMode is true
+	tryUpdateFanSpeed(t, &controller)
+	assertControlMode(t, fans.ControlModePWM, controller.fan)
+}
+
+func TestFanController_AlwaysSetPwmModeDisabled(t *testing.T) {
+	fan := &MockFan{
+		ID:               "fan",
+		PWM:              0,
+		RPM:              100,
+		MinPWM:           1,
+		MaxPWM:           3,
+		shouldNeverStop:  true,
+		alwaysSetPwmMode: false,
+		// usually Run() in controller.go sets the control mode to PWM at startup,
+		// for testing set it here in initialization
+		ControlMode: fans.ControlModePWM,
+	}
+	fans.RegisterFan(fan)
+
+	curveValue := 0.0
+
+	controller := DefaultFanController{
+		persistence: mockPersistence{
+			hasPwmMap: false,
+		},
+		fan:        fan,
+		updateRate: time.Duration(100),
+		curve: MockCurve{
+			ID:    "MC",
+			Value: &curveValue,
+		},
+		controlLoop: control_loop.NewDirectControlLoop(nil),
+	}
+
+	err := controller.computeFanSpecificMappings()
+	assert.NoError(t, err)
+
+	assertControlMode(t, fans.ControlModePWM, controller.fan)
+
+	tryUpdateFanSpeed(t, &controller)
+	assertControlMode(t, fans.ControlModePWM, controller.fan) // should still be ControlModePWM after UpdateFanSpeed()
+
+	_ = controller.fan.SetControlMode(fans.ControlModeAutomatic)
+	assertControlMode(t, fans.ControlModeAutomatic, controller.fan)
+
+	// UpdateFanSpeed() should NOT reset the control mode to manual/ControlModePWM
+	// because in this test alwaysSetPwmMode is false
+	tryUpdateFanSpeed(t, &controller)
+	assertControlMode(t, fans.ControlModeAutomatic, controller.fan)
 }
 
 type MockFanWithOffsetPwm struct {
