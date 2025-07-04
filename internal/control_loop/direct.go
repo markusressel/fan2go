@@ -31,7 +31,7 @@ func NewDirectControlLoop(
 	}
 }
 
-func (l *DirectControlLoop) Cycle(target int) int {
+func (l *DirectControlLoop) Cycle(target float64) float64 {
 	loopTime := time.Now()
 	targetFloat := float64(target)
 	if math.IsNaN(l.lastOutput) {
@@ -52,10 +52,8 @@ func (l *DirectControlLoop) Cycle(target int) int {
 
 	l.lastOutput = stepTarget
 
-	// convert the result to an integer
-	rounded := int(math.Round(stepTarget))
 	// ensure we are within sane bounds
-	result := util.Coerce(rounded, 0, 255)
+	result := util.Coerce(stepTarget, 0, 255)
 
 	return result
 }

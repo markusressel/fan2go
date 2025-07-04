@@ -83,6 +83,27 @@ fans:
       0: 0
       64: 128
       192: 255
+    # Skip automatic detection/calculation of setPwmToGetPwmMap in fan initialization,
+    # assume 1:1 mapping instead (user's pwmMap is still used, if it exists).
+    # The same as using the --skip-auto-pwm-map option of `fan2go fan init`, but this option
+    # is also used if fan initialization is run automatically at first start.
+    # Especially helpful if your fan doesn't return the last set PWM value immediately
+    # (but only after it has adjusted its speed accordingly, for example), which otherwise
+    # makes fan initialization fail or calculate broken values. Defaults to false
+    skipAutoPwmMap: true
+    # (Re)set the PWM mode to manual each cycle. Works around buggy BIOSes and similar
+    # that periodically overwrite fan2go's settings. Disabled by default.
+    alwaysSetPwmMode: true
+    # By default (useUnscaledCurveValues: false) speed values from the curve are scaled
+    # from 1..255 (or 1%..100%) to MinPwm..MaxPwm  and speed values < 1(%) are set to 0,
+    # before they're mapped with pwmMap (the value looked up in pwmMap is then used to
+    # actually set the speed in the fan's controlling device).
+    # If useUnscaledCurveValues is set to true, the values from the curve for a specific temperature
+    # are directly mapped with PwmMap, *without* scaling them first.
+    # Note: If neverStop is also set to true, values smaller than MinPwm are replaced with MinPwm,
+    #   otherwise values smaller than MinPwm are replaced with 0 (the fan wouldn't turn anyway).
+    #   But all values >= MinPwm are used as is if this option is set to true.
+    useUnscaledCurveValues: false
     # (Optional) Configuration options for sanity checks
     sanityCheck:
       # (Optional) Control the behavior of the "pwmValueChangedByThirdParty" sanity check
@@ -146,10 +167,11 @@ curves:
       sensor: cpu_package
       # Steps to define a section-wise defined speed curve function
       steps:
-        # Sensor value (degrees Celsius) -> Speed (0-255)
-        - 40: 0
-        - 50: 50
-        - 80: 255
+        # Sensor value (degrees Celsius) -> Speed (0%: Fan stopped; 1%: MinPwm; 100%: MaxPwm)
+        - 40: 0%   # up to 40°C stop the fan (unless neverStop is true)
+        - 41: 1%   # at 41°C the fan should run at its minimum (non-stopped) speed
+        - 65: 33%  # at 50°C the fan should run at 33% speed
+        - 80: 100% # from 80°C on the fan should run at full speed
 
   - id: mainboard_curve
     linear:
