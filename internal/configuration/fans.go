@@ -16,12 +16,12 @@ type FanConfig struct {
 	PwmMap *map[int]int `json:"pwmMap,omitempty"`
 	// Curve is the id of the speed curve associated with this fan.
 	Curve string `json:"curve"`
-	// By default speed values from the curve are scaled from 0..255 (or 0%..100%) to MinPwm..MaxPwm
+	// By default speed values from the curve are scaled from 1..255 (or 1%..100%) to MinPwm..MaxPwm
 	// before they're mapped with PwmMap (the value looked up in PwmMap is then used to actually
-	// set the speed in the fan's controlling device).
+	// set the speed in the fan's controlling device) - 0(%) is mapped to 0 (unless NeverStop is set).
 	// If UseUnscaledCurveValues is set to true, the values from the curve for a specific temperature
 	// are directly mapped with PwmMap, **without** scaling them first.
-	// Note: If NeverStop is also set to true, values smaller than MinPwm are replaced with MinPwm
+	// Note: If NeverStop is also set to true, values smaller than MinPwm (incl. 0) are replaced with MinPwm
 	UseUnscaledCurveValues bool `json:"useUnscaledCurveValues"`
 	// Skip automatic detection/calculation of setPwmToGetPwmMap in fan initialization,
 	// assume 1:1 mapping instead (user's pwmMap is still used, if it exists)

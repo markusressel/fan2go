@@ -326,8 +326,8 @@ fans:
     # actually set the speed in the fan's controlling device).
     # If useUnscaledCurveValues is set to true, the values from the curve for a specific temperature
     # are directly mapped with PwmMap, *without* scaling them first.
-    # Note: If neverStop is also set to true, values smaller than MinPwm are replaced with MinPwm,
-    #   otherwise values smaller than MinPwm are replaced with 0 (the fan wouldn't turn anyway).
+    # Note: If neverStop is also set to true, values smaller than MinPwm (including 0) are replaced with
+    #   MinPwm, otherwise values smaller than MinPwm are replaced with 0 (the fan wouldn't turn anyway).
     #   But all values >= MinPwm are used as is if this option is set to true.
     useUnscaledCurveValues: true
     # (Optional) Configuration options for sanity checks
