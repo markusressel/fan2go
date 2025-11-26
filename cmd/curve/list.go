@@ -3,6 +3,9 @@ package curve
 import (
 	"bytes"
 	"fmt"
+	"sort"
+	"strings"
+
 	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/cmd/global"
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -12,8 +15,6 @@ import (
 	"github.com/mgutz/ansi"
 	"github.com/spf13/cobra"
 	"github.com/tomlazar/table"
-	"sort"
-	"strings"
 )
 
 var curveCmd = &cobra.Command{
