@@ -3,16 +3,21 @@ package configuration
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/markusressel/fan2go/internal/control_loop"
-	"github.com/mitchellh/mapstructure"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/markusressel/fan2go/internal/control_loop"
+	"github.com/mitchellh/mapstructure"
+
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
+)
+
+const (
+	FanModeSanityCheckDefaultThrottleDuration = 10 * time.Second
 )
 
 type Configuration struct {

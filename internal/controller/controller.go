@@ -3,13 +3,14 @@ package controller
 import (
 	"context"
 	"errors"
-	"github.com/markusressel/fan2go/internal/control_loop"
-	"golang.org/x/exp/maps"
 	"math"
 	"slices"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/markusressel/fan2go/internal/control_loop"
+	"golang.org/x/exp/maps"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/curves"
@@ -120,6 +121,9 @@ type DefaultFanController struct {
 
 	// offset applied to the actual minPwm of the fan to ensure "neverStops" constraint
 	minPwmOffset int
+
+	// lastFanModeCheckTime is the last time we checked if some third party changed the fan control mode
+	lastFanModeCheckTime time.Time
 }
 
 func NewFanController(
@@ -142,6 +146,7 @@ func NewFanController(
 		controlLoop:                      controlLoop,
 		minPwmOffset:                     0,
 		skipAutoPwmMapping:               skipAutoPwmMapping,
+		lastFanModeCheckTime:             time.Unix(0, 0), // ensure first check happens immediately
 	}
 }
 
@@ -230,11 +235,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	ui.Debug("setPwmToGetPwmMap of fan '%s': %v", fan.GetId(), f.setPwmToGetPwmMap)
 	ui.Debug("pwmMap of fan '%s': %v", fan.GetId(), f.pwmMapping)
 	ui.Info("PWM settings of fan '%s': Min %d, Start %d, Max %d", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm(), fan.GetMaxPwm())
-	alwaysSetPwmStr := ""
-	if fan.GetConfig().AlwaysSetPwmMode {
-		alwaysSetPwmStr = "with AlwaysSetPwmMode enabled: Will (re)set the PWM mode to manual each cycle"
-	}
-	ui.Info("Starting controller loop for fan '%s' %s", fan.GetId(), alwaysSetPwmStr)
+	ui.Info("Starting controller loop for fan '%s' %s", fan.GetId())
 
 	if fan.GetMinPwm() > fan.GetStartPwm() {
 		ui.Warning("Suspicious pwm config of fan '%s': MinPwm (%d) > StartPwm (%d)", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm())
@@ -654,7 +655,6 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 				}
 			}
 		}
-
 	}
 
 	if !f.fan.Supports(fans.FeaturePwmSensor) {
@@ -688,9 +688,7 @@ func (f *DefaultFanController) setPwm(target int) (err error) {
 	expectedReportedPwmValue := f.getReportedPwmAfterApplyingPwm(pwmMappedValue)
 	// setting pwmMappedValue will yield expectedReportedPwmValue when reading back the pwm value
 
-	if f.fan.GetConfig().AlwaysSetPwmMode {
-		_ = trySetManualPwm(f.fan)
-	}
+	f.ensureFanModeIsSetToExpectedMode()
 
 	ui.Debug("Setting target PWM of %s to %d, applying PWM Map yields %d, expected reported pwm is %d", f.fan.GetId(), target, pwmMappedValue, expectedReportedPwmValue)
 	f.lastTarget = &target
@@ -704,6 +702,51 @@ func (f *DefaultFanController) setPwm(target int) (err error) {
 		}
 	}
 	return f.fan.SetPwm(pwmMappedValue)
+}
+
+// ensureFanModeIsSetToExpectedMode makes sure that the fan control mode is set to the expected mode (manual PWM control),
+// by checking periodically.
+func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
+	fanConfig := f.fan.GetConfig()
+	sanityChecks := fanConfig.SanityCheck
+
+	enabled := true
+	throttleDuration := configuration.FanModeSanityCheckDefaultThrottleDuration
+
+	if sanityChecks != nil {
+		if sanityChecks.FanModeChangedByThirdParty != nil {
+			sanityCheckConfig := sanityChecks.FanModeChangedByThirdParty
+			if sanityCheckConfig.Enabled != nil {
+				enabled = *sanityCheckConfig.Enabled
+			}
+			if sanityCheckConfig.ThrottleDuration != nil {
+				throttleDuration = *sanityCheckConfig.ThrottleDuration
+			}
+		}
+	}
+
+	if !enabled {
+		// sanity check is disabled
+		return
+	}
+
+	// make sure we don't check this too often
+	if f.lastFanModeCheckTime.Add(throttleDuration).After(time.Now()) {
+		return
+	}
+	f.lastFanModeCheckTime = time.Now()
+
+	cm, e := f.fan.GetControlMode()
+	if e != nil {
+		ui.Warning("Cannot read control mode of fan %s: %v", f.fan.GetId(), e)
+		return
+	}
+	if cm != fans.ControlModePWM {
+		ui.Warning("Fan mode of fan %s was changed by third party! Current mode: %d, expected mode: %d",
+			f.fan.GetId(), cm, fans.ControlModePWM)
+		// ensure fan mode is set to expected target mode
+		_ = trySetManualPwm(f.fan)
+	}
 }
 
 func (f *DefaultFanController) waitForFanToSettle(fan fans.Fan) {

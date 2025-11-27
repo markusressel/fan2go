@@ -114,6 +114,16 @@ fans:
       pwmValueChangedByThirdParty:
         # (Optional) Whether to enable this check or not
         enabled: true
+      # (Optional) Control the behavior of the "fanModeChangedByThirdParty" sanity check
+      # This check is used to detect if the fan mode (automatic/manual) has changed between two consecutive
+      # control loop cycles, which is usually an indication that an external program is trying to control the fan
+      # at the same time as fan2go. This can lead to unexpected behavior and is usually not desired, so
+      # fan2go will reset the desired fan mode and log a warning if this happens.
+      fanModeChangedByThirdParty:
+        # (Optional) Whether to enable this check or not
+        enabled: true
+        # (Optional) Throttle duration for the execution of this check.
+        throttleDuration: 10s
 
   - id: in_front
     hwmon:
