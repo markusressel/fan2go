@@ -14,13 +14,13 @@ func TestSimple(t *testing.T) {
 	newTarget := loop.Cycle(10)
 
 	// THEN
-	assert.Equal(t, 10, newTarget)
+	assert.Equal(t, 10.0, newTarget)
 
 	// WHEN
 	newTarget = loop.Cycle(10)
 
 	// THEN
-	assert.Equal(t, 10, newTarget)
+	assert.Equal(t, 10.0, newTarget)
 }
 
 func TestMaxChange(t *testing.T) {
@@ -33,11 +33,11 @@ func TestMaxChange(t *testing.T) {
 	newTarget := loop.Cycle(10)
 
 	// THEN
-	assert.Equal(t, 2, newTarget)
+	assert.Equal(t, 2.0, newTarget)
 
 	// WHEN
 	newTarget = loop.Cycle(10)
 
 	// THEN
-	assert.Equal(t, 4, newTarget)
+	assert.Equal(t, 4.0, newTarget)
 }
