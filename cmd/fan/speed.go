@@ -2,9 +2,11 @@ package fan
 
 import (
 	"fmt"
+	"strconv"
+
+	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"strconv"
 )
 
 var speedCmd = &cobra.Command{
@@ -28,6 +30,11 @@ var speedCmd = &cobra.Command{
 			}
 			err = fan.SetPwm(pwmValue)
 		} else {
+			if !fan.Supports(fans.FeaturePwmSensor) {
+				fmt.Printf("N/A")
+				return nil
+			}
+
 			var pwm int
 			if pwm, err = fan.GetPwm(); err == nil {
 				fmt.Printf("%d", pwm)
