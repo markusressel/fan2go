@@ -129,6 +129,71 @@ func TestPersistence_LoadFanPwmData_SamplesNotInterpolated(t *testing.T) {
 	assert.Equal(t, expected, fanData)
 }
 
+func TestPersistence_LoadFanSetPwmToGetPwmMap_NotExisting(t *testing.T) {
+	// GIVEN
+	persistence := NewPersistence(dbTestingPath)
+
+	// WHEN
+	pwmMap, err := persistence.LoadFanSetPwmToGetPwmMap("non-existing-fan")
+
+	// THEN
+	assert.Nil(t, pwmMap)
+	assert.Error(t, err)
+}
+
+func TestPersistence_SaveAndLoadFanSetPwmToGetPwmMap(t *testing.T) {
+	// GIVEN
+	persistence := NewPersistence(dbTestingPath)
+
+	expectedPwmMap := map[int]int{
+		0:   0,
+		128: 130,
+		255: 255,
+	}
+
+	// WHEN
+	err := persistence.SaveFanSetPwmToGetPwmMap("fan1", expectedPwmMap)
+	assert.NoError(t, err)
+
+	pwmMap, err := persistence.LoadFanSetPwmToGetPwmMap("fan1")
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Equal(t, expectedPwmMap, pwmMap)
+}
+
+func TestPersistence_SaveAndLoadFanSetPwmToGetPwmMap_NilSaveLoadsNil(t *testing.T) {
+	// GIVEN
+	persistence := NewPersistence(dbTestingPath)
+
+	// WHEN
+	err := persistence.SaveFanSetPwmToGetPwmMap("fan1", nil)
+	assert.NoError(t, err)
+
+	pwmMap, err := persistence.LoadFanSetPwmToGetPwmMap("fan1")
+
+	// THEN
+	assert.NoError(t, err)
+	assert.Nil(t, pwmMap)
+}
+
+func TestPersistence_SaveAndLoadFanSetPwmToGetPwmMap_EmptySaveLoadsNil(t *testing.T) {
+	// GIVEN
+	persistence := NewPersistence(dbTestingPath)
+
+	emptyMap := map[int]int{}
+
+	// WHEN
+	err := persistence.SaveFanSetPwmToGetPwmMap("fan1", emptyMap)
+	assert.NoError(t, err)
+
+	pwmMap, err := persistence.LoadFanSetPwmToGetPwmMap("fan1")
+
+	// THEN
+	assert.Nil(t, pwmMap)
+	assert.Error(t, err)
+}
+
 func createFan(neverStop bool, curveData map[int]float64) (fan fans.Fan, err error) {
 	configuration.CurrentConfig.RpmRollingWindowSize = 10
 
