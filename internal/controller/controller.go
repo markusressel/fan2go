@@ -653,7 +653,9 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 
 	if !f.fan.Supports(fans.FeaturePwmSensor) {
 		// we cannot read the PWM value, so we also cannot check if third party changed the PWM value
-		ui.Debug("Fan %s does not support PWM sensor reading, cannot check for third party changes to the PWM value", f.fan.GetId())
+		ui.Warning("Fan %s does not support PWM sensor reading, disabling 'PwmValueChangedByThirdParty' sanity check", f.fan.GetId())
+		fanConfig.SanityCheck.PwmValueChangedByThirdParty.Enabled.SetOverride(false)
+		f.fan.SetConfig(fanConfig)
 		return
 	}
 
