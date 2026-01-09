@@ -266,6 +266,10 @@ func (fan *NvidiaFan) GetConfig() configuration.FanConfig {
 	return fan.Config
 }
 
+func (fan *NvidiaFan) SetConfig(config configuration.FanConfig) {
+	fan.Config = config
+}
+
 func (fan *NvidiaFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureControlMode:

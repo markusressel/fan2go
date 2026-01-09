@@ -1,12 +1,13 @@
 package fans
 
 import (
-	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/markusressel/fan2go/internal/util"
 	"os/user"
 	"path/filepath"
 	"strings"
+
+	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 )
 
 type FileFan struct {
@@ -164,6 +165,10 @@ func (fan *FileFan) SetControlMode(value ControlMode) (err error) {
 
 func (fan *FileFan) GetConfig() configuration.FanConfig {
 	return fan.Config
+}
+
+func (fan *FileFan) SetConfig(config configuration.FanConfig) {
+	fan.Config = config
 }
 
 func (fan *FileFan) Supports(feature FeatureFlag) bool {

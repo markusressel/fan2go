@@ -645,16 +645,10 @@ func (f *DefaultFanController) getLastTarget() (int, error) {
 func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 	fanConfig := f.fan.GetConfig()
 	sanityCheckConfig := fanConfig.SanityCheck
-	if sanityCheckConfig != nil {
-		if sanityCheckConfig.PwmValueChangedByThirdParty != nil {
-			pwmValuwChngedByThirdPartyCheckConfig := sanityCheckConfig.PwmValueChangedByThirdParty
-			if pwmValuwChngedByThirdPartyCheckConfig.Enabled != nil {
-				if !*pwmValuwChngedByThirdPartyCheckConfig.Enabled {
-					// sanity checks are disabled, so we don't check for third party changes
-					return
-				}
-			}
-		}
+	pwmValuwChngedByThirdPartyCheckConfig := sanityCheckConfig.PwmValueChangedByThirdParty
+	if !pwmValuwChngedByThirdPartyCheckConfig.Enabled.Get() {
+		// sanity checks are disabled, so we don't check for third party changes
+		return
 	}
 
 	if !f.fan.Supports(fans.FeaturePwmSensor) {
@@ -708,30 +702,22 @@ func (f *DefaultFanController) setPwm(target int) (err error) {
 // by checking periodically.
 func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
 	fanConfig := f.fan.GetConfig()
-	sanityChecks := fanConfig.SanityCheck
+	sanityCheckConfig := fanConfig.SanityCheck.FanModeChangedByThirdParty
 
-	enabled := true
-	throttleDuration := configuration.FanModeSanityCheckDefaultThrottleDuration
-
-	if sanityChecks != nil {
-		if sanityChecks.FanModeChangedByThirdParty != nil {
-			sanityCheckConfig := sanityChecks.FanModeChangedByThirdParty
-			if sanityCheckConfig.Enabled != nil {
-				enabled = *sanityCheckConfig.Enabled
-			}
-			if sanityCheckConfig.ThrottleDuration != nil {
-				throttleDuration = *sanityCheckConfig.ThrottleDuration
-			}
-		}
-	}
-
-	if !enabled {
+	if !sanityCheckConfig.Enabled.Get() {
 		// sanity check is disabled
 		return
 	}
 
+	if !f.fan.Supports(fans.FeatureControlMode) {
+		ui.Warning("Fan %s does not support control mode reading, disabling 'FanModeChangedByThirdParty' sanity check", f.fan.GetId())
+		fanConfig.SanityCheck.FanModeChangedByThirdParty.Enabled.SetOverride(false)
+		f.fan.SetConfig(fanConfig)
+		return
+	}
+
 	// make sure we don't check this too often
-	if f.lastFanModeCheckTime.Add(throttleDuration).After(time.Now()) {
+	if f.lastFanModeCheckTime.Add(sanityCheckConfig.ThrottleDuration).After(time.Now()) {
 		return
 	}
 	f.lastFanModeCheckTime = time.Now()

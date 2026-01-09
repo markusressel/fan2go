@@ -86,6 +86,7 @@ type Fan interface {
 	SetControlMode(value ControlMode) (err error)
 
 	GetConfig() configuration.FanConfig
+	SetConfig(config configuration.FanConfig)
 
 	GetLabel() string
 	GetIndex() int

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/creasty/defaults"
 	"github.com/markusressel/fan2go/internal/control_loop"
 	"github.com/mitchellh/mapstructure"
 
@@ -137,11 +138,13 @@ func GetFilePath() string {
 func LoadConfig() {
 	// load default configuration values
 	CurrentConfig = Configuration{}
+	applyDefaults()
 
 	err := viper.Unmarshal(
 		&CurrentConfig,
 		viper.DecodeHook(
 			mapstructure.ComposeDecodeHookFunc(
+				DefaultTrueBoolHookFunc(),
 				mapstructure.StringToTimeDurationHookFunc(),
 				mapstructure.StringToSliceHookFunc(","),
 				mapstructure.TextUnmarshallerHookFunc(),
@@ -152,11 +155,22 @@ func LoadConfig() {
 		ui.Fatal("unable to decode into struct, %v", err)
 	}
 
+	// apply default values again to set any nested struct defaults that were
+	// created after the initial parsing pass
+	applyDefaults()
+
 	applyTransformations()
 
 	applyDeprecations()
 }
 
+func applyDefaults() {
+	if err := defaults.Set(&CurrentConfig); err != nil {
+		panic(err)
+	}
+}
+
+// apply transformations between different formats available to configure fan curves
 func applyTransformations() {
 	// convert steps in linear curves from strings (with plain numbers or percent values) to floats between 0 and 255
 	for _, curve := range CurrentConfig.Curves {
@@ -199,6 +213,7 @@ func applyTransformations() {
 	}
 }
 
+// apply deprecations and migrate values
 func applyDeprecations() {
 	if CurrentConfig.ControllerAdjustmentTickRate > 0 {
 		ui.Warning("controllerAdjustmentTickRate is deprecated, use fanController.adjustmentTickRate instead")

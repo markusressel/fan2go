@@ -1,6 +1,8 @@
 package configuration
 
-import "time"
+import (
+	"time"
+)
 
 type FanConfig struct {
 	// ID is the unique identifier for the fan.
@@ -31,7 +33,7 @@ type FanConfig struct {
 	// ControlAlgorithm defines how the curve target is applied to the fan.
 	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
 	// SanityCheck defines Configuration options for sanity checks
-	SanityCheck *SanityCheckConfig `json:"sanityCheck,omitempty"`
+	SanityCheck SanityCheckConfig `json:"sanityCheck"`
 	// HwMon, File and Cmd are the different ways to configure the respective fan types.
 	HwMon  *HwMonFanConfig  `json:"hwMon,omitempty"`
 	Nvidia *NvidiaFanConfig `json:"nvidia,omitempty"`
@@ -74,12 +76,12 @@ type PidControlAlgorithmConfig struct {
 
 type SanityCheckConfig struct {
 	// Enabled defines whether the sanity check is enabled.
-	PwmValueChangedByThirdParty *PwmValueChangedByThirdPartyConfig `json:"pwmValueChangedByThirdParty,omitempty"`
-	FanModeChangedByThirdParty  *FanModeChangedByThirdPartyConfig  `json:"fanModeChangedByThirdParty,omitempty"`
+	PwmValueChangedByThirdParty PwmValueChangedByThirdPartyConfig `json:"pwmValueChangedByThirdParty,omitempty"`
+	FanModeChangedByThirdParty  FanModeChangedByThirdPartyConfig  `json:"fanModeChangedByThirdParty,omitempty"`
 }
 
 type PwmValueChangedByThirdPartyConfig struct {
-	Enabled *bool `json:"enabled,omitempty"`
+	Enabled DefaultTrueBool `json:"enabled,omitempty"`
 }
 
 // FanModeChangedByThirdPartyConfig (re)sets the PWM mode to manual each cycle.
@@ -87,11 +89,11 @@ type PwmValueChangedByThirdPartyConfig struct {
 // Disabled by default.
 type FanModeChangedByThirdPartyConfig struct {
 	// Enabled defines whether the check is enabled.
-	Enabled *bool `json:"enabled,omitempty"`
+	Enabled DefaultTrueBool `json:"enabled,omitempty"`
 
 	// ThrottleDuration defines a duration to wait after each sanity check execution.
 	// This is used to avoid bombarding the system with mode writes in a very short amount of time.
-	ThrottleDuration *time.Duration `json:"throttleDuration,omitempty"`
+	ThrottleDuration time.Duration `json:"throttleDuration,omitempty" default:"10s"`
 }
 
 type HwMonFanConfig struct {

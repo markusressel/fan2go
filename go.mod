@@ -1,12 +1,13 @@
 module github.com/markusressel/fan2go
 
-go 1.23.1
+go 1.24
 
 toolchain go1.24.1
 
 require (
 	github.com/NVIDIA/go-nvml v0.12.9-0
 	github.com/asecurityteam/rolling v2.0.4+incompatible
+	github.com/creasty/defaults v1.8.0
 	github.com/guptarohit/asciigraph v0.7.3
 	github.com/labstack/echo-contrib v0.17.4
 	github.com/labstack/echo/v4 v4.13.4
