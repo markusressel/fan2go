@@ -235,7 +235,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	ui.Debug("setPwmToGetPwmMap of fan '%s': %v", fan.GetId(), f.setPwmToGetPwmMap)
 	ui.Debug("pwmMap of fan '%s': %v", fan.GetId(), f.pwmMapping)
 	ui.Info("PWM settings of fan '%s': Min %d, Start %d, Max %d", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm(), fan.GetMaxPwm())
-	ui.Info("Starting controller loop for fan '%s' %s", fan.GetId())
+	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
 
 	if fan.GetMinPwm() > fan.GetStartPwm() {
 		ui.Warning("Suspicious pwm config of fan '%s': MinPwm (%d) > StartPwm (%d)", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm())

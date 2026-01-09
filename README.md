@@ -317,9 +317,6 @@ fans:
     # (but only after it has adjusted its speed accordingly, for example), which otherwise
     # makes fan initialization fail or calculate broken values. Defaults to false
     skipAutoPwmMap: true
-    # (Re)set the PWM mode to manual each cycle. Works around buggy BIOSes and similar
-    # that periodically overwrite fan2go's settings. Disabled by default.
-    alwaysSetPwmMode: true
     # By default (useUnscaledCurveValues: false) speed values from the curve are scaled
     # from 1..255 (or 1%..100%) to MinPwm..MaxPwm  and speed values < 1(%) are set to 0,
     # before they're mapped with pwmMap (the value looked up in pwmMap is then used to

@@ -2,9 +2,10 @@ package controller
 
 import (
 	"errors"
-	"github.com/markusressel/fan2go/internal/control_loop"
 	"testing"
 	"time"
+
+	"github.com/markusressel/fan2go/internal/control_loop"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/curves"
@@ -62,18 +63,18 @@ func (c MockCurve) CurrentValue() float64 {
 }
 
 type MockFan struct {
-	ID                     string
-	ControlMode            fans.ControlMode
-	PWM                    int
-	MinPWM                 int
-	MaxPWM                 int
-	RPM                    int
-	curveId                string
-	shouldNeverStop        bool
-	alwaysSetPwmMode       bool
-	useUnscaledCurveValues bool
-	speedCurve             *map[int]float64
-	PwmMap                 *map[int]int
+	ID                                           string
+	ControlMode                                  fans.ControlMode
+	PWM                                          int
+	MinPWM                                       int
+	MaxPWM                                       int
+	RPM                                          int
+	curveId                                      string
+	shouldNeverStop                              bool
+	sanityCheckFanModeChangedByThirdPartyEnabled bool
+	useUnscaledCurveValues                       bool
+	speedCurve                                   *map[int]float64
+	PwmMap                                       *map[int]int
 }
 
 func (fan MockFan) GetStartPwm() int {
@@ -185,12 +186,33 @@ func (fan MockFan) GetConfig() configuration.FanConfig {
 		MinPwm:                 &fan.MinPWM,
 		MaxPwm:                 &maxPwm,
 		PwmMap:                 fan.PwmMap,
-		AlwaysSetPwmMode:       fan.alwaysSetPwmMode,
 		UseUnscaledCurveValues: fan.useUnscaledCurveValues,
 		HwMon:                  nil, // Not used in this mock
 		File:                   nil, // Not used in this mock
 		Cmd:                    nil, // Not used in this mock
+		SanityCheck: configuration.SanityCheckConfig{
+			FanModeChangedByThirdParty: configuration.FanModeChangedByThirdPartyConfig{
+				Enabled: configuration.DefaultTrueBool{
+					Optional: configuration.Optional[bool]{
+						Value:   fan.sanityCheckFanModeChangedByThirdPartyEnabled,
+						Present: true,
+					},
+				},
+			},
+			PwmValueChangedByThirdParty: configuration.PwmValueChangedByThirdPartyConfig{
+				Enabled: configuration.DefaultTrueBool{
+					Optional: configuration.Optional[bool]{
+						Value:   true,
+						Present: true,
+					},
+				},
+			},
+		},
 	}
+}
+
+func (fan MockFan) SetConfig(config configuration.FanConfig) {
+	return
 }
 
 func (fan MockFan) Supports(feature fans.FeatureFlag) bool {
@@ -1463,13 +1485,13 @@ func assertControlMode(t *testing.T, expectedMode fans.ControlMode, fan fans.Fan
 
 func TestFanController_AlwaysSetPwmMode(t *testing.T) {
 	fan := &MockFan{
-		ID:               "fan",
-		PWM:              0,
-		RPM:              100,
-		MinPWM:           1,
-		MaxPWM:           3,
-		shouldNeverStop:  true,
-		alwaysSetPwmMode: true,
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          1,
+		MaxPWM:          3,
+		shouldNeverStop: true,
+		sanityCheckFanModeChangedByThirdPartyEnabled: true,
 		// usually Run() in controller.go sets the control mode to PWM at startup,
 		// for testing set it here in initialization
 		ControlMode: fans.ControlModePWM,
@@ -1503,20 +1525,20 @@ func TestFanController_AlwaysSetPwmMode(t *testing.T) {
 	assertControlMode(t, fans.ControlModeAutomatic, controller.fan)
 
 	// UpdateFanSpeed() should reset the control mode to manual/ControlModePWM
-	// because alwaysSetPwmMode is true
+	// because sanityCheckFanModeChangedByThirdPartyEnabled is true
 	tryUpdateFanSpeed(t, &controller)
 	assertControlMode(t, fans.ControlModePWM, controller.fan)
 }
 
 func TestFanController_AlwaysSetPwmModeDisabled(t *testing.T) {
 	fan := &MockFan{
-		ID:               "fan",
-		PWM:              0,
-		RPM:              100,
-		MinPWM:           1,
-		MaxPWM:           3,
-		shouldNeverStop:  true,
-		alwaysSetPwmMode: false,
+		ID:              "fan",
+		PWM:             0,
+		RPM:             100,
+		MinPWM:          1,
+		MaxPWM:          3,
+		shouldNeverStop: true,
+		sanityCheckFanModeChangedByThirdPartyEnabled: false,
 		// usually Run() in controller.go sets the control mode to PWM at startup,
 		// for testing set it here in initialization
 		ControlMode: fans.ControlModePWM,
@@ -1550,7 +1572,7 @@ func TestFanController_AlwaysSetPwmModeDisabled(t *testing.T) {
 	assertControlMode(t, fans.ControlModeAutomatic, controller.fan)
 
 	// UpdateFanSpeed() should NOT reset the control mode to manual/ControlModePWM
-	// because in this test alwaysSetPwmMode is false
+	// because in this test sanityCheckFanModeChangedByThirdPartyEnabled is false
 	tryUpdateFanSpeed(t, &controller)
 	assertControlMode(t, fans.ControlModeAutomatic, controller.fan)
 }
@@ -1677,6 +1699,10 @@ func (fan MockFanWithOffsetPwm) GetConfig() configuration.FanConfig {
 		File:      nil, // Not used in this mock
 		Cmd:       nil, // Not used in this mock
 	}
+}
+
+func (fan MockFanWithOffsetPwm) SetConfig(config configuration.FanConfig) {
+	return
 }
 
 func (fan MockFanWithOffsetPwm) Supports(feature fans.FeatureFlag) bool {
