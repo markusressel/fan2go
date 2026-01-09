@@ -15,7 +15,7 @@ import (
 
 const (
 	BucketFans                 = "fans"
-	BucketFanPwmMap            = "fanPwmMap"
+	BucketFanPwmMap            = "fanPwmMapping"
 	BucketFanSetPwmToSetPwmMap = "fanSetPwmToGetPwmMap"
 )
 
@@ -30,8 +30,10 @@ type Persistence interface {
 	SaveFanSetPwmToGetPwmMap(fanId string, pwmMap map[int]int) (err error)
 	DeleteFanSetPwmToGetPwmMap(fanId string) (err error)
 
-	LoadFanPwmMap(fanId string) (map[int]int, error)
-	SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error)
+	// the returned slice has exactly 256 elements (unless there was an error and it's nil)
+	LoadFanPwmMap(fanId string) ([]int, error)
+	// pwmMapping must have exactly 256 elements (it's an array mapping PWM i to pwmMapping[i] for PWMs 0-255)
+	SaveFanPwmMap(fanId string, pwmMapping []int) (err error)
 	DeleteFanPwmMap(fanId string) (err error)
 }
 
@@ -279,7 +281,10 @@ func (p persistence) deleteFanSetPwmToGetPwmMap(db *bolt.DB, fanId string) error
 }
 
 // SaveFanPwmMap saves the "pwm requested" -> "actual pwm" map of the given fan to persistence
-func (p persistence) SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error) {
+func (p persistence) SaveFanPwmMap(fanId string, pwmMapping []int) (err error) {
+	if len(pwmMapping) != 256 {
+		return errors.New("pwmMapping slice must have exactly 256 elements")
+	}
 	db, err := p.openPersistence()
 	if err != nil {
 		return err
@@ -290,7 +295,7 @@ func (p persistence) SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error)
 
 	key := fanId
 
-	data, err := json.Marshal(pwmMap)
+	data, err := json.Marshal(pwmMapping)
 	if err != nil {
 		return err
 	}
@@ -306,7 +311,7 @@ func (p persistence) SaveFanPwmMap(fanId string, pwmMap map[int]int) (err error)
 }
 
 // LoadFanPwmMap loads the fan curve data from persistence
-func (p persistence) LoadFanPwmMap(fanId string) (map[int]int, error) {
+func (p persistence) LoadFanPwmMap(fanId string) ([]int, error) {
 	db, err := p.openPersistence()
 	if err != nil {
 		return nil, err
@@ -317,7 +322,7 @@ func (p persistence) LoadFanPwmMap(fanId string) (map[int]int, error) {
 
 	key := fanId
 
-	var pwmMap map[int]int
+	var pwmMapping []int
 	err = db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFanPwmMap))
 		if b == nil {
@@ -328,7 +333,7 @@ func (p persistence) LoadFanPwmMap(fanId string) (map[int]int, error) {
 			return os.ErrNotExist
 		}
 
-		err := json.Unmarshal(v, &pwmMap)
+		err := json.Unmarshal(v, &pwmMapping)
 		if err != nil {
 			// if we cannot read the saved data, delete it
 			ui.Warning("Unable to unmarshal saved pwmMap data for %s: %v", key, err)
@@ -341,8 +346,11 @@ func (p persistence) LoadFanPwmMap(fanId string) (map[int]int, error) {
 
 		return err
 	})
+	if len(pwmMapping) != 256 {
+		return nil, fmt.Errorf("PWM mapping in DB had %d elements instead of 256", len(pwmMapping))
+	}
 
-	return pwmMap, err
+	return pwmMapping, err
 }
 
 func (p persistence) DeleteFanPwmMap(fanId string) error {

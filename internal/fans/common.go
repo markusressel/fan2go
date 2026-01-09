@@ -45,6 +45,7 @@ type Fan interface {
 	GetId() string
 
 	// GetMinPwm returns the lowest PWM value where the fans are still spinning, when spinning previously
+	// (unless configured otherwise for this fan in fan2go.yaml)
 	GetMinPwm() int
 	SetMinPwm(pwm int, force bool)
 
@@ -85,6 +86,7 @@ type Fan interface {
 	SetControlMode(value ControlMode) (err error)
 
 	GetConfig() configuration.FanConfig
+	SetConfig(config configuration.FanConfig)
 
 	GetLabel() string
 	GetIndex() int

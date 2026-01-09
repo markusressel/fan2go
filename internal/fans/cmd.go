@@ -2,12 +2,13 @@ package fans
 
 import (
 	"fmt"
-	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/markusressel/fan2go/internal/util"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 )
 
 type CmdFan struct {
@@ -155,6 +156,10 @@ func (fan *CmdFan) SetControlMode(value ControlMode) (err error) {
 
 func (fan *CmdFan) GetConfig() configuration.FanConfig {
 	return fan.Config
+}
+
+func (fan *CmdFan) SetConfig(config configuration.FanConfig) {
+	fan.Config = config
 }
 
 func (fan *CmdFan) Supports(feature FeatureFlag) bool {
