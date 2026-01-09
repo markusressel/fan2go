@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/markusressel/fan2go/internal/fans"
-	"github.com/markusressel/fan2go/internal/ui"
-	bolt "go.etcd.io/bbolt"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/ui"
+	bolt "go.etcd.io/bbolt"
 )
 
 const (
@@ -179,11 +180,15 @@ func (p persistence) LoadFanSetPwmToGetPwmMap(fanId string) (map[int]int, error)
 	defer func(db *bolt.DB) {
 		_ = db.Close()
 	}(db)
+	return p.loadFanSetPwmToGetPwmMap(db, fanId)
+}
 
+// loadFanSetPwmToGetPwmMap loads the "pwm requested" -> "actual pwm" map of the given fan from persistence
+func (p persistence) loadFanSetPwmToGetPwmMap(db *bolt.DB, fanId string) (map[int]int, error) {
 	key := fanId
 
 	var pwmMap map[int]int
-	err = db.View(func(tx *bolt.Tx) error {
+	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFanSetPwmToSetPwmMap))
 		if b == nil {
 			return os.ErrNotExist
@@ -206,6 +211,13 @@ func (p persistence) LoadFanSetPwmToGetPwmMap(fanId string) (map[int]int, error)
 
 		return err
 	})
+
+	if pwmMap != nil && len(pwmMap) <= 0 {
+		// remove invalid data from the db
+		fanId := fanId
+		_ = p.deleteFanSetPwmToGetPwmMap(db, fanId)
+		return nil, os.ErrNotExist
+	}
 
 	return pwmMap, err
 }
@@ -246,7 +258,10 @@ func (p persistence) DeleteFanSetPwmToGetPwmMap(fanId string) error {
 	defer func(db *bolt.DB) {
 		_ = db.Close()
 	}(db)
+	return p.deleteFanSetPwmToGetPwmMap(db, fanId)
+}
 
+func (p persistence) deleteFanSetPwmToGetPwmMap(db *bolt.DB, fanId string) error {
 	key := fanId
 
 	return db.Update(func(tx *bolt.Tx) error {

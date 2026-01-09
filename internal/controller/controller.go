@@ -777,6 +777,11 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMap() (err error) {
 		return err
 	}
 
+	if f.setPwmToGetPwmMap == nil || len(maps.Keys(f.setPwmToGetPwmMap)) <= 0 {
+		ui.Warning("Fan '%s' setPwmToGetPwmMap is empty, ignoring", f.fan.GetId())
+		return nil
+	}
+
 	ui.Debug("Saving setPwmToGetPwmMap to fan...")
 	return f.persistence.SaveFanSetPwmToGetPwmMap(f.fan.GetId(), f.setPwmToGetPwmMap)
 }
@@ -952,7 +957,7 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
 
 	_ = trySetManualPwm(f.fan)
 
-	f.setPwmToGetPwmMap = map[int]int{}
+	setPwmToGetPwmMap := map[int]int{}
 	for i := fans.MinPwmValue; i <= fans.MaxPwmValue; i++ {
 		err := f.fan.SetPwm(i)
 		if err != nil {
@@ -965,7 +970,12 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
 			ui.Warning("Error reading PWM value of fan %s: %v", f.fan.GetId(), err)
 			continue
 		}
-		f.setPwmToGetPwmMap[i] = pwm
+		setPwmToGetPwmMap[i] = pwm
+	}
+
+	if len(setPwmToGetPwmMap) > 0 {
+		// we can only use the map if we have at least one entry
+		f.setPwmToGetPwmMap = setPwmToGetPwmMap
 	}
 
 	return nil
