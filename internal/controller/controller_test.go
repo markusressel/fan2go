@@ -212,7 +212,7 @@ func (fan MockFan) GetConfig() configuration.FanConfig {
 }
 
 func (fan MockFan) SetConfig(config configuration.FanConfig) {
-	return
+	// Not needed for this mock
 }
 
 func (fan MockFan) Supports(feature fans.FeatureFlag) bool {
@@ -1702,7 +1702,7 @@ func (fan MockFanWithOffsetPwm) GetConfig() configuration.FanConfig {
 }
 
 func (fan MockFanWithOffsetPwm) SetConfig(config configuration.FanConfig) {
-	return
+	// Not needed for this mock
 }
 
 func (fan MockFanWithOffsetPwm) Supports(feature fans.FeatureFlag) bool {
