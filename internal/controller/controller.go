@@ -372,21 +372,21 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 	minPwm := fan.GetMinPwm()
 	shouldNeverStop := fan.ShouldNeverStop()
 
-	// TODO: in theory even pwmTarget could be a float, because f.setPwm() looks for the closest value
+	// TODO: in theory even speedTarget could be a float, because f.setPwm() looks for the closest value
 	//       in the pwm map and uses that
-	var pwmTarget int
+	var speedTarget int
 
 	if fan.GetConfig().UseUnscaledCurveValues {
-		pwmTarget = int(math.Round(target))
-		if pwmTarget > 0 && pwmTarget < minPwm {
+		speedTarget = int(math.Round(target))
+		if speedTarget > 0 && speedTarget < minPwm {
 			// the fan wouldn't spin with this PWM value anyway, so set 0 instead
 			// (might be better for the hardware and preserve energy)
-			pwmTarget = 0
+			speedTarget = 0
 		}
 	} else {
 		if target < 1.0 && !shouldNeverStop {
 			// target value 0 (or actually < 1) is mapped to PWM 0, if fan is allowed to stop
-			pwmTarget = 0
+			speedTarget = 0
 		} else {
 			// target values [1..255] are mapped to [minPwm..maxPwm]
 			// adjust the target value determined by the control algorithm to the operational needs
@@ -396,21 +396,21 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 			if target >= 1.0 {
 				target -= 1.0
 			} else {
-				// values < 1 become 0 (which becomes pwmTarget = minPwm), just like 1.
+				// values < 1 become 0 (which becomes speedTarget = minPwm), just like 1.
 				// Only happens if NeverStop (where 0 should map to minPwm instead of 0)
 				// is set, but shouldn't really matter and unifies the behavior
 				// for NeverStop enabled/disabled (for >= 1)
 				target = 0
 			}
 			// scale [0..254] to [minPwm..maxPwm]
-			pwmTarget = minPwm + int(math.Round((target/(fans.MaxPwmValue-1))*float64(maxPwm-minPwm)))
+			speedTarget = minPwm + int(math.Round((target/(fans.MaxPwmValue-1))*float64(maxPwm-minPwm)))
 		}
 	}
 
 	// if this fan should never stop, make sure its target is always at least minPwm+f.minPwmOffset
 	// (f.minPwmOffset is usually 0, but if the fan doesn't start at MinPwm it gets increased)
-	if shouldNeverStop && pwmTarget < minPwm+f.minPwmOffset {
-		pwmTarget = minPwm + f.minPwmOffset
+	if shouldNeverStop && speedTarget < minPwm+f.minPwmOffset {
+		speedTarget = minPwm + f.minPwmOffset
 	}
 
 	if fan.Supports(fans.FeatureRpmSensor) {
@@ -423,11 +423,11 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 			if err != nil {
 				ui.Warning("Error reading last set PWM value of fan %s: %v", fan.GetId(), err)
 			}
-			lastSetTargetEqualsNewTarget := lastTarget == pwmTarget
+			lastSetTargetEqualsNewTarget := lastTarget == speedTarget
 			if shouldNeverStop && lastSetTargetEqualsNewTarget {
 				avgRpm := fan.GetRpmAvg()
 				if avgRpm <= 0 {
-					if pwmTarget >= maxPwm {
+					if speedTarget >= maxPwm {
 						ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), int(avgRpm), lastSetPwm)
 						return ErrFanStalledAtMaxPwm
 					}
@@ -435,7 +435,7 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 					ui.Warning("Increasing minPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d at PWM %d",
 						fan.GetId(), oldMinPwm, oldMinPwm+1, int(avgRpm), lastSetPwm)
 					f.increaseMinPwmOffset()
-					pwmTarget++
+					speedTarget++
 
 					// set the moving avg to a value > 0 to prevent
 					// this increase from happening too fast
@@ -445,7 +445,7 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 		}
 	}
 
-	err = f.setPwm(pwmTarget)
+	err = f.setPwm(speedTarget)
 	if err != nil {
 		// TODO: maybe we should add some kind of critical failure mode here
 		//  in case these errors don't resolve after a while
