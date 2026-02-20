@@ -311,6 +311,61 @@ func validateFans(config *Configuration) error {
 			}
 		}
 
+		if fanConfig.PwmMap != nil {
+			pwmMapSubConfigs := 0
+			if fanConfig.PwmMap.Autodetect != nil {
+				pwmMapSubConfigs++
+			}
+			if fanConfig.PwmMap.Identity != nil {
+				pwmMapSubConfigs++
+			}
+			if fanConfig.PwmMap.Linear != nil {
+				pwmMapSubConfigs++
+			}
+			if fanConfig.PwmMap.Values != nil {
+				pwmMapSubConfigs++
+			}
+
+			if pwmMapSubConfigs == 0 {
+				return fmt.Errorf("fan '%s': pwmMap is set but no mode is specified", fanConfig.ID)
+			}
+			if pwmMapSubConfigs > 1 {
+				return fmt.Errorf("fan '%s': only one pwmMap mode can be configured at a time", fanConfig.ID)
+			}
+
+			validatePwmMapPoints := func(label string, pts map[int]int) error {
+				if len(pts) == 0 {
+					return fmt.Errorf("fan '%s': pwmMap %s requires at least one control point", fanConfig.ID, label)
+				}
+				for k := range pts {
+					if k < 0 || k > 255 {
+						return fmt.Errorf("fan '%s': pwmMap key %d is out of range [0..255]", fanConfig.ID, k)
+					}
+				}
+				sortedKeys := util.SortedKeys(pts)
+				for i := 1; i < len(sortedKeys); i++ {
+					prevKey := sortedKeys[i-1]
+					currKey := sortedKeys[i]
+					if pts[currKey] <= pts[prevKey] {
+						return fmt.Errorf("fan '%s': pwmMap values must be strictly monotonically increasing (at keys %d and %d: %d <= %d)",
+							fanConfig.ID, prevKey, currKey, pts[currKey], pts[prevKey])
+					}
+				}
+				return nil
+			}
+
+			if fanConfig.PwmMap.Linear != nil {
+				if err := validatePwmMapPoints("linear", map[int]int(*fanConfig.PwmMap.Linear)); err != nil {
+					return err
+				}
+			}
+			if fanConfig.PwmMap.Values != nil {
+				if err := validatePwmMapPoints("values", map[int]int(*fanConfig.PwmMap.Values)); err != nil {
+					return err
+				}
+			}
+		}
+
 		if fanConfig.File != nil {
 			if len(fanConfig.File.Path) <= 0 {
 				return fmt.Errorf("fan %s: no file path provided", fanConfig.ID)

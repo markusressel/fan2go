@@ -4,6 +4,29 @@ import (
 	"time"
 )
 
+// PwmMapConfig selects how the internal [0..255] PWM range is mapped to hardware PWM values.
+// Exactly one sub-config must be non-nil. If PwmMap is nil in FanConfig, autodetect is assumed.
+type PwmMapConfig struct {
+	Autodetect *PwmMapAutodetectConfig `json:"autodetect,omitempty"`
+	Identity   *PwmMapIdentityConfig   `json:"identity,omitempty"`
+	Linear     *PwmMapLinearConfig     `json:"linear,omitempty"`
+	Values     *PwmMapValuesConfig     `json:"values,omitempty"`
+}
+
+// PwmMapAutodetectConfig selects automatic PWM map detection during fan initialization.
+type PwmMapAutodetectConfig struct{}
+
+// PwmMapIdentityConfig selects a 1:1 mapping (0→0, 1→1, ..., 255→255).
+type PwmMapIdentityConfig struct{}
+
+// PwmMapLinearConfig holds control points for linear interpolation.
+// Keys and values must be in [0..255]; values must be strictly monotonically increasing.
+type PwmMapLinearConfig map[int]int
+
+// PwmMapValuesConfig holds control points for step interpolation.
+// Keys and values must be in [0..255]; values must be strictly monotonically increasing.
+type PwmMapValuesConfig map[int]int
+
 type FanConfig struct {
 	// ID is the unique identifier for the fan.
 	ID        string `json:"id"`
@@ -17,7 +40,7 @@ type FanConfig struct {
 	// PwmMap is used to adapt how the expected [0..255] range is applied to a fan.
 	// Some fans have weird missing sections in their PWM range (e.g. 0, 1, 2, 3, 5, 6, 7, 8, 10, ...),
 	// other fans only support a very limited set of PWM values (e.g. 0, 1, 2, 3).
-	PwmMap *map[int]int `json:"pwmMap,omitempty"`
+	PwmMap *PwmMapConfig `json:"pwmMap,omitempty"`
 	// Curve is the id of the speed curve associated with this fan.
 	Curve string `json:"curve"`
 	// By default speed values from the curve are scaled from 1..255 (or 1%..100%) to MinPwm..MaxPwm

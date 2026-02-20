@@ -794,18 +794,41 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 		defer InitializationSequenceMutex.Unlock()
 	}
 
-	configOverride := f.fan.GetConfig().PwmMap
+	cfg := f.fan.GetConfig().PwmMap
 
-	if configOverride != nil && len(*configOverride) > 0 {
-		ui.Info("Using pwm map override from config...")
-		expanded, err := util.InterpolateStepInt(configOverride, 0, 255)
-		if err != nil {
-			return fmt.Errorf("error expanding user pwmMap: %w", err)
+	if cfg != nil {
+		if cfg.Identity != nil {
+			ui.Info("Using identity pwm map for fan '%s'", f.fan.GetId())
+			for i := 0; i < 256; i++ {
+				f.pwmMapping[i] = i
+			}
+			return nil
 		}
-		for i := 0; i < 256; i++ {
-			f.pwmMapping[i] = expanded[i]
+		if cfg.Values != nil {
+			ui.Info("Using user-defined step pwm map for fan '%s'", f.fan.GetId())
+			pts := map[int]int(*cfg.Values)
+			expanded, err := util.InterpolateStepInt(&pts, 0, 255)
+			if err != nil {
+				return fmt.Errorf("error expanding pwmMap (values): %w", err)
+			}
+			for i := 0; i < 256; i++ {
+				f.pwmMapping[i] = expanded[i]
+			}
+			return nil
 		}
-		return nil
+		if cfg.Linear != nil {
+			ui.Info("Using user-defined linear pwm map for fan '%s'", f.fan.GetId())
+			pts := map[int]int(*cfg.Linear)
+			expanded, err := util.InterpolateLinearlyInt(&pts, 0, 255)
+			if err != nil {
+				return fmt.Errorf("error expanding pwmMap (linear): %w", err)
+			}
+			for i := 0; i < 256; i++ {
+				f.pwmMapping[i] = expanded[i]
+			}
+			return nil
+		}
+		// cfg.Autodetect != nil → fall through to autodetect logic below
 	}
 
 	savedPwmMap, err := f.persistence.LoadFanPwmMap(f.fan.GetId())
