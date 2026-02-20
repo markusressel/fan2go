@@ -560,9 +560,9 @@ func (f *DefaultFanController) getPwm() (int, error) {
 		return f.fan.GetPwm()
 	} else if f.lastTarget != nil {
 		return f.applyPwmMapToTarget(*f.lastTarget), nil
-	} else {
-		return f.fan.GetMinPwm(), nil
 	}
+
+	return f.fan.GetMinPwm(), nil
 }
 
 func trySetManualPwm(fan fans.Fan) error {
