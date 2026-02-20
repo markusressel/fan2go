@@ -372,8 +372,6 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 	minPwm := fan.GetMinPwm()
 	shouldNeverStop := fan.ShouldNeverStop()
 
-	// TODO: in theory even speedTarget could be a float, because f.setPwm() looks for the closest value
-	//       in the pwm map and uses that
 	var speedTarget int
 
 	if fan.GetConfig().UseUnscaledCurveValues {
