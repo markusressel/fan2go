@@ -3,8 +3,8 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
-	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -797,31 +797,13 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 
 	if configOverride != nil && len(*configOverride) > 0 {
 		ui.Info("Using pwm map override from config...")
-
-		keys := maps.Keys(*configOverride)
-		slices.Sort(keys)
-
-		lastKeyIdx := 0
-		numKeys := len(keys)
-
-		for i := 0; i < 256; i++ {
-			// find the index within keys so keys[index] is closest to i
-			diff := util.Abs(keys[lastKeyIdx] - i)
-			for ki := lastKeyIdx + 1; ki < numKeys; ki++ {
-				d := util.Abs(keys[ki] - i)
-				if d <= diff { // <= to round up when at midpoint
-					diff = d
-					lastKeyIdx = ki
-				} else {
-					// if d was > diff, diff and lastKeyIdx are the optimum (as keys[] are sorted)
-					break
-				}
-			}
-			configOverrideKey := keys[lastKeyIdx]
-			// map i to the value of the user's PWM map with the key closest to i
-			f.pwmMapping[i] = (*configOverride)[configOverrideKey]
+		expanded, err := util.InterpolateStepInt(configOverride, 0, 255)
+		if err != nil {
+			return fmt.Errorf("error expanding user pwmMap: %w", err)
 		}
-
+		for i := 0; i < 256; i++ {
+			f.pwmMapping[i] = expanded[i]
+		}
 		return nil
 	}
 
