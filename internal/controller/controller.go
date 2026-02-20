@@ -113,7 +113,7 @@ type DefaultFanController struct {
 	pwmMapping [256]int
 
 	// don't get and set PWMs in computeSetPwmToGetPwmMapAutomatically(), assume 1:1 mapping instead
-	// (enabled by `fan2go fan -i bla init -s` or with the skipAutoPwmMap option in fan configs)
+	// (enabled by `fan2go fan --id <id> init --assume-pwm-map-identity`)
 	skipAutoPwmMapping bool
 
 	// control loop that specifies how the target value of the curve is approached

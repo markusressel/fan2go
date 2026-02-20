@@ -83,14 +83,6 @@ fans:
       0: 0
       64: 128
       192: 255
-    # (Optional) Skip automatic detection/calculation of setPwmToGetPwmMap in fan initialization,
-    # assume 1:1 mapping instead (user's pwmMap is still used, if it exists).
-    # The same as using the --skip-auto-pwm-map option of `fan2go fan init`, but this option
-    # is also used if fan initialization is run automatically at first start.
-    # Especially helpful if your fan doesn't return the last set PWM value immediately
-    # (but only after it has adjusted its speed accordingly, for example), which otherwise
-    # makes fan initialization fail or calculate broken values. Defaults to false
-    skipAutoPwmMap: true
     # (Optional) By default (useUnscaledCurveValues: false) speed values from the curve are scaled
     # from 1..255 (or 1%..100%) to MinPwm..MaxPwm  and speed values < 1(%) are set to 0,
     # before they're mapped with pwmMap (the value looked up in pwmMap is then used to

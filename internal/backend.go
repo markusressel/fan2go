@@ -283,8 +283,7 @@ func initializeFanControllers(pers persistence.Persistence, fanMap map[configura
 			)
 		}
 
-		skipAutoPwmMapping := config.SkipAutoPwmMap
-		fanController := controller.NewFanController(pers, fan, controlLoop, updateRate, skipAutoPwmMapping)
+		fanController := controller.NewFanController(pers, fan, controlLoop, updateRate, false)
 		result[fan] = fanController
 	}
 
