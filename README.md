@@ -448,15 +448,25 @@ curves:
       sensor: cpu_package
       # Steps to define a section-wise defined speed curve function.
       steps:
-        # Sensor value (in degrees Celsius) -> Speed (0-255)
-        - 40: 0
-        - 41: 1
-        - 50: 50
-        - 80: 255
+        # Sensor value (in degrees Celsius) -> Speed
+        - 40: 0%   #   0% and speed value 0 are the same
+        - 41: 1%   #   1% and speed value 1 are the same and mean "run at minimum speed" (MinPwm)
+          # Note: between 41 and 50°C the fan speed will be interpolated between 1% and 20%
+        - 50: 20%  #  20% is equivalent to speed value ≈ 50
+          # Note: between 50 and 80°C the fan speed will be interpolated between 20% and 100%
+          #       for example, at 65°C it'll run at 60% speed
+        - 80: 100% # 100% is equivalent to speed value 255
 ```
 
-Alternatively the speeds can be specified in percent, which should be more intuitive
-(when **not** using `useUnscaledCurveValues`):
+> NOTE: When using `useUnscaledCurveValues` in the fan configuration, the values specified in the curve are **not scaled
+**
+> to the [MinPwm..MaxPwm] range of the fan, but are directly mapped with the `pwmMap` (if specified) or used as is (if
+> no `pwmMap` is specified and a 1:1 mapping is assumed).
+> In this case, it is recommended to specify curve values in the same range as the expected PWM values after scaling to
+> avoid confusion.
+> So if your fan has a MinPwm of 30 and a MaxPwm of 255, you should specify curve values in the [30..255] range.
+
+Alternatively the speeds can be specified in [0..255] range:
 
 ```yaml
 curves:
@@ -467,14 +477,11 @@ curves:
       sensor: cpu_package
       # Steps to define a section-wise defined speed curve function.
       steps:
-        # Sensor value (in degrees Celsius) -> Speed
-        - 40: 0%   #   0% and speed value 0 are the same
-        - 41: 1%   #   1% and speed value 1 are the same and mean "run at minimum speed" (MinPwm)
-          # Note: between 41 and 50°C the fan speed will be interpolated between 1% and 20%
-        - 50: 20%  #  20% is equivalent to speed value 51
-          # Note: between 50 and 80°C the fan speed will be interpolated between 20% and 100%
-          #       for example, at 65°C it'll run at 60% speed
-        - 80: 100% # 100% is equivalent to speed value 255
+        # Sensor value (in degrees Celsius) -> Speed (0-255)
+        - 40: 0
+        - 41: 1
+        - 50: 50
+        - 80: 255
 ```
 
 #### PID
