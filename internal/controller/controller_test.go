@@ -1495,7 +1495,7 @@ func TestFanController_SetPwm_FanReportsDifferentPwmFromSetValue(t *testing.T) {
 
 	When applying a curve value to the fan:
 	1. The controller calculates the target PWM value T based on the fan's speed curve
-	2. The controller needs to find the closest PWM value X in the pwmMap
+	2. The controller looks up target T directly in the pre-expanded pwmMapping array to get X
 	3. The controller sets the PWM value X to the fan, which results in the fan reporting a PWM value Y
 	4. When the controller lateron checks if the fan pwm value was changed by a third party it has to compare
 	   the current PWM value reported by the fan (Y) with the Y value specified in the pwmMap for the X value that it has last set.
