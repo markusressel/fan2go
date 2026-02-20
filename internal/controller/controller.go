@@ -914,10 +914,8 @@ func (f *DefaultFanController) increaseMinPwmOffset() {
 // to achieve a certain target speed.
 // See the pwmMap field for more details.
 func (f *DefaultFanController) applyPwmMapToTarget(target int) int {
-	if target < 0 || target > 255 {
-		return 0 // TODO: panic or something? or just clamp target to [0..255]?
-	}
-	return f.pwmMapping[target]
+	sanitizedTarget := util.Coerce(target, 0, 255)
+	return f.pwmMapping[sanitizedTarget]
 }
 
 // getReportedPwmAfterApplyingPwm returns the expected reported PWM value after applying the given pwmMappedValue.
