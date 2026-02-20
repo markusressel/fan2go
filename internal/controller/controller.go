@@ -935,9 +935,7 @@ func (f *DefaultFanController) getReportedPwmAfterApplyingPwm(pwmMappedValue int
 	}
 	if value, ok := f.setPwmToGetPwmMap[pwmMappedValue]; !ok {
 		ui.Warning("Fan '%s' does not have a setPwmToGetPwmMap entry for %d, assuming 1:1 relation.", f.fan.GetId(), pwmMappedValue)
-		// FIXME: the next line is broken. FindClosest() does a binary search (=> requires sorted slice),
-		//        but maps.Keys() returns the keys "in an indeterminate order"
-		closestKey := util.FindClosest(pwmMappedValue, maps.Keys(f.setPwmToGetPwmMap))
+		closestKey := util.FindClosest(pwmMappedValue, util.SortedKeys(f.setPwmToGetPwmMap))
 		return f.setPwmToGetPwmMap[closestKey]
 	} else {
 		return value
