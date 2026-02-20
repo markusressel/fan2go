@@ -95,8 +95,9 @@ type DefaultFanController struct {
 	// but rather a subset of it, e.g. [0..100] or [0..255] with some values missing.
 	//
 	// This mapping **always** contains the full range of [0..255] as keys - if the user-provided
-	// pwmMap is missing keys they're added and those added keys then map to the value of the closest
-	// user-provided key - but the values are not guaranteed to be in the range of [0..255] as well.
+	// pwmMap is missing keys they're filled in using step interpolation: each missing key maps to
+	// the value of the nearest preceding key - but the values are not guaranteed to be in the
+	// range of [0..255] as well.
 	//
 	// Examples:
 	//  [0: 0, 1: 1, 2: 2, 3: 3, ..., 100: 100, 101: 101, 102: 102, ..., 255: 255]
@@ -107,7 +108,7 @@ type DefaultFanController struct {
 	//  PWM 0 (not rotating) happens with 0, PWM 128 (running at half speed or so) happens when setting
 	//  the fan-specific speed value to 3, you get full speed (PWM 255) with fan-specific speed value 6",
 	//  then that's expanded to:
-	//   [0:0, 1: 0, ..., 63: 0, 64: 3, 65: 3, ..., 128: 3, 129: 3, ..., 190: 3, 191: 6, 192: 6, ... 255: 6]
+	//   [0:0, 1: 0, ..., 127: 0, 128: 3, 129: 3, ..., 254: 3, 255: 6]
 	//
 	// It's actually implemented as an array, where the "key" is the index
 	pwmMapping [256]int
@@ -816,8 +817,6 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 		return nil
 	}
 
-	//if f.pwmMap == nil - TODO: any check needed? where would it come from anyway?
-	// and if it's calculated successfully, it gets saved anyway so next time this function will return after loading it
 	{
 		ui.Info("Computing pwm map...")
 		err = f.computePwmMapAutomatically()
