@@ -296,19 +296,38 @@ fans:
     # an increased rotational speed compared to lower values.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
-    # (Optional) Override for the PWM map used by fan2go for
-    # mapping the expected [0..255] value range to values actually supported by this fan.
-    # This can be used to compensate for fans with a very limited set of supported values
-    # (f.ex. off, low, high). If not set manually, fan2go will try to compute this mapping
-    # automatically during fan initialization. This process is not perfect though and may
-    # result in suboptimal fan control.
-    # Note: The values of the mapping must be strictly monotonically increasing. The Key-Set must 
-    # be in [0..255] but may omit values. If keys are missing, fan2go will select a key that most 
-    # closely matches the required target value (computed by the referenced curve) during operation.
-    pwmMap:
-      0: 0
-      64: 128
-      192: 255
+    # (Optional) Configure how fan2go maps the internal [0..255] PWM range to
+    # hardware-specific PWM values. If omitted, fan2go auto-detects the mapping
+    # during fan initialization.
+    #
+    # Modes:
+    #
+    # autodetect (default): auto-detect the PWM map during fan initialization.
+    pwmMap: autodetect
+    #
+    # identity: assume a 1:1 mapping (0→0, 1→1, ..., 255→255).
+    # Use this if your fan supports the full PWM range and you want to skip
+    # the initialization measurement.
+    # pwmMap: identity
+    #
+    # linear: linearly interpolate between user-specified control points.
+    # Useful when you know the endpoints (or intermediate points) but want
+    # smooth values in between.
+    # Note: values must be strictly monotonically increasing.
+    # pwmMap:
+    #   linear:
+    #     0: 0
+    #     255: 255
+    #
+    # values: step-interpolate user-specified control points.
+    # Use for fans that only support a limited set of discrete PWM values
+    # (e.g. off / low / medium / high).
+    # Note: values must be strictly monotonically increasing.
+    # pwmMap:
+    #   values:
+    #     0: 0
+    #     64: 128
+    #     192: 255
     # By default (useUnscaledCurveValues: false) speed values from the curve are scaled
     # from 1..255 (or 1%..100%) to MinPwm..MaxPwm  and speed values < 1(%) are set to 0,
     # before they're mapped with pwmMap (the value looked up in pwmMap is then used to

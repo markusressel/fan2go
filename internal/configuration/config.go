@@ -144,6 +144,7 @@ func LoadConfig() {
 		&CurrentConfig,
 		viper.DecodeHook(
 			mapstructure.ComposeDecodeHookFunc(
+				pwmMapPointsHookFunc(),
 				DefaultTrueBoolHookFunc(),
 				mapstructure.StringToTimeDurationHookFunc(),
 				mapstructure.StringToSliceHookFunc(","),
@@ -219,6 +220,19 @@ func applyDeprecations() {
 		ui.Warning("controllerAdjustmentTickRate is deprecated, use fanController.adjustmentTickRate instead")
 		CurrentConfig.FanController.AdjustmentTickRate = CurrentConfig.ControllerAdjustmentTickRate
 	}
+}
+
+// UnmarshalText handles string shorthand forms for PwmMapConfig: "autodetect" and "identity".
+func (c *PwmMapConfig) UnmarshalText(text []byte) error {
+	switch string(text) {
+	case "autodetect":
+		*c = PwmMapConfig{Autodetect: &PwmMapAutodetectConfig{}}
+	case "identity":
+		*c = PwmMapConfig{Identity: &PwmMapIdentityConfig{}}
+	default:
+		return fmt.Errorf("unknown pwmMap value %q (expected: autodetect, identity, or a map with linear/values key)", string(text))
+	}
+	return nil
 }
 
 // UnmarshalText is a custom unmarshaler for ControlAlgorithmConfig to handle string enum values

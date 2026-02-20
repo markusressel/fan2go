@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/go-viper/mapstructure/v2"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDefaultTrueBool_Get(t *testing.T) {
@@ -141,4 +142,106 @@ func TestHookSkipsUnrelatedTypes(t *testing.T) {
 	if res != data {
 		t.Errorf("Hook modified unrelated data. Got %v, want %v", res, data)
 	}
+}
+
+// helper: run pwmMapPointsHookFunc for a given input and target type
+func runPwmMapPointsHook(t *testing.T, data interface{}, target interface{}) (interface{}, error) {
+	t.Helper()
+	hook := pwmMapPointsHookFunc()
+	from := reflect.TypeOf(data)
+	to := reflect.TypeOf(target)
+	return hook(from, to, data)
+}
+
+func TestPwmMapPointsHookFunc_LinearConfig(t *testing.T) {
+	data := map[interface{}]interface{}{
+		0:   0,
+		255: 255,
+	}
+	result, err := runPwmMapPointsHook(t, data, PwmMapLinearConfig{})
+	assert.NoError(t, err)
+	cfg, ok := result.(PwmMapLinearConfig)
+	assert.True(t, ok)
+	assert.Equal(t, PwmMapLinearConfig{0: 0, 255: 255}, cfg)
+}
+
+func TestPwmMapPointsHookFunc_ValuesConfig(t *testing.T) {
+	data := map[interface{}]interface{}{
+		0:   0,
+		128: 64,
+		255: 100,
+	}
+	result, err := runPwmMapPointsHook(t, data, PwmMapValuesConfig{})
+	assert.NoError(t, err)
+	cfg, ok := result.(PwmMapValuesConfig)
+	assert.True(t, ok)
+	assert.Equal(t, PwmMapValuesConfig{0: 0, 128: 64, 255: 100}, cfg)
+}
+
+func TestPwmMapPointsHookFunc_LegacyBareMap_InterfaceKeys(t *testing.T) {
+	// bare map with numeric keys → legacy compat → PwmMapConfig{Values: ...}
+	data := map[interface{}]interface{}{
+		0:   0,
+		64:  128,
+		192: 255,
+	}
+	result, err := runPwmMapPointsHook(t, data, PwmMapConfig{})
+	assert.NoError(t, err)
+	cfg, ok := result.(PwmMapConfig)
+	assert.True(t, ok)
+	assert.NotNil(t, cfg.Values)
+	assert.Equal(t, PwmMapValuesConfig{0: 0, 64: 128, 192: 255}, *cfg.Values)
+}
+
+func TestPwmMapPointsHookFunc_LegacyBareMap_StringKeys(t *testing.T) {
+	// old format with string-typed numeric keys (how viper sometimes delivers them)
+	data := map[string]interface{}{
+		"0":   0,
+		"64":  128,
+		"192": 255,
+	}
+	result, err := runPwmMapPointsHook(t, data, PwmMapConfig{})
+	assert.NoError(t, err)
+	cfg, ok := result.(PwmMapConfig)
+	assert.True(t, ok)
+	assert.NotNil(t, cfg.Values)
+	assert.Equal(t, PwmMapValuesConfig{0: 0, 64: 128, 192: 255}, *cfg.Values)
+}
+
+func TestPwmMapPointsHookFunc_NonBareMap_PassThrough(t *testing.T) {
+	// a map with a "linear" key should NOT be intercepted by the hook
+	// (it will be decoded normally by mapstructure into PwmMapConfig.Linear)
+	data := map[string]interface{}{
+		"linear": map[interface{}]interface{}{0: 0, 255: 255},
+	}
+	result, err := runPwmMapPointsHook(t, data, PwmMapConfig{})
+	assert.NoError(t, err)
+	// should pass through unchanged
+	assert.Equal(t, data, result)
+}
+
+func TestPwmMapUnmarshalText_Autodetect(t *testing.T) {
+	var cfg PwmMapConfig
+	err := cfg.UnmarshalText([]byte("autodetect"))
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg.Autodetect)
+	assert.Nil(t, cfg.Identity)
+	assert.Nil(t, cfg.Linear)
+	assert.Nil(t, cfg.Values)
+}
+
+func TestPwmMapUnmarshalText_Identity(t *testing.T) {
+	var cfg PwmMapConfig
+	err := cfg.UnmarshalText([]byte("identity"))
+	assert.NoError(t, err)
+	assert.Nil(t, cfg.Autodetect)
+	assert.NotNil(t, cfg.Identity)
+	assert.Nil(t, cfg.Linear)
+	assert.Nil(t, cfg.Values)
+}
+
+func TestPwmMapUnmarshalText_Unknown(t *testing.T) {
+	var cfg PwmMapConfig
+	err := cfg.UnmarshalText([]byte("bogus"))
+	assert.Error(t, err)
 }
