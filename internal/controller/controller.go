@@ -114,7 +114,7 @@ type DefaultFanController struct {
 
 	// don't get and set PWMs in computeSetPwmToGetPwmMapAutomatically(), assume 1:1 mapping instead
 	// (enabled by `fan2go fan --id <id> init --assume-pwm-map-identity`)
-	skipAutoPwmMapping bool
+	assumePwmMapIdentity bool
 
 	// control loop that specifies how the target value of the curve is approached
 	controlLoop control_loop.ControlLoop
@@ -131,7 +131,7 @@ func NewFanController(
 	fan fans.Fan,
 	controlLoop control_loop.ControlLoop,
 	updateRate time.Duration,
-	skipAutoPwmMapping bool,
+	assumePwmMapIdentity bool,
 ) FanController {
 	curve, ok := curves.GetSpeedCurve(fan.GetCurveId())
 	if !ok {
@@ -145,7 +145,7 @@ func NewFanController(
 		targetValuesWithDistinctPWMValue: []int{},
 		controlLoop:                      controlLoop,
 		minPwmOffset:                     0,
-		skipAutoPwmMapping:               skipAutoPwmMapping,
+		assumePwmMapIdentity:             assumePwmMapIdentity,
 		lastFanModeCheckTime:             time.Unix(0, 0), // ensure first check happens immediately
 	}
 }
@@ -941,8 +941,8 @@ func (f *DefaultFanController) getReportedPwmAfterApplyingPwm(pwmMappedValue int
 }
 
 func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
-	if !f.fan.Supports(fans.FeaturePwmSensor) || f.skipAutoPwmMapping {
-		if f.skipAutoPwmMapping {
+	if !f.fan.Supports(fans.FeaturePwmSensor) || f.assumePwmMapIdentity {
+		if f.assumePwmMapIdentity {
 			ui.Info("Automatic calculation of setPwmToGetPwmMap disabled for Fan '%s'. Assuming 1:1 relation.", f.fan.GetId())
 		} else {
 			ui.Warning("Fan '%s' does not support PWM sensor, cannot compute setPwmToGetPwmMap. Assuming 1:1 relation.", f.fan.GetId())
