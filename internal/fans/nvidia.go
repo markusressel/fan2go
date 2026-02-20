@@ -107,12 +107,8 @@ func (fan *NvidiaFan) GetIndex() int {
 }
 
 func (fan *NvidiaFan) GetMinPwm() int {
-	// if the fan is never supposed to stop,
-	// use the lowest pwm value where the fan is still spinning
-	if fan.ShouldNeverStop() {
-		if fan.MinPwm != nil {
-			return *fan.MinPwm
-		}
+	if fan.MinPwm != nil {
+		return *fan.MinPwm
 	}
 
 	return MinPwmValue
@@ -268,6 +264,10 @@ func (fan *NvidiaFan) SetControlMode(value ControlMode) (err error) {
 
 func (fan *NvidiaFan) GetConfig() configuration.FanConfig {
 	return fan.Config
+}
+
+func (fan *NvidiaFan) SetConfig(config configuration.FanConfig) {
+	fan.Config = config
 }
 
 func (fan *NvidiaFan) Supports(feature FeatureFlag) bool {

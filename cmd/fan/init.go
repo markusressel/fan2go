@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+var assumePwmMapIdentity bool
+
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Runs the initialization sequence for a fan",
@@ -37,6 +39,7 @@ var initCmd = &cobra.Command{
 			fan,
 			control_loop.NewDirectControlLoop(nil),
 			configuration.CurrentConfig.FanController.AdjustmentTickRate,
+			assumePwmMapIdentity,
 		)
 
 		ui.Info("Deleting existing data for fan '%s'...", fan.GetId())
@@ -66,5 +69,6 @@ var initCmd = &cobra.Command{
 func init() {
 	initCmd.Flags().IntP("fan-response-delay", "e", 2, "Delay in seconds to wait before checking that a fan has responded to a control change")
 	_ = viper.BindPFlag("FanResponseDelay", initCmd.Flags().Lookup("fan-response-delay"))
+	initCmd.Flags().BoolVar(&assumePwmMapIdentity, "assume-pwm-map-identity", false, "Skip automatic detection of setPwmToGetPwmMap; assume a 1:1 mapping instead")
 	Command.AddCommand(initCmd)
 }

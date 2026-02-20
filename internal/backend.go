@@ -283,7 +283,7 @@ func initializeFanControllers(pers persistence.Persistence, fanMap map[configura
 			)
 		}
 
-		fanController := controller.NewFanController(pers, fan, controlLoop, updateRate)
+		fanController := controller.NewFanController(pers, fan, controlLoop, updateRate, false)
 		result[fan] = fanController
 	}
 

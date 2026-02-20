@@ -1,5 +1,9 @@
 package configuration
 
+import (
+	"time"
+)
+
 type FanConfig struct {
 	// ID is the unique identifier for the fan.
 	ID        string `json:"id"`
@@ -16,10 +20,17 @@ type FanConfig struct {
 	PwmMap *map[int]int `json:"pwmMap,omitempty"`
 	// Curve is the id of the speed curve associated with this fan.
 	Curve string `json:"curve"`
+	// By default speed values from the curve are scaled from 1..255 (or 1%..100%) to MinPwm..MaxPwm
+	// before they're mapped with PwmMap (the value looked up in PwmMap is then used to actually
+	// set the speed in the fan's controlling device) - 0(%) is mapped to 0 (unless NeverStop is set).
+	// If UseUnscaledCurveValues is set to true, the values from the curve for a specific temperature
+	// are directly mapped with PwmMap, **without** scaling them first.
+	// Note: If NeverStop is also set to true, values smaller than MinPwm (incl. 0) are replaced with MinPwm
+	UseUnscaledCurveValues bool `json:"useUnscaledCurveValues"`
 	// ControlAlgorithm defines how the curve target is applied to the fan.
 	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
 	// SanityCheck defines Configuration options for sanity checks
-	SanityCheck *SanityCheckConfig `json:"sanityCheck,omitempty"`
+	SanityCheck SanityCheckConfig `json:"sanityCheck"`
 	// HwMon, File and Cmd are the different ways to configure the respective fan types.
 	HwMon  *HwMonFanConfig  `json:"hwMon,omitempty"`
 	Nvidia *NvidiaFanConfig `json:"nvidia,omitempty"`
@@ -62,11 +73,24 @@ type PidControlAlgorithmConfig struct {
 
 type SanityCheckConfig struct {
 	// Enabled defines whether the sanity check is enabled.
-	PwmValueChangedByThirdParty *PwmValueChangedByThirdPartyConfig `json:"pwmValueChangedByThirdParty,omitempty"`
+	PwmValueChangedByThirdParty PwmValueChangedByThirdPartyConfig `json:"pwmValueChangedByThirdParty,omitempty"`
+	FanModeChangedByThirdParty  FanModeChangedByThirdPartyConfig  `json:"fanModeChangedByThirdParty,omitempty"`
 }
 
 type PwmValueChangedByThirdPartyConfig struct {
-	Enabled *bool `json:"enabled,omitempty"`
+	Enabled DefaultTrueBool `json:"enabled,omitempty"`
+}
+
+// FanModeChangedByThirdPartyConfig (re)sets the PWM mode to manual each cycle.
+// Can be used to work around buggy BIOS and similar that overwrites fan2go's settings.
+// Disabled by default.
+type FanModeChangedByThirdPartyConfig struct {
+	// Enabled defines whether the check is enabled.
+	Enabled DefaultTrueBool `json:"enabled,omitempty"`
+
+	// ThrottleDuration defines a duration to wait after each sanity check execution.
+	// This is used to avoid bombarding the system with mode writes in a very short amount of time.
+	ThrottleDuration time.Duration `json:"throttleDuration,omitempty" default:"10s"`
 }
 
 type HwMonFanConfig struct {

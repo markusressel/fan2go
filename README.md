@@ -309,6 +309,16 @@ fans:
       0: 0
       64: 128
       192: 255
+    # By default (useUnscaledCurveValues: false) speed values from the curve are scaled
+    # from 1..255 (or 1%..100%) to MinPwm..MaxPwm  and speed values < 1(%) are set to 0,
+    # before they're mapped with pwmMap (the value looked up in pwmMap is then used to
+    # actually set the speed in the fan's controlling device).
+    # If useUnscaledCurveValues is set to true, the values from the curve for a specific temperature
+    # are directly mapped with PwmMap, *without* scaling them first.
+    # Note: If neverStop is also set to true, values smaller than MinPwm (including 0) are replaced with
+    #   MinPwm, otherwise values smaller than MinPwm are replaced with 0 (the fan wouldn't turn anyway).
+    #   But all values >= MinPwm are used as is if this option is set to true.
+    useUnscaledCurveValues: true
     # (Optional) Configuration options for sanity checks
     sanityCheck:
       # (Optional) Control the behavior of the "pwmValueChangedByThirdParty" sanity check
@@ -319,6 +329,16 @@ fans:
       pwmValueChangedByThirdParty:
         # (Optional) Whether to enable this check or not
         enabled: true
+      # (Optional) Control the behavior of the "fanModeChangedByThirdParty" sanity check
+      # This check is used to detect if the fan mode (automatic/manual) has changed between two consecutive
+      # control loop cycles, which is usually an indication that an external program is trying to control the fan
+      # at the same time as fan2go. This can lead to unexpected behavior and is usually not desired, so
+      # fan2go will reset the desired fan mode and log a warning if this happens.
+      fanModeChangedByThirdParty:
+        # (Optional) Whether to enable this check or not
+        enabled: true
+        # (Optional) Throttle duration for the execution of this check.
+        throttleDuration: 10s
 ```
 
 ### Sensors
@@ -417,7 +437,37 @@ curves:
       max: 80
 ```
 
-You can also define the curve in multiple, linear sections using the `steps` parameter:
+You can also define the curve in multiple, linear sections using the `steps` parameter,
+where the left side refers to the sensor input value and the right side refers to the curve value at that sensor input.
+
+```yaml
+curves:
+  - id: cpu_curve
+    # The type of the curve
+    linear:
+      # The sensor ID to use as a temperature input
+      sensor: cpu_package
+      # Steps to define a section-wise defined speed curve function.
+      steps:
+        # Sensor value (in degrees Celsius) -> Speed
+        - 40: 0%   #   0% and speed value 0 are the same
+        - 41: 1%   #   1% and speed value 1 are the same and mean "run at minimum speed" (MinPwm)
+          # Note: between 41 and 50°C the fan speed will be interpolated between 1% and 20%
+        - 50: 20%  #  20% is equivalent to speed value ≈ 50
+          # Note: between 50 and 80°C the fan speed will be interpolated between 20% and 100%
+          #       for example, at 65°C it'll run at 60% speed
+        - 80: 100% # 100% is equivalent to speed value 255
+```
+
+> NOTE: When using `useUnscaledCurveValues` in the fan configuration, the values specified in the curve are **not scaled
+**
+> to the [MinPwm..MaxPwm] range of the fan, but are directly mapped with the `pwmMap` (if specified) or used as is (if
+> no `pwmMap` is specified and a 1:1 mapping is assumed).
+> In this case, it is recommended to specify curve values in the same range as the expected PWM values after scaling to
+> avoid confusion.
+> So if your fan has a MinPwm of 30 and a MaxPwm of 255, you should specify curve values in the [30..255] range.
+
+Alternatively the speeds can be specified in [0..255] range:
 
 ```yaml
 curves:
@@ -430,6 +480,7 @@ curves:
       steps:
         # Sensor value (in degrees Celsius) -> Speed (0-255)
         - 40: 0
+        - 41: 1
         - 50: 50
         - 80: 255
 ```
@@ -453,6 +504,8 @@ Unlike the other curve types, this one does not use the average of the sensor da
 to calculate its value, which allows you to create a completely custom behaviour.
 Keep in mind though that the fan controller may also be PID based (depending on the
 specified `controlAlgorithm`) which would also affect how the curve is applied to the fan.
+
+`setPoint` is the target temperature.
 
 See: [PID controller on Wikipedia](https://en.wikipedia.org/wiki/Proportional%E2%80%93integral%E2%80%93derivative_controller)
 for more information on what a PID controller is.
