@@ -437,7 +437,8 @@ curves:
       max: 80
 ```
 
-You can also define the curve in multiple, linear sections using the `steps` parameter:
+You can also define the curve in multiple, linear sections using the `steps` parameter,
+where the left side refers to the sensor input value and the right side refers to the curve value at that sensor input.
 
 ```yaml
 curves:
