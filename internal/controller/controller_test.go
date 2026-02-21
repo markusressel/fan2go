@@ -77,6 +77,7 @@ type MockFan struct {
 	PwmMap                                       *configuration.PwmMapConfig
 	SetPwmToGetPwmMap                            *configuration.SetPwmToGetPwmMapConfig
 	ControlModeConfig                            *configuration.ControlModeConfig
+	setPwmAlwaysFails                            bool
 }
 
 func (fan MockFan) GetStartPwm() int {
@@ -132,6 +133,9 @@ func (fan MockFan) GetPwm() (result int, err error) {
 }
 
 func (fan *MockFan) SetPwm(pwm int) (err error) {
+	if fan.setPwmAlwaysFails {
+		return errors.New("write rejected by hardware")
+	}
 	fan.PWM = pwm
 	return nil
 }
@@ -1979,4 +1983,102 @@ func TestRestoreControlMode_Restore_Explicit(t *testing.T) {
 
 	assert.Contains(t, fan.pwmHistory, 75)
 	assert.Contains(t, fan.controlModeHistory, fans.ControlModeAutomatic)
+}
+
+// --- setPwmToGetPwmMap / pwmMap edge-case tests ---
+
+func TestFanController_ComputeSetPwmToGetPwmMap_AllWritesFail(t *testing.T) {
+	// GIVEN: a fan whose SetPwm always returns an error (e.g. AMD GPU fan that rejects writes)
+	fan := &MockFan{
+		ID:                "fan",
+		PWM:               0,
+		RPM:               100,
+		MinPWM:            0,
+		setPwmAlwaysFails: true,
+	}
+	fans.RegisterFan(fan)
+
+	controller := DefaultFanController{
+		persistence: mockPersistence{hasPwmMap: false},
+		fan:         fan,
+		updateRate:  time.Duration(100),
+	}
+
+	// WHEN
+	err := controller.computeSetPwmToGetPwmMapAutomatically()
+
+	// THEN: no error, but map is nil because no data points were collected
+	assert.NoError(t, err)
+	assert.Nil(t, controller.setPwmToGetPwmMap)
+}
+
+func TestFanController_ComputePwmMapAutomatically_NilSetPwmMap(t *testing.T) {
+	// GIVEN: setPwmToGetPwmMap is nil (never populated)
+	fan := &MockFan{ID: "fan", PWM: 0, RPM: 100, MinPWM: 0}
+	fans.RegisterFan(fan)
+
+	controller := DefaultFanController{
+		persistence: mockPersistence{hasPwmMap: false},
+		fan:         fan,
+		updateRate:  time.Duration(100),
+	}
+	// setPwmToGetPwmMap left as nil
+
+	// WHEN
+	err := controller.computePwmMapAutomatically()
+
+	// THEN: falls back to identity mapping, no error
+	assert.NoError(t, err)
+	for i := 0; i < 256; i++ {
+		assert.Equal(t, i, controller.pwmMapping[i], "at index %d", i)
+	}
+}
+
+func TestFanController_ComputePwmMapAutomatically_EmptySetPwmMap(t *testing.T) {
+	// GIVEN: setPwmToGetPwmMap is non-nil but empty — this must not panic
+	fan := &MockFan{ID: "fan", PWM: 0, RPM: 100, MinPWM: 0}
+	fans.RegisterFan(fan)
+
+	controller := DefaultFanController{
+		persistence:       mockPersistence{hasPwmMap: false},
+		fan:               fan,
+		updateRate:        time.Duration(100),
+		setPwmToGetPwmMap: map[int]int{}, // non-nil, empty
+	}
+
+	// WHEN
+	err := controller.computePwmMapAutomatically()
+
+	// THEN: falls back to identity mapping, no panic, no error
+	assert.NoError(t, err)
+	for i := 0; i < 256; i++ {
+		assert.Equal(t, i, controller.pwmMapping[i], "at index %d", i)
+	}
+}
+
+func TestFanController_ComputeFanSpecificMappings_AllWritesFail(t *testing.T) {
+	// GIVEN: a fan that rejects every SetPwm call — end-to-end regression for issue #440
+	fan := &MockFan{
+		ID:                "fan",
+		PWM:               0,
+		RPM:               100,
+		MinPWM:            0,
+		setPwmAlwaysFails: true,
+	}
+	fans.RegisterFan(fan)
+
+	controller := DefaultFanController{
+		persistence: mockPersistence{hasPwmMap: false},
+		fan:         fan,
+		updateRate:  time.Duration(100),
+	}
+
+	// WHEN: must not panic
+	err := controller.computeFanSpecificMappings()
+
+	// THEN: completes without error, pwmMapping is identity
+	assert.NoError(t, err)
+	for i := 0; i < 256; i++ {
+		assert.Equal(t, i, controller.pwmMapping[i], "at index %d", i)
+	}
 }
