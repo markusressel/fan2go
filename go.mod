@@ -21,7 +21,7 @@ require (
 	github.com/oklog/run v1.2.0
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/prometheus/client_golang v1.23.2
-	github.com/pterm/pterm v0.12.79
+	github.com/pterm/pterm v0.12.82
 	github.com/qdm12/reprint v0.0.0-20200326205758-722754a53494
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.20.1
@@ -37,7 +37,7 @@ require (
 	atomicgo.dev/schedule v0.1.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/containerd/console v1.0.4 // indirect
+	github.com/containerd/console v1.0.5 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/gookit/color v1.5.4 // indirect
