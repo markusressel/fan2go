@@ -54,12 +54,23 @@ func pwmMapPointsHookFunc() mapstructure.DecodeHookFuncType {
 	pwmMapType := reflect.TypeOf(PwmMapConfig{})
 	setPwmLinearType := reflect.TypeOf(SetPwmToGetPwmMapLinearConfig{})
 	setPwmValuesType := reflect.TypeOf(SetPwmToGetPwmMapValuesConfig{})
+	controlModeValueType := reflect.TypeOf(ControlModeValue(""))
 
 	return func(
 		f reflect.Type,
 		t reflect.Type,
 		data interface{},
 	) (interface{}, error) {
+		// ControlModeValue: allow integer YAML values (e.g. active: 1) to decode as string
+		if t == controlModeValueType {
+			switch v := data.(type) {
+			case int:
+				return ControlModeValue(strconv.Itoa(v)), nil
+			case string:
+				return ControlModeValue(v), nil
+			}
+		}
+
 		// 3a — key-type conversion for the named map types
 		if t == linearType || t == valuesType {
 			pts, err := parsePwmIntMap(data)

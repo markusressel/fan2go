@@ -50,6 +50,38 @@ type SetPwmToGetPwmMapLinearConfig map[int]int
 // Keys and values must be in [0..255]; values must be strictly monotonically increasing.
 type SetPwmToGetPwmMapValuesConfig map[int]int
 
+// ControlModeConfig groups active and exit control mode settings for a fan.
+type ControlModeConfig struct {
+	// Active is the control mode to set when fan2go takes control of the fan.
+	// Accepts "pwm", "disabled", or an integer. Defaults to "pwm" (with "disabled" fallback).
+	Active *ControlModeValue `json:"active,omitempty"`
+	// OnExit configures what fan2go does to the fan when it exits.
+	// If omitted, the original control mode is restored (default behavior).
+	OnExit *OnExitConfig `json:"onExit,omitempty"`
+}
+
+// ControlModeValue represents a control mode as a string name or integer string.
+// Accepts: "pwm" / "manual", "disabled", "auto" / "automatic", or integer ("0", "1", "2", ...).
+type ControlModeValue string
+
+// OnExitConfig configures what fan2go does to the fan on exit.
+// Valid combinations:
+//   - restore (alone): restore original control mode — default
+//   - none (alone): do nothing, leave fan at last fan2go speed
+//   - controlMode and/or speed: set explicit values on exit
+type OnExitConfig struct {
+	Restore     *OnExitRestoreConfig `json:"restore,omitempty"`
+	None        *OnExitNoneConfig    `json:"none,omitempty"`
+	ControlMode *ControlModeValue    `json:"controlMode,omitempty"`
+	Speed       *int                 `json:"speed,omitempty"`
+}
+
+// OnExitRestoreConfig restores the original control mode (default behavior).
+type OnExitRestoreConfig struct{}
+
+// OnExitNoneConfig skips all exit actions, leaving the fan at the last speed set by fan2go.
+type OnExitNoneConfig struct{}
+
 type FanConfig struct {
 	// ID is the unique identifier for the fan.
 	ID        string `json:"id"`
@@ -67,6 +99,8 @@ type FanConfig struct {
 	// SetPwmToGetPwmMap configures how fan2go determines the mapping from a set PWM value to the
 	// value the fan hardware reports back. If omitted, fan2go auto-detects this during initialization.
 	SetPwmToGetPwmMap *SetPwmToGetPwmMapConfig `json:"setPwmToGetPwmMap,omitempty"`
+	// ControlMode configures the control mode fan2go uses while active and on exit.
+	ControlMode *ControlModeConfig `json:"controlMode,omitempty"`
 	// Curve is the id of the speed curve associated with this fan.
 	Curve string `json:"curve"`
 	// By default speed values from the curve are scaled from 1..255 (or 1%..100%) to MinPwm..MaxPwm

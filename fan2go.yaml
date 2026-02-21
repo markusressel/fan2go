@@ -84,6 +84,19 @@ fans:
     # auto-detects this during fan initialization.
     # Modes: autodetect | identity | linear | values
     setPwmToGetPwmMap: autodetect
+    # (Optional) Configure the control mode fan2go uses while running and on exit.
+    # controlMode:
+    #   # (Optional) The control mode to set when fan2go takes control of this fan.
+    #   # Accepts: "pwm" (default), "disabled", "auto", or an integer (0, 1, 2, ...).
+    #   active: pwm
+    #   # (Optional) What to do when fan2go exits. Default: restore original control mode.
+    #   # String shorthands:
+    #   #   onExit: restore   # restore original control mode (default behavior)
+    #   #   onExit: none      # do nothing — leave fan at last speed set by fan2go
+    #   # Map form (set explicit values on exit):
+    #   onExit:
+    #     controlMode: auto  # set control mode on exit (accepts same values as active)
+    #     speed: 128         # set fixed PWM speed on exit (0..255)
     # (Optional) By default (useUnscaledCurveValues: false) speed values from the curve are scaled
     # from 1..255 (or 1%..100%) to MinPwm..MaxPwm  and speed values < 1(%) are set to 0,
     # before they're mapped with pwmMap (the value looked up in pwmMap is then used to

@@ -235,6 +235,19 @@ func (c *PwmMapConfig) UnmarshalText(text []byte) error {
 	return nil
 }
 
+// UnmarshalText handles string shorthands for OnExitConfig: "restore" and "none".
+func (c *OnExitConfig) UnmarshalText(text []byte) error {
+	switch strings.ToLower(string(text)) {
+	case "restore":
+		*c = OnExitConfig{Restore: &OnExitRestoreConfig{}}
+	case "none":
+		*c = OnExitConfig{None: &OnExitNoneConfig{}}
+	default:
+		return fmt.Errorf("unknown onExit value %q (expected: restore, none, or a map with controlMode/speed keys)", string(text))
+	}
+	return nil
+}
+
 // UnmarshalText handles string shorthand forms for SetPwmToGetPwmMapConfig: "autodetect" and "identity".
 func (c *SetPwmToGetPwmMapConfig) UnmarshalText(text []byte) error {
 	switch string(text) {

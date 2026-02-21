@@ -354,6 +354,24 @@ fans:
     #     0: 0
     #     128: 128
     #     255: 255
+    # (Optional) Configure the control mode fan2go uses while running and on exit.
+    # Both fields are optional; omitting controlMode entirely preserves existing behavior.
+    #
+    # active: the control mode to set when fan2go takes control of this fan.
+    #   Accepts: "pwm" (default, with "disabled" fallback), "disabled", "auto", or an integer.
+    # onExit: what to do when fan2go exits.
+    #   String shorthand:
+    #     onExit: restore   # restore original control mode (default)
+    #     onExit: none      # leave fan at last speed set by fan2go (useful for hardware controllers
+    #                       # that remember PWM settings — see issue #416)
+    #   Map form (set explicit values on exit):
+    #     onExit:
+    #       controlMode: auto   # set a specific control mode on exit
+    #       speed: 128          # set a fixed PWM speed on exit (0..255)
+    #     # controlMode and speed can be combined or used independently.
+    controlMode:
+      active: pwm
+      onExit: restore
     # By default (useUnscaledCurveValues: false) speed values from the curve are scaled
     # from 1..255 (or 1%..100%) to MinPwm..MaxPwm  and speed values < 1(%) are set to 0,
     # before they're mapped with pwmMap (the value looked up in pwmMap is then used to
