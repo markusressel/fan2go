@@ -338,3 +338,25 @@ func AbsU(val int) uint {
 	// https://graphics.stanford.edu/~seander/bithacks.html#IntegerAbs
 	return -uint(val)
 }
+
+func MinValOrElse(values []float64, defaultVal float64) float64 {
+	if len(values) == 0 {
+		return defaultVal
+	}
+	minVal := values[0]
+	for _, v := range values {
+		minVal = math.Min(minVal, v)
+	}
+	return minVal
+}
+
+func MaxValOrElse(values []float64, defaultVal float64) float64 {
+	if len(values) == 0 {
+		return defaultVal
+	}
+	maxVal := values[0]
+	for _, v := range values {
+		maxVal = math.Max(maxVal, v)
+	}
+	return maxVal
+}

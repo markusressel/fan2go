@@ -160,6 +160,10 @@ func validateCurves(config *Configuration) error {
 				return fmt.Errorf("curve %s: unsupported function type '%s', use one of: %s", curveConfig.ID, curveConfig.Function.Type, strings.Join(supportedTypes, " | "))
 			}
 
+			if len(curveConfig.Function.Curves) < 2 {
+				return fmt.Errorf("curve %s: function curves must reference at least 2 other curves", curveConfig.ID)
+			}
+
 			var connections []interface{}
 			for _, curve := range curveConfig.Function.Curves {
 				if curve == curveConfig.ID {

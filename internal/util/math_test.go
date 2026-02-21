@@ -1,8 +1,9 @@
 package util
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCalculateInterpolatedCurveValue(t *testing.T) {
@@ -223,4 +224,52 @@ func TestExpandMapToFullRangeSingleValue(t *testing.T) {
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedResult, result)
+}
+
+func TestMinValOrElse(t *testing.T) {
+	// GIVEN
+	values := []float64{3.0, 2.0, 1.0}
+	defaultValue := 0.0
+
+	// WHEN
+	result := MinValOrElse(values, defaultValue)
+
+	// THEN
+	assert.Equal(t, 1.0, result)
+}
+
+func TestMinValOrElseEmpty(t *testing.T) {
+	// GIVEN
+	values := []float64{}
+	defaultValue := 10.0
+
+	// WHEN
+	result := MinValOrElse(values, defaultValue)
+
+	// THEN
+	assert.Equal(t, defaultValue, result)
+}
+
+func TestMaxValOrElse(t *testing.T) {
+	// GIVEN
+	values := []float64{1.0, 2.0, 3.0}
+	defaultValue := 0.0
+
+	// WHEN
+	result := MaxValOrElse(values, defaultValue)
+
+	// THEN
+	assert.Equal(t, 3.0, result)
+}
+
+func TestMaxValOrElseEmpty(t *testing.T) {
+	// GIVEN
+	values := []float64{}
+	defaultValue := 10.0
+
+	// WHEN
+	result := MaxValOrElse(values, defaultValue)
+
+	// THEN
+	assert.Equal(t, defaultValue, result)
 }

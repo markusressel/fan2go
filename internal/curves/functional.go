@@ -1,9 +1,11 @@
 package curves
 
 import (
+	"math"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
-	"math"
+	"github.com/markusressel/fan2go/internal/util"
 )
 
 type FunctionSpeedCurve struct {
@@ -66,23 +68,13 @@ func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
 		delta := dmax - dmin
 		value = delta
 	case configuration.FunctionMinimum:
-		var min float64 = 255
-		for _, v := range values {
-			min = math.Min(min, v)
-		}
-		value = min
+		minimum := util.MinValOrElse(values, values[0])
+		value = minimum
 	case configuration.FunctionMaximum:
-		var max float64
-		for _, v := range values {
-			max = math.Max(max, float64(v))
-		}
-		value = max
+		maximum := util.MaxValOrElse(values, values[0])
+		value = maximum
 	case configuration.FunctionAverage:
-		var total = 0.0
-		for _, v := range values {
-			total += v
-		}
-		avg := total / float64(len(curves))
+		avg := util.Avg(values)
 		value = avg
 	default:
 		ui.Fatal("Unknown curve function: %s", c.Config.Function.Type)
