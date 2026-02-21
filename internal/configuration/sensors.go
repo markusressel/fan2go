@@ -14,8 +14,10 @@ type SensorConfig struct {
 type HwMonSensorConfig struct {
 	// Platform is the platform of the sensor as printed by 'fan2go detect'
 	Platform string `json:"platform"`
-	// Index is the index of the sensor as printed by 'fan2go detect'
+	// Index is the enumeration index of the sensor as printed by 'fan2go detect' (deprecated: prefer Channel)
 	Index int `json:"index"`
+	// Channel is the hardware channel number of the sensor (e.g. temp3_input → channel 3)
+	Channel int `json:"channel"`
 	// TempInput is the sysfs path to the temperature input
 	TempInput string
 }

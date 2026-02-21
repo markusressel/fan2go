@@ -95,8 +95,10 @@ func validateSensors(config *Configuration) error {
 		}
 
 		if sensorConfig.HwMon != nil {
-			if sensorConfig.HwMon.Index <= 0 {
-				return fmt.Errorf("sensor %s: invalid index, must be >= 1", sensorConfig.ID)
+			hasIndex := sensorConfig.HwMon.Index > 0
+			hasChannel := sensorConfig.HwMon.Channel > 0
+			if (hasIndex && hasChannel) || (!hasIndex && !hasChannel) {
+				return fmt.Errorf("sensor %s: must have exactly one of index or channel, must be >= 1", sensorConfig.ID)
 			}
 		}
 	}

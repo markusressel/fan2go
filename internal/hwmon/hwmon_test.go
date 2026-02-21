@@ -6,6 +6,7 @@ import (
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/md14454/gosensors"
 	"github.com/stretchr/testify/assert"
 )
@@ -215,6 +216,114 @@ func TestUpdateFanConfigFromHwMonControllers(t *testing.T) {
 
 			// WHEN
 			err := UpdateFanConfigFromHwMonControllers(controllers, &config)
+
+			// THEN
+			if tt.wantConfig != nil {
+				if tt.wantConfig.Platform == "" {
+					tt.wantConfig.Platform = "platform"
+				}
+				assert.Equal(t, tt.wantConfig, config.HwMon)
+			}
+			if tt.wantErr != "" {
+				assert.ErrorContains(t, err, tt.wantErr)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestUpdateSensorConfigFromHwMonControllers(t *testing.T) {
+	var tests = []struct {
+		tn            string
+		hwmonSensors  map[int]*sensors.HwmonSensor
+		hwMonPlatform string
+		configConfig  configuration.HwMonSensorConfig
+		wantConfig    *configuration.HwMonSensorConfig
+		wantErr       string
+	}{{
+		tn: "match by index",
+		hwmonSensors: map[int]*sensors.HwmonSensor{
+			3: {Index: 1, Channel: 3, Input: "/sys/hwmon1/temp3_input"},
+		},
+		configConfig: configuration.HwMonSensorConfig{
+			Index: 1,
+		},
+		wantConfig: &configuration.HwMonSensorConfig{
+			Index:     1,
+			Channel:   3,
+			TempInput: "/sys/hwmon1/temp3_input",
+		},
+	}, {
+		tn: "match by channel",
+		hwmonSensors: map[int]*sensors.HwmonSensor{
+			3: {Index: 1, Channel: 3, Input: "/sys/hwmon1/temp3_input"},
+		},
+		configConfig: configuration.HwMonSensorConfig{
+			Channel: 3,
+		},
+		wantConfig: &configuration.HwMonSensorConfig{
+			Index:     1,
+			Channel:   3,
+			TempInput: "/sys/hwmon1/temp3_input",
+		},
+	}, {
+		tn: "no hwmon sensors",
+		configConfig: configuration.HwMonSensorConfig{
+			Index: 1,
+		},
+		wantErr: "no hwmon sensor matched sensor config",
+	}, {
+		tn: "no matching index",
+		hwmonSensors: map[int]*sensors.HwmonSensor{
+			3: {Index: 2, Channel: 3, Input: "/sys/hwmon1/temp3_input"},
+		},
+		configConfig: configuration.HwMonSensorConfig{
+			Index: 1,
+		},
+		wantErr: "no hwmon sensor matched sensor config",
+	}, {
+		tn: "no matching channel",
+		hwmonSensors: map[int]*sensors.HwmonSensor{
+			3: {Index: 1, Channel: 3, Input: "/sys/hwmon1/temp3_input"},
+		},
+		configConfig: configuration.HwMonSensorConfig{
+			Channel: 7,
+		},
+		wantErr: "no hwmon sensor matched sensor config",
+	}, {
+		tn: "no matching platform",
+		hwmonSensors: map[int]*sensors.HwmonSensor{
+			3: {Index: 1, Channel: 3, Input: "/sys/hwmon1/temp3_input"},
+		},
+		hwMonPlatform: "abc",
+		configConfig: configuration.HwMonSensorConfig{
+			Index: 1,
+		},
+		wantErr: "no hwmon sensor matched sensor config",
+	}}
+
+	for _, tt := range tests {
+		t.Run(tt.tn, func(t *testing.T) {
+			// GIVEN
+			if tt.hwMonPlatform == "" {
+				tt.hwMonPlatform = "platform"
+			}
+			controllers := []*HwMonController{
+				{
+					Platform: tt.hwMonPlatform,
+					Sensors:  tt.hwmonSensors,
+				},
+			}
+			if tt.configConfig.Platform == "" {
+				tt.configConfig.Platform = "platform"
+			}
+			config := configuration.SensorConfig{
+				HwMon: &tt.configConfig,
+			}
+
+			// WHEN
+			err := UpdateSensorConfigFromHwMonControllers(controllers, &config)
 
 			// THEN
 			if tt.wantConfig != nil {
