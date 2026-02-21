@@ -167,12 +167,30 @@ func TestValidateCurveDependencyToSelf(t *testing.T) {
 	config := Configuration{
 		Curves: []CurveConfig{
 			{
+				ID: "curve0",
+				Linear: &LinearCurveConfig{
+					Sensor: "sensor",
+					Min:    0,
+					Max:    100,
+				},
+			},
+			{
 				ID: "curve",
 				Function: &FunctionCurveConfig{
 					Type: FunctionAverage,
 					Curves: []string{
 						"curve",
+						"curve0",
 					},
+				},
+			},
+		},
+		Sensors: []SensorConfig{
+			{
+				ID: "sensor",
+				File: &FileSensorConfig{
+					// TODO: path empty validation
+					Path: "",
 				},
 			},
 		},
@@ -203,6 +221,7 @@ func TestValidateCurveDependencyCycle(t *testing.T) {
 					Type: FunctionAverage,
 					Curves: []string{
 						"curve2",
+						"curve0",
 					},
 				},
 			},
@@ -212,6 +231,7 @@ func TestValidateCurveDependencyCycle(t *testing.T) {
 					Type: FunctionAverage,
 					Curves: []string{
 						"curve1",
+						"curve0",
 					},
 				},
 			},
@@ -243,12 +263,30 @@ func TestValidateCurveDependencyWithIdIsNotDefined(t *testing.T) {
 	config := Configuration{
 		Curves: []CurveConfig{
 			{
+				ID: "curve0",
+				Linear: &LinearCurveConfig{
+					Sensor: "sensor",
+					Min:    0,
+					Max:    100,
+				},
+			},
+			{
 				ID: "curve1",
 				Function: &FunctionCurveConfig{
 					Type: FunctionAverage,
 					Curves: []string{
+						"curve0",
 						"curve2",
 					},
+				},
+			},
+		},
+		Sensors: []SensorConfig{
+			{
+				ID: "sensor",
+				File: &FileSensorConfig{
+					// TODO: path empty validation
+					Path: "",
 				},
 			},
 		},
