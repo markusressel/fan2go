@@ -18,9 +18,10 @@ const (
 type FeatureFlag int
 
 const (
-	FeaturePwmSensor   FeatureFlag = 0
-	FeatureRpmSensor   FeatureFlag = 1
-	FeatureControlMode FeatureFlag = 2
+	FeaturePwmSensor        FeatureFlag = 0
+	FeatureRpmSensor        FeatureFlag = 1
+	FeatureControlModeWrite FeatureFlag = 2
+	FeatureControlModeRead  FeatureFlag = 3
 )
 
 type ControlMode int

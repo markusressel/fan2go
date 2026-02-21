@@ -272,7 +272,9 @@ func (fan *NvidiaFan) SetConfig(config configuration.FanConfig) {
 
 func (fan *NvidiaFan) Supports(feature FeatureFlag) bool {
 	switch feature {
-	case FeatureControlMode:
+	case FeatureControlModeWrite:
+		return fan.CanSetControlMode
+	case FeatureControlModeRead:
 		return fan.CanSetControlMode
 	case FeaturePwmSensor:
 		// As of today, Nvidia's driver implementation returns a dynamic PWM value based on the

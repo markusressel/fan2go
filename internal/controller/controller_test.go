@@ -1832,7 +1832,7 @@ func (f *mockFanForRestore) SetControlMode(mode fans.ControlMode) error {
 }
 
 func (f *mockFanForRestore) Supports(feature fans.FeatureFlag) bool {
-	if feature == fans.FeatureControlMode {
+	if feature == fans.FeatureControlModeWrite || feature == fans.FeatureControlModeRead {
 		return f.supportsControlMode
 	}
 	return true

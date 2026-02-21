@@ -164,7 +164,9 @@ func (fan *CmdFan) SetConfig(config configuration.FanConfig) {
 
 func (fan *CmdFan) Supports(feature FeatureFlag) bool {
 	switch feature {
-	case FeatureControlMode:
+	case FeatureControlModeWrite:
+		return false
+	case FeatureControlModeRead:
 		return false
 	case FeaturePwmSensor:
 		return fan.Config.Cmd.GetPwm != nil

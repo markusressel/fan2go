@@ -185,7 +185,7 @@ func (f *DefaultFanController) storeCurrentFanState() error {
 	f.originalPwmValue = pwm
 
 	// store original pwm_enable value
-	if f.fan.Supports(fans.FeatureControlMode) {
+	if f.fan.Supports(fans.FeatureControlModeRead) {
 		controlMode, err := fan.GetControlMode()
 		if err != nil {
 			ui.Warning("Cannot read pwm_enable value of %s", fan.GetId())
@@ -243,7 +243,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 		ui.Warning("Suspicious pwm config of fan '%s': MinPwm (%d) > StartPwm (%d)", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm())
 	}
 
-	// TODO: check if fan.Supports(fans.FeatureControlMode) - or is it ok if it doesn't and our
+	// TODO: check if fan.Supports(fans.FeatureControlModeWrite) - or is it ok if it doesn't and our
 	//       default assumption is that it will always be in manual mode then?
 	//       (trySetManualPwm() just returns nil in that case)
 	//       Alternatively, should fans that don't support switching the mode but run in manual mode
@@ -583,7 +583,7 @@ func parseControlModeValue(value configuration.ControlModeValue) (fans.ControlMo
 }
 
 func trySetManualPwm(fan fans.Fan) error {
-	if !fan.Supports(fans.FeatureControlMode) {
+	if !fan.Supports(fans.FeatureControlModeWrite) {
 		return nil
 	}
 
@@ -635,7 +635,7 @@ func (f *DefaultFanController) restoreControlMode() {
 		if err := f.fan.SetPwm(pwmToSet); err != nil {
 			ui.Warning("Error setting PWM for fan %s on exit: %v", f.fan.GetId(), err)
 		}
-		if onExit.ControlMode != nil && f.fan.Supports(fans.FeatureControlMode) {
+		if onExit.ControlMode != nil && f.fan.Supports(fans.FeatureControlModeWrite) {
 			controlMode, err := parseControlModeValue(*onExit.ControlMode)
 			if err != nil {
 				ui.Warning("Error parsing controlMode.onExit.controlMode for fan %s: %v", f.fan.GetId(), err)
@@ -650,7 +650,7 @@ func (f *DefaultFanController) restoreControlMode() {
 	if err := f.fan.SetPwm(f.originalPwmValue); err != nil {
 		ui.Warning("Error restoring original PWM value for fan %s: %v", f.fan.GetId(), err)
 	}
-	if f.fan.Supports(fans.FeatureControlMode) && f.originalControlMode != fans.ControlModePWM {
+	if f.fan.Supports(fans.FeatureControlModeWrite) && f.originalControlMode != fans.ControlModePWM {
 		if err := f.fan.SetControlMode(f.originalControlMode); err == nil {
 			return
 		}
@@ -769,7 +769,7 @@ func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
 		return
 	}
 
-	if !f.fan.Supports(fans.FeatureControlMode) {
+	if !f.fan.Supports(fans.FeatureControlModeRead) {
 		ui.Warning("Fan %s does not support control mode reading, disabling 'FanModeChangedByThirdParty' sanity check", f.fan.GetId())
 		fanConfig.SanityCheck.FanModeChangedByThirdParty.Enabled.SetOverride(false)
 		f.fan.SetConfig(fanConfig)
