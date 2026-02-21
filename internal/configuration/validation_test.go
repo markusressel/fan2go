@@ -407,7 +407,7 @@ func TestValidateSensorSubConfigSensorIdIsMissing(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "sensor sensor: sub-configuration for sensor is missing, use one of: hwmon | nvidia | file | cmd")
+	assert.EqualError(t, err, "sensor sensor: sub-configuration for sensor is missing, use one of: hwmon | nvidia | file | cmd | disk")
 }
 
 func TestValidateSensor(t *testing.T) {
@@ -985,4 +985,40 @@ func TestValidateControlMode_OnExit_SpeedBoundaryValues(t *testing.T) {
 		err := validateConfig(&cfg, "")
 		assert.NoError(t, err, "expected no error for speed=%d", speed)
 	}
+}
+
+func TestValidateDiskSensor_Valid(t *testing.T) {
+	// GIVEN
+	config := Configuration{
+		Sensors: []SensorConfig{
+			{
+				ID:   "disk_temp",
+				Disk: &DiskSensorConfig{Device: "/dev/sda"},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.NoError(t, err)
+}
+
+func TestValidateDiskSensor_MissingDevice(t *testing.T) {
+	// GIVEN
+	config := Configuration{
+		Sensors: []SensorConfig{
+			{
+				ID:   "disk_temp",
+				Disk: &DiskSensorConfig{Device: ""},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.EqualError(t, err, "sensor disk_temp: disk sensor requires a device path")
 }

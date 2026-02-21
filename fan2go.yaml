@@ -162,11 +162,10 @@ sensors:
       index: 3
 
   - id: sata_ssd
-    hwmon:
-      # at least if you have more than one SATA/SCSI disk/SSD,
-      # you should use the full platform string, not just "drivetemp"
-      platform: drivetemp-scsi-2-0
-      index: 1
+    disk:
+      # Stable by-id path (recommended). The /dev/disk/by-id/ prefix may be omitted,
+      # e.g. just: ata-WDC_WD40EFRX_XXXXXXXX
+      device: /dev/disk/by-id/ata-WDC_WD40EFRX_XXXXXXXX
 
 # A list of control curves which can be utilized by fans
 # or other curves

@@ -274,6 +274,32 @@ fans:
         args: [ "-a", "someargument" ]
 ```
 
+#### Disk
+
+Reads the temperature of a block device (SATA, NVMe, etc.) using a stable device path instead of an
+hwmon platform index that can change across reboots.
+
+```yaml
+sensors:
+  - id: ssd_temp
+    disk:
+      # Full path (recommended for clarity)
+      device: /dev/disk/by-id/ata-Samsung_SSD_870_EVO_1TB_S1234567890
+      # Short form also accepted (prefix /dev/disk/by-id/ is auto-applied):
+      # device: ata-Samsung_SSD_870_EVO_1TB_S1234567890
+      # The /dev/ prefix is also optional (e.g. just "sda"):
+      # device: sda
+
+  - id: nvme_temp
+    disk:
+      device: /dev/disk/by-id/nvme-Samsung_SSD_980_1TB_S1234567890
+      # Short form: device: nvme-Samsung_SSD_980_1TB_S1234567890
+```
+
+Requires the `drivetemp` kernel module for SATA drives (standard since kernel 5.6) or `nvme-hwmon`
+for NVMe (standard since kernel 4.15). Falls back to a direct ATA SMART ioctl for SATA drives
+without `drivetemp` loaded.
+
 #### Advanced Options
 
 If the automatic fan curve analysis doesn't provide a good enough estimation
@@ -417,7 +443,7 @@ sensors:
   # A user defined ID, which is used to reference
   # a sensor in a curve configuration (see below)
   - id: cpu_package
-    # The type of sensor configuration, one of: hwmon | nvidia | file | cmd
+    # The type of sensor configuration, one of: hwmon | nvidia | file | cmd | disk
     hwmon:
       # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
       # "coretemp", "it8620", "corsaircpro-*" etc.

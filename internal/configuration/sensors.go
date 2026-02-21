@@ -9,6 +9,7 @@ type SensorConfig struct {
 	Nvidia *NvidiaSensorConfig `json:"nvidia,omitempty"`
 	File   *FileSensorConfig   `json:"file,omitempty"`
 	Cmd    *CmdSensorConfig    `json:"cmd,omitempty"`
+	Disk   *DiskSensorConfig   `json:"disk,omitempty"`
 }
 
 type HwMonSensorConfig struct {
@@ -38,4 +39,10 @@ type CmdSensorConfig struct {
 	Exec string `json:"exec"`
 	// Args is a list of arguments to pass to the command
 	Args []string `json:"args"`
+}
+
+type DiskSensorConfig struct {
+	// Device is the path to the block device. Accepts stable paths like /dev/disk/by-id/...
+	// as well as plain paths like /dev/sda or just "sda".
+	Device string `json:"device"`
 }

@@ -83,11 +83,14 @@ func validateSensors(config *Configuration) error {
 				return fmt.Errorf("sensor %s: This version of fan2go was built without NVIDIA (nvml) support", sensorConfig.ID)
 			}
 		}
+		if sensorConfig.Disk != nil {
+			subConfigs++
+		}
 		if subConfigs > 1 {
 			return fmt.Errorf("sensor %s: only one sensor type can be used per sensor definition block", sensorConfig.ID)
 		}
 		if subConfigs <= 0 {
-			return fmt.Errorf("sensor %s: sub-configuration for sensor is missing, use one of: hwmon | nvidia | file | cmd", sensorConfig.ID)
+			return fmt.Errorf("sensor %s: sub-configuration for sensor is missing, use one of: hwmon | nvidia | file | cmd | disk", sensorConfig.ID)
 		}
 
 		if !isSensorConfigInUse(sensorConfig, config.Curves) {
@@ -99,6 +102,12 @@ func validateSensors(config *Configuration) error {
 			hasChannel := sensorConfig.HwMon.Channel > 0
 			if (hasIndex && hasChannel) || (!hasIndex && !hasChannel) {
 				return fmt.Errorf("sensor %s: must have exactly one of index or channel, must be >= 1", sensorConfig.ID)
+			}
+		}
+
+		if sensorConfig.Disk != nil {
+			if len(sensorConfig.Disk.Device) == 0 {
+				return fmt.Errorf("sensor %s: disk sensor requires a device path", sensorConfig.ID)
 			}
 		}
 	}
