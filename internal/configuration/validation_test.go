@@ -781,3 +781,170 @@ func TestValidateSetPwmToGetPwmMap_Nil(t *testing.T) {
 	err := validateConfig(&cfg, "")
 	assert.NoError(t, err)
 }
+
+// helper: build a minimal valid Configuration with a given ControlModeConfig
+func minimalFanConfigWithControlMode(cm *ControlModeConfig) Configuration {
+	return Configuration{
+		Fans: []FanConfig{
+			{
+				ID:          "fan",
+				Curve:       "curve",
+				File:        &FileFanConfig{Path: "/dev/null"},
+				ControlMode: cm,
+			},
+		},
+		Curves: []CurveConfig{
+			{ID: "curve", Linear: &LinearCurveConfig{Sensor: "sensor", Min: 0, Max: 100}},
+		},
+		Sensors: []SensorConfig{
+			{ID: "sensor", File: &FileSensorConfig{Path: ""}},
+		},
+	}
+}
+
+func TestValidateControlMode_Nil(t *testing.T) {
+	cfg := minimalFanConfigWithControlMode(nil)
+	err := validateConfig(&cfg, "")
+	assert.NoError(t, err)
+}
+
+func TestValidateControlMode_Active_ValidNames(t *testing.T) {
+	for _, name := range []string{"pwm", "manual", "disabled", "auto", "automatic", "PWM", "Auto"} {
+		v := ControlModeValue(name)
+		cfg := minimalFanConfigWithControlMode(&ControlModeConfig{Active: &v})
+		err := validateConfig(&cfg, "")
+		assert.NoError(t, err, "expected no error for active=%q", name)
+	}
+}
+
+func TestValidateControlMode_Active_ValidInteger(t *testing.T) {
+	for _, s := range []string{"0", "1", "2", "99"} {
+		v := ControlModeValue(s)
+		cfg := minimalFanConfigWithControlMode(&ControlModeConfig{Active: &v})
+		err := validateConfig(&cfg, "")
+		assert.NoError(t, err, "expected no error for active=%q", s)
+	}
+}
+
+func TestValidateControlMode_Active_Invalid(t *testing.T) {
+	v := ControlModeValue("bogus")
+	cfg := minimalFanConfigWithControlMode(&ControlModeConfig{Active: &v})
+	err := validateConfig(&cfg, "")
+	assert.EqualError(t, err, `fan 'fan': invalid controlMode.active "bogus" (valid: auto, pwm, disabled, or integer)`)
+}
+
+func TestValidateControlMode_OnExit_Restore(t *testing.T) {
+	cfg := minimalFanConfigWithControlMode(&ControlModeConfig{
+		OnExit: &OnExitConfig{Restore: &OnExitRestoreConfig{}},
+	})
+	err := validateConfig(&cfg, "")
+	assert.NoError(t, err)
+}
+
+func TestValidateControlMode_OnExit_None(t *testing.T) {
+	cfg := minimalFanConfigWithControlMode(&ControlModeConfig{
+		OnExit: &OnExitConfig{None: &OnExitNoneConfig{}},
+	})
+	err := validateConfig(&cfg, "")
+	assert.NoError(t, err)
+}
+
+func TestValidateControlMode_OnExit_ControlModeOnly(t *testing.T) {
+	v := ControlModeValue("auto")
+	cfg := minimalFanConfigWithControlMode(&ControlModeConfig{
+		OnExit: &OnExitConfig{ControlMode: &v},
+	})
+	err := validateConfig(&cfg, "")
+	assert.NoError(t, err)
+}
+
+func TestValidateControlMode_OnExit_SpeedOnly(t *testing.T) {
+	speed := 128
+	cfg := minimalFanConfigWithControlMode(&ControlModeConfig{
+		OnExit: &OnExitConfig{Speed: &speed},
+	})
+	err := validateConfig(&cfg, "")
+	assert.NoError(t, err)
+}
+
+func TestValidateControlMode_OnExit_ControlModeAndSpeed(t *testing.T) {
+	v := ControlModeValue("pwm")
+	speed := 128
+	cfg := minimalFanConfigWithControlMode(&ControlModeConfig{
+		OnExit: &OnExitConfig{ControlMode: &v, Speed: &speed},
+	})
+	err := validateConfig(&cfg, "")
+	assert.NoError(t, err)
+}
+
+func TestValidateControlMode_OnExit_Empty(t *testing.T) {
+	cfg := minimalFanConfigWithControlMode(&ControlModeConfig{
+		OnExit: &OnExitConfig{},
+	})
+	err := validateConfig(&cfg, "")
+	assert.EqualError(t, err, "fan 'fan': controlMode.onExit is set but no option is specified")
+}
+
+func TestValidateControlMode_OnExit_RestoreAndSpeed(t *testing.T) {
+	speed := 128
+	cfg := minimalFanConfigWithControlMode(&ControlModeConfig{
+		OnExit: &OnExitConfig{Restore: &OnExitRestoreConfig{}, Speed: &speed},
+	})
+	err := validateConfig(&cfg, "")
+	assert.EqualError(t, err, "fan 'fan': controlMode.onExit restore/none cannot be combined with controlMode/speed")
+}
+
+func TestValidateControlMode_OnExit_NoneAndControlMode(t *testing.T) {
+	v := ControlModeValue("auto")
+	cfg := minimalFanConfigWithControlMode(&ControlModeConfig{
+		OnExit: &OnExitConfig{None: &OnExitNoneConfig{}, ControlMode: &v},
+	})
+	err := validateConfig(&cfg, "")
+	assert.EqualError(t, err, "fan 'fan': controlMode.onExit restore/none cannot be combined with controlMode/speed")
+}
+
+func TestValidateControlMode_OnExit_RestoreAndNone(t *testing.T) {
+	cfg := minimalFanConfigWithControlMode(&ControlModeConfig{
+		OnExit: &OnExitConfig{Restore: &OnExitRestoreConfig{}, None: &OnExitNoneConfig{}},
+	})
+	err := validateConfig(&cfg, "")
+	assert.EqualError(t, err, "fan 'fan': controlMode.onExit restore and none cannot be combined")
+}
+
+func TestValidateControlMode_OnExit_InvalidControlMode(t *testing.T) {
+	v := ControlModeValue("bogus")
+	cfg := minimalFanConfigWithControlMode(&ControlModeConfig{
+		OnExit: &OnExitConfig{ControlMode: &v},
+	})
+	err := validateConfig(&cfg, "")
+	assert.EqualError(t, err, `fan 'fan': invalid controlMode.onExit.controlMode "bogus" (valid: auto, pwm, disabled, or integer)`)
+}
+
+func TestValidateControlMode_OnExit_SpeedBelowZero(t *testing.T) {
+	speed := -1
+	cfg := minimalFanConfigWithControlMode(&ControlModeConfig{
+		OnExit: &OnExitConfig{Speed: &speed},
+	})
+	err := validateConfig(&cfg, "")
+	assert.EqualError(t, err, "fan 'fan': controlMode.onExit.speed must be in [0..255], got -1")
+}
+
+func TestValidateControlMode_OnExit_SpeedAbove255(t *testing.T) {
+	speed := 256
+	cfg := minimalFanConfigWithControlMode(&ControlModeConfig{
+		OnExit: &OnExitConfig{Speed: &speed},
+	})
+	err := validateConfig(&cfg, "")
+	assert.EqualError(t, err, "fan 'fan': controlMode.onExit.speed must be in [0..255], got 256")
+}
+
+func TestValidateControlMode_OnExit_SpeedBoundaryValues(t *testing.T) {
+	for _, speed := range []int{0, 128, 255} {
+		s := speed
+		cfg := minimalFanConfigWithControlMode(&ControlModeConfig{
+			OnExit: &OnExitConfig{Speed: &s},
+		})
+		err := validateConfig(&cfg, "")
+		assert.NoError(t, err, "expected no error for speed=%d", speed)
+	}
+}

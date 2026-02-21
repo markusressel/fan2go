@@ -296,3 +296,54 @@ func TestSetPwmToGetPwmMapUnmarshalText_Unknown(t *testing.T) {
 	err := cfg.UnmarshalText([]byte("bogus"))
 	assert.Error(t, err)
 }
+
+func TestOnExitConfigUnmarshalText_Restore(t *testing.T) {
+	var cfg OnExitConfig
+	err := cfg.UnmarshalText([]byte("restore"))
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg.Restore)
+	assert.Nil(t, cfg.None)
+	assert.Nil(t, cfg.ControlMode)
+	assert.Nil(t, cfg.Speed)
+}
+
+func TestOnExitConfigUnmarshalText_RestoreCaseInsensitive(t *testing.T) {
+	var cfg OnExitConfig
+	err := cfg.UnmarshalText([]byte("RESTORE"))
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg.Restore)
+}
+
+func TestOnExitConfigUnmarshalText_None(t *testing.T) {
+	var cfg OnExitConfig
+	err := cfg.UnmarshalText([]byte("none"))
+	assert.NoError(t, err)
+	assert.Nil(t, cfg.Restore)
+	assert.NotNil(t, cfg.None)
+	assert.Nil(t, cfg.ControlMode)
+	assert.Nil(t, cfg.Speed)
+}
+
+func TestOnExitConfigUnmarshalText_Unknown(t *testing.T) {
+	var cfg OnExitConfig
+	err := cfg.UnmarshalText([]byte("bogus"))
+	assert.Error(t, err)
+}
+
+func TestPwmMapPointsHookFunc_ControlModeValue_Int(t *testing.T) {
+	result, err := runPwmMapPointsHook(t, 1, ControlModeValue(""))
+	assert.NoError(t, err)
+	assert.Equal(t, ControlModeValue("1"), result)
+}
+
+func TestPwmMapPointsHookFunc_ControlModeValue_String(t *testing.T) {
+	result, err := runPwmMapPointsHook(t, "pwm", ControlModeValue(""))
+	assert.NoError(t, err)
+	assert.Equal(t, ControlModeValue("pwm"), result)
+}
+
+func TestPwmMapPointsHookFunc_ControlModeValue_Zero(t *testing.T) {
+	result, err := runPwmMapPointsHook(t, 0, ControlModeValue(""))
+	assert.NoError(t, err)
+	assert.Equal(t, ControlModeValue("0"), result)
+}

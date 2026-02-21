@@ -76,6 +76,7 @@ type MockFan struct {
 	speedCurve                                   *map[int]float64
 	PwmMap                                       *configuration.PwmMapConfig
 	SetPwmToGetPwmMap                            *configuration.SetPwmToGetPwmMapConfig
+	ControlModeConfig                            *configuration.ControlModeConfig
 }
 
 func (fan MockFan) GetStartPwm() int {
@@ -188,6 +189,7 @@ func (fan MockFan) GetConfig() configuration.FanConfig {
 		MaxPwm:                 &maxPwm,
 		PwmMap:                 fan.PwmMap,
 		SetPwmToGetPwmMap:      fan.SetPwmToGetPwmMap,
+		ControlMode:            fan.ControlModeConfig,
 		UseUnscaledCurveValues: fan.useUnscaledCurveValues,
 		HwMon:                  nil, // Not used in this mock
 		File:                   nil, // Not used in this mock
@@ -1693,4 +1695,288 @@ func TestFanController_ComputeSetPwmToGetPwmMap_Linear(t *testing.T) {
 	for i := 0; i <= 255; i++ {
 		assert.Equal(t, expectedExpanded[i], controller.setPwmToGetPwmMap[i], "at index %d", i)
 	}
+}
+
+// --- parseControlModeValue tests ---
+
+func TestParseControlModeValue_Pwm(t *testing.T) {
+	for _, s := range []string{"pwm", "manual", "PWM", "Manual"} {
+		mode, err := parseControlModeValue(configuration.ControlModeValue(s))
+		assert.NoError(t, err, "input=%q", s)
+		assert.Equal(t, fans.ControlModePWM, mode, "input=%q", s)
+	}
+}
+
+func TestParseControlModeValue_Disabled(t *testing.T) {
+	mode, err := parseControlModeValue("disabled")
+	assert.NoError(t, err)
+	assert.Equal(t, fans.ControlModeDisabled, mode)
+}
+
+func TestParseControlModeValue_Auto(t *testing.T) {
+	for _, s := range []string{"auto", "automatic", "AUTO"} {
+		mode, err := parseControlModeValue(configuration.ControlModeValue(s))
+		assert.NoError(t, err, "input=%q", s)
+		assert.Equal(t, fans.ControlModeAutomatic, mode, "input=%q", s)
+	}
+}
+
+func TestParseControlModeValue_Integer(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected fans.ControlMode
+	}{
+		{"0", fans.ControlModeDisabled},
+		{"1", fans.ControlModePWM},
+		{"2", fans.ControlModeAutomatic},
+		{"5", fans.ControlMode(5)},
+	}
+	for _, tt := range tests {
+		mode, err := parseControlModeValue(configuration.ControlModeValue(tt.input))
+		assert.NoError(t, err, "input=%q", tt.input)
+		assert.Equal(t, tt.expected, mode, "input=%q", tt.input)
+	}
+}
+
+func TestParseControlModeValue_Invalid(t *testing.T) {
+	_, err := parseControlModeValue("bogus")
+	assert.Error(t, err)
+}
+
+// --- trySetManualPwm tests ---
+
+func TestTrySetManualPwm_Default_SetsPwmMode(t *testing.T) {
+	// No ControlModeConfig → should set ControlModePWM
+	fan := &MockFan{
+		ID:          "fan",
+		ControlMode: fans.ControlModeAutomatic,
+	}
+
+	err := trySetManualPwm(fan)
+	assert.NoError(t, err)
+	assert.Equal(t, fans.ControlModePWM, fan.ControlMode)
+}
+
+func TestTrySetManualPwm_ConfiguredDisabled(t *testing.T) {
+	// active: disabled → should set ControlModeDisabled, no PWM fallback
+	active := configuration.ControlModeValue("disabled")
+	fan := &MockFan{
+		ID:          "fan",
+		ControlMode: fans.ControlModeAutomatic,
+		ControlModeConfig: &configuration.ControlModeConfig{
+			Active: &active,
+		},
+	}
+
+	err := trySetManualPwm(fan)
+	assert.NoError(t, err)
+	assert.Equal(t, fans.ControlModeDisabled, fan.ControlMode)
+}
+
+func TestTrySetManualPwm_ConfiguredAuto(t *testing.T) {
+	// active: auto → should set ControlModeAutomatic
+	active := configuration.ControlModeValue("auto")
+	fan := &MockFan{
+		ID:          "fan",
+		ControlMode: fans.ControlModePWM,
+		ControlModeConfig: &configuration.ControlModeConfig{
+			Active: &active,
+		},
+	}
+
+	err := trySetManualPwm(fan)
+	assert.NoError(t, err)
+	assert.Equal(t, fans.ControlModeAutomatic, fan.ControlMode)
+}
+
+func TestTrySetManualPwm_ConfiguredInteger(t *testing.T) {
+	// active: 2 (numeric string → ControlModeAutomatic)
+	active := configuration.ControlModeValue("2")
+	fan := &MockFan{
+		ID:          "fan",
+		ControlMode: fans.ControlModeDisabled,
+		ControlModeConfig: &configuration.ControlModeConfig{
+			Active: &active,
+		},
+	}
+
+	err := trySetManualPwm(fan)
+	assert.NoError(t, err)
+	assert.Equal(t, fans.ControlModeAutomatic, fan.ControlMode)
+}
+
+// --- restoreControlMode tests ---
+
+// mockFanForRestore is a fan that tracks all SetPwm and SetControlMode calls.
+type mockFanForRestore struct {
+	MockFan
+	pwmHistory          []int
+	controlModeHistory  []fans.ControlMode
+	supportsControlMode bool
+}
+
+func (f *mockFanForRestore) SetPwm(pwm int) error {
+	f.pwmHistory = append(f.pwmHistory, pwm)
+	f.PWM = pwm
+	return nil
+}
+
+func (f *mockFanForRestore) SetControlMode(mode fans.ControlMode) error {
+	f.controlModeHistory = append(f.controlModeHistory, mode)
+	f.ControlMode = mode
+	return nil
+}
+
+func (f *mockFanForRestore) Supports(feature fans.FeatureFlag) bool {
+	if feature == fans.FeatureControlMode {
+		return f.supportsControlMode
+	}
+	return true
+}
+
+func (f *mockFanForRestore) GetConfig() configuration.FanConfig {
+	return configuration.FanConfig{
+		ID:          f.ID,
+		ControlMode: f.ControlModeConfig,
+	}
+}
+
+func TestRestoreControlMode_Default_RestoresOriginal(t *testing.T) {
+	// No onExit config → restore original PWM and control mode
+	fan := &mockFanForRestore{
+		MockFan:             MockFan{ID: "fan", PWM: 200},
+		supportsControlMode: true,
+	}
+	controller := DefaultFanController{
+		fan:                 fan,
+		originalPwmValue:    100,
+		originalControlMode: fans.ControlModeAutomatic,
+	}
+
+	controller.restoreControlMode()
+
+	assert.Contains(t, fan.pwmHistory, 100)
+	assert.Contains(t, fan.controlModeHistory, fans.ControlModeAutomatic)
+}
+
+func TestRestoreControlMode_None_SkipsRestore(t *testing.T) {
+	// onExit: none → no SetPwm or SetControlMode calls
+	fan := &mockFanForRestore{
+		MockFan: MockFan{
+			ID:                "fan",
+			PWM:               200,
+			ControlModeConfig: &configuration.ControlModeConfig{OnExit: &configuration.OnExitConfig{None: &configuration.OnExitNoneConfig{}}},
+		},
+		supportsControlMode: true,
+	}
+	controller := DefaultFanController{
+		fan:                 fan,
+		originalPwmValue:    100,
+		originalControlMode: fans.ControlModeAutomatic,
+	}
+
+	controller.restoreControlMode()
+
+	assert.Empty(t, fan.pwmHistory)
+	assert.Empty(t, fan.controlModeHistory)
+}
+
+func TestRestoreControlMode_ExplicitControlMode(t *testing.T) {
+	// onExit: { controlMode: auto } → set original PWM + ControlModeAutomatic
+	exitMode := configuration.ControlModeValue("auto")
+	fan := &mockFanForRestore{
+		MockFan: MockFan{
+			ID:  "fan",
+			PWM: 200,
+			ControlModeConfig: &configuration.ControlModeConfig{
+				OnExit: &configuration.OnExitConfig{ControlMode: &exitMode},
+			},
+		},
+		supportsControlMode: true,
+	}
+	controller := DefaultFanController{
+		fan:                 fan,
+		originalPwmValue:    100,
+		originalControlMode: fans.ControlModePWM,
+	}
+
+	controller.restoreControlMode()
+
+	assert.Contains(t, fan.pwmHistory, 100, "should set original PWM value")
+	assert.Contains(t, fan.controlModeHistory, fans.ControlModeAutomatic)
+}
+
+func TestRestoreControlMode_ExplicitSpeed(t *testing.T) {
+	// onExit: { speed: 128 } → set PWM 128, no control mode change
+	speed := 128
+	fan := &mockFanForRestore{
+		MockFan: MockFan{
+			ID:  "fan",
+			PWM: 200,
+			ControlModeConfig: &configuration.ControlModeConfig{
+				OnExit: &configuration.OnExitConfig{Speed: &speed},
+			},
+		},
+		supportsControlMode: true,
+	}
+	controller := DefaultFanController{
+		fan:                 fan,
+		originalPwmValue:    100,
+		originalControlMode: fans.ControlModePWM,
+	}
+
+	controller.restoreControlMode()
+
+	assert.Contains(t, fan.pwmHistory, 128, "should set speed=128")
+	assert.Empty(t, fan.controlModeHistory, "should not change control mode")
+}
+
+func TestRestoreControlMode_ExplicitControlModeAndSpeed(t *testing.T) {
+	// onExit: { controlMode: disabled, speed: 64 } → set PWM 64 + ControlModeDisabled
+	exitMode := configuration.ControlModeValue("disabled")
+	speed := 64
+	fan := &mockFanForRestore{
+		MockFan: MockFan{
+			ID:  "fan",
+			PWM: 200,
+			ControlModeConfig: &configuration.ControlModeConfig{
+				OnExit: &configuration.OnExitConfig{ControlMode: &exitMode, Speed: &speed},
+			},
+		},
+		supportsControlMode: true,
+	}
+	controller := DefaultFanController{
+		fan:                 fan,
+		originalPwmValue:    100,
+		originalControlMode: fans.ControlModePWM,
+	}
+
+	controller.restoreControlMode()
+
+	assert.Contains(t, fan.pwmHistory, 64, "should set speed=64")
+	assert.Contains(t, fan.controlModeHistory, fans.ControlModeDisabled)
+}
+
+func TestRestoreControlMode_Restore_Explicit(t *testing.T) {
+	// onExit: restore (explicit) → same as default restore behavior
+	fan := &mockFanForRestore{
+		MockFan: MockFan{
+			ID:  "fan",
+			PWM: 200,
+			ControlModeConfig: &configuration.ControlModeConfig{
+				OnExit: &configuration.OnExitConfig{Restore: &configuration.OnExitRestoreConfig{}},
+			},
+		},
+		supportsControlMode: true,
+	}
+	controller := DefaultFanController{
+		fan:                 fan,
+		originalPwmValue:    75,
+		originalControlMode: fans.ControlModeAutomatic,
+	}
+
+	controller.restoreControlMode()
+
+	assert.Contains(t, fan.pwmHistory, 75)
+	assert.Contains(t, fan.controlModeHistory, fans.ControlModeAutomatic)
 }

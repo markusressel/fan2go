@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/looplab/tarjan"
@@ -400,6 +401,45 @@ func validateFans(config *Configuration) error {
 			}
 		}
 
+		if fanConfig.ControlMode != nil {
+			cm := fanConfig.ControlMode
+
+			if cm.Active != nil {
+				if err := validateControlModeValue(fanConfig.ID, "controlMode.active", string(*cm.Active)); err != nil {
+					return err
+				}
+			}
+
+			if cm.OnExit != nil {
+				hasRestore := cm.OnExit.Restore != nil
+				hasNone := cm.OnExit.None != nil
+				hasMode := cm.OnExit.ControlMode != nil
+				hasSpeed := cm.OnExit.Speed != nil
+
+				if !hasRestore && !hasNone && !hasMode && !hasSpeed {
+					return fmt.Errorf("fan '%s': controlMode.onExit is set but no option is specified", fanConfig.ID)
+				}
+				if (hasRestore || hasNone) && (hasMode || hasSpeed) {
+					return fmt.Errorf("fan '%s': controlMode.onExit restore/none cannot be combined with controlMode/speed", fanConfig.ID)
+				}
+				if hasRestore && hasNone {
+					return fmt.Errorf("fan '%s': controlMode.onExit restore and none cannot be combined", fanConfig.ID)
+				}
+
+				if hasMode {
+					if err := validateControlModeValue(fanConfig.ID, "controlMode.onExit.controlMode", string(*cm.OnExit.ControlMode)); err != nil {
+						return err
+					}
+				}
+				if hasSpeed {
+					speed := *cm.OnExit.Speed
+					if speed < 0 || speed > 255 {
+						return fmt.Errorf("fan '%s': controlMode.onExit.speed must be in [0..255], got %d", fanConfig.ID, speed)
+					}
+				}
+			}
+		}
+
 		if fanConfig.File != nil {
 			if len(fanConfig.File.Path) <= 0 {
 				return fmt.Errorf("fan %s: no file path provided", fanConfig.ID)
@@ -428,4 +468,16 @@ func curveIdExists(curveId string, config *Configuration) bool {
 	}
 
 	return false
+}
+
+func validateControlModeValue(fanID, field, s string) error {
+	if _, err := strconv.Atoi(s); err == nil {
+		return nil // valid integer
+	}
+	switch strings.ToLower(s) {
+	case "auto", "automatic", "pwm", "manual", "disabled":
+		return nil
+	default:
+		return fmt.Errorf("fan '%s': invalid %s %q (valid: auto, pwm, disabled, or integer)", fanID, field, s)
+	}
 }

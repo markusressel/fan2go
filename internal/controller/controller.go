@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -564,17 +566,48 @@ func (f *DefaultFanController) getPwm() (int, error) {
 	return f.fan.GetMinPwm(), nil
 }
 
+func parseControlModeValue(value configuration.ControlModeValue) (fans.ControlMode, error) {
+	s := string(value)
+	if i, err := strconv.Atoi(s); err == nil {
+		return fans.ControlMode(i), nil
+	}
+	switch strings.ToLower(s) {
+	case "auto", "automatic":
+		return fans.ControlModeAutomatic, nil
+	case "pwm", "manual":
+		return fans.ControlModePWM, nil
+	case "disabled":
+		return fans.ControlModeDisabled, nil
+	default:
+		return fans.ControlModeUnknown, fmt.Errorf("unknown control mode %q (valid: auto, pwm, disabled, or integer)", s)
+	}
+}
+
 func trySetManualPwm(fan fans.Fan) error {
 	if !fan.Supports(fans.FeatureControlMode) {
 		return nil
 	}
 
-	err := fan.SetControlMode(fans.ControlModePWM)
-	if err != nil {
-		ui.Error("Unable to set Fan Mode of '%s' to \"%d\": %v", fan.GetId(), fans.ControlModePWM, err)
-		err = fan.SetControlMode(fans.ControlModeDisabled)
+	// Use configured active mode, or default to ControlModePWM
+	targetMode := fans.ControlModePWM
+	if cfg := fan.GetConfig().ControlMode; cfg != nil && cfg.Active != nil {
+		mode, err := parseControlModeValue(*cfg.Active)
 		if err != nil {
-			ui.Error("Unable to set Fan Mode of '%s' to \"%d\": %v", fan.GetId(), fans.ControlModeDisabled, err)
+			ui.Warning("Invalid controlMode.active for fan '%s': %v; falling back to pwm", fan.GetId(), err)
+		} else {
+			targetMode = mode
+		}
+	}
+
+	err := fan.SetControlMode(targetMode)
+	if err != nil {
+		ui.Error("Unable to set Fan Mode of '%s' to \"%d\": %v", fan.GetId(), targetMode, err)
+		// Fall back to disabled only when using default pwm mode (preserve explicit config)
+		if targetMode == fans.ControlModePWM {
+			err = fan.SetControlMode(fans.ControlModeDisabled)
+			if err != nil {
+				ui.Error("Unable to set Fan Mode of '%s' to \"%d\": %v", fan.GetId(), fans.ControlModeDisabled, err)
+			}
 		}
 	}
 	return err
@@ -583,21 +616,48 @@ func trySetManualPwm(fan fans.Fan) error {
 func (f *DefaultFanController) restoreControlMode() {
 	ui.Info("Trying to restore fan settings for %s...", f.fan.GetId())
 
-	err := f.fan.SetPwm(f.originalPwmValue)
-	if err != nil {
-		ui.Warning("Error restoring original PWM value for fan %s: %v", f.fan.GetId(), err)
+	var onExit *configuration.OnExitConfig
+	if cfg := f.fan.GetConfig().ControlMode; cfg != nil {
+		onExit = cfg.OnExit
 	}
 
-	// try to reset the pwm_enable value
+	// none: skip all restore actions
+	if onExit != nil && onExit.None != nil {
+		ui.Info("Skipping fan restore for %s (controlMode.onExit: none)", f.fan.GetId())
+		return
+	}
+
+	// controlMode and/or speed: set explicit values on exit
+	if onExit != nil && (onExit.ControlMode != nil || onExit.Speed != nil) {
+		pwmToSet := f.originalPwmValue
+		if onExit.Speed != nil {
+			pwmToSet = *onExit.Speed
+		}
+		if err := f.fan.SetPwm(pwmToSet); err != nil {
+			ui.Warning("Error setting PWM for fan %s on exit: %v", f.fan.GetId(), err)
+		}
+		if onExit.ControlMode != nil && f.fan.Supports(fans.FeatureControlMode) {
+			controlMode, err := parseControlModeValue(*onExit.ControlMode)
+			if err != nil {
+				ui.Warning("Error parsing controlMode.onExit.controlMode for fan %s: %v", f.fan.GetId(), err)
+			} else if err = f.fan.SetControlMode(controlMode); err != nil {
+				ui.Warning("Error setting control mode for fan %s: %v", f.fan.GetId(), err)
+			}
+		}
+		return
+	}
+
+	// restore (default: onExit == nil or onExit.Restore != nil)
+	if err := f.fan.SetPwm(f.originalPwmValue); err != nil {
+		ui.Warning("Error restoring original PWM value for fan %s: %v", f.fan.GetId(), err)
+	}
 	if f.fan.Supports(fans.FeatureControlMode) && f.originalControlMode != fans.ControlModePWM {
-		err := f.fan.SetControlMode(f.originalControlMode)
-		if err == nil {
+		if err := f.fan.SetControlMode(f.originalControlMode); err == nil {
 			return
 		}
 	}
 	// if this fails, try to set it to max speed instead
-	err = f.fan.SetPwm(fans.MaxPwmValue)
-	if err != nil {
+	if err := f.fan.SetPwm(fans.MaxPwmValue); err != nil {
 		ui.Warning("Unable to restore fan %s, make sure it is running!", f.fan.GetId())
 	}
 }
