@@ -5,11 +5,12 @@ import (
 	"strconv"
 	"strings"
 
+	"slices"
+
 	"github.com/looplab/tarjan"
 	"github.com/markusressel/fan2go/internal/nvidia_base"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
-	"golang.org/x/exp/slices"
 )
 
 func Validate(configPath string) error {

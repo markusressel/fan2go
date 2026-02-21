@@ -1,9 +1,8 @@
 package util
 
 import (
+	"cmp"
 	"sort"
-
-	"golang.org/x/exp/constraints"
 )
 
 // ContainsString checks if the slice of strings contains the specified string.
@@ -17,14 +16,14 @@ func ContainsString(s []string, e string) bool {
 }
 
 // sortSlice sorts the input slice in ascending order.
-func sortSlice[T constraints.Ordered](s []T) {
+func sortSlice[T cmp.Ordered](s []T) {
 	sort.Slice(s, func(i, j int) bool {
 		return s[i] < s[j]
 	})
 }
 
 // SortedKeys returns the keys of the input map sorted in ascending order.
-func SortedKeys[T constraints.Ordered, K any](input map[T]K) []T {
+func SortedKeys[T cmp.Ordered, K any](input map[T]K) []T {
 	result := make([]T, 0, len(input))
 	for k := range input {
 		result = append(result, k)

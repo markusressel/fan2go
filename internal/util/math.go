@@ -2,11 +2,11 @@ package util
 
 import (
 	"fmt"
-	"github.com/markusressel/fan2go/internal/ui"
-	"golang.org/x/exp/constraints"
 	"math"
 	"sort"
 	"strconv"
+
+	"github.com/markusressel/fan2go/internal/ui"
 )
 
 const (
@@ -15,7 +15,9 @@ const (
 )
 
 type Number interface {
-	constraints.Integer | constraints.Float
+	~int | ~int8 | ~int16 | ~int32 | ~int64 |
+		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr |
+		~float32 | ~float64
 }
 
 // Coerce returns a value that is at least min and at most max, otherwise value

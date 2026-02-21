@@ -1,6 +1,6 @@
 package util
 
-import "golang.org/x/exp/constraints"
+import "cmp"
 
 // ExtractKeysWithDistinctValues extracts the keys from a map with distinct values.
 // It returns a slice of keys where each key corresponds to a unique value in the map.
@@ -35,7 +35,7 @@ func ExtractIndicesWithDistinctValues(input []int) []int {
 	return result
 }
 
-func Values[A constraints.Ordered, B any](input map[A]B) []B {
+func Values[A cmp.Ordered, B any](input map[A]B) []B {
 	var result []B
 	for _, b := range input {
 		result = append(result, b)
