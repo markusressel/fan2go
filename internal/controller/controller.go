@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/markusressel/fan2go/internal/control_loop"
-	"golang.org/x/exp/maps"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/curves"
@@ -866,7 +865,7 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMap() (err error) {
 		return err
 	}
 
-	if f.setPwmToGetPwmMap == nil || len(maps.Keys(f.setPwmToGetPwmMap)) <= 0 {
+	if len(f.setPwmToGetPwmMap) <= 0 {
 		ui.Warning("Fan '%s' setPwmToGetPwmMap is empty, ignoring", f.fan.GetId())
 		return nil
 	}
@@ -967,8 +966,7 @@ func (f *DefaultFanController) computePwmMapAutomatically() (err error) {
 		// so that the supported values are represented as steps, with the steps being aligned to be
 		// in the middle of two adjacent values in the supported range.
 		ui.Debug("Using setPwmToGetPwmMap to compute pwmMap for fan %s", fan.GetId())
-		keySet := maps.Keys(f.setPwmToGetPwmMap)
-		sort.Ints(keySet)
+		keySet := util.SortedKeys(f.setPwmToGetPwmMap)
 		identityMappingOfKeyset := make(map[int]int, len(keySet))
 		for i := 0; i < len(keySet); i++ {
 			key := keySet[i]
