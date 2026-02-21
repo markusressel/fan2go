@@ -948,7 +948,7 @@ func (f *DefaultFanController) computePwmMapAutomatically() (err error) {
 
 	// since the setPwmToGetPwmMap is an indicator of what values are supported by the fan driver,
 	// we can use it to determine the pwmMap as well.
-	if f.setPwmToGetPwmMap == nil {
+	if f.setPwmToGetPwmMap == nil || len(f.setPwmToGetPwmMap) == 0 {
 		// if we don't have a setPwmToGetPwmMap, there was either an error computing it,
 		// or it is impossible to compute it due to the fan not supporting PWM sensor reading.
 		// In this case, we have to assume a default pwmMap.
