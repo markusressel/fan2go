@@ -173,7 +173,9 @@ func (fan *FileFan) SetConfig(config configuration.FanConfig) {
 
 func (fan *FileFan) Supports(feature FeatureFlag) bool {
 	switch feature {
-	case FeatureControlMode:
+	case FeatureControlModeWrite:
+		return false
+	case FeatureControlModeRead:
 		return false
 	case FeaturePwmSensor:
 		_, err := util.ReadIntFromFile(fan.Config.File.Path)

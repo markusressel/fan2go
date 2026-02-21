@@ -1,11 +1,12 @@
 package fans
 
 import (
+	"os/exec"
+	"testing"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
-	"os/exec"
-	"testing"
 )
 
 func getEchoPath() string {
@@ -436,7 +437,7 @@ func TestCmdFan_SetPwmEnabled(t *testing.T) {
 	assert.Equal(t, ControlModePWM, result)
 }
 
-func TestCmdFan_Supports_ControlMode(t *testing.T) {
+func TestCmdFan_Supports_ControlModeWrite(t *testing.T) {
 	// GIVEN
 	config := configuration.FanConfig{
 		Cmd: &configuration.CmdFanConfig{},
@@ -444,7 +445,7 @@ func TestCmdFan_Supports_ControlMode(t *testing.T) {
 	fan, _ := NewFan(config)
 
 	// WHEN
-	result := fan.Supports(FeatureControlMode)
+	result := fan.Supports(FeatureControlModeWrite)
 
 	// THEN
 	assert.False(t, result)

@@ -1,11 +1,12 @@
 package fans
 
 import (
+	"os"
+	"testing"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
-	"os"
-	"testing"
 )
 
 func TestFileFan_NewFan(t *testing.T) {
@@ -426,7 +427,7 @@ func TestFileFan_SetPwmEnabled(t *testing.T) {
 	assert.Equal(t, ControlModePWM, result)
 }
 
-func TestFileFan_Supports_ControlMode(t *testing.T) {
+func TestFileFan_Supports_ControlModeWrite(t *testing.T) {
 	// GIVEN
 	config := configuration.FanConfig{
 		File: &configuration.FileFanConfig{
@@ -438,7 +439,7 @@ func TestFileFan_Supports_ControlMode(t *testing.T) {
 	fan, _ := NewFan(config)
 
 	// WHEN
-	result := fan.Supports(FeatureControlMode)
+	result := fan.Supports(FeatureControlModeWrite)
 
 	// THEN
 	assert.Equal(t, false, result)

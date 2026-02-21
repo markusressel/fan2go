@@ -105,7 +105,7 @@ var detectCmd = &cobra.Command{
 				}
 
 				controlModeText := "N/A"
-				if fan.Supports(fans.FeatureControlMode) {
+				if fan.Supports(fans.FeatureControlModeRead) {
 					controlMode, err := fan.GetControlMode()
 					if err == nil {
 						controlModeText = controlModeToString(controlMode)
@@ -184,7 +184,7 @@ var detectCmd = &cobra.Command{
 				}
 
 				controlModeText := "N/A"
-				if fan.Supports(fans.FeatureControlMode) {
+				if fan.Supports(fans.FeatureControlModeRead) {
 					controlMode, err := fan.GetControlMode()
 					if err == nil {
 						controlModeText = controlModeToString(controlMode)

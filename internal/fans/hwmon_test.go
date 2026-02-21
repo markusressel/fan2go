@@ -1,11 +1,12 @@
 package fans
 
 import (
+	"os"
+	"testing"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
-	"os"
-	"testing"
 )
 
 func TestHwMonFan_GetId(t *testing.T) {
@@ -358,7 +359,7 @@ func TestHwMonFan_GetControlMode(t *testing.T) {
 	assert.Equal(t, expected, ControlMode(result))
 }
 
-func TestHwMonFan_Supports_ControlMode(t *testing.T) {
+func TestHwMonFan_Supports_ControlModeWrite(t *testing.T) {
 	// GIVEN
 	pwmEnabledPath := "./file_fan_pwm_enabled"
 	defer func(name string) {
@@ -376,13 +377,13 @@ func TestHwMonFan_Supports_ControlMode(t *testing.T) {
 	}
 
 	// WHEN
-	result := fan.Supports(FeatureControlMode)
+	result := fan.Supports(FeatureControlModeWrite)
 
 	// THEN
 	assert.True(t, result)
 }
 
-func TestHwMonFan_Supports_ControlMode_False(t *testing.T) {
+func TestHwMonFan_Supports_ControlModeWrite_False(t *testing.T) {
 	// GIVEN
 	fan := HwMonFan{
 		Config: configuration.FanConfig{
@@ -393,7 +394,48 @@ func TestHwMonFan_Supports_ControlMode_False(t *testing.T) {
 	}
 
 	// WHEN
-	result := fan.Supports(FeatureControlMode)
+	result := fan.Supports(FeatureControlModeWrite)
+
+	// THEN
+	assert.False(t, result)
+}
+
+func TestHwMonFan_Supports_ControlModeRead(t *testing.T) {
+	// GIVEN
+	pwmEnabledPath := "./file_fan_pwm_enabled_read"
+	defer func(name string) {
+		_ = os.Remove(name)
+	}(pwmEnabledPath)
+	err := util.WriteIntToFile(1, pwmEnabledPath)
+	assert.NoError(t, err)
+
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			HwMon: &configuration.HwMonFanConfig{
+				PwmEnablePath: pwmEnabledPath,
+			},
+		},
+	}
+
+	// WHEN
+	result := fan.Supports(FeatureControlModeRead)
+
+	// THEN
+	assert.True(t, result)
+}
+
+func TestHwMonFan_Supports_ControlModeRead_False(t *testing.T) {
+	// GIVEN
+	fan := HwMonFan{
+		Config: configuration.FanConfig{
+			HwMon: &configuration.HwMonFanConfig{
+				PwmEnablePath: "./file_fan_pwm_enabled_missing",
+			},
+		},
+	}
+
+	// WHEN
+	result := fan.Supports(FeatureControlModeRead)
 
 	// THEN
 	assert.False(t, result)

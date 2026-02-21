@@ -25,6 +25,9 @@ type HwMonFan struct {
 	// lastKnownAutomaticControlMode stores the last known automatic control mode value (pwm_enable) for this fan.
 	// This value is used when fan2go requests to set the control mode to automatic.
 	lastKnownAutomaticControlMode *int
+
+	// pwmEnableReadable caches whether pwm_enable can be read (probed once on first Supports call).
+	pwmEnableReadable *bool
 }
 
 func (fan *HwMonFan) GetId() string {
@@ -221,18 +224,21 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 	}
 
 	err = util.WriteIntToFile(pwmEnabledValue, fan.Config.HwMon.PwmEnablePath)
-	if err == nil {
-		currentValue, err := fan.GetControlMode()
-		if err != nil {
-			if errors.Is(err, os.ErrPermission) {
-				ui.Warning("Cannot read pwm_enable of fan '%s', pwm_enable state validation cannot work. Continuing assuming it worked.", fan.GetId())
-				return nil
-			} else if currentValue != value {
-				return fmt.Errorf("PWM mode stuck to %d", currentValue)
-			}
-		}
+	if err != nil {
+		return err
 	}
-	return err
+	currentValue, err := fan.GetControlMode()
+	if err != nil {
+		if errors.Is(err, os.ErrPermission) {
+			ui.Warning("Cannot read pwm_enable of fan '%s', pwm_enable state validation cannot work. Continuing assuming it worked.", fan.GetId())
+			return nil
+		}
+		return err
+	}
+	if currentValue != value {
+		return fmt.Errorf("PWM mode stuck to %d", currentValue)
+	}
+	return nil
 }
 
 func (fan *HwMonFan) GetConfig() configuration.FanConfig {
@@ -245,9 +251,17 @@ func (fan *HwMonFan) SetConfig(config configuration.FanConfig) {
 
 func (fan *HwMonFan) Supports(feature FeatureFlag) bool {
 	switch feature {
-	case FeatureControlMode:
+	case FeatureControlModeWrite:
 		_, err := os.Stat(fan.Config.HwMon.PwmEnablePath)
 		return err == nil
+	case FeatureControlModeRead:
+		if fan.pwmEnableReadable != nil {
+			return *fan.pwmEnableReadable
+		}
+		_, err := util.ReadIntFromFile(fan.Config.HwMon.PwmEnablePath)
+		readable := err == nil
+		fan.pwmEnableReadable = &readable
+		return readable
 	case FeaturePwmSensor:
 		_, err := util.ReadIntFromFile(fan.Config.HwMon.PwmPath)
 		return err == nil
