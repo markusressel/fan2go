@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
-	"regexp"
 	"syscall"
 	"time"
 
@@ -301,23 +300,9 @@ func initializeSensors(controllers []*hwmon.HwMonController) error {
 	var sensorList []sensors.Sensor
 	for _, config := range configuration.CurrentConfig.Sensors {
 		if config.HwMon != nil {
-			found := false
-			for _, c := range controllers {
-				matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, c.Platform)
-				if err != nil {
-					return fmt.Errorf("failed to match platform regex of %s (%s) against controller platform %s: %v", config.ID, config.HwMon.Platform, c.Platform, err)
-				}
-				if matched {
-					sensor, exists := c.Sensors[config.HwMon.Index]
-					if !exists {
-						return fmt.Errorf("couldn't find sensor for %s in platform %s (index %d)", config.ID, c.Platform, config.HwMon.Index)
-					}
-					found = true
-					config.HwMon.TempInput = sensor.Input
-				}
-			}
-			if !found {
-				return fmt.Errorf("couldn't find hwmon device with platform '%s' for sensor: %s. Run 'fan2go detect' again and correct any mistake", config.HwMon.Platform, config.ID)
+			err := hwmon.UpdateSensorConfigFromHwMonControllers(controllers, &config)
+			if err != nil {
+				return fmt.Errorf("couldn't find sensor for %s: %v", config.ID, err)
 			}
 		}
 

@@ -2,12 +2,13 @@ package hwmon
 
 import (
 	"fmt"
-	"github.com/markusressel/fan2go/internal/ui"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/markusressel/fan2go/internal/ui"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
@@ -36,7 +37,7 @@ type HwMonController struct {
 
 	// Fans (can be matched either by enumeration index or channel number)
 	Fans []fans.HwMonFan
-	// Sensors maps from HwMon index -> HwmonSensor instance
+	// Sensors maps from hwmon channel number -> HwmonSensor instance
 	Sensors map[int]*sensors.HwmonSensor
 }
 
@@ -114,6 +115,13 @@ func GetTempSensors(chip gosensors.Chip) map[int]*sensors.HwmonSensor {
 			continue
 		}
 
+		var channel int
+		_, err := fmt.Sscanf(feature.Name, "temp%d", &channel)
+		if err != nil {
+			ui.Warning("No channel found for '%s', ignoring.", feature.Name)
+			continue
+		}
+
 		subfeatures := feature.GetSubFeatures()
 
 		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeTempInput) {
@@ -136,9 +144,10 @@ func GetTempSensors(chip gosensors.Chip) map[int]*sensors.HwmonSensor {
 
 			label := getLabel(chip.Path, feature.Name)
 
-			result[currentOutputIndex] = &sensors.HwmonSensor{
+			result[channel] = &sensors.HwmonSensor{
 				Label:     label,
 				Index:     currentOutputIndex,
+				Channel:   channel,
 				Input:     sensorInputPath,
 				Max:       max,
 				Min:       min,
@@ -249,7 +258,7 @@ func GetFans(chip gosensors.Chip) []fans.HwMonFan {
 }
 
 func FeatureContainsType(feature gosensors.Feature, featureType gosensors.FeatureType) bool {
-	return feature.Type&featureType != 0
+	return feature.Type == featureType
 }
 
 func getSubFeature(subfeatures []gosensors.SubFeature, input gosensors.SubFeatureType) *gosensors.SubFeature {
@@ -347,6 +356,31 @@ func UpdateFanConfigFromHwMonControllers(controllers []*HwMonController, config 
 		}
 	}
 	return fmt.Errorf("no hwmon fan matched fan config: %+v", config)
+}
+
+func UpdateSensorConfigFromHwMonControllers(controllers []*HwMonController, config *configuration.SensorConfig) error {
+	for _, controller := range controllers {
+		matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, controller.Platform)
+		if err != nil {
+			return fmt.Errorf("failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform)
+		}
+		if !matched {
+			continue
+		}
+		for _, sensor := range controller.Sensors {
+			if config.HwMon.Index > 0 && sensor.Index != config.HwMon.Index {
+				continue
+			}
+			if config.HwMon.Channel > 0 && sensor.Channel != config.HwMon.Channel {
+				continue
+			}
+			config.HwMon.Index = sensor.Index
+			config.HwMon.Channel = sensor.Channel
+			config.HwMon.TempInput = sensor.Input
+			return nil
+		}
+	}
+	return fmt.Errorf("no hwmon sensor matched sensor config: %+v", config)
 }
 
 func setFanConfigPaths(config *configuration.HwMonFanConfig) {

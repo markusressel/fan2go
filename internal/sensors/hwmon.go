@@ -1,14 +1,16 @@
 package sensors
 
 import (
+	"sync"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/util"
-	"sync"
 )
 
 type HwmonSensor struct {
 	Label     string                     `json:"label"`
 	Index     int                        `json:"index"`
+	Channel   int                        `json:"channel"`
 	Input     string                     `json:"string"`
 	Max       int                        `json:"max"`
 	Min       int                        `json:"min"`

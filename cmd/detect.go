@@ -141,10 +141,10 @@ var detectCmd = &cobra.Command{
 				labelAndFile := fmt.Sprintf("%s (%s)", sensor.Label, file)
 
 				sensorRows = append(sensorRows, []string{
-					"", strconv.Itoa(sensor.Index), labelAndFile, valueText,
+					"", strconv.Itoa(sensor.Channel), labelAndFile, valueText,
 				})
 			}
-			var sensorHeaders = []string{"Sensors", "Index", "Label", "Value"}
+			var sensorHeaders = []string{"Sensors", "Channel", "Label", "Value"}
 
 			sensorTable := table.Table{
 				Headers: sensorHeaders,
