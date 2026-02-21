@@ -75,6 +75,7 @@ type MockFan struct {
 	useUnscaledCurveValues                       bool
 	speedCurve                                   *map[int]float64
 	PwmMap                                       *configuration.PwmMapConfig
+	SetPwmToGetPwmMap                            *configuration.SetPwmToGetPwmMapConfig
 }
 
 func (fan MockFan) GetStartPwm() int {
@@ -186,6 +187,7 @@ func (fan MockFan) GetConfig() configuration.FanConfig {
 		MinPwm:                 &fan.MinPWM,
 		MaxPwm:                 &maxPwm,
 		PwmMap:                 fan.PwmMap,
+		SetPwmToGetPwmMap:      fan.SetPwmToGetPwmMap,
 		UseUnscaledCurveValues: fan.useUnscaledCurveValues,
 		HwMon:                  nil, // Not used in this mock
 		File:                   nil, // Not used in this mock
@@ -1592,5 +1594,103 @@ func TestFanController_ComputePwmMap_Linear(t *testing.T) {
 	assert.NoError(t, err)
 	for i := 0; i < 256; i++ {
 		assert.Equal(t, expectedExpanded[i], controller.pwmMapping[i], "at index %d", i)
+	}
+}
+
+func TestFanController_ComputeSetPwmToGetPwmMap_Identity(t *testing.T) {
+	// GIVEN
+	fan := &MockFan{
+		ID:     "fan",
+		PWM:    0,
+		RPM:    100,
+		MinPWM: 0,
+		SetPwmToGetPwmMap: &configuration.SetPwmToGetPwmMapConfig{
+			Identity: &configuration.SetPwmToGetPwmMapIdentityConfig{},
+		},
+	}
+	fans.RegisterFan(fan)
+
+	controller := DefaultFanController{
+		persistence: mockPersistence{hasPwmMap: false},
+		fan:         fan,
+		updateRate:  time.Duration(100),
+	}
+
+	// WHEN
+	err := controller.computeSetPwmToGetPwmMap()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.NotNil(t, controller.setPwmToGetPwmMap)
+	for i := 0; i <= 255; i++ {
+		assert.Equal(t, i, controller.setPwmToGetPwmMap[i], "at index %d", i)
+	}
+}
+
+func TestFanController_ComputeSetPwmToGetPwmMap_Values(t *testing.T) {
+	// GIVEN
+	points := map[int]int{0: 0, 128: 100, 255: 200}
+	ptsValues := configuration.SetPwmToGetPwmMapValuesConfig(points)
+	fan := &MockFan{
+		ID:     "fan",
+		PWM:    0,
+		RPM:    100,
+		MinPWM: 0,
+		SetPwmToGetPwmMap: &configuration.SetPwmToGetPwmMapConfig{
+			Values: &ptsValues,
+		},
+	}
+	fans.RegisterFan(fan)
+
+	controller := DefaultFanController{
+		persistence: mockPersistence{hasPwmMap: false},
+		fan:         fan,
+		updateRate:  time.Duration(100),
+	}
+
+	// WHEN
+	err := controller.computeSetPwmToGetPwmMap()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.NotNil(t, controller.setPwmToGetPwmMap)
+	expectedExpanded, err := util.InterpolateStepInt(&points, 0, 255)
+	assert.NoError(t, err)
+	for i := 0; i <= 255; i++ {
+		assert.Equal(t, expectedExpanded[i], controller.setPwmToGetPwmMap[i], "at index %d", i)
+	}
+}
+
+func TestFanController_ComputeSetPwmToGetPwmMap_Linear(t *testing.T) {
+	// GIVEN
+	points := map[int]int{0: 0, 255: 200}
+	ptsLinear := configuration.SetPwmToGetPwmMapLinearConfig(points)
+	fan := &MockFan{
+		ID:     "fan",
+		PWM:    0,
+		RPM:    100,
+		MinPWM: 0,
+		SetPwmToGetPwmMap: &configuration.SetPwmToGetPwmMapConfig{
+			Linear: &ptsLinear,
+		},
+	}
+	fans.RegisterFan(fan)
+
+	controller := DefaultFanController{
+		persistence: mockPersistence{hasPwmMap: false},
+		fan:         fan,
+		updateRate:  time.Duration(100),
+	}
+
+	// WHEN
+	err := controller.computeSetPwmToGetPwmMap()
+
+	// THEN
+	assert.NoError(t, err)
+	assert.NotNil(t, controller.setPwmToGetPwmMap)
+	expectedExpanded, err := util.InterpolateLinearlyInt(&points, 0, 255)
+	assert.NoError(t, err)
+	for i := 0; i <= 255; i++ {
+		assert.Equal(t, expectedExpanded[i], controller.setPwmToGetPwmMap[i], "at index %d", i)
 	}
 }

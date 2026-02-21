@@ -328,6 +328,32 @@ fans:
     #     0: 0
     #     64: 128
     #     192: 255
+    # (Optional) Configure how fan2go determines the mapping from a PWM value it sets
+    # to the value the fan hardware reports back. Some fans do not echo the exact value
+    # written due to hardware or driver quirks. If omitted, fan2go auto-detects this
+    # during fan initialization.
+    #
+    # Modes:
+    #
+    # autodetect (default): sweep all PWM values and record what the fan reports back.
+    setPwmToGetPwmMap: autodetect
+    #
+    # identity: assume the fan reports back exactly what was set (1:1 mapping).
+    # Equivalent to the --assume-pwm-map-identity flag on `fan2go fan init`.
+    # setPwmToGetPwmMap: identity
+    #
+    # linear: linearly interpolate between user-specified control points.
+    # setPwmToGetPwmMap:
+    #   linear:
+    #     0: 0
+    #     255: 255
+    #
+    # values: step-interpolate user-specified control points.
+    # setPwmToGetPwmMap:
+    #   values:
+    #     0: 0
+    #     128: 128
+    #     255: 255
     # By default (useUnscaledCurveValues: false) speed values from the curve are scaled
     # from 1..255 (or 1%..100%) to MinPwm..MaxPwm  and speed values < 1(%) are set to 0,
     # before they're mapped with pwmMap (the value looked up in pwmMap is then used to

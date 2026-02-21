@@ -245,3 +245,54 @@ func TestPwmMapUnmarshalText_Unknown(t *testing.T) {
 	err := cfg.UnmarshalText([]byte("bogus"))
 	assert.Error(t, err)
 }
+
+func TestPwmMapPointsHookFunc_SetPwmLinearConfig(t *testing.T) {
+	data := map[interface{}]interface{}{
+		0:   0,
+		255: 200,
+	}
+	result, err := runPwmMapPointsHook(t, data, SetPwmToGetPwmMapLinearConfig{})
+	assert.NoError(t, err)
+	cfg, ok := result.(SetPwmToGetPwmMapLinearConfig)
+	assert.True(t, ok)
+	assert.Equal(t, SetPwmToGetPwmMapLinearConfig{0: 0, 255: 200}, cfg)
+}
+
+func TestPwmMapPointsHookFunc_SetPwmValuesConfig(t *testing.T) {
+	data := map[interface{}]interface{}{
+		0:   0,
+		128: 100,
+		255: 200,
+	}
+	result, err := runPwmMapPointsHook(t, data, SetPwmToGetPwmMapValuesConfig{})
+	assert.NoError(t, err)
+	cfg, ok := result.(SetPwmToGetPwmMapValuesConfig)
+	assert.True(t, ok)
+	assert.Equal(t, SetPwmToGetPwmMapValuesConfig{0: 0, 128: 100, 255: 200}, cfg)
+}
+
+func TestSetPwmToGetPwmMapUnmarshalText_Autodetect(t *testing.T) {
+	var cfg SetPwmToGetPwmMapConfig
+	err := cfg.UnmarshalText([]byte("autodetect"))
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg.Autodetect)
+	assert.Nil(t, cfg.Identity)
+	assert.Nil(t, cfg.Linear)
+	assert.Nil(t, cfg.Values)
+}
+
+func TestSetPwmToGetPwmMapUnmarshalText_Identity(t *testing.T) {
+	var cfg SetPwmToGetPwmMapConfig
+	err := cfg.UnmarshalText([]byte("identity"))
+	assert.NoError(t, err)
+	assert.Nil(t, cfg.Autodetect)
+	assert.NotNil(t, cfg.Identity)
+	assert.Nil(t, cfg.Linear)
+	assert.Nil(t, cfg.Values)
+}
+
+func TestSetPwmToGetPwmMapUnmarshalText_Unknown(t *testing.T) {
+	var cfg SetPwmToGetPwmMapConfig
+	err := cfg.UnmarshalText([]byte("bogus"))
+	assert.Error(t, err)
+}

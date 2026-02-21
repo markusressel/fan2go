@@ -680,3 +680,104 @@ func TestValidatePwmMap_Nil(t *testing.T) {
 	err := validateConfig(&cfg, "")
 	assert.NoError(t, err)
 }
+
+// helper: minimal valid config with a file fan for SetPwmToGetPwmMap validation tests
+func minimalFanConfigWithSetPwm(setPwmToGetPwmMap *SetPwmToGetPwmMapConfig) Configuration {
+	return Configuration{
+		Fans: []FanConfig{
+			{
+				ID:                "fan",
+				Curve:             "curve",
+				File:              &FileFanConfig{Path: "/dev/null"},
+				SetPwmToGetPwmMap: setPwmToGetPwmMap,
+			},
+		},
+		Curves: []CurveConfig{
+			{
+				ID:     "curve",
+				Linear: &LinearCurveConfig{Sensor: "sensor", Min: 0, Max: 100},
+			},
+		},
+		Sensors: []SensorConfig{
+			{ID: "sensor", File: &FileSensorConfig{Path: ""}},
+		},
+	}
+}
+
+func TestValidateSetPwmToGetPwmMap_EmptyStruct(t *testing.T) {
+	cfg := minimalFanConfigWithSetPwm(&SetPwmToGetPwmMapConfig{})
+	err := validateConfig(&cfg, "")
+	assert.EqualError(t, err, "fan 'fan': setPwmToGetPwmMap is set but no mode is specified")
+}
+
+func TestValidateSetPwmToGetPwmMap_MultipleModesSet(t *testing.T) {
+	cfg := minimalFanConfigWithSetPwm(&SetPwmToGetPwmMapConfig{
+		Autodetect: &SetPwmToGetPwmMapAutodetectConfig{},
+		Identity:   &SetPwmToGetPwmMapIdentityConfig{},
+	})
+	err := validateConfig(&cfg, "")
+	assert.EqualError(t, err, "fan 'fan': only one setPwmToGetPwmMap mode can be configured at a time")
+}
+
+func TestValidateSetPwmToGetPwmMap_LinearEmptyPoints(t *testing.T) {
+	empty := SetPwmToGetPwmMapLinearConfig{}
+	cfg := minimalFanConfigWithSetPwm(&SetPwmToGetPwmMapConfig{Linear: &empty})
+	err := validateConfig(&cfg, "")
+	assert.EqualError(t, err, "fan 'fan': setPwmToGetPwmMap linear requires at least one control point")
+}
+
+func TestValidateSetPwmToGetPwmMap_ValuesEmptyPoints(t *testing.T) {
+	empty := SetPwmToGetPwmMapValuesConfig{}
+	cfg := minimalFanConfigWithSetPwm(&SetPwmToGetPwmMapConfig{Values: &empty})
+	err := validateConfig(&cfg, "")
+	assert.EqualError(t, err, "fan 'fan': setPwmToGetPwmMap values requires at least one control point")
+}
+
+func TestValidateSetPwmToGetPwmMap_KeyOutOfRange(t *testing.T) {
+	pts := SetPwmToGetPwmMapValuesConfig{0: 0, 300: 100}
+	cfg := minimalFanConfigWithSetPwm(&SetPwmToGetPwmMapConfig{Values: &pts})
+	err := validateConfig(&cfg, "")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "out of range")
+}
+
+func TestValidateSetPwmToGetPwmMap_NonMonotonic(t *testing.T) {
+	pts := SetPwmToGetPwmMapValuesConfig{0: 0, 128: 200, 255: 100}
+	cfg := minimalFanConfigWithSetPwm(&SetPwmToGetPwmMapConfig{Values: &pts})
+	err := validateConfig(&cfg, "")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "strictly monotonically increasing")
+}
+
+func TestValidateSetPwmToGetPwmMap_Autodetect(t *testing.T) {
+	cfg := minimalFanConfigWithSetPwm(&SetPwmToGetPwmMapConfig{Autodetect: &SetPwmToGetPwmMapAutodetectConfig{}})
+	err := validateConfig(&cfg, "")
+	assert.NoError(t, err)
+}
+
+func TestValidateSetPwmToGetPwmMap_Identity(t *testing.T) {
+	cfg := minimalFanConfigWithSetPwm(&SetPwmToGetPwmMapConfig{Identity: &SetPwmToGetPwmMapIdentityConfig{}})
+	err := validateConfig(&cfg, "")
+	assert.NoError(t, err)
+}
+
+func TestValidateSetPwmToGetPwmMap_ValidLinear(t *testing.T) {
+	pts := SetPwmToGetPwmMapLinearConfig{0: 0, 255: 200}
+	cfg := minimalFanConfigWithSetPwm(&SetPwmToGetPwmMapConfig{Linear: &pts})
+	err := validateConfig(&cfg, "")
+	assert.NoError(t, err)
+}
+
+func TestValidateSetPwmToGetPwmMap_ValidValues(t *testing.T) {
+	pts := SetPwmToGetPwmMapValuesConfig{0: 0, 128: 100, 255: 200}
+	cfg := minimalFanConfigWithSetPwm(&SetPwmToGetPwmMapConfig{Values: &pts})
+	err := validateConfig(&cfg, "")
+	assert.NoError(t, err)
+}
+
+func TestValidateSetPwmToGetPwmMap_Nil(t *testing.T) {
+	// nil SetPwmToGetPwmMap (autodetect default) should pass validation
+	cfg := minimalFanConfigWithSetPwm(nil)
+	err := validateConfig(&cfg, "")
+	assert.NoError(t, err)
+}

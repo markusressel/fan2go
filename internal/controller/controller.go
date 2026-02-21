@@ -762,6 +762,36 @@ func (f *DefaultFanController) waitForFanToSettle(fan fans.Fan) {
 
 // computeSetPwmToGetPwmMap computes a mapping between "set pwm value" -> "actual pwm value"
 func (f *DefaultFanController) computeSetPwmToGetPwmMap() (err error) {
+	cfg := f.fan.GetConfig().SetPwmToGetPwmMap
+
+	if cfg != nil {
+		if cfg.Identity != nil {
+			ui.Info("Using identity set→get PWM map for fan '%s'", f.fan.GetId())
+			f.setPwmToGetPwmMap, _ = util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
+			return nil
+		}
+		if cfg.Values != nil {
+			ui.Info("Using user-defined step set→get PWM map for fan '%s'", f.fan.GetId())
+			pts := map[int]int(*cfg.Values)
+			expanded, err := util.InterpolateStepInt(&pts, 0, 255)
+			if err != nil {
+				return fmt.Errorf("error expanding setPwmToGetPwmMap (values): %w", err)
+			}
+			f.setPwmToGetPwmMap = expanded
+			return nil
+		}
+		if cfg.Linear != nil {
+			ui.Info("Using user-defined linear set→get PWM map for fan '%s'", f.fan.GetId())
+			pts := map[int]int(*cfg.Linear)
+			expanded, err := util.InterpolateLinearlyInt(&pts, 0, 255)
+			if err != nil {
+				return fmt.Errorf("error expanding setPwmToGetPwmMap (linear): %w", err)
+			}
+			f.setPwmToGetPwmMap = expanded
+			return nil
+		}
+		// cfg.Autodetect != nil → fall through to persistence / auto-detect
+	}
 
 	// load the setPwmToGetPwmMap from persistence, if it exists
 	f.setPwmToGetPwmMap, err = f.persistence.LoadFanSetPwmToGetPwmMap(f.fan.GetId())
