@@ -1,0 +1,41 @@
+name: Cross Compile
+
+on:
+  pull_request:
+
+jobs:
+  generate:
+    name: Generate cross-platform builds
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install libsensors-dev (needed for gosensors testing)
+        run: sudo apt-get install -y libsensors-dev
+
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Build
+        uses: crazy-max/ghaction-xgo@v3
+        with:
+          xgo_version: latest
+          go_version: 1.21
+          dest: dist
+          prefix: fan2go
+          targets: linux/amd64,linux/arm64
+          v: true
+          x: false
+          race: false
+          ldflags: -s -w
+          buildmode: default
+          trimpath: true
+
+#      - name: Release
+#        uses: softprops/action-gh-release@v1
+#        if: startsWith(github.ref, 'refs/tags/')
+#        with:
+#          files: |
+#            dist/fan2go-linux-amd64
+#            dist/fan2go-linux-arm64
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
