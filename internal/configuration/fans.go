@@ -27,6 +27,29 @@ type PwmMapLinearConfig map[int]int
 // Keys and values must be in [0..255]; values must be strictly monotonically increasing.
 type PwmMapValuesConfig map[int]int
 
+// SetPwmToGetPwmMapConfig selects how fan2go determines the set→get PWM mapping.
+// Exactly one sub-config must be non-nil. If nil in FanConfig, autodetect is assumed.
+type SetPwmToGetPwmMapConfig struct {
+	Autodetect *SetPwmToGetPwmMapAutodetectConfig `json:"autodetect,omitempty"`
+	Identity   *SetPwmToGetPwmMapIdentityConfig   `json:"identity,omitempty"`
+	Linear     *SetPwmToGetPwmMapLinearConfig     `json:"linear,omitempty"`
+	Values     *SetPwmToGetPwmMapValuesConfig     `json:"values,omitempty"`
+}
+
+// SetPwmToGetPwmMapAutodetectConfig selects automatic set→get PWM detection during initialization.
+type SetPwmToGetPwmMapAutodetectConfig struct{}
+
+// SetPwmToGetPwmMapIdentityConfig assumes a 1:1 set→get mapping (X→X for all X in [0..255]).
+type SetPwmToGetPwmMapIdentityConfig struct{}
+
+// SetPwmToGetPwmMapLinearConfig holds control points for linear interpolation of set→get mapping.
+// Keys and values must be in [0..255]; values must be strictly monotonically increasing.
+type SetPwmToGetPwmMapLinearConfig map[int]int
+
+// SetPwmToGetPwmMapValuesConfig holds control points for step interpolation of set→get mapping.
+// Keys and values must be in [0..255]; values must be strictly monotonically increasing.
+type SetPwmToGetPwmMapValuesConfig map[int]int
+
 type FanConfig struct {
 	// ID is the unique identifier for the fan.
 	ID        string `json:"id"`
@@ -41,6 +64,9 @@ type FanConfig struct {
 	// Some fans have weird missing sections in their PWM range (e.g. 0, 1, 2, 3, 5, 6, 7, 8, 10, ...),
 	// other fans only support a very limited set of PWM values (e.g. 0, 1, 2, 3).
 	PwmMap *PwmMapConfig `json:"pwmMap,omitempty"`
+	// SetPwmToGetPwmMap configures how fan2go determines the mapping from a set PWM value to the
+	// value the fan hardware reports back. If omitted, fan2go auto-detects this during initialization.
+	SetPwmToGetPwmMap *SetPwmToGetPwmMapConfig `json:"setPwmToGetPwmMap,omitempty"`
 	// Curve is the id of the speed curve associated with this fan.
 	Curve string `json:"curve"`
 	// By default speed values from the curve are scaled from 1..255 (or 1%..100%) to MinPwm..MaxPwm

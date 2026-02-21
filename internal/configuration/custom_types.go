@@ -52,6 +52,8 @@ func pwmMapPointsHookFunc() mapstructure.DecodeHookFuncType {
 	linearType := reflect.TypeOf(PwmMapLinearConfig{})
 	valuesType := reflect.TypeOf(PwmMapValuesConfig{})
 	pwmMapType := reflect.TypeOf(PwmMapConfig{})
+	setPwmLinearType := reflect.TypeOf(SetPwmToGetPwmMapLinearConfig{})
+	setPwmValuesType := reflect.TypeOf(SetPwmToGetPwmMapValuesConfig{})
 
 	return func(
 		f reflect.Type,
@@ -69,6 +71,19 @@ func pwmMapPointsHookFunc() mapstructure.DecodeHookFuncType {
 				return cfg, nil
 			}
 			cfg := PwmMapValuesConfig(pts)
+			return cfg, nil
+		}
+
+		if t == setPwmLinearType || t == setPwmValuesType {
+			pts, err := parsePwmIntMap(data)
+			if err != nil {
+				return nil, err
+			}
+			if t == setPwmLinearType {
+				cfg := SetPwmToGetPwmMapLinearConfig(pts)
+				return cfg, nil
+			}
+			cfg := SetPwmToGetPwmMapValuesConfig(pts)
 			return cfg, nil
 		}
 

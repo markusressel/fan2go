@@ -235,6 +235,19 @@ func (c *PwmMapConfig) UnmarshalText(text []byte) error {
 	return nil
 }
 
+// UnmarshalText handles string shorthand forms for SetPwmToGetPwmMapConfig: "autodetect" and "identity".
+func (c *SetPwmToGetPwmMapConfig) UnmarshalText(text []byte) error {
+	switch string(text) {
+	case "autodetect":
+		*c = SetPwmToGetPwmMapConfig{Autodetect: &SetPwmToGetPwmMapAutodetectConfig{}}
+	case "identity":
+		*c = SetPwmToGetPwmMapConfig{Identity: &SetPwmToGetPwmMapIdentityConfig{}}
+	default:
+		return fmt.Errorf("unknown setPwmToGetPwmMap value %q (expected: autodetect, identity, or a map with linear/values key)", string(text))
+	}
+	return nil
+}
+
 // UnmarshalText is a custom unmarshaler for ControlAlgorithmConfig to handle string enum values
 func (s *ControlAlgorithmConfig) UnmarshalText(text []byte) error {
 	controlAlgorithm := string(text)
