@@ -110,6 +110,8 @@ type FanConfig struct {
 	// are directly mapped with PwmMap, **without** scaling them first.
 	// Note: If NeverStop is also set to true, values smaller than MinPwm (incl. 0) are replaced with MinPwm
 	UseUnscaledCurveValues bool `json:"useUnscaledCurveValues"`
+	// PwmSetDelay overrides the global fanController.pwmSetDelay for this fan.
+	PwmSetDelay *time.Duration `json:"pwmSetDelay,omitempty"`
 	// ControlAlgorithm defines how the curve target is applied to the fan.
 	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
 	// SanityCheck defines Configuration options for sanity checks

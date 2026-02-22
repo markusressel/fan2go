@@ -77,6 +77,7 @@ type MockFan struct {
 	PwmMap                                       *configuration.PwmMapConfig
 	SetPwmToGetPwmMap                            *configuration.SetPwmToGetPwmMapConfig
 	ControlModeConfig                            *configuration.ControlModeConfig
+	PwmSetDelay                                  *time.Duration
 	setPwmAlwaysFails                            bool
 }
 
@@ -194,6 +195,7 @@ func (fan MockFan) GetConfig() configuration.FanConfig {
 		PwmMap:                 fan.PwmMap,
 		SetPwmToGetPwmMap:      fan.SetPwmToGetPwmMap,
 		ControlMode:            fan.ControlModeConfig,
+		PwmSetDelay:            fan.PwmSetDelay,
 		UseUnscaledCurveValues: fan.useUnscaledCurveValues,
 		HwMon:                  nil, // Not used in this mock
 		File:                   nil, // Not used in this mock
@@ -2081,4 +2083,48 @@ func TestFanController_ComputeFanSpecificMappings_AllWritesFail(t *testing.T) {
 	for i := 0; i < 256; i++ {
 		assert.Equal(t, i, controller.pwmMapping[i], "at index %d", i)
 	}
+}
+
+func TestGetPwmSetDelay_UsesPerFanOverride(t *testing.T) {
+	// GIVEN
+	perFanDelay := 10 * time.Millisecond
+	fan := &MockFan{
+		ID:          "fan",
+		PWM:         0,
+		RPM:         100,
+		PwmSetDelay: &perFanDelay,
+	}
+	configuration.CurrentConfig.FanController.PwmSetDelay = 5 * time.Millisecond
+
+	controller := DefaultFanController{
+		fan: fan,
+	}
+
+	// WHEN
+	result := controller.getPwmSetDelay()
+
+	// THEN
+	assert.Equal(t, perFanDelay, result)
+}
+
+func TestGetPwmSetDelay_FallsBackToGlobal(t *testing.T) {
+	// GIVEN
+	globalDelay := 5 * time.Millisecond
+	fan := &MockFan{
+		ID:  "fan",
+		PWM: 0,
+		RPM: 100,
+	}
+	// PwmSetDelay is nil (not set on fan config)
+	configuration.CurrentConfig.FanController.PwmSetDelay = globalDelay
+
+	controller := DefaultFanController{
+		fan: fan,
+	}
+
+	// WHEN
+	result := controller.getPwmSetDelay()
+
+	// THEN
+	assert.Equal(t, globalDelay, result)
 }
