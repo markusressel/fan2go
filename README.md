@@ -887,6 +887,29 @@ The curve is used as the target value for the control algorithm to reach. The co
 next PWM value to apply to the fan to reach this target value. The fan controller then applies this PWM value to the
 fan, while respecting constraints like the minimum and maximum PWM values, as well as the `neverStop` flag.
 
+### Cycle
+
+A **cycle** refers to one iteration of a FanController's main control loop. fan2go creates one FanController per
+configured fan, each running its own independent control loop.
+
+During each cycle, the FanController:
+
+1. Evaluates the fan's associated curve to determine the target PWM value
+2. Runs the configured control algorithm (Direct or PID) to calculate the next PWM value
+3. Applies constraints such as min/max PWM and the `neverStop` flag
+4. Writes the PWM value to the hardware
+5. Performs sanity checks (e.g. detecting third-party PWM interference)
+
+The rate at which cycles execute is configured globally via `fanController.adjustmentTickRate` (default: `200ms`):
+
+```yaml
+fanController:
+  # The rate at which fan speed targets are updated
+  adjustmentTickRate: 200ms
+```
+
+This setting also determines the time unit implied by `maxPwmChangePerCycle` in the Direct control algorithm.
+
 ### Control Algorithms
 
 A control algorithm
@@ -938,8 +961,8 @@ fans:
         d: 0.005
 ```
 
-The loop is advanced at a constant rate, specified by the `controllerAdjustmentTickRate` config option, which
-defaults to `200ms`.
+The loop is advanced at a constant rate, determined by the [cycle rate](#cycle) (`fanController.adjustmentTickRate`),
+which defaults to `200ms`.
 
 See [PID controller on Wikipedia](https://en.wikipedia.org/wiki/Proportional%E2%80%93integral%E2%80%93derivative_controller)
 for more information on what a PID controller is.
