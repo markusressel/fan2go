@@ -395,8 +395,8 @@ fans:
     #                       # that remember PWM settings — see issue #416)
     #   Map form (set explicit values on exit):
     #     onExit:
-    #       controlMode: auto   # set a specific control mode on exit
-    #       speed: 128          # set a fixed PWM speed on exit (0..255)
+    #       mode: auto      # set a specific control mode on exit
+    #       speed: 128      # set a fixed PWM speed on exit (0..255)
     #     # controlMode and speed can be combined or used independently.
     controlMode:
       active: pwm

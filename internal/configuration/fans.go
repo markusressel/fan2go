@@ -72,7 +72,7 @@ type ControlModeValue string
 type OnExitConfig struct {
 	Restore     *OnExitRestoreConfig `json:"restore,omitempty"`
 	None        *OnExitNoneConfig    `json:"none,omitempty"`
-	ControlMode *ControlModeValue    `json:"controlMode,omitempty"`
+	ControlMode *ControlModeValue    `mapstructure:"mode" json:"mode,omitempty"`
 	Speed       *int                 `json:"speed,omitempty"`
 }
 
