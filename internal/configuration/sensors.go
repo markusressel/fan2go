@@ -10,6 +10,7 @@ type SensorConfig struct {
 	File   *FileSensorConfig   `json:"file,omitempty"`
 	Cmd    *CmdSensorConfig    `json:"cmd,omitempty"`
 	Disk   *DiskSensorConfig   `json:"disk,omitempty"`
+	Acpi   *AcpiSensorConfig   `json:"acpi,omitempty"`
 }
 
 type HwMonSensorConfig struct {
@@ -45,4 +46,25 @@ type DiskSensorConfig struct {
 	// Device is the path to the block device. Accepts stable paths like /dev/disk/by-id/...
 	// as well as plain paths like /dev/sda or just "sda".
 	Device string `json:"device"`
+}
+
+// AcpiSensorConversion defines how the raw ACPI result value is interpreted.
+type AcpiSensorConversion string
+
+const (
+	// AcpiSensorConversionCelsius multiplies the result by 1000 to convert °C to millidegrees (default).
+	AcpiSensorConversionCelsius AcpiSensorConversion = "celsius"
+	// AcpiSensorConversionMillicelsius passes the result through unchanged (already in millidegrees).
+	AcpiSensorConversionMillicelsius AcpiSensorConversion = "millicelsius"
+	// AcpiSensorConversionRaw passes the result through unchanged (non-temperature sensors).
+	AcpiSensorConversionRaw AcpiSensorConversion = "raw"
+)
+
+type AcpiSensorConfig struct {
+	// Method is the ACPI method path, e.g. `\_SB.AMW3.WMAX`
+	Method string `json:"method"`
+	// Args is the argument string to pass to the ACPI method, e.g. `0 0x13 {1, 0x04, 0x00, 0x00}`
+	Args string `json:"args,omitempty"`
+	// Conversion defines how the raw result is interpreted. Default: "celsius" (result * 1000).
+	Conversion AcpiSensorConversion `json:"conversion,omitempty"`
 }

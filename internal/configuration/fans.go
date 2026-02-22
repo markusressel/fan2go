@@ -114,11 +114,12 @@ type FanConfig struct {
 	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
 	// SanityCheck defines Configuration options for sanity checks
 	SanityCheck SanityCheckConfig `json:"sanityCheck"`
-	// HwMon, File and Cmd are the different ways to configure the respective fan types.
+	// HwMon, Nvidia, File, Cmd and Acpi are the different ways to configure the respective fan types.
 	HwMon  *HwMonFanConfig  `json:"hwMon,omitempty"`
 	Nvidia *NvidiaFanConfig `json:"nvidia,omitempty"`
 	File   *FileFanConfig   `json:"file,omitempty"`
 	Cmd    *CmdFanConfig    `json:"cmd,omitempty"`
+	Acpi   *AcpiFanConfig   `json:"acpi,omitempty"`
 
 	// ControlLoop is a configuration for a PID control loop.
 	//
@@ -219,4 +220,34 @@ type ControlLoopConfig struct {
 	P float64 `json:"p"`
 	I float64 `json:"i"`
 	D float64 `json:"d"`
+}
+
+// AcpiFanConversion defines how the internal [0..255] PWM value is converted before passing to ACPI.
+type AcpiFanConversion string
+
+const (
+	// AcpiFanConversionPwm passes the PWM value (0-255) through unchanged (default).
+	AcpiFanConversionPwm AcpiFanConversion = "pwm"
+	// AcpiFanConversionPercentage scales 0-255 to 0-100 before passing to ACPI.
+	AcpiFanConversionPercentage AcpiFanConversion = "percentage"
+)
+
+// AcpiFanCallConfig configures a single ACPI method call for fan control.
+type AcpiFanCallConfig struct {
+	// Method is the ACPI method path, e.g. `\_SB.AMW3.WMAX`
+	Method string `json:"method"`
+	// Args is the argument string; supports %pwm% placeholder for set operations.
+	Args string `json:"args,omitempty"`
+	// Conversion defines how the PWM value is converted. Default: "pwm" (0-255 pass-through).
+	Conversion AcpiFanConversion `json:"conversion,omitempty"`
+}
+
+// AcpiFanConfig configures an ACPI-based fan.
+type AcpiFanConfig struct {
+	// SetPwm is the ACPI call used to set the fan speed (required).
+	SetPwm *AcpiFanCallConfig `json:"setPwm"`
+	// GetPwm is the ACPI call used to read back the current PWM value (optional).
+	GetPwm *AcpiFanCallConfig `json:"getPwm,omitempty"`
+	// GetRpm is the ACPI call used to read the current fan RPM (optional).
+	GetRpm *AcpiFanCallConfig `json:"getRpm,omitempty"`
 }
