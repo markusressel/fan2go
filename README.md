@@ -274,6 +274,40 @@ fans:
         args: [ "-a", "someargument" ]
 ```
 
+#### ACPI
+
+Controls fans on laptops/systems where the kernel driver blocks direct hwmon PWM writes (e.g. Dell G-Series,
+Alienware). Uses the `acpi_call` kernel module to invoke ACPI methods directly.
+
+**Requirements:** `acpi_call` kernel module must be loaded (`modprobe acpi_call`). The module exposes
+`/proc/acpi/call`. ACPI method paths are hardware-specific — consult your hardware documentation or
+community resources (e.g. [dell-bios-fan-control](https://github.com/TomFreudenberg/dell-bios-fan-control),
+[nbfc](https://github.com/hirschmann/nbfc)) to find the correct paths.
+
+```yaml
+fans:
+  - id: cpu_fan
+    curve: cpu_curve
+    acpi:
+      # Required: ACPI method call to set the fan speed
+      setPwm:
+        method: "\_SB.AMW3.WMAX"
+        # Use %pwm% as a placeholder for the PWM value
+        args: "0 0x14 {1, %pwm%, 0x00, 0x00}"
+        # conversion: pwm         # (default) pass 0-255 directly to ACPI
+        # conversion: percentage  # auto-scale 0-255 → 0-100 before passing to ACPI
+      # Optional: ACPI method call to read back the current fan RPM
+      # getRpm:
+      #   method: "\_SB.AMW3.WMAX"
+      #   args: "0 0x13 {49, 0x05, 0x00, 0x00}"
+      # Optional: ACPI method call to read back the current PWM value
+      # getPwm:
+      #   method: "\_SB.AMW3.WMAX"
+      #   args: "0 0x13 {1, 0x04, 0x00, 0x00}"
+      #   # conversion: pwm         # (default) result is 0-255
+      #   # conversion: percentage  # result is 0-100, auto-scaled to 0-255
+```
+
 #### Disk
 
 Reads the temperature of a block device (SATA, NVMe, etc.) using a stable device path instead of an
@@ -498,6 +532,29 @@ sensors:
       exec: /usr/bin/bash
       # (optional) arguments to pass to the executable
       args: [ '/home/markus/myscript.sh' ]
+```
+
+#### ACPI
+
+Reads sensor values on laptops/systems using the `acpi_call` kernel module. Useful for hardware where
+temperature data is only accessible via ACPI methods (e.g. Dell G-Series, Alienware EC sensors).
+
+**Requirements:** `acpi_call` kernel module must be loaded (`modprobe acpi_call`). ACPI method paths
+are hardware-specific.
+
+```yaml
+sensors:
+  - id: cpu_temp
+    acpi:
+      # ACPI method path
+      method: "\_SB.AMW3.WMAX"
+      # (optional) argument string to pass to the method
+      args: "0 0x13 {1, 0x04, 0x00, 0x00}"
+      # conversion defines how the raw integer result is interpreted:
+      #   celsius      (default): multiply result by 1000 (°C → millidegrees Celsius)
+      #   millicelsius: pass-through (result is already in millidegrees Celsius)
+      #   raw:          pass-through (for non-temperature sensors)
+      conversion: celsius
 ```
 
 ### Curves

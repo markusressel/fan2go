@@ -143,6 +143,23 @@ fans:
     neverStop: true
     curve: case_avg_curve
 
+  # ACPI-based fan (e.g. Dell/Alienware with acpi_call kernel module)
+  # Requires: modprobe acpi_call
+  # - id: cpu_fan
+  #   curve: cpu_curve
+  #   acpi:
+  #     setPwm:
+  #       method: "\_SB.AMW3.WMAX"
+  #       args: "0 0x14 {1, %pwm%, 0x00, 0x00}"
+  #       # conversion: pwm         # (default) pass 0-255 directly to ACPI
+  #       # conversion: percentage  # auto-scale 0-255 → 0-100 before passing to ACPI
+  #     # getRpm:
+  #     #   method: "\_SB.AMW3.WMAX"
+  #     #   args: "0 0x13 {49, 0x05, 0x00, 0x00}"
+  #     # getPwm:
+  #     #   method: "\_SB.AMW3.WMAX"
+  #     #   args: "0 0x13 {1, 0x04, 0x00, 0x00}"
+
 # A list of sensors to monitor
 sensors:
   # A user defined ID, which is used to reference
@@ -166,6 +183,16 @@ sensors:
       # Stable by-id path (recommended). The /dev/disk/by-id/ prefix may be omitted,
       # e.g. just: ata-WDC_WD40EFRX_XXXXXXXX
       device: /dev/disk/by-id/ata-WDC_WD40EFRX_XXXXXXXX
+
+  # ACPI-based temperature sensor (e.g. Dell/Alienware with acpi_call kernel module)
+  # Requires: modprobe acpi_call
+  # - id: cpu_temp
+  #   acpi:
+  #     method: "\_SB.AMW3.WMAX"
+  #     args: "0 0x13 {1, 0x04, 0x00, 0x00}"
+  #     # conversion: celsius      # (default) multiply result by 1000 (°C → millidegrees)
+  #     # conversion: millicelsius  # pass-through (result already in millidegrees)
+  #     # conversion: raw           # pass-through (non-temperature sensors)
 
 # A list of control curves which can be utilized by fans
 # or other curves

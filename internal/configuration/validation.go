@@ -86,11 +86,14 @@ func validateSensors(config *Configuration) error {
 		if sensorConfig.Disk != nil {
 			subConfigs++
 		}
+		if sensorConfig.Acpi != nil {
+			subConfigs++
+		}
 		if subConfigs > 1 {
 			return fmt.Errorf("sensor %s: only one sensor type can be used per sensor definition block", sensorConfig.ID)
 		}
 		if subConfigs <= 0 {
-			return fmt.Errorf("sensor %s: sub-configuration for sensor is missing, use one of: hwmon | nvidia | file | cmd | disk", sensorConfig.ID)
+			return fmt.Errorf("sensor %s: sub-configuration for sensor is missing, use one of: hwmon | nvidia | file | cmd | disk | acpi", sensorConfig.ID)
 		}
 
 		if !isSensorConfigInUse(sensorConfig, config.Curves) {
@@ -108,6 +111,12 @@ func validateSensors(config *Configuration) error {
 		if sensorConfig.Disk != nil {
 			if len(sensorConfig.Disk.Device) == 0 {
 				return fmt.Errorf("sensor %s: disk sensor requires a device path", sensorConfig.ID)
+			}
+		}
+
+		if sensorConfig.Acpi != nil {
+			if len(sensorConfig.Acpi.Method) == 0 {
+				return fmt.Errorf("sensor %s: acpi sensor requires a method path", sensorConfig.ID)
 			}
 		}
 	}
@@ -281,12 +290,15 @@ func validateFans(config *Configuration) error {
 				return fmt.Errorf("fan %s: This version of fan2go was built without NVIDIA (nvml) support", fanConfig.ID)
 			}
 		}
+		if fanConfig.Acpi != nil {
+			subConfigs++
+		}
 
 		if subConfigs > 1 {
 			return fmt.Errorf("fan %s: only one fan type can be used per fan definition block", fanConfig.ID)
 		}
 		if subConfigs <= 0 {
-			return fmt.Errorf("fan %s: sub-configuration for fan is missing, use one of: hwmon | nvidia | file | cmd", fanConfig.ID)
+			return fmt.Errorf("fan %s: sub-configuration for fan is missing, use one of: hwmon | nvidia | file | cmd | acpi", fanConfig.ID)
 		}
 
 		if len(fanConfig.Curve) <= 0 {
@@ -469,6 +481,12 @@ func validateFans(config *Configuration) error {
 			}
 			if len(cmdConfig.SetPwm.Exec) <= 0 {
 				return fmt.Errorf("fan %s: setPwm executable is missing", fanConfig.ID)
+			}
+		}
+
+		if fanConfig.Acpi != nil {
+			if fanConfig.Acpi.SetPwm == nil || len(fanConfig.Acpi.SetPwm.Method) == 0 {
+				return fmt.Errorf("fan %s: acpi fan requires setPwm.method", fanConfig.ID)
 			}
 		}
 	}

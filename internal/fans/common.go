@@ -123,6 +123,12 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 		}, nil
 	}
 
+	if config.Acpi != nil {
+		return &AcpiFan{
+			Config: config,
+		}, nil
+	}
+
 	return nil, fmt.Errorf("no matching fan type for fan: %s", config.ID)
 }
 
