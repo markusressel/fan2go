@@ -93,18 +93,18 @@ func setDefaultValues() {
 
 	viper.SetDefault("Api", ApiConfig{
 		Enabled: false,
-		Host:    "localhost",
+		Host:    "127.0.0.1",
 		Port:    9001,
 	})
-	viper.SetDefault("Api.Host", "localhost")
+	viper.SetDefault("Api.Host", "127.0.0.1")
 	viper.SetDefault("Api.Port", 9001)
 
 	viper.SetDefault("Profiling", ProfilingConfig{
 		Enabled: false,
-		Host:    "localhost",
+		Host:    "127.0.0.1",
 		Port:    6060,
 	})
-	viper.SetDefault("Profiling.Host", "localhost")
+	viper.SetDefault("Profiling.Host", "127.0.0.1")
 	viper.SetDefault("Profiling.Port", 6060)
 
 	// set default of deprecated value to 0 to detect unset value
