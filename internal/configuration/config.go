@@ -76,7 +76,7 @@ func InitConfig(cfgFile string) {
 }
 
 func setDefaultValues() {
-	viper.SetDefault("dbpath", "/etc/fan2go/fan2go.db")
+	viper.SetDefault("dbpath", "/var/lib/fan2go/fan2go.db")
 	viper.SetDefault("RunFanInitializationInParallel", true)
 	viper.SetDefault("MaxRpmDiffForSettledFan", 20.0)
 	viper.SetDefault("FanResponseDelay", 2)
