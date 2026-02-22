@@ -487,7 +487,7 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 			return err
 		}
 		expectedPwm := f.getReportedPwmAfterApplyingPwm(actualPwm)
-		time.Sleep(configuration.CurrentConfig.FanController.PwmSetDelay)
+		time.Sleep(f.getPwmSetDelay())
 		actualPwm, err := f.getPwm()
 		if err != nil {
 			ui.Error("Fan %s: Unable to measure current PWM", fan.GetId())
@@ -695,6 +695,15 @@ func (f *DefaultFanController) getLastTarget() (int, error) {
 		}
 	}
 	return lastSetPwm, nil
+}
+
+// getPwmSetDelay returns the effective PWM set delay for this fan, using the per-fan override
+// if configured or falling back to the global fanController.pwmSetDelay.
+func (f *DefaultFanController) getPwmSetDelay() time.Duration {
+	if d := f.fan.GetConfig().PwmSetDelay; d != nil {
+		return *d
+	}
+	return configuration.CurrentConfig.FanController.PwmSetDelay
 }
 
 // ensureNoThirdPartyIsMessingWithUs checks if the PWM value of the fan does not match the last
@@ -1050,7 +1059,7 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
 			ui.Warning("Error setting PWM value %d on fan %s: %v", i, f.fan.GetId(), err)
 			continue
 		}
-		time.Sleep(configuration.CurrentConfig.FanController.PwmSetDelay)
+		time.Sleep(f.getPwmSetDelay())
 		pwm, err := f.fan.GetPwm()
 		if err != nil {
 			ui.Warning("Error reading PWM value of fan %s: %v", f.fan.GetId(), err)

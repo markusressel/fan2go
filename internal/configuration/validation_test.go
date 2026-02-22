@@ -3,6 +3,7 @@ package configuration
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -1021,4 +1022,24 @@ func TestValidateDiskSensor_MissingDevice(t *testing.T) {
 
 	// THEN
 	assert.EqualError(t, err, "sensor disk_temp: disk sensor requires a device path")
+}
+
+func TestFanConfig_PwmSetDelay_Set(t *testing.T) {
+	// GIVEN
+	d := 10 * time.Millisecond
+
+	// WHEN
+	fanConfig := FanConfig{PwmSetDelay: &d}
+
+	// THEN
+	assert.NotNil(t, fanConfig.PwmSetDelay)
+	assert.Equal(t, 10*time.Millisecond, *fanConfig.PwmSetDelay)
+}
+
+func TestFanConfig_PwmSetDelay_Absent(t *testing.T) {
+	// GIVEN / WHEN
+	fanConfig := FanConfig{}
+
+	// THEN
+	assert.Nil(t, fanConfig.PwmSetDelay)
 }

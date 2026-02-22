@@ -97,6 +97,8 @@ fans:
     #   onExit:
     #     controlMode: auto  # set control mode on exit (accepts same values as active)
     #     speed: 128         # set fixed PWM speed on exit (0..255)
+    # (Optional) Override the global fanController.pwmSetDelay for this specific fan.
+    # pwmSetDelay: 10ms
     # (Optional) By default (useUnscaledCurveValues: false) speed values from the curve are scaled
     # from 1..255 (or 1%..100%) to MinPwm..MaxPwm  and speed values < 1(%) are set to 0,
     # before they're mapped with pwmMap (the value looked up in pwmMap is then used to

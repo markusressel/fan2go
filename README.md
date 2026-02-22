@@ -322,6 +322,9 @@ fans:
     # an increased rotational speed compared to lower values.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
+    # (Optional) Override the global fanController.pwmSetDelay for this specific fan.
+    # Useful when a fan requires more or less time to respond to PWM changes than the global default.
+    # pwmSetDelay: 10ms
     # (Optional) Configure how fan2go maps the internal [0..255] PWM range to
     # hardware-specific PWM values. If omitted, fan2go auto-detects the mapping
     # during fan initialization.
