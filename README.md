@@ -505,6 +505,13 @@ sensors:
 Under `curves:` you need to define a list of fan speed curves, which represent the speed of a fan based on one or more
 temperature sensors.
 
+> **Speed values:** Curve values range from `0` to `255` (equivalently `0%` to `100%`).
+> By default, fan2go scales these to the fan's detected (or configured) `minPwm`..`maxPwm` range:
+> - `0` / `0%` → fan off (unless `neverStop: true`, in which case the fan is held at `minPwm`)
+> - `1`..`255` / `1%`..`100%` → linearly mapped to `minPwm`..`maxPwm`
+>
+> To use curve values as raw PWM values without scaling, set `useUnscaledCurveValues: true` in the fan config.
+
 #### Linear
 
 To create a simple, linear speed curve, use a curve of type `linear`.
