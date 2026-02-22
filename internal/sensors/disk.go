@@ -146,7 +146,12 @@ func readAtaSmartTemp(device string) (float64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("cannot open %s: %w", device, err)
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			fmt.Printf("warning: failed to close file for %s: %v\n", device, err)
+		}
+	}(f)
 
 	buf := make([]byte, 4+512)
 	buf[0] = ataOpSmart    // ATA command: SMART
