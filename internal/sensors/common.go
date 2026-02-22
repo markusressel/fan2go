@@ -59,6 +59,13 @@ func NewSensor(config configuration.SensorConfig) (Sensor, error) {
 		}, nil
 	}
 
+	if config.Disk != nil {
+		return &DiskSensor{
+			Config: config,
+			mu:     sync.Mutex{},
+		}, nil
+	}
+
 	return nil, fmt.Errorf("no matching sensor type for sensor: %s", config.ID)
 }
 
