@@ -1861,7 +1861,8 @@ func TestRestoreControlMode_Default_RestoresOriginal(t *testing.T) {
 
 	controller.restoreControlMode()
 
-	assert.Contains(t, fan.pwmHistory, 100)
+	// in case the original control mode is Automatic, we don't restore the originalPwmValue
+	assert.Empty(t, fan.pwmHistory, "should not set PWM when restoring to Automatic mode")
 	assert.Contains(t, fan.controlModeHistory, fans.ControlModeAutomatic)
 }
 
@@ -1908,7 +1909,7 @@ func TestRestoreControlMode_ExplicitControlMode(t *testing.T) {
 
 	controller.restoreControlMode()
 
-	assert.Contains(t, fan.pwmHistory, 100, "should set original PWM value")
+	assert.Empty(t, fan.pwmHistory)
 	assert.Contains(t, fan.controlModeHistory, fans.ControlModeAutomatic)
 }
 
@@ -1934,7 +1935,7 @@ func TestRestoreControlMode_ExplicitSpeed(t *testing.T) {
 	controller.restoreControlMode()
 
 	assert.Contains(t, fan.pwmHistory, 128, "should set speed=128")
-	assert.Empty(t, fan.controlModeHistory, "should not change control mode")
+	assert.Contains(t, fan.controlModeHistory, fans.ControlModePWM, "should restore original control mode")
 }
 
 func TestRestoreControlMode_ExplicitControlModeAndSpeed(t *testing.T) {
@@ -1983,7 +1984,7 @@ func TestRestoreControlMode_Restore_Explicit(t *testing.T) {
 
 	controller.restoreControlMode()
 
-	assert.Contains(t, fan.pwmHistory, 75)
+	assert.Empty(t, fan.pwmHistory)
 	assert.Contains(t, fan.controlModeHistory, fans.ControlModeAutomatic)
 }
 

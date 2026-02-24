@@ -626,38 +626,64 @@ func (f *DefaultFanController) restoreControlMode() {
 		return
 	}
 
+	var controlModeToSet *fans.ControlMode = nil
+	var pwmToSet *int = nil
+
 	// controlMode and/or speed: set explicit values on exit
-	if onExit != nil && (onExit.ControlMode != nil || onExit.Speed != nil) {
-		pwmToSet := f.originalPwmValue
-		if onExit.Speed != nil {
-			pwmToSet = *onExit.Speed
-		}
-		if err := f.fan.SetPwm(pwmToSet); err != nil {
-			ui.Warning("Error setting PWM for fan %s on exit: %v", f.fan.GetId(), err)
-		}
-		if onExit.ControlMode != nil && f.fan.Supports(fans.FeatureControlModeWrite) {
-			controlMode, err := parseControlModeValue(*onExit.ControlMode)
+	if onExit != nil {
+		// determine control mode to set on exit, if any
+		if onExit.Restore != nil {
+			controlModeToSet = &f.originalControlMode
+		} else if onExit.ControlMode != nil {
+			parsedControlMode, err := parseControlModeValue(*onExit.ControlMode)
 			if err != nil {
 				ui.Warning("Error parsing controlMode.onExit.controlMode for fan %s: %v", f.fan.GetId(), err)
-			} else if err = f.fan.SetControlMode(controlMode); err != nil {
-				ui.Warning("Error setting control mode for fan %s: %v", f.fan.GetId(), err)
+			} else {
+				controlModeToSet = &parsedControlMode
+			}
+		} else {
+			// if no explicit control mode to set is provided, but the fan supports writing the control mode and the original mode was not automatic, restore the original mode
+			if f.originalControlMode != fans.ControlModeAutomatic {
+				controlModeToSet = &f.originalControlMode
 			}
 		}
-		return
+
+		// determine PWM value to set on exit, if any
+		if onExit.Speed != nil {
+			pwmToSet = onExit.Speed
+		}
+	} else {
+		// default restore behavior
+		controlModeToSet = &f.originalControlMode
 	}
 
-	// restore (default: onExit == nil or onExit.Restore != nil)
-	if err := f.fan.SetPwm(f.originalPwmValue); err != nil {
-		ui.Warning("Error restoring original PWM value for fan %s: %v", f.fan.GetId(), err)
-	}
-	if f.fan.Supports(fans.FeatureControlModeWrite) && f.originalControlMode != fans.ControlModePWM {
-		if err := f.fan.SetControlMode(f.originalControlMode); err == nil {
-			return
+	if pwmToSet == nil {
+		// if the original control mode was manual, restore it to manual and set the original PWM value
+		if controlModeToSet != nil && *controlModeToSet != fans.ControlModeAutomatic {
+			// if control mode is set to manual but no speed is provided, set the original value
+			originalPwmValue := f.originalPwmValue
+			pwmToSet = &originalPwmValue
 		}
 	}
-	// if this fails, try to set it to max speed instead
-	if err := f.fan.SetPwm(fans.MaxPwmValue); err != nil {
-		ui.Warning("Unable to restore fan %s, make sure it is running!", f.fan.GetId())
+
+	if controlModeToSet != nil {
+		if f.fan.Supports(fans.FeatureControlModeWrite) {
+			if err := f.fan.SetControlMode(*controlModeToSet); err != nil {
+				// if this fails, try to set it to max speed instead
+				if err := f.fan.SetPwm(fans.MaxPwmValue); err != nil {
+					ui.Warning("Unable to restore fan %s, make sure it is running!", f.fan.GetId())
+				}
+				return
+			}
+		} else {
+			ui.Warning("Cannot restore control mode of fan %s, writing control mode is not supported", f.fan.GetId())
+		}
+	}
+	if pwmToSet != nil {
+		// restore (default: onExit == nil or onExit.Restore != nil)
+		if err := f.fan.SetPwm(*pwmToSet); err != nil {
+			ui.Warning("Error restoring original PWM value for fan %s: %v", f.fan.GetId(), err)
+		}
 	}
 }
 
