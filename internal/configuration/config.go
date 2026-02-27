@@ -37,6 +37,7 @@ type Configuration struct {
 	// Deprecated: use FanControllerConfig.AdjustmentTickRate instead
 	ControllerAdjustmentTickRate time.Duration `json:"controllerAdjustmentTickRate"`
 
+	Analysis      AnalysisConfig      `json:"analysis"`
 	FanController FanControllerConfig `json:"fanController"`
 
 	Fans    []FanConfig    `json:"fans"`
@@ -84,6 +85,17 @@ func setDefaultValues() {
 	viper.SetDefault("TempRollingWindowSize", 10)
 	viper.SetDefault("RpmPollingRate", 1*time.Second)
 	viper.SetDefault("RpmRollingWindowSize", 10)
+
+	viper.SetDefault("Analysis", AnalysisConfig{
+		CoarseStep:    6,
+		SampleCount:   2,
+		SampleDelay:   200 * time.Millisecond,
+		SettleTimeout: 30 * time.Second,
+	})
+	viper.SetDefault("Analysis.CoarseStep", 6)
+	viper.SetDefault("Analysis.SampleCount", 2)
+	viper.SetDefault("Analysis.SampleDelay", 200*time.Millisecond)
+	viper.SetDefault("Analysis.SettleTimeout", 30*time.Second)
 
 	viper.SetDefault("Statistics", StatisticsConfig{
 		Enabled: false,

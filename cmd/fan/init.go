@@ -42,7 +42,7 @@ var initCmd = &cobra.Command{
 			assumePwmMapIdentity,
 		)
 
-		ui.Info("Deleting existing data for fan '%s'...", fan.GetId())
+		ui.Info("Fan %s: Deleting existing data...", fan.GetId())
 
 		if err = p.DeleteFanRpmData(fan); err != nil {
 			return err

@@ -126,7 +126,24 @@ func NewFan(config configuration.FanConfig) (Fan, error) {
 	return nil, fmt.Errorf("no matching fan type for fan: %s", config.ID)
 }
 
-// ComputePwmBoundaries calculates the startPwm and maxPwm values for a fan based on its fan curve data
+const (
+	// rpmNoiseThreshold is the minimum RPM a data point must report to be considered
+	// evidence that the fan is actually spinning. Readings at or below this value
+	// are treated as sensor noise / fan-stopped.
+	rpmNoiseThreshold = 50.0
+	// maxPwmRpmRatio is the fraction of the peak RPM that a data point must reach
+	// for the corresponding PWM to qualify as maxPwm. Using the *highest* such PWM
+	// (rather than the single peak) makes maxPwm robust against noise spikes.
+	maxPwmRpmRatio = 0.95
+)
+
+// ComputePwmBoundaries calculates the startPwm and maxPwm values for a fan based on its fan curve data.
+//
+// startPwm: the lowest PWM value where the measured RPM exceeds rpmNoiseThreshold.
+// maxPwm:   the highest PWM value where RPM is at least maxPwmRpmRatio (95%) of the observed peak.
+//
+// Using the highest qualifying PWM for maxPwm (rather than the single measurement with the greatest
+// value) avoids noise spikes at low PWM values being mistaken for the true peak.
 func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 	userStartPwm := fan.GetStartPwm()
 	startPwm = 255
@@ -139,17 +156,30 @@ func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 	}
 	sort.Ints(keys)
 
-	maxRpm := 0
+	// Pass 1: find startPwm and peak RPM.
+	peakRpm := 0.0
 	for _, pwm := range keys {
-		avgRpm := int((*pwmRpmMap)[pwm])
-		if avgRpm > maxRpm {
-			maxRpm = avgRpm
-			maxPwm = pwm
+		avgRpm := (*pwmRpmMap)[pwm]
+		if avgRpm > peakRpm {
+			peakRpm = avgRpm
 		}
-
-		if avgRpm > 0 && pwm < startPwm {
+		if avgRpm >= rpmNoiseThreshold && pwm < startPwm {
 			startPwm = pwm
 		}
+	}
+
+	// Pass 2: find the highest PWM where RPM >= maxPwmRpmRatio * peakRpm.
+	// Iterating in ascending order and always overwriting ensures the last
+	// (= highest) qualifying PWM is retained.
+	minQualifyingRpm := peakRpm * maxPwmRpmRatio
+	maxPwm = -1
+	for _, pwm := range keys {
+		if (*pwmRpmMap)[pwm] >= minQualifyingRpm {
+			maxPwm = pwm
+		}
+	}
+	if maxPwm < 0 {
+		maxPwm = 255 // fallback: no qualifying data point found
 	}
 
 	if userStartPwm < 255 {

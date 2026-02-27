@@ -463,7 +463,9 @@ func TestLinearFan(t *testing.T) {
 	startPwm, maxPwm := fans.ComputePwmBoundaries(fan)
 
 	// THEN
-	assert.Equal(t, 1, startPwm)
+	// startPwm: lowest PWM where RPM >= rpmNoiseThreshold (50.0). LinearFan has RPM == PWM,
+	// so startPwm = 50 (RPM=50 is the first value that meets the >= 50 threshold).
+	assert.Equal(t, 50, startPwm)
 	assert.Equal(t, 255, maxPwm)
 }
 
@@ -487,8 +489,12 @@ func TestCappedFan(t *testing.T) {
 	startPwm, maxPwm := fans.ComputePwmBoundaries(fan)
 
 	// THEN
-	assert.Equal(t, 6, startPwm)
-	assert.Equal(t, 200, maxPwm)
+	// startPwm: CappedFan starts at RPM=20 at PWM 6, but 20 < rpmNoiseThreshold (50).
+	// First PWM where RPM >= 50 is ~39 (interpolated value ≈ 50.62).
+	assert.Equal(t, 39, startPwm)
+	// maxPwm: peakRpm=200, 95% threshold=190. Fan plateau at 200 RPM extends from
+	// PWM 200 through 255 (interpolation clamps to last point), so highest qualifying PWM = 255.
+	assert.Equal(t, 255, maxPwm)
 }
 
 func TestCappedNeverStoppingFan(t *testing.T) {
@@ -500,7 +506,9 @@ func TestCappedNeverStoppingFan(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, 0, startPwm)
-	assert.Equal(t, 200, maxPwm)
+	// maxPwm: peakRpm=200, 95% threshold=190. Fan plateau at 200 RPM extends through PWM 255,
+	// so the highest qualifying PWM = 255.
+	assert.Equal(t, 255, maxPwm)
 }
 
 func TestCalculateTargetSpeedLinear(t *testing.T) {

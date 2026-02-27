@@ -23,6 +23,24 @@ rpmPollingRate: 1s
 # The number of rpm sensor values to keep in a rolling window array
 rpmRollingWindowSize: 10
 
+# Configuration options for the initial analysis of fan rpm curves.
+analysis:
+  # The step size to use when increasing the target speed during the analysis of a fan curve.
+  # Higher values will speed up the analysis, but may lead to less accurate curves.
+  # Lower values will slow down the analysis, but may lead to more accurate curves.
+  coarseStep: 6
+  # The number of samples to take at each target speed during the analysis of a fan curve.
+  # All samples will be averaged to determine the RPM at a specific target speed.
+  # Higher values will lead to more accurate curves, but will also slow down the analysis.
+  sampleCount: 2
+  # Time to wait between taking samples at each target speed during the analysis of a fan curve.
+  sampleDelay: 200ms
+  # The maximum time to wait for the fan to settle after setting a new target speed during the analysis of a fan curve.
+  # If the fan speed does not settle within this time, the analysis will still continue with the current speed,
+  # but the resulting curve may be less accurate. It might also be an indication that the fan is not able to
+  # reach the target speed, which could be a sign of a problem with the fan or its control mechanism.
+  settleTimeout: 30s
+
 # Configuration options for each fan controller responsible for an individual fan.
 fanController:
   # The rate to update fan speed targets at (length of one "cycle")
