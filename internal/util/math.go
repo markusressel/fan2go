@@ -167,6 +167,11 @@ func InterpolateLinearlyInt(data *map[int]int, start int, stop int) (map[int]int
 // InterpolateStep takes the given mapping and adds flat values in [start;stop].
 func InterpolateStep(data *map[int]float64, start int, stop int) (map[int]float64, error) {
 	interpolated := map[int]float64{}
+	// copy existing values
+	for k, v := range *data {
+		interpolated[k] = v
+	}
+
 	for i := start; i <= stop; i++ {
 		interpolatedValue, err := CalculateInterpolatedCurveValue(*data, InterpolationTypeStep, float64(i))
 		if err != nil {
@@ -180,6 +185,11 @@ func InterpolateStep(data *map[int]float64, start int, stop int) (map[int]float6
 // InterpolateLinearly takes the given mapping and adds interpolated values in [start;stop].
 func InterpolateLinearly(data *map[int]float64, start int, stop int) (map[int]float64, error) {
 	interpolated := map[int]float64{}
+	// copy existing values
+	for k, v := range *data {
+		interpolated[k] = v
+	}
+
 	for i := start; i <= stop; i++ {
 		interpolatedValue, err := CalculateInterpolatedCurveValue(*data, InterpolationTypeLinear, float64(i))
 		if err != nil {
@@ -243,6 +253,36 @@ func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType st
 	// input is above (or equal to) the largest given
 	// step, so we fall back to the value of the largest step
 	return steps[xValues[len(xValues)-1]], nil
+}
+
+// EnsureMonotonicallyIncreasing takes a map of int to float and ensures that the values are monotonically increasing with increasing keys.
+// If a value is found to be smaller than the previous value, it is replaced by the previous value.
+// Note that this method DOES NOT guarantee strict monotonicity, but only non-decreasing values.
+// It also DOES NOT guarantee monotonicity outside the given [start;stop] range.
+func EnsureMonotonicallyIncreasing(data map[int]float64, start int, stop int) map[int]float64 {
+	monotonic := map[int]float64{}
+	// copy existing values and ensure monotonicity
+	for id := range data {
+		monotonic[id] = data[id]
+	}
+
+	for i := start; i <= stop; i++ {
+		value, exists := data[i]
+		if !exists {
+			continue
+		}
+		if i == start {
+			monotonic[i] = value
+		} else {
+			prevValue := monotonic[i-1]
+			if value < prevValue {
+				monotonic[i] = prevValue
+			} else {
+				monotonic[i] = value
+			}
+		}
+	}
+	return monotonic
 }
 
 // FindClosest finds the closest value to target in options.
