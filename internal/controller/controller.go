@@ -500,6 +500,42 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 	curveData := map[int]float64{}
 
 	// --- Phase 1: Coarse sweep ---
+	curveData, err = f.rpmCurveMeasurementPhase1(fan, distinct, curveData)
+	if err != nil {
+		return err
+	}
+
+	// --- Phase 2: Targeted refinement ---
+	// Build sorted list of coarse measurement PWM values.
+	curveData, err = f.rpmCurveMeasurementPhase2(fan, distinct, curveData)
+	if err != nil {
+		return err
+	}
+
+	curveData, err = f.rpmCurveMeasurementCleanup(curveData)
+	if err != nil {
+		return err
+	}
+
+	err = fan.AttachFanRpmCurveData(&curveData)
+	if err != nil {
+		ui.Error("Fan %s: Failed to attach fan curve data: %v", fan.GetId(), err)
+		return err
+	}
+
+	// save to database to restore it on restarts
+	err = f.persistence.SaveFanRpmData(fan)
+	if err != nil {
+		ui.Error("Fan %s: Failed to save RWM data: %v", fan.GetId(), err)
+	}
+	return err
+}
+
+func (f *DefaultFanController) rpmCurveMeasurementPhase1(
+	fan fans.Fan,
+	distinct []int,
+	curveData map[int]float64,
+) (map[int]float64, error) {
 	coarseStep := configuration.CurrentConfig.Analysis.CoarseStep
 	if coarseStep <= 0 {
 		coarseStep = 1
@@ -521,7 +557,7 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 		measuredRpm, err := f.measureAtPwm(fan, pwm, configuration.CurrentConfig.Analysis.SettleTimeout)
 		if err != nil {
 			ui.Error("Fan %s: Error measuring at PWM %d: %v", fan.GetId(), pwm, err)
-			return err
+			return curveData, err
 		}
 		if measuredRpm < 0 {
 			continue // PWM mismatch detected, skip
@@ -531,14 +567,20 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 		fan.SetRpmAvg(measuredRpm)
 	}
 
-	// Build sorted list of coarse measurement PWM values.
+	return curveData, nil
+}
+
+func (f *DefaultFanController) rpmCurveMeasurementPhase2(
+	fan fans.Fan,
+	distinct []int,
+	curveData map[int]float64,
+) (map[int]float64, error) {
 	coarsePwms := make([]int, 0, len(curveData))
 	for pwm := range curveData {
 		coarsePwms = append(coarsePwms, pwm)
 	}
 	sort.Ints(coarsePwms)
 
-	// --- Phase 2: Targeted refinement ---
 	alreadyMeasured := make(map[int]bool, len(curveData))
 	for k := range curveData {
 		alreadyMeasured[k] = true
@@ -579,6 +621,7 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 			peakPwm = pwm
 		}
 	}
+	lastIdx := len(distinct) - 1
 	if peakPwm >= 0 {
 		maxRegionLow := distinct[0]
 		maxRegionHigh := distinct[lastIdx]
@@ -613,7 +656,7 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 			measuredRpm, err := f.measureAtPwm(fan, pwm, configuration.CurrentConfig.Analysis.SettleTimeout)
 			if err != nil {
 				ui.Error("Fan %s: Error measuring at PWM %d: %v", fan.GetId(), pwm, err)
-				return err
+				return curveData, err
 			}
 			if measuredRpm < 0 {
 				continue
@@ -624,26 +667,34 @@ func (f *DefaultFanController) RunInitializationSequence() (err error) {
 		}
 	}
 
+	return curveData, nil
+}
+
+func (f *DefaultFanController) rpmCurveMeasurementCleanup(curveData map[int]float64) (interpolatedCurveData map[int]float64, err error) {
+	firstNonZeroPwm := 0
+	sortedPwmValues := util.SortedKeys(curveData)
+	lastPwm := sortedPwmValues[len(sortedPwmValues)-1]
+	for _, pwm := range sortedPwmValues {
+		if curveData[pwm] > 0 {
+			firstNonZeroPwm = pwm
+			break
+		}
+	}
+
 	// Interpolation Phase:
 	// First Step: Interpolate stepwise (using util.InterpolateStep()) until the first value > 0 is reached, to ensure the curve data contains the critical "startPwm" point where the fan starts spinning.
 	// Second Step: Interpolate linearly (using util.InterpolateLinearly()) between all measured points to fill in any remaining gaps, ensuring the curve data contains the full range of PWM values as keys.
-	interpolatedCurveData, _ := util.InterpolateStep(&curveData, 0, firstNonZeroPwm)
-	lastDistinctPwm := distinct[len(distinct)-1]
-	interpolatedCurveData, err = util.InterpolateLinearly(&interpolatedCurveData, firstNonZeroPwm, lastDistinctPwm)
-	interpolatedCurveData = util.EnsureMonotonicallyIncreasing(interpolatedCurveData, firstNonZeroPwm, lastDistinctPwm)
-
-	err = fan.AttachFanRpmCurveData(&interpolatedCurveData)
+	interpolatedCurveData, err = util.InterpolateStep(&curveData, 0, firstNonZeroPwm)
 	if err != nil {
-		ui.Error("Fan %s: Failed to attach fan curve data: %v", fan.GetId(), err)
-		return err
+		return nil, fmt.Errorf("error interpolating curve data: %v", err)
 	}
-
-	// save to database to restore it on restarts
-	err = f.persistence.SaveFanRpmData(fan)
+	interpolatedCurveData, err = util.InterpolateLinearly(&interpolatedCurveData, firstNonZeroPwm, lastPwm)
 	if err != nil {
-		ui.Error("Fan %s: Failed to save RWM data: %v", fan.GetId(), err)
+		return nil, fmt.Errorf("error during linear interpolation of fan curve data: %w", err)
 	}
-	return err
+	interpolatedCurveData = util.EnsureMonotonicallyIncreasing(interpolatedCurveData, firstNonZeroPwm, lastPwm)
+
+	return interpolatedCurveData, nil
 }
 
 // measureAtPwm sets the fan to the given target PWM value, optionally waits for it to settle,
