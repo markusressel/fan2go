@@ -52,7 +52,7 @@ jobs:
             make_target: build
 
           - goarch: ppc64le
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             native: false
             make_target: build-cross
             cc: powerpc64le-linux-gnu-gcc
@@ -62,7 +62,7 @@ jobs:
             qemu_bin: qemu-ppc64le-static
 
           - goarch: s390x
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             native: false
             make_target: build-cross
             cc: s390x-linux-gnu-gcc
@@ -72,7 +72,7 @@ jobs:
             qemu_bin: qemu-s390x-static
 
           - goarch: riscv64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             native: false
             make_target: build-cross
             cc: riscv64-linux-gnu-gcc
