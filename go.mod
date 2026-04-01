@@ -7,7 +7,7 @@ require (
 	github.com/asecurityteam/rolling v2.0.4+incompatible
 	github.com/creasty/defaults v1.8.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
-	github.com/guptarohit/asciigraph v0.8.1
+	github.com/guptarohit/asciigraph v0.9.0
 	github.com/labstack/echo-contrib v0.50.1
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/looplab/tarjan v0.1.0
