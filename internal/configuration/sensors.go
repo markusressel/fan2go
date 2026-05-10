@@ -10,6 +10,15 @@ type SensorConfig struct {
 	File   *FileSensorConfig   `json:"file,omitempty"`
 	Cmd    *CmdSensorConfig    `json:"cmd,omitempty"`
 	Disk   *DiskSensorConfig   `json:"disk,omitempty"`
+	Function *FunctionSensorConfig `json:"function,omitempty"`
+}
+
+type FunctionSensorConfig struct {
+	// Type is the type of function to use, can be one of the following:
+	// sum, difference, average, delta, minimum, maximum
+	Type string `json:"type"`
+	// Sensors is a list of other sensor ids to use as input for the defined function type
+	Sensors []string `json:"sensors"`
 }
 
 type HwMonSensorConfig struct {

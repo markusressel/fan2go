@@ -408,7 +408,7 @@ func TestValidateSensorSubConfigSensorIdIsMissing(t *testing.T) {
 	err := validateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "sensor sensor: sub-configuration for sensor is missing, use one of: hwmon | nvidia | file | cmd | disk")
+	assert.EqualError(t, err, "sensor sensor: sub-configuration for sensor is missing, use one of: hwmon | nvidia | file | cmd | disk | function")
 }
 
 func TestValidateSensor(t *testing.T) {
@@ -1049,4 +1049,155 @@ func TestFanConfig_PwmSetDelay_Absent(t *testing.T) {
 
 	// THEN
 	assert.Nil(t, fanConfig.PwmSetDelay)
+}
+func TestValidateSensorFunctionDependencyToSelf(t *testing.T) {
+	// GIVEN
+	config := Configuration{
+		Sensors: []SensorConfig{
+			{
+				ID: "sensor",
+				Function: &FunctionSensorConfig{
+					Type: FunctionAverage,
+					Sensors: []string{
+						"sensor",
+						"sensor1",
+					},
+				},
+			},
+			{
+				ID: "sensor1",
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.EqualError(t, err, "sensor sensor: a sensor cannot reference itself")
+}
+
+func TestValidateSensorFunctionDependencyCycle(t *testing.T) {
+	// GIVEN
+	config := Configuration{
+		Sensors: []SensorConfig{
+			{
+				ID: "s0",
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+			{
+				ID: "s1",
+				Function: &FunctionSensorConfig{
+					Type:    FunctionAverage,
+					Sensors: []string{"s2", "s0"},
+				},
+			},
+			{
+				ID: "s2",
+				Function: &FunctionSensorConfig{
+					Type:    FunctionAverage,
+					Sensors: []string{"s1", "s0"},
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.Contains(t, err.Error(), "sensor dependency cycle")
+	assert.Contains(t, err.Error(), "s1")
+	assert.Contains(t, err.Error(), "s2")
+}
+
+func TestValidateSensorFunctionMissingReference(t *testing.T) {
+	// GIVEN
+	config := Configuration{
+		Sensors: []SensorConfig{
+			{
+				ID: "sensor",
+				Function: &FunctionSensorConfig{
+					Type: FunctionAverage,
+					Sensors: []string{
+						"non-existent",
+						"sensor1",
+					},
+				},
+			},
+			{
+				ID: "sensor1",
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+		},
+	}
+
+	// WHEN
+	err := validateConfig(&config, "")
+
+	// THEN
+	assert.EqualError(t, err, "sensor sensor: no sensor definition with id 'non-existent' found")
+}
+
+func TestValidateSensorFunctionInUseCheck(t *testing.T) {
+	// GIVEN
+	config := Configuration{
+		Fans: []FanConfig{
+			{
+				ID:    "fan",
+				Curve: "curve",
+				File: &FileFanConfig{
+					Path: "",
+				},
+			},
+		},
+		Curves: []CurveConfig{
+			{
+				ID: "curve",
+				Linear: &LinearCurveConfig{
+					Sensor: "func_sensor",
+					Min:    0,
+					Max:    100,
+				},
+			},
+		},
+		Sensors: []SensorConfig{
+			{
+				ID: "leaf_sensor",
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+			{
+				ID: "func_sensor",
+				Function: &FunctionSensorConfig{
+					Type: FunctionAverage,
+					Sensors: []string{
+						"leaf_sensor",
+						"other_leaf",
+					},
+				},
+			},
+			{
+				ID: "other_leaf",
+				File: &FileSensorConfig{
+					Path: "",
+				},
+			},
+		},
+	}
+
+	// WHEN
+	// We call isSensorConfigInUse for leaf_sensor
+	inUse := isSensorConfigInUse(config.Sensors[0], config.Sensors, config.Curves, make(map[string]bool))
+
+	// THEN
+	assert.True(t, inUse)
 }
