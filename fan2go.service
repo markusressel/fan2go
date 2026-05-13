@@ -1,13 +1,86 @@
 [Unit]
-Description=Advanced Fan Control program
+Description=fan2go hardware fan control daemon
+Documentation=https://github.com/markusressel/fan2go
 After=lm-sensors.service
 
 [Service]
-LimitNOFILE=8192
-Environment=DISPLAY=:0
+Type=simple
+User=root
+Group=root
 ExecStart=/usr/bin/fan2go -c /etc/fan2go/fan2go.yaml --no-style
 Restart=always
-RestartSec=1s
+RestartSec=10
+Environment=DISPLAY=:0
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+RuntimeDirectory=fan2go
+RuntimeDirectoryMode=0755
+StateDirectory=fan2go
+StateDirectoryMode=0755
+LogsDirectory=fan2go
+LogsDirectoryMode=0755
+ConfigurationDirectory=fan2go
+ConfigurationDirectoryMode=0755
+
+PrivateDevices=false
+DeviceAllow=/dev/null rw
+DeviceAllow=/dev/zero rw
+DeviceAllow=/dev/urandom r
+DeviceAllow=char-hwmon rw
+DeviceAllow=char-thermal rw
+DeviceAllow=char-i2c rw
+DeviceAllow=char-misc rw
+DeviceAllow=block-sd r
+DeviceAllow=block-blkext r
+
+ReadWritePaths=/sys/class/hwmon
+ReadWritePaths=/sys/class/thermal
+ReadWritePaths=/sys/devices
+
+ReadOnlyPaths=/sys/bus
+ReadOnlyPaths=/proc/cpuinfo
+ReadOnlyPaths=/proc/meminfo
+ReadOnlyPaths=/etc/sensors3.conf
+ReadOnlyPaths=/etc/sensors.conf
+ReadOnlyPaths=/usr/local/etc/sensors3.conf
+ReadOnlyPaths=/proc/modules
+ReadOnlyPaths=/sys/module
+
+PrivateNetwork=false
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+IPAddressAllow=127.0.0.0/8
+IPAddressAllow=::1/128
+
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+
+PrivateUsers=false
+ProtectHostname=true
+ProtectClock=true
+
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER CAP_SYS_RAWIO CAP_CHOWN
+AmbientCapabilities=CAP_SYS_RAWIO
+
+SystemCallFilter=@system-service
+SystemCallFilter=~@debug @mount @cpu-emulation @obsolete @privileged @reboot @swap @resources @raw-io
+SystemCallErrorNumber=EPERM
+
+MemoryMax=256M
+TasksMax=50
+LimitNOFILE=1024
 
 [Install]
 WantedBy=multi-user.target

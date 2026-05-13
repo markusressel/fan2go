@@ -79,7 +79,7 @@ nix profile install nixpkgs#fan2go
 nix-env -f '<nixpkgs>' -iA fan2go
 ```
 
-### Debian
+### Debian / Ubuntu
 
 See: https://github.com/johnwbyrd/fan2go-package/
 
@@ -356,6 +356,9 @@ fans:
     # an increased rotational speed compared to lower values.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
+    # (Optional) Override the global fanController.pwmSetDelay for this specific fan.
+    # Useful when a fan requires more or less time to respond to PWM changes than the global default.
+    # pwmSetDelay: 10ms
     # (Optional) Configure how fan2go maps the internal [0..255] PWM range to
     # hardware-specific PWM values. If omitted, fan2go auto-detects the mapping
     # during fan initialization.
@@ -426,8 +429,8 @@ fans:
     #                       # that remember PWM settings — see issue #416)
     #   Map form (set explicit values on exit):
     #     onExit:
-    #       controlMode: auto   # set a specific control mode on exit
-    #       speed: 128          # set a fixed PWM speed on exit (0..255)
+    #       mode: auto      # set a specific control mode on exit
+    #       speed: 128      # set a fixed PWM speed on exit (0..255)
     #     # controlMode and speed can be combined or used independently.
     controlMode:
       active: pwm
@@ -561,6 +564,13 @@ sensors:
 
 Under `curves:` you need to define a list of fan speed curves, which represent the speed of a fan based on one or more
 temperature sensors.
+
+> **Speed values:** Curve values range from `0` to `255` (equivalently `0%` to `100%`).
+> By default, fan2go scales these to the fan's detected (or configured) `minPwm`..`maxPwm` range:
+> - `0` / `0%` → fan off (unless `neverStop: true`, in which case the fan is held at `minPwm`)
+> - `1`..`255` / `1%`..`100%` → linearly mapped to `minPwm`..`maxPwm`
+>
+> To use curve values as raw PWM values without scaling, set `useUnscaledCurveValues: true` in the fan config.
 
 #### Linear
 
@@ -944,6 +954,29 @@ The curve is used as the target value for the control algorithm to reach. The co
 next PWM value to apply to the fan to reach this target value. The fan controller then applies this PWM value to the
 fan, while respecting constraints like the minimum and maximum PWM values, as well as the `neverStop` flag.
 
+### Cycle
+
+A **cycle** refers to one iteration of a FanController's main control loop. fan2go creates one FanController per
+configured fan, each running its own independent control loop.
+
+During each cycle, the FanController:
+
+1. Evaluates the fan's associated curve to determine the target PWM value
+2. Runs the configured control algorithm (Direct or PID) to calculate the next PWM value
+3. Applies constraints such as min/max PWM and the `neverStop` flag
+4. Writes the PWM value to the hardware
+5. Performs sanity checks (e.g. detecting third-party PWM interference)
+
+The rate at which cycles execute is configured globally via `fanController.adjustmentTickRate` (default: `200ms`):
+
+```yaml
+fanController:
+  # The rate at which fan speed targets are updated
+  adjustmentTickRate: 200ms
+```
+
+This setting also determines the time unit implied by `maxPwmChangePerCycle` in the Direct control algorithm.
+
 ### Control Algorithms
 
 A control algorithm
@@ -995,8 +1028,8 @@ fans:
         d: 0.005
 ```
 
-The loop is advanced at a constant rate, specified by the `controllerAdjustmentTickRate` config option, which
-defaults to `200ms`.
+The loop is advanced at a constant rate, determined by the [cycle rate](#cycle) (`fanController.adjustmentTickRate`),
+which defaults to `200ms`.
 
 See [PID controller on Wikipedia](https://en.wikipedia.org/wiki/Proportional%E2%80%93integral%E2%80%93derivative_controller)
 for more information on what a PID controller is.

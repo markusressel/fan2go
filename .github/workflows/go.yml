@@ -9,8 +9,8 @@ on:
     branches: [ master ]
 
 jobs:
-  generate:
-    name: Generate cross-platform builds
+  test:
+    name: Lint and Test
     runs-on: ubuntu-latest
 
     steps:
@@ -27,73 +27,160 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9.2.0
         with:
-          # Optional: version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version
           version: latest
-
-          # Optional: working directory, useful for monorepos
-          # working-directory: somedir
-
-          # Optional: golangci-lint command line arguments.
-          # args: --exclude-use-default
-          # --issues-exit-code=0
-
-          # Optional: show only new issues if it's a pull request. The default value is `false`.
-          # only-new-issues: true
-
-          # Optional: if set to true then the all caching functionality will be complete disabled,
-          #           takes precedence over all other caching options.
-          # skip-cache: true
-
-          # Optional: if set to true then the action don't cache or restore ~/go/pkg.
           skip-cache: false
-
-          # Optional: if set to true then the action don't cache or restore ~/.cache/go-build.
-          # skip-build-cache: true
 
       - name: Test
         run: make test
 
-      - name: Generate build files (amd64)
+  build:
+    name: Build linux/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+            runner: ubuntu-latest
+            native: true
+            make_target: build
+
+          - goarch: arm64
+            runner: ubuntu-24.04-arm
+            native: true
+            make_target: build
+
+          - goarch: ppc64le
+            runner: ubuntu-24.04
+            native: false
+            make_target: build-cross
+            cc: powerpc64le-linux-gnu-gcc
+            dpkg_arch: ppc64el
+            cross_pkg: crossbuild-essential-ppc64el
+            libsensors_pkg: libsensors-dev:ppc64el
+            qemu_bin: qemu-ppc64le-static
+
+          - goarch: s390x
+            runner: ubuntu-24.04
+            native: false
+            make_target: build-cross
+            cc: s390x-linux-gnu-gcc
+            dpkg_arch: s390x
+            cross_pkg: crossbuild-essential-s390x
+            libsensors_pkg: libsensors-dev:s390x
+            qemu_bin: qemu-s390x-static
+
+          - goarch: riscv64
+            runner: ubuntu-24.04
+            native: false
+            make_target: build-cross
+            cc: riscv64-linux-gnu-gcc
+            dpkg_arch: riscv64
+            cross_pkg: crossbuild-essential-riscv64
+            libsensors_pkg: libsensors-dev:riscv64
+            qemu_bin: qemu-riscv64-static
+
+    steps:
+      - name: Install libsensors-dev (native)
+        if: matrix.native
+        run: sudo apt-get install -y libsensors-dev
+
+      - name: Set up multiarch and cross-compilation toolchain
+        if: ${{ !matrix.native }}
         run: |
-          GOOS="linux"
-          GOARCH="amd64"
-          GOFLAGS="-buildmode=exe"
-          NAME="fan2go-${GOOS}-${GOARCH}"
-          OUTPUT_BIN="dist/${NAME}"
-          
-          make build GOOS="${GOOS}" OARCH="${GOARCH}" GOFLAGS="${GOFLAGS}" OUTPUT_BIN="${OUTPUT_BIN}"
-          ./dist/fan2go-linux-amd64 version
-          
-          # same for the version without nvml, to make sure it still compiles
-          make build-no-nvml GOOS="${GOOS}" OARCH="${GOARCH}" GOFLAGS="${GOFLAGS}" OUTPUT_BIN="${OUTPUT_BIN}-no-nvml"
-          ./dist/fan2go-linux-amd64-no-nvml version
+          sudo dpkg --add-architecture ${{ matrix.dpkg_arch }}
+          # Replace the runner's ubuntu.sources with one pinned to amd64 only.
+          # The default file uses a mirrorlist URI that also serves ppc64el/s390x
+          # requests to security.ubuntu.com, which returns 404 for those arches.
+          sudo tee /etc/apt/sources.list.d/ubuntu.sources > /dev/null << 'EOF'
+          Types: deb
+          URIs: http://azure.archive.ubuntu.com/ubuntu
+          Suites: noble noble-updates noble-backports noble-security
+          Components: main restricted universe multiverse
+          Architectures: amd64
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          EOF
+          # Add ports.ubuntu.com for the foreign arch
+          printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports\nSuites: noble noble-updates noble-security\nComponents: main restricted universe multiverse\nArchitectures: %s\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' "${{ matrix.dpkg_arch }}" | sudo tee /etc/apt/sources.list.d/ports-${{ matrix.dpkg_arch }}.sources
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.cross_pkg }} ${{ matrix.libsensors_pkg }} qemu-user-static
 
+      - name: Checkout the repository
+        uses: actions/checkout@v6
 
-      # due to the required system dependency on libsensors-dev, and the fact that github doesn't provide arm64 runners,
-      # arm64 builds are not possible atm :(
-      #      - name: Generate build files (arm64)
-      #        run: |
-      #          gcc_cross_path="/home/runner"
-      #          wget -P "${gcc_cross_path}" https://musl.cc/aarch64-linux-musl-cross.tgz
-      #          tar -xvf "${gcc_cross_path}/aarch64-linux-musl-cross.tgz" -C "${gcc_cross_path}"
-      #          make build CGO_ENABLED=1 CC="${gcc_cross_path}/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc" GOOS="linux" GOARCH="arm64" GOFLAGS="-buildmode=exe" filename="$GOOS-$GOARCH" NAME="fan2go-$filename" OUTPUT_BIN="dist/${NAME}"
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '^1.23'
 
-      - name: Nvml Check
+      - name: Generate build files (${{ matrix.goarch }})
+        env:
+          CGO_ENABLED: "1"
+          CC: ${{ matrix.cc }}
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          OUTPUT_BIN="dist/fan2go-linux-${{ matrix.goarch }}"
+          make ${{ matrix.make_target }}          OUTPUT_BIN="${OUTPUT_BIN}"
+          make ${{ matrix.make_target }}-no-nvml  OUTPUT_BIN="${OUTPUT_BIN}-no-nvml"
+          file "${OUTPUT_BIN}"
+          file "${OUTPUT_BIN}-no-nvml"
+
+      - name: Smoke test (${{ matrix.goarch }})
+        env:
+          QEMU_BIN: ${{ matrix.qemu_bin }}
+        run: |
+          OUTPUT_BIN="dist/fan2go-linux-${{ matrix.goarch }}"
+          RUNNER="${QEMU_BIN}"
+          if [ "${{ matrix.native }}" = "true" ]; then
+            RUNNER=""
+          fi
+          ${RUNNER} "${OUTPUT_BIN}" version
+          ${RUNNER} "${OUTPUT_BIN}-no-nvml" version
+
+      - name: Nvml check (amd64 only)
+        if: matrix.goarch == 'amd64'
         run: |
           set -x
           # make sure the no-nvml build *really* doesn't use nvml
           # ("nvml" is printed by objdump at least once because of the filename,
-          #  but if nvml is linked, it has hundreds of occurences)
+          #  but if nvml is linked, it has hundreds of occurrences)
           test `objdump -T ./dist/fan2go-linux-amd64-no-nvml | grep -c nvml` -lt 3
           # .. and that the regular build *does* have symbols with "nvml" in it
           test `objdump -T ./dist/fan2go-linux-amd64 | grep -c nvml` -ge 3
 
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fan2go-linux-${{ matrix.goarch }}
+          path: dist/fan2go-linux-${{ matrix.goarch }}*
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
       - name: Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/fan2go-linux-amd64
             dist/fan2go-linux-amd64-no-nvml
+            dist/fan2go-linux-arm64
+            dist/fan2go-linux-arm64-no-nvml
+            dist/fan2go-linux-ppc64le
+            dist/fan2go-linux-ppc64le-no-nvml
+            dist/fan2go-linux-s390x
+            dist/fan2go-linux-s390x-no-nvml
+            dist/fan2go-linux-riscv64
+            dist/fan2go-linux-riscv64-no-nvml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
