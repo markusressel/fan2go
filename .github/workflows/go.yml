@@ -150,7 +150,7 @@ jobs:
           test `objdump -T ./dist/fan2go-linux-amd64 | grep -c nvml` -ge 3
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fan2go-linux-${{ matrix.goarch }}
           path: dist/fan2go-linux-${{ matrix.goarch }}*
