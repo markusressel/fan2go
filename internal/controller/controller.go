@@ -260,6 +260,8 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	}
 
 	var g run.Group
+	controllerCtx, cancelController := context.WithCancel(ctx)
+	defer cancelController()
 
 	if fan.Supports(fans.FeatureRpmSensor) {
 		// === rpm monitoring
@@ -267,9 +269,10 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 
 		g.Add(func() error {
 			tick := time.NewTicker(pollingRate)
+			defer tick.Stop()
 			for {
 				select {
-				case <-ctx.Done():
+				case <-controllerCtx.Done():
 					ui.Info("Stopping RPM monitor of fan controller for fan %s...", fan.GetId())
 					return nil
 				case <-tick.C:
@@ -277,6 +280,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 				}
 			}
 		}, func(err error) {
+			cancelController()
 			if err != nil {
 				ui.Warning("Error monitoring fan rpm: %v", err)
 			}
@@ -287,9 +291,10 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 		g.Add(func() error {
 			time.Sleep(1 * time.Second)
 			tick := time.NewTicker(f.updateRate)
+			defer tick.Stop()
 			for {
 				select {
-				case <-ctx.Done():
+				case <-controllerCtx.Done():
 					ui.Info("Stopping fan controller for fan %s...", fan.GetId())
 					f.restoreControlMode()
 					return nil
@@ -303,6 +308,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 				}
 			}
 		}, func(err error) {
+			cancelController()
 			if err != nil {
 				ui.Fatal("Error in fan controller fan %s: %v", fan.GetId(), err)
 			}

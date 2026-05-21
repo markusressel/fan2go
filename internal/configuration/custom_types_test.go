@@ -3,10 +3,64 @@ package configuration
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestDurationMillisecondsHookFunc_NumberToDuration(t *testing.T) {
+	type TestConfig struct {
+		TempSensorPollingRate        time.Duration `mapstructure:"tempSensorPollingRate"`
+		RpmPollingRate               time.Duration `mapstructure:"rpmPollingRate"`
+		ControllerAdjustmentTickRate time.Duration `mapstructure:"controllerAdjustmentTickRate"`
+	}
+
+	var cfg TestConfig
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			durationMillisecondsHookFunc(),
+			mapstructure.StringToTimeDurationHookFunc(),
+		),
+		Result: &cfg,
+	})
+	assert.NoError(t, err)
+
+	err = decoder.Decode(map[string]interface{}{
+		"tempSensorPollingRate":        5000,
+		"rpmPollingRate":               1500,
+		"controllerAdjustmentTickRate": 200,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 5*time.Second, cfg.TempSensorPollingRate)
+	assert.Equal(t, 1500*time.Millisecond, cfg.RpmPollingRate)
+	assert.Equal(t, 200*time.Millisecond, cfg.ControllerAdjustmentTickRate)
+}
+
+func TestDurationMillisecondsHookFunc_LeavesStringDurationsUntouched(t *testing.T) {
+	type TestConfig struct {
+		TempSensorPollingRate time.Duration `mapstructure:"tempSensorPollingRate"`
+		RpmPollingRate        time.Duration `mapstructure:"rpmPollingRate"`
+	}
+
+	var cfg TestConfig
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			durationMillisecondsHookFunc(),
+			mapstructure.StringToTimeDurationHookFunc(),
+		),
+		Result: &cfg,
+	})
+	assert.NoError(t, err)
+
+	err = decoder.Decode(map[string]interface{}{
+		"tempSensorPollingRate": "250ms",
+		"rpmPollingRate":        "2s",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 250*time.Millisecond, cfg.TempSensorPollingRate)
+	assert.Equal(t, 2*time.Second, cfg.RpmPollingRate)
+}
 
 func TestDefaultTrueBool_Get(t *testing.T) {
 	tests := []struct {
