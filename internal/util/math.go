@@ -401,7 +401,6 @@ func MaxValOrElse(values []float64, defaultVal float64) float64 {
 	return maxVal
 }
 
-<<<<<<< HEAD
 // IsMonotonicallyIncreasing validates that map values are monotonically increasing when iterating keys in ascending order.
 func IsMonotonicallyIncreasing(values map[int]int) error {
 	return validateMonotonicallyIncreasing(values, false)
@@ -429,7 +428,8 @@ func validateMonotonicallyIncreasing(values map[int]int, strict bool) error {
 	}
 
 	return nil
-=======
+}
+
 // MedianFloat64 returns the median of a non-empty slice of float64 values.
 func MedianFloat64(values []float64) float64 {
 	sorted := make([]float64, len(values))
@@ -440,5 +440,4 @@ func MedianFloat64(values []float64) float64 {
 		return (sorted[n/2-1] + sorted[n/2]) / 2.0
 	}
 	return sorted[n/2]
->>>>>>> 2c2128e (improve rpm curve analysis algorithm using two phase analysis)
 }

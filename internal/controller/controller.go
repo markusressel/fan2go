@@ -272,13 +272,8 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 			defer tick.Stop()
 			for {
 				select {
-<<<<<<< HEAD
 				case <-controllerCtx.Done():
-					ui.Info("Stopping RPM monitor of fan controller for fan %s...", fan.GetId())
-=======
-				case <-ctx.Done():
 					ui.Info("Fan %s: Stopping RPM monitor of fan controller...", fan.GetId())
->>>>>>> 2c2128e (improve rpm curve analysis algorithm using two phase analysis)
 					return nil
 				case <-tick.C:
 					f.measureRpm(fan)
@@ -299,13 +294,8 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 			defer tick.Stop()
 			for {
 				select {
-<<<<<<< HEAD
 				case <-controllerCtx.Done():
-					ui.Info("Stopping fan controller for fan %s...", fan.GetId())
-=======
-				case <-ctx.Done():
 					ui.Info("Fan %s: Stopping fan controller...", fan.GetId())
->>>>>>> 2c2128e (improve rpm curve analysis algorithm using two phase analysis)
 					f.restoreControlMode()
 					return nil
 				case <-tick.C:

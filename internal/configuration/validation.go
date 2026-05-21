@@ -337,30 +337,12 @@ func validateFans(config *Configuration) error {
 					return fmt.Errorf("fan '%s': %s key %d is out of range [0..255]", fanConfig.ID, label, k)
 				}
 			}
-<<<<<<< HEAD
 
 			var err error
 			if strict {
 				err = util.IsStrictlyMonotonicallyIncreasing(pts)
 			} else {
 				err = util.IsMonotonicallyIncreasing(pts)
-=======
-			sortedKeys := util.SortedKeys(pts)
-			for i := 1; i < len(sortedKeys); i++ {
-				prevKey := sortedKeys[i-1]
-				currKey := sortedKeys[i]
-				if strict {
-					if pts[currKey] <= pts[prevKey] {
-						return fmt.Errorf("fan '%s': %s values must be strictly monotonically increasing (at keys %d and %d: %d <= %d)",
-							fanConfig.ID, label, prevKey, currKey, pts[currKey], pts[prevKey])
-					}
-				} else {
-					if pts[currKey] < pts[prevKey] {
-						return fmt.Errorf("fan '%s': %s values must be monotonically increasing (at keys %d and %d: %d < %d)",
-							fanConfig.ID, label, prevKey, currKey, pts[currKey], pts[prevKey])
-					}
-				}
->>>>>>> aa9b12c (add interpolation and ensure monotonicity)
 			}
 			if err != nil {
 				return fmt.Errorf("fan '%s': %s %w", fanConfig.ID, label, err)
@@ -392,20 +374,12 @@ func validateFans(config *Configuration) error {
 			}
 
 			if fanConfig.PwmMap.Linear != nil {
-<<<<<<< HEAD
-				if err := validatePwmMapPoints("pwmMap linear", *fanConfig.PwmMap.Linear, true); err != nil {
-=======
 				if err := validatePwmMapPoints("pwmMap linear", *fanConfig.PwmMap.Linear, false); err != nil {
->>>>>>> aa9b12c (add interpolation and ensure monotonicity)
 					return err
 				}
 			}
 			if fanConfig.PwmMap.Values != nil {
-<<<<<<< HEAD
-				if err := validatePwmMapPoints("pwmMap values", *fanConfig.PwmMap.Values, true); err != nil {
-=======
 				if err := validatePwmMapPoints("pwmMap values", *fanConfig.PwmMap.Values, false); err != nil {
->>>>>>> aa9b12c (add interpolation and ensure monotonicity)
 					return err
 				}
 			}
@@ -434,11 +408,7 @@ func validateFans(config *Configuration) error {
 			}
 
 			if fanConfig.SetPwmToGetPwmMap.Linear != nil {
-<<<<<<< HEAD
-				if err := validatePwmMapPoints("setPwmToGetPwmMap linear", *fanConfig.SetPwmToGetPwmMap.Linear, true); err != nil {
-=======
 				if err := validatePwmMapPoints("setPwmToGetPwmMap linear", *fanConfig.SetPwmToGetPwmMap.Linear, false); err != nil {
->>>>>>> aa9b12c (add interpolation and ensure monotonicity)
 					return err
 				}
 			}
