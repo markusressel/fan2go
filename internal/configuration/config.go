@@ -146,6 +146,7 @@ func LoadConfig() {
 			mapstructure.ComposeDecodeHookFunc(
 				pwmMapPointsHookFunc(),
 				DefaultTrueBoolHookFunc(),
+				durationMillisecondsHookFunc(),
 				mapstructure.StringToTimeDurationHookFunc(),
 				mapstructure.StringToSliceHookFunc(","),
 				mapstructure.TextUnmarshallerHookFunc(),

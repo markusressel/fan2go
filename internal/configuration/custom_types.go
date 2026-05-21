@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 )
@@ -190,6 +191,52 @@ func anyToInt(v interface{}) (int, error) {
 		return n, nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to int", v)
+	}
+}
+
+// durationMillisecondsHookFunc allows numeric duration values in configuration.
+// Integer and float values are interpreted as milliseconds for backwards compatibility
+// with configs that use plain numbers (e.g. 200 => 200ms).
+func durationMillisecondsHookFunc() mapstructure.DecodeHookFuncType {
+	durationType := reflect.TypeOf(time.Duration(0))
+
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data interface{},
+	) (interface{}, error) {
+		if t != durationType {
+			return data, nil
+		}
+
+		switch v := data.(type) {
+		case int:
+			return time.Duration(v) * time.Millisecond, nil
+		case int8:
+			return time.Duration(v) * time.Millisecond, nil
+		case int16:
+			return time.Duration(v) * time.Millisecond, nil
+		case int32:
+			return time.Duration(v) * time.Millisecond, nil
+		case int64:
+			return time.Duration(v) * time.Millisecond, nil
+		case uint:
+			return time.Duration(v) * time.Millisecond, nil
+		case uint8:
+			return time.Duration(v) * time.Millisecond, nil
+		case uint16:
+			return time.Duration(v) * time.Millisecond, nil
+		case uint32:
+			return time.Duration(v) * time.Millisecond, nil
+		case uint64:
+			return time.Duration(v) * time.Millisecond, nil
+		case float32:
+			return time.Duration(float64(v) * float64(time.Millisecond)), nil
+		case float64:
+			return time.Duration(v * float64(time.Millisecond)), nil
+		default:
+			return data, nil
+		}
 	}
 }
 
