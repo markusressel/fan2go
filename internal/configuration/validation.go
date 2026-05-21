@@ -374,12 +374,12 @@ func validateFans(config *Configuration) error {
 			}
 
 			if fanConfig.PwmMap.Linear != nil {
-				if err := validatePwmMapPoints("pwmMap linear", *fanConfig.PwmMap.Linear, false); err != nil {
+				if err := validatePwmMapPoints("pwmMap linear", *fanConfig.PwmMap.Linear, true); err != nil {
 					return err
 				}
 			}
 			if fanConfig.PwmMap.Values != nil {
-				if err := validatePwmMapPoints("pwmMap values", *fanConfig.PwmMap.Values, false); err != nil {
+				if err := validatePwmMapPoints("pwmMap values", *fanConfig.PwmMap.Values, true); err != nil {
 					return err
 				}
 			}
