@@ -295,7 +295,7 @@ func TestHwMonFan_AttachFanCurveData(t *testing.T) {
 	// GIVEN
 	curveData := map[int]float64{
 		0:   0,
-		255: 255,
+		200: 200,
 	}
 	interpolated, err := util.InterpolateLinearly(&curveData, 10, 200)
 	assert.NoError(t, err)
