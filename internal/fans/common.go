@@ -137,6 +137,10 @@ const (
 	maxPwmRpmRatio = 0.95
 )
 
+func IsRpmLikelySpinning(rpm float64) bool {
+	return rpm >= rpmNoiseThreshold
+}
+
 // ComputePwmBoundaries calculates the startPwm and maxPwm values for a fan based on its fan curve data.
 //
 // startPwm: the lowest PWM value where the measured RPM exceeds rpmNoiseThreshold.
