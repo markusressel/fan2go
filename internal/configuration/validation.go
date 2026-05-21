@@ -328,7 +328,7 @@ func validateFans(config *Configuration) error {
 			}
 		}
 
-		validatePwmMapPoints := func(label string, pts map[int]int) error {
+		validatePwmMapPoints := func(label string, pts map[int]int, strict bool) error {
 			if len(pts) == 0 {
 				return fmt.Errorf("fan '%s': %s requires at least one control point", fanConfig.ID, label)
 			}
@@ -337,15 +337,17 @@ func validateFans(config *Configuration) error {
 					return fmt.Errorf("fan '%s': %s key %d is out of range [0..255]", fanConfig.ID, label, k)
 				}
 			}
-			sortedKeys := util.SortedKeys(pts)
-			for i := 1; i < len(sortedKeys); i++ {
-				prevKey := sortedKeys[i-1]
-				currKey := sortedKeys[i]
-				if pts[currKey] <= pts[prevKey] {
-					return fmt.Errorf("fan '%s': %s values must be strictly monotonically increasing (at keys %d and %d: %d <= %d)",
-						fanConfig.ID, label, prevKey, currKey, pts[currKey], pts[prevKey])
-				}
+
+			var err error
+			if strict {
+				err = util.IsStrictlyMonotonicallyIncreasing(pts)
+			} else {
+				err = util.IsMonotonicallyIncreasing(pts)
 			}
+			if err != nil {
+				return fmt.Errorf("fan '%s': %s %w", fanConfig.ID, label, err)
+			}
+
 			return nil
 		}
 
@@ -372,12 +374,12 @@ func validateFans(config *Configuration) error {
 			}
 
 			if fanConfig.PwmMap.Linear != nil {
-				if err := validatePwmMapPoints("pwmMap linear", map[int]int(*fanConfig.PwmMap.Linear)); err != nil {
+				if err := validatePwmMapPoints("pwmMap linear", *fanConfig.PwmMap.Linear, true); err != nil {
 					return err
 				}
 			}
 			if fanConfig.PwmMap.Values != nil {
-				if err := validatePwmMapPoints("pwmMap values", map[int]int(*fanConfig.PwmMap.Values)); err != nil {
+				if err := validatePwmMapPoints("pwmMap values", *fanConfig.PwmMap.Values, true); err != nil {
 					return err
 				}
 			}
@@ -406,12 +408,12 @@ func validateFans(config *Configuration) error {
 			}
 
 			if fanConfig.SetPwmToGetPwmMap.Linear != nil {
-				if err := validatePwmMapPoints("setPwmToGetPwmMap linear", map[int]int(*fanConfig.SetPwmToGetPwmMap.Linear)); err != nil {
+				if err := validatePwmMapPoints("setPwmToGetPwmMap linear", *fanConfig.SetPwmToGetPwmMap.Linear, true); err != nil {
 					return err
 				}
 			}
 			if fanConfig.SetPwmToGetPwmMap.Values != nil {
-				if err := validatePwmMapPoints("setPwmToGetPwmMap values", map[int]int(*fanConfig.SetPwmToGetPwmMap.Values)); err != nil {
+				if err := validatePwmMapPoints("setPwmToGetPwmMap values", *fanConfig.SetPwmToGetPwmMap.Values, false); err != nil {
 					return err
 				}
 			}

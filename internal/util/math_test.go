@@ -273,3 +273,23 @@ func TestMaxValOrElseEmpty(t *testing.T) {
 	// THEN
 	assert.Equal(t, defaultValue, result)
 }
+
+func TestIsMonotonicallyIncreasing_AllowsEqualAdjacentValues(t *testing.T) {
+	err := IsMonotonicallyIncreasing(map[int]int{0: 10, 64: 10, 255: 20})
+	assert.NoError(t, err)
+}
+
+func TestIsMonotonicallyIncreasing_RejectsDecreasingValues(t *testing.T) {
+	err := IsMonotonicallyIncreasing(map[int]int{0: 10, 64: 9, 255: 20})
+	assert.EqualError(t, err, "values must be monotonically increasing (at keys 0 and 64: 9 < 10)")
+}
+
+func TestIsStrictlyMonotonicallyIncreasing_RejectsEqualAdjacentValues(t *testing.T) {
+	err := IsStrictlyMonotonicallyIncreasing(map[int]int{0: 10, 64: 10, 255: 20})
+	assert.EqualError(t, err, "values must be strictly monotonically increasing (at keys 0 and 64: 10 <= 10)")
+}
+
+func TestIsStrictlyMonotonicallyIncreasing_AllowsStrictIncrease(t *testing.T) {
+	err := IsStrictlyMonotonicallyIncreasing(map[int]int{0: 10, 64: 11, 255: 20})
+	assert.NoError(t, err)
+}
