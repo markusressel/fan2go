@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -127,7 +128,7 @@ func (fan MockFan) GetRpmAvg() float64 {
 }
 
 func (fan *MockFan) SetRpmAvg(rpm float64) {
-	fan.RPM = int(rpm)
+	fan.RPM = int(math.Round(rpm))
 }
 
 func (fan MockFan) GetPwm() (result int, err error) {
