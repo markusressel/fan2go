@@ -2099,6 +2099,33 @@ func TestFanController_ComputePwmMapAutomatically_NilSetPwmMap(t *testing.T) {
 	}
 }
 
+func TestEvaluateAdaptiveSettling_FirstWindowStableTrend(t *testing.T) {
+	window := []float64{1000, 1001, 999, 1000, 1001, 1000}
+	stable, meanNow, rangeNow := evaluateAdaptiveSettling(window, nil, nil, 20)
+
+	assert.True(t, stable)
+	assert.InDelta(t, 1000.16, meanNow, 0.5)
+	assert.Greater(t, rangeNow, 0.0)
+}
+
+func TestEvaluateAdaptiveSettling_DriftingMeanNotSettled(t *testing.T) {
+	prevMean := 1000.0
+	prevRange := 4.0
+	window := []float64{1045, 1048, 1050, 1052, 1055, 1056}
+
+	stable, _, _ := evaluateAdaptiveSettling(window, &prevMean, &prevRange, 20)
+	assert.False(t, stable)
+}
+
+func TestEvaluateAdaptiveSettling_NoisyButConsistentSettled(t *testing.T) {
+	prevMean := 1000.0
+	prevRange := 30.0
+	window := []float64{986, 1004, 1012, 995, 1008, 992, 1005, 998}
+
+	stable, _, _ := evaluateAdaptiveSettling(window, &prevMean, &prevRange, 20)
+	assert.True(t, stable)
+}
+
 func TestFanController_ComputePwmMapAutomatically_EmptySetPwmMap(t *testing.T) {
 	// GIVEN: setPwmToGetPwmMap is non-nil but empty — this must not panic
 	fan := &MockFan{ID: "fan", PWM: 0, RPM: 100, MinPWM: 0}

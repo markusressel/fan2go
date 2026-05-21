@@ -1055,13 +1055,19 @@ func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
 // warning is logged and the function returns early rather than blocking forever.
 func (f *DefaultFanController) waitForFanToSettle(fan fans.Fan, timeout time.Duration) {
 	const requiredConsecutive = 3
+	const settleSampleInterval = 500 * time.Millisecond
+	const settleWindowSize = 8
+	const minSamplesForDecision = 6
 	diffThreshold := configuration.CurrentConfig.MaxRpmDiffForSettledFan
 
-	oldRpm := 0
-	// Prime oldRpm so the first diff is small rather than |rpm - 0|.
+	firstRpm := 0.0
 	if r, err := fan.GetRpm(); err == nil {
-		oldRpm = r
+		firstRpm = float64(r)
 	}
+	filter := util.NewKalmanFilter(util.DefaultKalmanConfig, firstRpm)
+	window := make([]float64, 0, settleWindowSize)
+	var prevMean *float64
+	var prevRange *float64
 
 	var deadline time.Time
 	if timeout > 0 {
@@ -1074,23 +1080,64 @@ func (f *DefaultFanController) waitForFanToSettle(fan fans.Fan, timeout time.Dur
 			ui.Warning("Fan %s did not settle within %v, continuing anyway (%d/%d stable readings)", fan.GetId(), timeout, consecutiveStable, requiredConsecutive)
 			return
 		}
-		ui.Debug("Fan %s: Waiting for fan to settle (%d/%d stable readings)...", fan.GetId(), consecutiveStable, requiredConsecutive)
-		time.Sleep(1 * time.Second)
+		time.Sleep(settleSampleInterval)
 
 		currentRpm, err := fan.GetRpm()
 		if err != nil {
 			ui.Warning("Fan %s: Cannot read RPM value: %v", fan.GetId(), err)
 			continue
 		}
-		diff := math.Abs(float64(currentRpm - oldRpm))
-		if diff <= diffThreshold {
+
+		filtered := filter.Update(float64(currentRpm))
+		window = append(window, filtered)
+		if len(window) > settleWindowSize {
+			window = window[1:]
+		}
+
+		if len(window) < minSamplesForDecision {
+			ui.Debug("Fan %s: Waiting for fan to settle (%d/%d stable readings, collecting baseline %d/%d)",
+				fan.GetId(), consecutiveStable, requiredConsecutive, len(window), minSamplesForDecision)
+			continue
+		}
+
+		stable, meanNow, rangeNow := evaluateAdaptiveSettling(window, prevMean, prevRange, diffThreshold)
+		if stable {
 			consecutiveStable++
 		} else {
 			consecutiveStable = 0
 		}
-		oldRpm = currentRpm
+		prevMean = &meanNow
+		prevRange = &rangeNow
+
+		ui.Debug("Fan %s: Waiting for fan to settle (%d/%d stable readings, mean=%.1f, noiseRange=%.1f)",
+			fan.GetId(), consecutiveStable, requiredConsecutive, meanNow, rangeNow)
 	}
 	ui.Debug("Fan %s has settled (%d consecutive stable readings)", fan.GetId(), requiredConsecutive)
+}
+
+func evaluateAdaptiveSettling(window []float64, prevMean *float64, prevRange *float64, baseThreshold float64) (bool, float64, float64) {
+	meanNow := util.Avg(window)
+	minNow := util.MinValOrElse(window, meanNow)
+	maxNow := util.MaxValOrElse(window, meanNow)
+	rangeNow := maxNow - minNow
+
+	// A minimum floor avoids treating near-zero quantization as "perfectly stable".
+	effectiveNoise := math.Max(2.0, rangeNow)
+	trendPerSample := math.Abs(window[len(window)-1]-window[0]) / float64(len(window)-1)
+
+	if prevMean == nil || prevRange == nil {
+		trendStable := trendPerSample <= math.Max(1.0, effectiveNoise*0.35)
+		return trendStable, meanNow, rangeNow
+	}
+
+	drift := math.Abs(meanNow - *prevMean)
+	rangeDelta := math.Abs(rangeNow - *prevRange)
+
+	meanStable := drift <= math.Max(baseThreshold, effectiveNoise)
+	noiseStable := rangeDelta <= math.Max(2.0, *prevRange*0.35)
+	trendStable := trendPerSample <= math.Max(1.0, effectiveNoise*0.35)
+
+	return meanStable && noiseStable && trendStable, meanNow, rangeNow
 }
 
 // computeSetPwmToGetPwmMap computes a mapping between "set pwm value" -> "actual pwm value"
