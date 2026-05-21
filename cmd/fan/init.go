@@ -54,8 +54,7 @@ var initCmd = &cobra.Command{
 			return err
 		}
 
-		err = fanController.RunInitializationSequence()
-
+		_, err = fanController.RunInitialization()
 		if err == nil {
 			ui.Success("Done!")
 			// print measured fan curve
