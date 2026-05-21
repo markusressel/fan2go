@@ -785,6 +785,21 @@ func TestValidateSetPwmToGetPwmMap_NonMonotonic(t *testing.T) {
 	cfg := minimalFanConfigWithSetPwm(&SetPwmToGetPwmMapConfig{Values: &pts})
 	err := validateConfig(&cfg, "")
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "monotonically increasing")
+}
+
+func TestValidateSetPwmToGetPwmMap_ValuesEqualAdjacentPointsAreAllowed(t *testing.T) {
+	pts := SetPwmToGetPwmMapValuesConfig{0: 0, 128: 100, 255: 100}
+	cfg := minimalFanConfigWithSetPwm(&SetPwmToGetPwmMapConfig{Values: &pts})
+	err := validateConfig(&cfg, "")
+	assert.NoError(t, err)
+}
+
+func TestValidateSetPwmToGetPwmMap_LinearEqualAdjacentPointsAreRejected(t *testing.T) {
+	pts := SetPwmToGetPwmMapLinearConfig{0: 100, 255: 100}
+	cfg := minimalFanConfigWithSetPwm(&SetPwmToGetPwmMapConfig{Linear: &pts})
+	err := validateConfig(&cfg, "")
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "strictly monotonically increasing")
 }
 

@@ -360,3 +360,32 @@ func MaxValOrElse(values []float64, defaultVal float64) float64 {
 	}
 	return maxVal
 }
+
+// IsMonotonicallyIncreasing validates that map values are monotonically increasing when iterating keys in ascending order.
+func IsMonotonicallyIncreasing(values map[int]int) error {
+	return validateMonotonicallyIncreasing(values, false)
+}
+
+// IsStrictlyMonotonicallyIncreasing validates that map values are strictly monotonically increasing when iterating keys in ascending order.
+func IsStrictlyMonotonicallyIncreasing(values map[int]int) error {
+	return validateMonotonicallyIncreasing(values, true)
+}
+
+func validateMonotonicallyIncreasing(values map[int]int, strict bool) error {
+	sortedKeys := SortedKeys(values)
+	for i := 1; i < len(sortedKeys); i++ {
+		prevKey := sortedKeys[i-1]
+		currKey := sortedKeys[i]
+		prevVal := values[prevKey]
+		currVal := values[currKey]
+
+		if strict && currVal <= prevVal {
+			return fmt.Errorf("values must be strictly monotonically increasing (at keys %d and %d: %d <= %d)", prevKey, currKey, currVal, prevVal)
+		}
+		if !strict && currVal < prevVal {
+			return fmt.Errorf("values must be monotonically increasing (at keys %d and %d: %d < %d)", prevKey, currKey, currVal, prevVal)
+		}
+	}
+
+	return nil
+}
