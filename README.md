@@ -46,7 +46,7 @@ external programs to interact with it. This API can be used to create UI clients
 
 [fan2go-tui](https://github.com/markusressel/fan2go-tui) - (Official) Terminal UI for fan2go.
 
-[![asciicast](https://asciinema.org/a/612087.svg)](https://asciinema.org/a/612087)
+[![asciicast](https://asciinema.org/a/1099673.svg)](https://asciinema.org/a/1099673)
 
 # How to use
 
