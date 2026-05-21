@@ -53,3 +53,16 @@ func TestNewKalmanFilter_InvalidConfigFallsBackToDefaults(t *testing.T) {
 	assert.Greater(t, estimate, 900.0)
 	assert.Less(t, estimate, 1000.0)
 }
+
+func TestSmoothMapValuesKalman_OnlySmoothsRequestedRange(t *testing.T) {
+	data := map[int]float64{
+		0: 0, 1: 10, 2: 500, 3: 12, 4: 14,
+	}
+
+	smoothed := SmoothMapValuesKalman(data, 2, 3, DefaultKalmanConfig)
+
+	assert.Equal(t, data[0], smoothed[0])
+	assert.Equal(t, data[1], smoothed[1])
+	assert.Equal(t, data[4], smoothed[4])
+	assert.NotEqual(t, data[3], smoothed[3])
+}

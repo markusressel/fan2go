@@ -2099,25 +2099,6 @@ func TestFanController_ComputePwmMapAutomatically_NilSetPwmMap(t *testing.T) {
 	}
 }
 
-func TestDefaultFanController_AggregateRpmSamples_SmoothsRisingSignal(t *testing.T) {
-	controller := DefaultFanController{}
-	samples := []float64{800, 850, 900, 950, 1000}
-
-	result := controller.aggregateRpmSamples(samples)
-
-	// Kalman smoothing should follow the rising trend and end above the median (900).
-	assert.Greater(t, result, 900.0)
-	assert.Less(t, result, 1000.0)
-}
-
-func TestDefaultFanController_AggregateRpmSamples_SingleValuePassthrough(t *testing.T) {
-	controller := DefaultFanController{}
-
-	result := controller.aggregateRpmSamples([]float64{1234})
-
-	assert.Equal(t, 1234.0, result)
-}
-
 func TestFanController_ComputePwmMapAutomatically_EmptySetPwmMap(t *testing.T) {
 	// GIVEN: setPwmToGetPwmMap is non-nil but empty — this must not panic
 	fan := &MockFan{ID: "fan", PWM: 0, RPM: 100, MinPWM: 0}

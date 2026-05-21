@@ -1,10 +1,10 @@
 package controller
 
 import (
-	"fmt"
 	"math"
 	"testing"
 
+	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
 )
@@ -45,66 +45,41 @@ func syntheticAggregationScenarios() []syntheticAggregationScenario {
 	}
 }
 
-func TestDefaultFanController_AggregateRpmSamples_SyntheticCurveMeasurementScenarios(t *testing.T) {
-	controller := DefaultFanController{}
-	scenarios := syntheticAggregationScenarios()
-
-	maxSamples := 0
-	for _, s := range scenarios {
-		if len(s.rpmSeries) > maxSamples {
-			maxSamples = len(s.rpmSeries)
-		}
+func TestSyntheticCurveSmoothing_PreservesBoundaryDetection(t *testing.T) {
+	rawCurve := map[int]float64{}
+	for pwm := 0; pwm <= 255; pwm++ {
+		rawCurve[pwm] = 0
 	}
-
-	for sampleCount := 2; sampleCount <= maxSamples; sampleCount++ {
-		totalKalmanErr := 0.0
-		totalMedianErr := 0.0
-		cases := 0
-
-		for _, scenario := range scenarios {
-			if len(scenario.rpmSeries) < sampleCount {
-				continue
-			}
-			samples := scenario.rpmSeries[:sampleCount]
-			kalmanEstimate := controller.aggregateRpmSamples(samples)
-			medianEstimate := util.MedianFloat64(samples)
-
-			kalmanErr := math.Abs(kalmanEstimate - scenario.trueRPM)
-			medianErr := math.Abs(medianEstimate - scenario.trueRPM)
-
-			totalKalmanErr += kalmanErr
-			totalMedianErr += medianErr
-			cases++
-
-			assert.False(t, math.IsNaN(kalmanEstimate), "scenario=%s sampleCount=%d", scenario.name, sampleCount)
-			assert.False(t, math.IsInf(kalmanEstimate, 0), "scenario=%s sampleCount=%d", scenario.name, sampleCount)
-		}
-
-		if cases == 0 {
-			continue
-		}
-
-		avgKalmanErr := totalKalmanErr / float64(cases)
-		avgMedianErr := totalMedianErr / float64(cases)
-		t.Logf("sampleCount=%d avgAbsErr kalman=%.2f median=%.2f delta=%.2f", sampleCount, avgKalmanErr, avgMedianErr, avgKalmanErr-avgMedianErr)
+	for pwm := 60; pwm <= 255; pwm++ {
+		// Slow rise with a tiny but real increase at 255.
+		rawCurve[pwm] = 800 + float64(pwm-60)*3
 	}
+	rawCurve[255] += 5
+
+	startRaw, maxRaw := fans.ComputePwmBoundariesFromCurveData(rawCurve, fans.MaxPwmValue)
+	assert.Equal(t, 60, startRaw)
+	assert.Equal(t, 255, maxRaw)
+
+	smoothed := util.SmoothMapValuesKalman(rawCurve, startRaw+1, maxRaw-1, util.DefaultKalmanConfig)
+	startSmoothed, maxSmoothed := fans.ComputePwmBoundariesFromCurveData(smoothed, fans.MaxPwmValue)
+
+	assert.Equal(t, startRaw, startSmoothed)
+	assert.Equal(t, maxRaw, maxSmoothed)
 }
 
-func BenchmarkDefaultFanController_AggregateRpmSamplesVsMedian(b *testing.B) {
-	controller := DefaultFanController{}
-	scenarios := syntheticAggregationScenarios()
-
-	for _, scenario := range scenarios {
-		scenario := scenario
-		b.Run(fmt.Sprintf("kalman_%s", scenario.name), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_ = controller.aggregateRpmSamples(scenario.rpmSeries)
-			}
-		})
-		b.Run(fmt.Sprintf("median_%s", scenario.name), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_ = util.MedianFloat64(scenario.rpmSeries)
-			}
-		})
+func TestSyntheticCurveSmoothing_DoesNotAlterOutsideInteriorRange(t *testing.T) {
+	curve := map[int]float64{}
+	for pwm := 0; pwm <= 255; pwm++ {
+		curve[pwm] = math.Max(0, float64(pwm-40)*10)
 	}
+
+	startPwm := 45
+	maxPwm := 250
+	smoothed := util.SmoothMapValuesKalman(curve, startPwm+1, maxPwm-1, util.DefaultKalmanConfig)
+
+	// Values outside interior smoothing range stay untouched.
+	assert.Equal(t, curve[startPwm], smoothed[startPwm])
+	assert.Equal(t, curve[maxPwm], smoothed[maxPwm])
+	assert.Equal(t, curve[startPwm-1], smoothed[startPwm-1])
+	assert.Equal(t, curve[maxPwm+1], smoothed[maxPwm+1])
 }

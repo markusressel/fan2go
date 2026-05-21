@@ -145,13 +145,18 @@ const (
 // Using the highest qualifying PWM for maxPwm (rather than the single measurement with the greatest
 // value) avoids noise spikes at low PWM values being mistaken for the true peak.
 func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
-	userStartPwm := fan.GetStartPwm()
+	pwmRpmMap := fan.GetFanRpmCurveData()
+	return ComputePwmBoundariesFromCurveData(*pwmRpmMap, fan.GetStartPwm())
+}
+
+// ComputePwmBoundariesFromCurveData calculates startPwm and maxPwm directly from curve data.
+// userStartPwm allows enforcing an explicit start PWM (pass MaxPwmValue to disable override).
+func ComputePwmBoundariesFromCurveData(pwmRpmMap map[int]float64, userStartPwm int) (startPwm int, maxPwm int) {
 	startPwm = 255
 	maxPwm = 255
-	pwmRpmMap := fan.GetFanRpmCurveData()
 
 	var keys []int
-	for pwm := range *pwmRpmMap {
+	for pwm := range pwmRpmMap {
 		keys = append(keys, pwm)
 	}
 	sort.Ints(keys)
@@ -159,7 +164,7 @@ func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 	// Pass 1: find startPwm and peak RPM.
 	peakRpm := 0.0
 	for _, pwm := range keys {
-		avgRpm := (*pwmRpmMap)[pwm]
+		avgRpm := pwmRpmMap[pwm]
 		if avgRpm > peakRpm {
 			peakRpm = avgRpm
 		}
@@ -174,7 +179,7 @@ func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 	minQualifyingRpm := peakRpm * maxPwmRpmRatio
 	maxPwm = -1
 	for _, pwm := range keys {
-		if (*pwmRpmMap)[pwm] >= minQualifyingRpm {
+		if pwmRpmMap[pwm] >= minQualifyingRpm {
 			maxPwm = pwm
 		}
 	}

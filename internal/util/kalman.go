@@ -1,5 +1,7 @@
 package util
 
+import "sort"
+
 const (
 	defaultKalmanProcessNoise       = 25.0
 	defaultKalmanMeasurementNoise   = 400.0
@@ -50,4 +52,34 @@ func (k *KalmanFilter) Update(measurement float64) float64 {
 	k.estimate += kalmanGain * (measurement - k.estimate)
 	k.errorCovariance *= (1.0 - kalmanGain)
 	return k.estimate
+}
+
+// SmoothMapValuesKalman returns a copy of data where values for keys in [start;stop]
+// are Kalman-smoothed in ascending key order. Values outside the range are unchanged.
+func SmoothMapValuesKalman(data map[int]float64, start int, stop int, cfg KalmanConfig) map[int]float64 {
+	smoothed := make(map[int]float64, len(data))
+	for k, v := range data {
+		smoothed[k] = v
+	}
+	if start > stop {
+		return smoothed
+	}
+
+	keys := make([]int, 0, len(data))
+	for k := range data {
+		if k >= start && k <= stop {
+			keys = append(keys, k)
+		}
+	}
+	if len(keys) == 0 {
+		return smoothed
+	}
+	sort.Ints(keys)
+
+	filter := NewKalmanFilter(cfg, data[keys[0]])
+	for _, key := range keys {
+		smoothed[key] = filter.Update(data[key])
+	}
+
+	return smoothed
 }

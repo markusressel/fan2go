@@ -684,12 +684,21 @@ func (f *DefaultFanController) rpmCurveMeasurementCleanup(curveData map[int]floa
 	}
 	interpolatedCurveData = util.EnsureMonotonicallyIncreasing(interpolatedCurveData, firstNonZeroPwm, lastPwm)
 
+	// Keep boundary detection (start/max PWM) based on robust raw statistics,
+	// and only smooth the interior range to avoid boundary drift.
+	startPwmRaw, maxPwmRaw := fans.ComputePwmBoundariesFromCurveData(interpolatedCurveData, fans.MaxPwmValue)
+	if maxPwmRaw-startPwmRaw > 1 {
+		interiorStart := startPwmRaw + 1
+		interiorStop := maxPwmRaw - 1
+		interpolatedCurveData = util.SmoothMapValuesKalman(interpolatedCurveData, interiorStart, interiorStop, util.DefaultKalmanConfig)
+	}
+
 	return interpolatedCurveData, nil
 }
 
 // measureAtPwm sets the fan to the given target PWM value, optionally waits for it to settle,
 // takes SampleCount RPM samples spaced SampleDelay apart, and returns
-// a Kalman-smoothed estimate. Returns -1 (with nil error) if the reported PWM does not match the
+// their median as a robust per-point estimate. Returns -1 (with nil error) if the reported PWM does not match the
 // expected value after setting it (indicates the hardware ignored the request).
 // If settleTimeout > 0, waitForFanToSettle is called with that timeout (used for large PWM steps).
 // If settleTimeout == 0, a plain FanResponseDelay sleep is used instead (sufficient for small steps).
@@ -739,20 +748,7 @@ func (f *DefaultFanController) measureAtPwm(fan fans.Fan, pwm int, settleTimeout
 	if len(samples) == 0 {
 		return 0, fmt.Errorf("no RPM samples collected at PWM %d", pwm)
 	}
-	return f.aggregateRpmSamples(samples), nil
-}
-
-func (f *DefaultFanController) aggregateRpmSamples(samples []float64) float64 {
-	if len(samples) == 1 {
-		return samples[0]
-	}
-
-	filter := util.NewKalmanFilter(util.DefaultKalmanConfig, samples[0])
-	estimate := samples[0]
-	for _, sample := range samples {
-		estimate = filter.Update(sample)
-	}
-	return estimate
+	return util.MedianFloat64(samples), nil
 }
 
 // read the current value of a fan RPM sensor and append it to the moving window
