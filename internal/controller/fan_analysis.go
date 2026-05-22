@@ -152,6 +152,7 @@ func (f *FanCurveAnalyzer) detectMaxBoundary(
 		rpm float64
 	}
 	points := make([]point, 0, 1+((lastIdx-topStartIdx)/step)+1)
+	fastScan := make(map[int]float64, 1+((lastIdx-topStartIdx)/step)+1)
 	peakRpm := 0.0
 
 	ui.Info("Fan %s: Discovering max boundary...", fan.GetId())
@@ -164,7 +165,7 @@ func (f *FanCurveAnalyzer) detectMaxBoundary(
 		if rpm < 0 {
 			continue
 		}
-		curveData[pwm] = rpm
+		fastScan[pwm] = rpm
 		points = append(points, point{idx: idx, rpm: rpm})
 		if rpm > peakRpm {
 			peakRpm = rpm
@@ -176,9 +177,10 @@ func (f *FanCurveAnalyzer) detectMaxBoundary(
 	}
 
 	threshold := peakRpm * 0.95
+	roughIdx := -1
 	for idx := lastIdx; idx >= topStartIdx; idx-- {
 		pwm := distinct[idx]
-		rpm, exists := curveData[pwm]
+		rpm, exists := fastScan[pwm]
 		if !exists {
 			measureRpm, measureErr := f.measureAtPwm(fan, pwm, 0)
 			if measureErr != nil {
@@ -188,13 +190,21 @@ func (f *FanCurveAnalyzer) detectMaxBoundary(
 				continue
 			}
 			rpm = measureRpm
-			curveData[pwm] = rpm
+			fastScan[pwm] = rpm
 		}
 
 		if rpm >= threshold {
-			ui.Info("Fan %s: max boundary detected at PWM %d (threshold %.1f RPM)", fan.GetId(), pwm, threshold)
-			return idx, pwm, nil
+			roughIdx = idx
+			break
 		}
+	}
+
+	if roughIdx >= 0 {
+		confirmedIdx, confirmedPwm, confirmErr := f.confirmMaxBoundary(fan, distinct, startIdx, roughIdx, curveData)
+		if confirmErr != nil {
+			return 0, 0, confirmErr
+		}
+		return confirmedIdx, confirmedPwm, nil
 	}
 
 	// Fallback in case the threshold is unusually strict due to outliers.
@@ -202,6 +212,71 @@ func (f *FanCurveAnalyzer) detectMaxBoundary(
 	fallbackPwm := distinct[fallbackIdx]
 	ui.Warning("Fan %s: no qualifying max boundary found in top range, using fallback PWM %d", fan.GetId(), fallbackPwm)
 	return fallbackIdx, fallbackPwm, nil
+}
+
+func (f *FanCurveAnalyzer) confirmMaxBoundary(
+	fan fans.Fan,
+	distinct []int,
+	startIdx int,
+	roughIdx int,
+	curveData map[int]float64,
+) (maxIdx int, maxPwm int, err error) {
+	lastIdx := len(distinct) - 1
+	confirmIdxSet := map[int]struct{}{}
+
+	for idx := max(startIdx, lastIdx-3); idx <= lastIdx; idx++ {
+		confirmIdxSet[idx] = struct{}{}
+	}
+	for _, idx := range []int{roughIdx - 1, roughIdx, roughIdx + 1} {
+		if idx >= startIdx && idx <= lastIdx {
+			confirmIdxSet[idx] = struct{}{}
+		}
+	}
+
+	confirmIndices := make([]int, 0, len(confirmIdxSet))
+	for idx := range confirmIdxSet {
+		confirmIndices = append(confirmIndices, idx)
+	}
+	sort.Ints(confirmIndices)
+
+	peakConfirmed := 0.0
+	for _, idx := range confirmIndices {
+		pwm := distinct[idx]
+		rpm, measureErr := f.measureAtPwm(fan, pwm, configuration.CurrentConfig.Analysis.SettleTimeout)
+		if measureErr != nil {
+			return 0, 0, measureErr
+		}
+		if rpm < 0 {
+			continue
+		}
+		curveData[pwm] = rpm
+		if rpm > peakConfirmed {
+			peakConfirmed = rpm
+		}
+	}
+
+	if peakConfirmed <= 0 {
+		fallbackPwm := distinct[roughIdx]
+		ui.Warning("Fan %s: max boundary confirmation failed, using rough candidate PWM %d", fan.GetId(), fallbackPwm)
+		return roughIdx, fallbackPwm, nil
+	}
+
+	threshold := peakConfirmed * 0.95
+	for idx := lastIdx; idx >= startIdx; idx-- {
+		pwm := distinct[idx]
+		rpm, exists := curveData[pwm]
+		if !exists {
+			continue
+		}
+		if rpm >= threshold {
+			ui.Info("Fan %s: max boundary confirmed at PWM %d (threshold %.1f RPM)", fan.GetId(), pwm, threshold)
+			return idx, pwm, nil
+		}
+	}
+
+	fallbackPwm := distinct[roughIdx]
+	ui.Warning("Fan %s: no confirmed max boundary above threshold, using rough candidate PWM %d", fan.GetId(), fallbackPwm)
+	return roughIdx, fallbackPwm, nil
 }
 
 func (f *FanCurveAnalyzer) sampleInteriorCoarse(
@@ -221,12 +296,15 @@ func (f *FanCurveAnalyzer) sampleInteriorCoarse(
 	}
 
 	count := 0
+	lastMeasuredPwm := distinct[startIdx]
 	for idx := startIdx + step; idx < maxIdx; idx += step {
 		pwm := distinct[idx]
 		if _, exists := curveData[pwm]; exists {
+			lastMeasuredPwm = pwm
 			continue
 		}
-		rpm, err := f.measureAtPwm(fan, pwm, 0)
+		settleTimeout := settleTimeoutForPwmJump(lastMeasuredPwm, pwm, configuration.CurrentConfig.Analysis.SettleTimeout)
+		rpm, err := f.measureAtPwm(fan, pwm, settleTimeout)
 		if err != nil {
 			return curveData, err
 		}
@@ -234,11 +312,19 @@ func (f *FanCurveAnalyzer) sampleInteriorCoarse(
 			continue
 		}
 		curveData[pwm] = rpm
+		lastMeasuredPwm = pwm
 		count++
 	}
 
 	ui.Info("Fan %s: Interior coarse sampling captured %d points", fan.GetId(), count)
 	return curveData, nil
+}
+
+func settleTimeoutForPwmJump(previousPwm int, targetPwm int, fullSettleTimeout time.Duration) time.Duration {
+	if util.Abs(targetPwm-previousPwm) >= 8 {
+		return fullSettleTimeout
+	}
+	return 0
 }
 
 func (f *FanCurveAnalyzer) rpmCurveMeasurementPhase1(

@@ -2126,6 +2126,18 @@ func TestEvaluateAdaptiveSettling_NoisyButConsistentSettled(t *testing.T) {
 	assert.True(t, stable)
 }
 
+func TestSettleTimeoutForPwmJump_UsesFullSettleForLargeJump(t *testing.T) {
+	full := 30 * time.Second
+	timeout := settleTimeoutForPwmJump(20, 50, full)
+	assert.Equal(t, full, timeout)
+}
+
+func TestSettleTimeoutForPwmJump_UsesFastPathForSmallJump(t *testing.T) {
+	full := 30 * time.Second
+	timeout := settleTimeoutForPwmJump(40, 52, full)
+	assert.Equal(t, time.Duration(0), timeout)
+}
+
 func TestFanController_ComputePwmMapAutomatically_EmptySetPwmMap(t *testing.T) {
 	// GIVEN: setPwmToGetPwmMap is non-nil but empty — this must not panic
 	fan := &MockFan{ID: "fan", PWM: 0, RPM: 100, MinPWM: 0}

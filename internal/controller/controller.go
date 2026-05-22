@@ -356,6 +356,9 @@ func (f *DefaultFanController) RunInitialization() (map[int]float64, error) {
 		return nil, err
 	}
 
+	rawStartPwm, rawMaxPwm := fans.ComputePwmBoundariesFromCurveData(curveData, fans.MaxPwmValue)
+	ui.Info("Fan %s: Analysis boundaries detected (before config overrides): Start %d, Max %d", fan.GetId(), rawStartPwm, rawMaxPwm)
+
 	err = fan.AttachFanRpmCurveData(&curveData)
 	if err != nil {
 		ui.Error("Fan %s: Failed to attach fan curve data: %v", fan.GetId(), err)
