@@ -863,19 +863,24 @@ fan2go uses [gosensors](https://github.com/md14454/gosensors) to directly intera
 
 ## Initialization
 
-To properly control a fan which fan2go has not seen before, its speed curve is analyzed. This means
+To properly control a fan which fan2go has not seen before, its RPM curve is analyzed.
 
-* spinning down the fans to 0
-* slowly ramping up the speed and monitoring RPM changes along the way
+fan2go uses an adaptive measurement process instead of sweeping all PWM values:
 
-**Note that this takes approx. 8 1/2 minutes**, since we have to wait for the fan speed to settle before taking
-measurements. Measurements taken during this process will then be used to determine the lowest PWM value at which the
-fan is still running, as well as the highest PWM value that still yields a change in RPM.
+1. Discover the start boundary (`startPwm`) using boundary search.
+2. Discover the max boundary (`maxPwm`) by scanning and confirming the upper PWM range.
+3. Sample interior points coarsely between these boundaries.
+4. Clean up the measured data by applying threshold-aware filtering, interpolation, monotonic enforcement, and interior
+   smoothing.
+
+This produces a stable full-range PWM→RPM map while requiring far fewer measurements than a full linear sweep. Runtime
+depends on fan response characteristics and the analysis config (`analysis.settleTimeout`, `analysis.sampleCount`,
+`analysis.sampleDelay`, and `fanResponseDelay`).
 
 All of this is saved to a local database (path given by the `dbPath` config option), so it is only needed once per fan
 configuration.
 
-To reduce the risk of running the whole system on low fan speeds for such a long period of time, you can force fan2go to
+To reduce risk while analyzing multiple fans, you can force fan2go to
 initialize only one fan at a time, using the `runFanInitializationInParallel: false` config option.
 
 Some PWM controllers or fans may require more time to react to PWM changes. If fan2go is failing to characterize a fan,

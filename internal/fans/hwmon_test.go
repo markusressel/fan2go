@@ -295,7 +295,7 @@ func TestHwMonFan_AttachFanCurveData(t *testing.T) {
 	// GIVEN
 	curveData := map[int]float64{
 		0:   0,
-		255: 255,
+		200: 200,
 	}
 	interpolated, err := util.InterpolateLinearly(&curveData, 10, 200)
 	assert.NoError(t, err)
@@ -312,8 +312,11 @@ func TestHwMonFan_AttachFanCurveData(t *testing.T) {
 	// THEN
 	assert.NoError(t, err)
 	assert.Equal(t, &interpolated, fan.GetFanRpmCurveData())
-	assert.Equal(t, 10, fan.GetMinPwm())
-	assert.Equal(t, 10, fan.GetStartPwm())
+	// startPwm: first PWM where RPM >= rpmNoiseThreshold (50.0).
+	// Interpolated data starts at PWM 10 with RPM=10, first qualifying point is PWM 50 (RPM=50).
+	assert.Equal(t, 50, fan.GetMinPwm())
+	assert.Equal(t, 50, fan.GetStartPwm())
+	// maxPwm: highest PWM where RPM >= 95% of peak (200*0.95=190). Last qualifying PWM = 200.
 	assert.Equal(t, 200, fan.GetMaxPwm())
 }
 

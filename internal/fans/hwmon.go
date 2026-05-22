@@ -161,10 +161,10 @@ func (fan *HwMonFan) GetControlMode() (ControlMode, error) {
 	pwmEnabledValue, err := util.ReadIntFromFile(fan.Config.HwMon.PwmEnablePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			ui.Warning("pwm_enable file for fan '%s' does not exist, assuming no control mode support", fan.GetId())
+			ui.Warning("Fan %s: pwm_enable file does not exist, assuming no control mode support", fan.GetId())
 			return ControlModeDisabled, nil
 		}
-		return ControlModeUnknown, fmt.Errorf("error reading pwm_enable for fan %s: %w", fan.GetId(), err)
+		return ControlModeUnknown, fmt.Errorf("fan %s: error reading pwm_enable: %w", fan.GetId(), err)
 	}
 
 	if pwmEnabledValue >= 2 {
@@ -180,7 +180,7 @@ func (fan *HwMonFan) GetControlMode() (ControlMode, error) {
 	case 1:
 		return ControlModePWM, nil
 	default:
-		return ControlModeUnknown, fmt.Errorf("cannot map pwm_enable value %d to ControlMode for fan %s", pwmEnabledValue, fan.GetId())
+		return ControlModeUnknown, fmt.Errorf("fan %s: cannot map pwm_enable value %d to ControlMode", fan.GetId(), pwmEnabledValue)
 	}
 }
 

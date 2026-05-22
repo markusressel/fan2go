@@ -42,9 +42,6 @@ type FanController interface {
 
 	GetStatistics() FanControllerStatistics
 
-	// RunInitializationSequence for the given fan to determine its characteristics
-	RunInitializationSequence() (err error)
-
 	UpdateFanSpeed() error
 }
 
@@ -134,10 +131,10 @@ func NewFanController(
 	controlLoop control_loop.ControlLoop,
 	updateRate time.Duration,
 	assumePwmMapIdentity bool,
-) FanController {
+) *DefaultFanController {
 	curve, ok := curves.GetSpeedCurve(fan.GetCurveId())
 	if !ok {
-		ui.Fatal("Failed to create fan controller for fan '%s': Curve with ID '%s' not found", fan.GetId(), fan.GetCurveId())
+		ui.Fatal("Fan %s: Failed to create fan controller: Curve with ID '%s' not found", fan.GetId(), fan.GetCurveId())
 	}
 	return &DefaultFanController{
 		persistence:                      persistence,
@@ -237,7 +234,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	ui.Debug("setPwmToGetPwmMap of fan '%s': %v", fan.GetId(), f.setPwmToGetPwmMap)
 	ui.Debug("pwmMap of fan '%s': %v", fan.GetId(), f.pwmMapping)
 	ui.Info("PWM settings of fan '%s': Min %d, Start %d, Max %d", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm(), fan.GetMaxPwm())
-	ui.Info("Starting controller loop for fan '%s'", fan.GetId())
+	ui.Info("Fan %s: Starting controller loop", fan.GetId())
 
 	if fan.GetMinPwm() > fan.GetStartPwm() {
 		ui.Warning("Suspicious pwm config of fan '%s': MinPwm (%d) > StartPwm (%d)", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm())
@@ -273,7 +270,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 			for {
 				select {
 				case <-controllerCtx.Done():
-					ui.Info("Stopping RPM monitor of fan controller for fan %s...", fan.GetId())
+					ui.Info("Fan %s: Stopping RPM monitor of fan controller...", fan.GetId())
 					return nil
 				case <-tick.C:
 					f.measureRpm(fan)
@@ -295,7 +292,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 			for {
 				select {
 				case <-controllerCtx.Done():
-					ui.Info("Stopping fan controller for fan %s...", fan.GetId())
+					ui.Info("Fan %s: Stopping fan controller...", fan.GetId())
 					f.restoreControlMode()
 					return nil
 				case <-tick.C:
@@ -323,22 +320,17 @@ func (f *DefaultFanController) runInitializationIfNeeded() (map[int]float64, err
 	fan := f.fan
 	// check if we have data for this fan in persistence,
 	// if not we need to run the initialization sequence
-	ui.Info("Loading fan curve data for fan '%s'...", fan.GetId())
+	ui.Info("Fan %s: Loading fan curve data...", fan.GetId())
 	fanRpmData, err := f.persistence.LoadFanRpmData(fan)
 	if err != nil {
 		config := fan.GetConfig()
 		if config.HwMon != nil || config.Nvidia != nil {
 			ui.Warning("Fan '%s' has not yet been analyzed, starting initialization sequence...", fan.GetId())
-			err = f.RunInitializationSequence()
+			fanCurveData, err := f.RunInitialization()
 			if err != nil {
-				f.restoreControlMode()
 				return nil, err
 			}
-			fanRpmData, err = f.persistence.LoadFanRpmData(fan)
-			if err != nil {
-				f.restoreControlMode()
-				return nil, err
-			}
+			return fanCurveData, nil
 		} else { // file/cmd fan
 			if fan.GetFanRpmCurveData() != nil {
 				err = f.persistence.SaveFanRpmData(fan)
@@ -346,6 +338,46 @@ func (f *DefaultFanController) runInitializationIfNeeded() (map[int]float64, err
 		}
 	}
 	return fanRpmData, err
+}
+
+func (f *DefaultFanController) RunInitialization() (map[int]float64, error) {
+	fan := f.fan
+
+	err := f.computeFanSpecificMappings()
+	if err != nil {
+		ui.Error("Fan %s: Error computing fan specific mappings: %v", fan.GetId(), err)
+		return nil, err
+	}
+
+	fanAnalyzer := NewFanCurveAnalyzer(f)
+	curveData, err := fanAnalyzer.RunInitializationSequence()
+	if err != nil {
+		f.restoreControlMode()
+		return nil, err
+	}
+
+	rawStartPwm, rawMaxPwm := fans.ComputePwmBoundariesFromCurveData(curveData, fans.MaxPwmValue)
+	ui.Info("Fan %s: Analysis boundaries detected (before config overrides): Start %d, Max %d", fan.GetId(), rawStartPwm, rawMaxPwm)
+
+	err = fan.AttachFanRpmCurveData(&curveData)
+	if err != nil {
+		ui.Error("Fan %s: Failed to attach fan curve data: %v", fan.GetId(), err)
+		return nil, err
+	}
+
+	// save to database to restore it on restarts
+	err = f.persistence.SaveFanRpmData(fan)
+	if err != nil {
+		ui.Error("Fan %s: Failed to save RPM data: %v", fan.GetId(), err)
+	}
+
+	fanRpmData, err := f.persistence.LoadFanRpmData(fan)
+	if err != nil {
+		f.restoreControlMode()
+		return nil, err
+	}
+
+	return fanRpmData, nil
 }
 
 // UpdateFanSpeed updates the fan speed by:
@@ -461,91 +493,8 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 	return nil
 }
 
-func (f *DefaultFanController) RunInitializationSequence() (err error) {
-	fan := f.fan
-
-	err = f.computeFanSpecificMappings()
-	if err != nil {
-		ui.Error("Error computing fan specific mappings for %s: %v", fan.GetId(), err)
-		return err
-	}
-
-	if !fan.Supports(fans.FeatureRpmSensor) {
-		ui.Info("Fan '%s' doesn't support RPM sensor, skipping fan curve measurement", fan.GetId())
-		return nil
-	}
-	ui.Info("Measuring RPM curve...")
-
-	err = trySetManualPwm(fan)
-	if err != nil {
-		ui.Warning("Could not enable manual fan mode on %s, trying to continue anyway...", fan.GetId())
-	}
-
-	curveData := map[int]float64{}
-
-	initialMeasurement := true
-	for _, pwm := range f.targetValuesWithDistinctPWMValue {
-		// set a pwm
-		actualPwm := f.applyPwmMapToTarget(pwm)
-		err = f.setPwm(actualPwm)
-		if err != nil {
-			ui.Error("Unable to run initialization sequence on %s: %v", fan.GetId(), err)
-			return err
-		}
-		expectedPwm := f.getReportedPwmAfterApplyingPwm(actualPwm)
-		time.Sleep(f.getPwmSetDelay())
-		actualPwm, err := f.getPwm()
-		if err != nil {
-			ui.Error("Fan %s: Unable to measure current PWM", fan.GetId())
-			return err
-		}
-		if actualPwm != expectedPwm {
-			ui.Debug("Fan %s: Actual PWM value differs from requested one, skipping: requested: %d, expected: %d, actual: %d", fan.GetId(), pwm, expectedPwm, actualPwm)
-			continue
-		}
-
-		if initialMeasurement {
-			initialMeasurement = false
-			f.waitForFanToSettle(fan)
-		} else {
-			// wait a bit to allow the fan speed to settle
-			time.Sleep(time.Duration(configuration.CurrentConfig.FanResponseDelay) * time.Second)
-		}
-
-		rpm, err := fan.GetRpm()
-		if err != nil {
-			ui.Error("Unable to measure RPM of fan %s", fan.GetId())
-			return err
-		}
-		ui.Debug("Measuring RPM of %s at PWM %d: %d", fan.GetId(), pwm, rpm)
-
-		// update rpm curve
-		fan.SetRpmAvg(float64(rpm))
-		curveData[pwm] = float64(rpm)
-
-		ui.Debug("Measured RPM of %d at PWM %d for fan %s", int(fan.GetRpmAvg()), pwm, fan.GetId())
-	}
-
-	err = fan.AttachFanRpmCurveData(&curveData)
-	if err != nil {
-		ui.Error("Failed to attach fan curve data to fan %s: %v", fan.GetId(), err)
-		return err
-	}
-
-	// save to database to restore it on restarts
-	err = f.persistence.SaveFanRpmData(fan)
-	if err != nil {
-		ui.Error("Failed to save fan PWM data for %s: %v", fan.GetId(), err)
-	}
-	return err
-}
-
 // read the current value of a fan RPM sensor and append it to the moving window
 func (f *DefaultFanController) measureRpm(fan fans.Fan) {
-	pwm, err := f.getPwm()
-	if err != nil {
-		ui.Warning("Error reading PWM value of fan %s: %v", fan.GetId(), err)
-	}
 	rpm, err := fan.GetRpm()
 	if err != nil {
 		ui.Warning("Error reading RPM value of fan %s: %v", fan.GetId(), err)
@@ -553,8 +502,6 @@ func (f *DefaultFanController) measureRpm(fan fans.Fan) {
 
 	updatedRpmAvg := util.UpdateSimpleMovingAvg(fan.GetRpmAvg(), configuration.CurrentConfig.RpmRollingWindowSize, float64(rpm))
 	fan.SetRpmAvg(updatedRpmAvg)
-
-	fan.UpdateFanRpmCurveValue(pwm, float64(rpm))
 }
 
 // getPwm returns the current raw PWM value of the fan.
@@ -598,7 +545,7 @@ func trySetManualPwm(fan fans.Fan) error {
 	if cfg := fan.GetConfig().ControlMode; cfg != nil && cfg.Active != nil {
 		mode, err := parseControlModeValue(*cfg.Active)
 		if err != nil {
-			ui.Warning("Invalid controlMode.active for fan '%s': %v; falling back to pwm", fan.GetId(), err)
+			ui.Warning("Fan %s: Invalid controlMode.active: %v; falling back to pwm", fan.GetId(), err)
 		} else {
 			targetMode = mode
 		}
@@ -643,7 +590,7 @@ func (f *DefaultFanController) restoreControlMode() {
 		} else if onExit.ControlMode != nil {
 			parsedControlMode, err := parseControlModeValue(*onExit.ControlMode)
 			if err != nil {
-				ui.Warning("Error parsing controlMode.onExit.controlMode for fan %s: %v", f.fan.GetId(), err)
+				ui.Warning("Fan %s: Error parsing controlMode.onExit.controlMode: %v", f.fan.GetId(), err)
 			} else {
 				controlModeToSet = &parsedControlMode
 			}
@@ -688,7 +635,7 @@ func (f *DefaultFanController) restoreControlMode() {
 	if pwmToSet != nil {
 		// restore (default: onExit == nil or onExit.Restore != nil)
 		if err := f.fan.SetPwm(*pwmToSet); err != nil {
-			ui.Warning("Error restoring original PWM value for fan %s: %v", f.fan.GetId(), err)
+			ui.Warning("Fan %s: Error restoring original PWM value: %v", f.fan.GetId(), err)
 		}
 	}
 }
@@ -829,35 +776,14 @@ func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
 		return
 	}
 	if cm != fans.ControlModePWM {
-		ui.Warning("Fan mode of fan %s was changed by third party! Current mode: %d, expected mode: %d",
-			f.fan.GetId(), cm, fans.ControlModePWM)
-		// ensure fan mode is set to expected target mode
-		_ = trySetManualPwm(f.fan)
-	}
-}
-
-func (f *DefaultFanController) waitForFanToSettle(fan fans.Fan) {
-	// TODO: this "waiting" logic could also be applied to the other measurements
-	diffThreshold := configuration.CurrentConfig.MaxRpmDiffForSettledFan
-
-	measuredRpmDiffWindow := util.CreateRollingWindow(10)
-	util.FillWindow(measuredRpmDiffWindow, 10, 2*diffThreshold)
-	measuredRpmDiffMax := 2 * diffThreshold
-	oldRpm := 0
-	for !(measuredRpmDiffMax < diffThreshold) {
-		ui.Debug("Waiting for fan %s to settle (current RPM max diff: %f)...", fan.GetId(), measuredRpmDiffMax)
-		time.Sleep(1 * time.Second)
-
-		currentRpm, err := fan.GetRpm()
-		if err != nil {
-			ui.Warning("Cannot read RPM value of fan %s: %v", fan.GetId(), err)
-			continue
+		restoreErr := trySetManualPwm(f.fan)
+		if restoreErr != nil {
+			ui.Warning("Fan mode of fan %s is %v (expected PWM); could not restore: %v",
+				f.fan.GetId(), cm, restoreErr)
+		} else {
+			ui.Debug("Fan mode of fan %s was %v, silently restored to PWM mode", f.fan.GetId(), cm)
 		}
-		measuredRpmDiffWindow.Append(math.Abs(float64(currentRpm - oldRpm)))
-		oldRpm = currentRpm
-		measuredRpmDiffMax = math.Ceil(util.GetWindowMax(measuredRpmDiffWindow))
 	}
-	ui.Debug("Fan %s has settled (current RPM max diff: %f)", fan.GetId(), measuredRpmDiffMax)
 }
 
 // computeSetPwmToGetPwmMap computes a mapping between "set pwm value" -> "actual pwm value"
@@ -866,12 +792,12 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMap() (err error) {
 
 	if cfg != nil {
 		if cfg.Identity != nil {
-			ui.Info("Using identity set→get PWM map for fan '%s'", f.fan.GetId())
+			ui.Info("Fan %s: Using identity set→get PWM map", f.fan.GetId())
 			f.setPwmToGetPwmMap, _ = util.InterpolateLinearlyInt(&map[int]int{0: 0, 255: 255}, 0, 255)
 			return nil
 		}
 		if cfg.Values != nil {
-			ui.Info("Using user-defined step set→get PWM map for fan '%s'", f.fan.GetId())
+			ui.Info("Fan %s: Using user-defined step set→get PWM map", f.fan.GetId())
 			pts := map[int]int(*cfg.Values)
 			expanded, err := util.InterpolateStepInt(&pts, 0, 255)
 			if err != nil {
@@ -881,7 +807,7 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMap() (err error) {
 			return nil
 		}
 		if cfg.Linear != nil {
-			ui.Info("Using user-defined linear set→get PWM map for fan '%s'", f.fan.GetId())
+			ui.Info("Fan %s: Using user-defined linear set→get PWM map", f.fan.GetId())
 			pts := map[int]int(*cfg.Linear)
 			expanded, err := util.InterpolateLinearlyInt(&pts, 0, 255)
 			if err != nil {
@@ -902,7 +828,7 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMap() (err error) {
 
 	err = f.computeSetPwmToGetPwmMapAutomatically()
 	if err != nil {
-		ui.Error("Error computing setPwmToGetPwmMap for fan %s: %v", f.fan.GetId(), err)
+		ui.Error("Fan %s: Error computing setPwmToGetPwmMap: %v", f.fan.GetId(), err)
 		return err
 	}
 
@@ -928,14 +854,14 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 
 	if cfg != nil {
 		if cfg.Identity != nil {
-			ui.Info("Using identity pwm map for fan '%s'", f.fan.GetId())
+			ui.Info("Fan %s: Using identity pwm map", f.fan.GetId())
 			for i := 0; i < 256; i++ {
 				f.pwmMapping[i] = i
 			}
 			return nil
 		}
 		if cfg.Values != nil {
-			ui.Info("Using user-defined step pwm map for fan '%s'", f.fan.GetId())
+			ui.Info("Fan %s: Using user-defined step pwm map", f.fan.GetId())
 			pts := map[int]int(*cfg.Values)
 			expanded, err := util.InterpolateStepInt(&pts, 0, 255)
 			if err != nil {
@@ -947,7 +873,7 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 			return nil
 		}
 		if cfg.Linear != nil {
-			ui.Info("Using user-defined linear pwm map for fan '%s'", f.fan.GetId())
+			ui.Info("Fan %s: Using user-defined linear pwm map", f.fan.GetId())
 			pts := map[int]int(*cfg.Linear)
 			expanded, err := util.InterpolateLinearlyInt(&pts, 0, 255)
 			if err != nil {
@@ -974,7 +900,7 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 		ui.Info("Computing pwm map...")
 		err = f.computePwmMapAutomatically()
 		if err != nil {
-			ui.Error("Error computing pwm map for fan %s: %v", f.fan.GetId(), err)
+			ui.Error("Fan %s: Error computing pwm map: %v", f.fan.GetId(), err)
 			return err
 		}
 	}
@@ -1006,7 +932,7 @@ func (f *DefaultFanController) computePwmMapAutomatically() (err error) {
 		// Since there might be gaps in the setPwmToGetPwmMap, the pwmMap will be populated
 		// so that the supported values are represented as steps, with the steps being aligned to be
 		// in the middle of two adjacent values in the supported range.
-		ui.Debug("Using setPwmToGetPwmMap to compute pwmMap for fan %s", fan.GetId())
+		ui.Debug("Fan %s: Using setPwmToGetPwmMap to compute pwmMap", fan.GetId())
 		keySet := util.SortedKeys(f.setPwmToGetPwmMap)
 		identityMappingOfKeyset := make(map[int]int, len(keySet))
 		for i := 0; i < len(keySet); i++ {
@@ -1074,7 +1000,7 @@ func (f *DefaultFanController) getReportedPwmAfterApplyingPwm(pwmMappedValue int
 func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
 	if !f.fan.Supports(fans.FeaturePwmSensor) || f.assumePwmMapIdentity {
 		if f.assumePwmMapIdentity {
-			ui.Info("Automatic calculation of setPwmToGetPwmMap disabled for Fan '%s'. Assuming 1:1 relation.", f.fan.GetId())
+			ui.Info("Fan %s: Automatic calculation of setPwmToGetPwmMap disabled. Assuming 1:1 relation.", f.fan.GetId())
 		} else {
 			ui.Warning("Fan '%s' does not support PWM sensor, cannot compute setPwmToGetPwmMap. Assuming 1:1 relation.", f.fan.GetId())
 		}

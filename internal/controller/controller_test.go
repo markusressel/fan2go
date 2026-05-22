@@ -463,7 +463,9 @@ func TestLinearFan(t *testing.T) {
 	startPwm, maxPwm := fans.ComputePwmBoundaries(fan)
 
 	// THEN
-	assert.Equal(t, 1, startPwm)
+	// startPwm: lowest PWM where RPM >= rpmNoiseThreshold (50.0). LinearFan has RPM == PWM,
+	// so startPwm = 50 (RPM=50 is the first value that meets the >= 50 threshold).
+	assert.Equal(t, 50, startPwm)
 	assert.Equal(t, 255, maxPwm)
 }
 
@@ -487,8 +489,12 @@ func TestCappedFan(t *testing.T) {
 	startPwm, maxPwm := fans.ComputePwmBoundaries(fan)
 
 	// THEN
-	assert.Equal(t, 6, startPwm)
-	assert.Equal(t, 200, maxPwm)
+	// startPwm: CappedFan starts at RPM=20 at PWM 6, but 20 < rpmNoiseThreshold (50).
+	// First PWM where RPM >= 50 is ~39 (interpolated value ≈ 50.62).
+	assert.Equal(t, 39, startPwm)
+	// maxPwm: peakRpm=200, 95% threshold=190. Fan plateau at 200 RPM extends from
+	// PWM 200 through 255 (interpolation clamps to last point), so highest qualifying PWM = 255.
+	assert.Equal(t, 255, maxPwm)
 }
 
 func TestCappedNeverStoppingFan(t *testing.T) {
@@ -500,7 +506,9 @@ func TestCappedNeverStoppingFan(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, 0, startPwm)
-	assert.Equal(t, 200, maxPwm)
+	// maxPwm: peakRpm=200, 95% threshold=190. Fan plateau at 200 RPM extends through PWM 255,
+	// so the highest qualifying PWM = 255.
+	assert.Equal(t, 255, maxPwm)
 }
 
 func TestCalculateTargetSpeedLinear(t *testing.T) {
@@ -2089,6 +2097,45 @@ func TestFanController_ComputePwmMapAutomatically_NilSetPwmMap(t *testing.T) {
 	for i := 0; i < 256; i++ {
 		assert.Equal(t, i, controller.pwmMapping[i], "at index %d", i)
 	}
+}
+
+func TestEvaluateAdaptiveSettling_FirstWindowStableTrend(t *testing.T) {
+	window := []float64{1000, 1001, 999, 1000, 1001, 1000}
+	stable, meanNow, rangeNow := evaluateAdaptiveSettling(window, nil, nil, 20)
+
+	assert.True(t, stable)
+	assert.InDelta(t, 1000.16, meanNow, 0.5)
+	assert.Greater(t, rangeNow, 0.0)
+}
+
+func TestEvaluateAdaptiveSettling_DriftingMeanNotSettled(t *testing.T) {
+	prevMean := 1000.0
+	prevRange := 4.0
+	window := []float64{1045, 1048, 1050, 1052, 1055, 1056}
+
+	stable, _, _ := evaluateAdaptiveSettling(window, &prevMean, &prevRange, 20)
+	assert.False(t, stable)
+}
+
+func TestEvaluateAdaptiveSettling_NoisyButConsistentSettled(t *testing.T) {
+	prevMean := 1000.0
+	prevRange := 30.0
+	window := []float64{986, 1004, 1012, 995, 1008, 992, 1005, 998}
+
+	stable, _, _ := evaluateAdaptiveSettling(window, &prevMean, &prevRange, 20)
+	assert.True(t, stable)
+}
+
+func TestSettleTimeoutForPwmJump_UsesFullSettleForLargeJump(t *testing.T) {
+	full := 30 * time.Second
+	timeout := settleTimeoutForPwmJump(20, 50, full)
+	assert.Equal(t, full, timeout)
+}
+
+func TestSettleTimeoutForPwmJump_UsesFastPathForSmallJump(t *testing.T) {
+	full := 30 * time.Second
+	timeout := settleTimeoutForPwmJump(40, 47, full)
+	assert.Equal(t, time.Duration(0), timeout)
 }
 
 func TestFanController_ComputePwmMapAutomatically_EmptySetPwmMap(t *testing.T) {

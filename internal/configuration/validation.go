@@ -408,7 +408,7 @@ func validateFans(config *Configuration) error {
 			}
 
 			if fanConfig.SetPwmToGetPwmMap.Linear != nil {
-				if err := validatePwmMapPoints("setPwmToGetPwmMap linear", *fanConfig.SetPwmToGetPwmMap.Linear, true); err != nil {
+				if err := validatePwmMapPoints("setPwmToGetPwmMap linear", *fanConfig.SetPwmToGetPwmMap.Linear, false); err != nil {
 					return err
 				}
 			}

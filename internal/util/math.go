@@ -167,6 +167,11 @@ func InterpolateLinearlyInt(data *map[int]int, start int, stop int) (map[int]int
 // InterpolateStep takes the given mapping and adds flat values in [start;stop].
 func InterpolateStep(data *map[int]float64, start int, stop int) (map[int]float64, error) {
 	interpolated := map[int]float64{}
+	// copy existing values
+	for k, v := range *data {
+		interpolated[k] = v
+	}
+
 	for i := start; i <= stop; i++ {
 		interpolatedValue, err := CalculateInterpolatedCurveValue(*data, InterpolationTypeStep, float64(i))
 		if err != nil {
@@ -180,6 +185,11 @@ func InterpolateStep(data *map[int]float64, start int, stop int) (map[int]float6
 // InterpolateLinearly takes the given mapping and adds interpolated values in [start;stop].
 func InterpolateLinearly(data *map[int]float64, start int, stop int) (map[int]float64, error) {
 	interpolated := map[int]float64{}
+	// copy existing values
+	for k, v := range *data {
+		interpolated[k] = v
+	}
+
 	for i := start; i <= stop; i++ {
 		interpolatedValue, err := CalculateInterpolatedCurveValue(*data, InterpolationTypeLinear, float64(i))
 		if err != nil {
@@ -243,6 +253,45 @@ func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType st
 	// input is above (or equal to) the largest given
 	// step, so we fall back to the value of the largest step
 	return steps[xValues[len(xValues)-1]], nil
+}
+
+// EnsureMonotonicallyIncreasing takes a map of int to float and ensures that the values are monotonically increasing with increasing keys.
+// If a value is found to be smaller than the previous value, it is replaced by the previous value.
+// Note that this method DOES NOT guarantee strict monotonicity, but only non-decreasing values.
+// It also DOES NOT guarantee monotonicity outside the given [start;stop] range.
+func EnsureMonotonicallyIncreasing(data map[int]float64, start int, stop int) map[int]float64 {
+	monotonic := map[int]float64{}
+	// copy existing values
+	for id := range data {
+		monotonic[id] = data[id]
+	}
+
+	keysInRange := make([]int, 0, len(data))
+	for k := range data {
+		if k >= start && k <= stop {
+			keysInRange = append(keysInRange, k)
+		}
+	}
+	sort.Ints(keysInRange)
+
+	hasLast := false
+	lastValue := 0.0
+	for _, k := range keysInRange {
+		value := data[k]
+		if !hasLast {
+			monotonic[k] = value
+			lastValue = value
+			hasLast = true
+			continue
+		}
+		if value < lastValue {
+			monotonic[k] = lastValue
+			continue
+		}
+		monotonic[k] = value
+		lastValue = value
+	}
+	return monotonic
 }
 
 // FindClosest finds the closest value to target in options.
@@ -388,4 +437,16 @@ func validateMonotonicallyIncreasing(values map[int]int, strict bool) error {
 	}
 
 	return nil
+}
+
+// MedianFloat64 returns the median of a non-empty slice of float64 values.
+func MedianFloat64(values []float64) float64 {
+	sorted := make([]float64, len(values))
+	copy(sorted, values)
+	sort.Float64s(sorted)
+	n := len(sorted)
+	if n%2 == 0 {
+		return (sorted[n/2-1] + sorted[n/2]) / 2.0
+	}
+	return sorted[n/2]
 }
