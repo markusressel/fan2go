@@ -9,42 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type syntheticAggregationScenario struct {
-	name      string
-	trueRPM   float64
-	rpmSeries []float64
-}
-
-func syntheticAggregationScenarios() []syntheticAggregationScenario {
-	return []syntheticAggregationScenario{
-		{
-			name:      "steady_noise",
-			trueRPM:   1000,
-			rpmSeries: []float64{1000, 980, 1020, 995, 1010, 990, 1005, 1000},
-		},
-		{
-			name:      "single_high_spike",
-			trueRPM:   1000,
-			rpmSeries: []float64{1000, 1005, 3200, 995, 1002, 998, 1001, 1000},
-		},
-		{
-			name:      "single_low_drop",
-			trueRPM:   1000,
-			rpmSeries: []float64{1000, 995, 50, 1002, 998, 1001, 997, 1000},
-		},
-		{
-			name:      "rising_trend",
-			trueRPM:   1110,
-			rpmSeries: []float64{900, 930, 960, 990, 1020, 1050, 1080, 1110},
-		},
-		{
-			name:      "falling_trend",
-			trueRPM:   890,
-			rpmSeries: []float64{1100, 1070, 1040, 1010, 980, 950, 920, 890},
-		},
-	}
-}
-
 func TestSyntheticCurveSmoothing_PreservesBoundaryDetection(t *testing.T) {
 	rawCurve := map[int]float64{}
 	for pwm := 0; pwm <= 255; pwm++ {

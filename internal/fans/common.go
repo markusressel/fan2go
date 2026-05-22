@@ -157,7 +157,6 @@ func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 // userStartPwm allows enforcing an explicit start PWM (pass MaxPwmValue to disable override).
 func ComputePwmBoundariesFromCurveData(pwmRpmMap map[int]float64, userStartPwm int) (startPwm int, maxPwm int) {
 	startPwm = 255
-	maxPwm = 255
 
 	var keys []int
 	for pwm := range pwmRpmMap {
