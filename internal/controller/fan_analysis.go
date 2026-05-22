@@ -12,6 +12,8 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 )
 
+const pwmMismatchRetries = 2
+
 type FanCurveAnalyzer struct {
 	fanController *DefaultFanController
 }
@@ -98,6 +100,8 @@ func (f *FanCurveAnalyzer) detectStartBoundary(
 			return 0, 0, measureErr
 		}
 		if rpm < 0 {
+			// Progress search window even if this sample was skipped due to a transient mismatch.
+			low = mid + 1
 			continue
 		}
 
@@ -467,15 +471,36 @@ func (f *FanCurveAnalyzer) rpmCurveMeasurementPhase2(
 }
 
 func (f *FanCurveAnalyzer) rpmCurveMeasurementCleanup(curveData map[int]float64) (interpolatedCurveData map[int]float64, err error) {
-	firstNonZeroPwm := 0
+	if len(curveData) == 0 {
+		return nil, fmt.Errorf("cannot clean up empty fan curve data")
+	}
+
+	firstNonZeroPwm := -1
 	sortedPwmValues := util.SortedKeys(curveData)
-	lastPwm := sortedPwmValues[len(sortedPwmValues)-1]
 	for _, pwm := range sortedPwmValues {
-		if curveData[pwm] > 0 {
+		if fans.IsRpmLikelySpinning(curveData[pwm]) {
 			firstNonZeroPwm = pwm
 			break
 		}
 	}
+	if firstNonZeroPwm < 0 {
+		return nil, fmt.Errorf("curve data contains no spinning sample above noise threshold")
+	}
+
+	for _, pwm := range sortedPwmValues {
+		if pwm < firstNonZeroPwm || !fans.IsRpmLikelySpinning(curveData[pwm]) {
+			curveData[pwm] = 0
+		}
+	}
+
+	if _, exists := curveData[fans.MinPwmValue]; !exists {
+		curveData[fans.MinPwmValue] = 0
+	}
+	if _, exists := curveData[fans.MaxPwmValue]; !exists {
+		curveData[fans.MaxPwmValue] = curveData[sortedPwmValues[len(sortedPwmValues)-1]]
+	}
+
+	lastPwm := fans.MaxPwmValue
 
 	// Interpolation Phase:
 	// First Step: Interpolate stepwise (using util.InterpolateStep()) until the first value > 0 is reached, to ensure the curve data contains the critical "startPwm" point where the fan starts spinning.
@@ -510,20 +535,29 @@ func (f *FanCurveAnalyzer) rpmCurveMeasurementCleanup(curveData map[int]float64)
 // If settleTimeout == 0, a plain FanResponseDelay sleep is used instead (sufficient for small steps).
 func (f *FanCurveAnalyzer) measureAtPwm(fan fans.Fan, pwm int, settleTimeout time.Duration) (float64, error) {
 	actualPwm := f.fanController.applyPwmMapToTarget(pwm)
-	err := f.fanController.setPwm(actualPwm)
-	if err != nil {
-		return 0, fmt.Errorf("unable to set PWM %d: %w", actualPwm, err)
-	}
-	expectedPwm := f.fanController.getReportedPwmAfterApplyingPwm(actualPwm)
-	time.Sleep(f.fanController.getPwmSetDelay())
+	matchedPwm := false
+	for attempt := 0; attempt <= pwmMismatchRetries; attempt++ {
+		err := f.fanController.setPwm(actualPwm)
+		if err != nil {
+			return 0, fmt.Errorf("unable to set PWM %d: %w", actualPwm, err)
+		}
+		expectedPwm := f.fanController.getReportedPwmAfterApplyingPwm(actualPwm)
+		time.Sleep(f.fanController.getPwmSetDelay())
 
-	currentPwm, err := f.fanController.getPwm()
-	if err != nil {
-		return 0, fmt.Errorf("fan %s: unable to read PWM: %w", fan.GetId(), err)
+		currentPwm, err := f.fanController.getPwm()
+		if err != nil {
+			return 0, fmt.Errorf("fan %s: unable to read PWM: %w", fan.GetId(), err)
+		}
+		if currentPwm == expectedPwm {
+			matchedPwm = true
+			break
+		}
+
+		ui.Debug("Fan %s: PWM mismatch at target %d: expected %d, got %d (attempt %d/%d)",
+			fan.GetId(), pwm, expectedPwm, currentPwm, attempt+1, pwmMismatchRetries+1)
 	}
-	if currentPwm != expectedPwm {
-		ui.Debug("Fan %s: PWM mismatch at target %d: expected %d, got %d, skipping",
-			fan.GetId(), pwm, expectedPwm, currentPwm)
+	if !matchedPwm {
+		ui.Debug("Fan %s: skipping target %d after repeated PWM mismatches", fan.GetId(), pwm)
 		return -1, nil
 	}
 

@@ -495,10 +495,6 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 
 // read the current value of a fan RPM sensor and append it to the moving window
 func (f *DefaultFanController) measureRpm(fan fans.Fan) {
-	pwm, err := f.getPwm()
-	if err != nil {
-		ui.Warning("Error reading PWM value of fan %s: %v", fan.GetId(), err)
-	}
 	rpm, err := fan.GetRpm()
 	if err != nil {
 		ui.Warning("Error reading RPM value of fan %s: %v", fan.GetId(), err)
@@ -506,8 +502,6 @@ func (f *DefaultFanController) measureRpm(fan fans.Fan) {
 
 	updatedRpmAvg := util.UpdateSimpleMovingAvg(fan.GetRpmAvg(), configuration.CurrentConfig.RpmRollingWindowSize, float64(rpm))
 	fan.SetRpmAvg(updatedRpmAvg)
-
-	fan.UpdateFanRpmCurveValue(pwm, float64(rpm))
 }
 
 // getPwm returns the current raw PWM value of the fan.
