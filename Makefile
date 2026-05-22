@@ -8,7 +8,7 @@ PACKAGE    := github.com/markusressel/$(NAME)
 GIT_REV    ?= $(shell git rev-parse --short HEAD)
 SOURCE_DATE_EPOCH ?= $(shell date +%s)
 DATE       ?= $(shell date -u -d @${SOURCE_DATE_EPOCH} +"%Y-%m-%dT%H:%M:%SZ")
-VERSION    ?= 0.13.0
+VERSION    ?= 0.14.0
 
 # Shared linker flags for all targets
 LDFLAGS := -w -s \
