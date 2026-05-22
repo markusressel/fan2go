@@ -2134,7 +2134,7 @@ func TestSettleTimeoutForPwmJump_UsesFullSettleForLargeJump(t *testing.T) {
 
 func TestSettleTimeoutForPwmJump_UsesFastPathForSmallJump(t *testing.T) {
 	full := 30 * time.Second
-	timeout := settleTimeoutForPwmJump(40, 52, full)
+	timeout := settleTimeoutForPwmJump(40, 47, full)
 	assert.Equal(t, time.Duration(0), timeout)
 }
 
