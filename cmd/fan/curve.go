@@ -2,6 +2,10 @@ package fan
 
 import (
 	"bytes"
+	"encoding/json"
+	"sort"
+	"strconv"
+
 	"github.com/guptarohit/asciigraph"
 	"github.com/markusressel/fan2go/cmd/global"
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -11,8 +15,6 @@ import (
 	"github.com/mgutz/ansi"
 	"github.com/spf13/cobra"
 	"github.com/tomlazar/table"
-	"sort"
-	"strconv"
 )
 
 var curveCmd = &cobra.Command{
@@ -100,6 +102,17 @@ var curveCmd = &cobra.Command{
 			caption := "RPM / PWM"
 			graph := asciigraph.Plot(values, asciigraph.Height(15), asciigraph.Width(100), asciigraph.Caption(caption))
 			ui.Println(graph)
+
+			if global.Verbose {
+				// Print raw persisted curve data for easy copy/paste.
+				rawData, jsonErr := json.MarshalIndent(pwmData, "", "  ")
+				if jsonErr != nil {
+					ui.Error("Unable to serialize fan curve data to JSON: %v", jsonErr)
+				} else {
+					ui.Println(string(rawData))
+				}
+			}
+
 			return
 		}
 
