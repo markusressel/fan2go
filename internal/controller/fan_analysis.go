@@ -364,7 +364,7 @@ func (f *FanCurveAnalyzer) rpmCurveMeasurementCleanup(curveData map[int]float64)
 	lastPwm := fans.MaxPwmValue
 
 	// Interpolation Phase:
-	// First Step: Interpolate stepwise (using util.InterpolateStep()) until the first value > 0 is reached, to ensure the curve data contains the critical "startPwm" point where the fan starts spinning.
+	// First Step: Interpolate stepwise (using util.InterpolateStep()) until the first sample above the spin/noise threshold is reached, to ensure the curve data contains the critical "startPwm" point where the fan is first considered to be spinning.
 	// Second Step: Interpolate linearly (using util.InterpolateLinearly()) between all measured points to fill in any remaining gaps, ensuring the curve data contains the full range of PWM values as keys.
 	interpolatedCurveData, err = util.InterpolateStep(&curveData, 0, firstNonZeroPwm)
 	if err != nil {

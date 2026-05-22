@@ -368,7 +368,7 @@ func (f *DefaultFanController) RunInitialization() (map[int]float64, error) {
 	// save to database to restore it on restarts
 	err = f.persistence.SaveFanRpmData(fan)
 	if err != nil {
-		ui.Error("Fan %s: Failed to save RWM data: %v", fan.GetId(), err)
+		ui.Error("Fan %s: Failed to save RPM data: %v", fan.GetId(), err)
 	}
 
 	fanRpmData, err := f.persistence.LoadFanRpmData(fan)
