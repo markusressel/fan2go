@@ -261,26 +261,35 @@ func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType st
 // It also DOES NOT guarantee monotonicity outside the given [start;stop] range.
 func EnsureMonotonicallyIncreasing(data map[int]float64, start int, stop int) map[int]float64 {
 	monotonic := map[int]float64{}
-	// copy existing values and ensure monotonicity
+	// copy existing values
 	for id := range data {
 		monotonic[id] = data[id]
 	}
 
-	for i := start; i <= stop; i++ {
-		value, exists := data[i]
-		if !exists {
+	keysInRange := make([]int, 0, len(data))
+	for k := range data {
+		if k >= start && k <= stop {
+			keysInRange = append(keysInRange, k)
+		}
+	}
+	sort.Ints(keysInRange)
+
+	hasLast := false
+	lastValue := 0.0
+	for _, k := range keysInRange {
+		value := data[k]
+		if !hasLast {
+			monotonic[k] = value
+			lastValue = value
+			hasLast = true
 			continue
 		}
-		if i == start {
-			monotonic[i] = value
-		} else {
-			prevValue := monotonic[i-1]
-			if value < prevValue {
-				monotonic[i] = prevValue
-			} else {
-				monotonic[i] = value
-			}
+		if value < lastValue {
+			monotonic[k] = lastValue
+			continue
 		}
+		monotonic[k] = value
+		lastValue = value
 	}
 	return monotonic
 }

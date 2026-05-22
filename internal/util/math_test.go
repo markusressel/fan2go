@@ -293,3 +293,40 @@ func TestIsStrictlyMonotonicallyIncreasing_AllowsStrictIncrease(t *testing.T) {
 	err := IsStrictlyMonotonicallyIncreasing(map[int]int{0: 10, 64: 11, 255: 20})
 	assert.NoError(t, err)
 }
+
+func TestEnsureMonotonicallyIncreasing_SparseKeysInRange(t *testing.T) {
+	data := map[int]float64{
+		10:  5,
+		20:  7,
+		40:  100,
+		80:  50,
+		120: 75,
+		200: 10,
+	}
+
+	result := EnsureMonotonicallyIncreasing(data, 40, 120)
+
+	assert.Equal(t, 100.0, result[40])
+	assert.Equal(t, 100.0, result[80])
+	assert.Equal(t, 100.0, result[120])
+	// Keys outside [start..stop] remain untouched.
+	assert.Equal(t, 5.0, result[10])
+	assert.Equal(t, 7.0, result[20])
+	assert.Equal(t, 10.0, result[200])
+}
+
+func TestEnsureMonotonicallyIncreasing_DenseKeysInRange(t *testing.T) {
+	data := map[int]float64{
+		0: 10,
+		1: 8,
+		2: 9,
+		3: 7,
+	}
+
+	result := EnsureMonotonicallyIncreasing(data, 0, 3)
+
+	assert.Equal(t, 10.0, result[0])
+	assert.Equal(t, 10.0, result[1])
+	assert.Equal(t, 10.0, result[2])
+	assert.Equal(t, 10.0, result[3])
+}
