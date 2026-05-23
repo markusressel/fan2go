@@ -46,7 +46,7 @@ type FanController interface {
 
 	// SetCurve replaces the speed curve used by this controller.
 	// It is safe to call concurrently with Run and UpdateFanSpeed,
-	// enabling hot reloading of curve configuration (refs #424).
+	// enabling hot reloading of curve configuration.
 	SetCurve(curve curves.SpeedCurve)
 }
 
@@ -57,7 +57,7 @@ type DefaultFanController struct {
 	persistence persistence.Persistence
 	// the fan to control
 	fan fans.Fan
-	// the curve used to control the fan; protected by curveMu for hot-reload safety (refs #424)
+	// the curve used to control the fan; protected by curveMu for hot-reload safety
 	curve   curves.SpeedCurve
 	curveMu sync.RWMutex
 	// rate to update the target fan speed
@@ -165,7 +165,7 @@ func (f *DefaultFanController) GetStatistics() FanControllerStatistics {
 
 // SetCurve replaces the speed curve used by this controller.
 // It is safe to call from a separate goroutine (e.g. the hot-reload manager)
-// while the controller loop is running (refs #424).
+// while the controller loop is running.
 func (f *DefaultFanController) SetCurve(curve curves.SpeedCurve) {
 	f.curveMu.Lock()
 	defer f.curveMu.Unlock()

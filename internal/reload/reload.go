@@ -1,4 +1,4 @@
-// Package reload implements hot reloading of the fan2go configuration file (refs #424).
+// Package reload implements hot reloading of the fan2go configuration file.
 //
 // The ReloadManager watches the active configuration file for changes via fsnotify and
 // also responds to SIGHUP signals.  When a change is detected:

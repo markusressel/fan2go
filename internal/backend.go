@@ -53,7 +53,7 @@ func RunDaemon() {
 
 	var g run.Group
 	{
-		// === Config hot-reload manager (refs #424)
+		// === Config hot-reload manager
 		rm := reload.NewReloadManager(configuration.GetFilePath(), fanControllers)
 		g.Add(func() error {
 			return rm.Run(ctx)
