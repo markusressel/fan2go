@@ -77,55 +77,61 @@ func InitConfig(cfgFile string) {
 }
 
 func setDefaultValues() {
-	viper.SetDefault("dbpath", "/var/lib/fan2go/fan2go.db")
-	viper.SetDefault("RunFanInitializationInParallel", true)
-	viper.SetDefault("MaxRpmDiffForSettledFan", 20.0)
-	viper.SetDefault("FanResponseDelay", 2)
-	viper.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
-	viper.SetDefault("TempRollingWindowSize", 10)
-	viper.SetDefault("RpmPollingRate", 1*time.Second)
-	viper.SetDefault("RpmRollingWindowSize", 10)
+	setDefaultValuesOnViper(viper.GetViper())
+}
 
-	viper.SetDefault("Analysis", AnalysisConfig{
+// setDefaultValuesOnViper applies default configuration values to the given viper instance.
+// This allows both the global viper and fresh instances used by ReadAndValidateConfig to share defaults.
+func setDefaultValuesOnViper(v *viper.Viper) {
+	v.SetDefault("dbpath", "/var/lib/fan2go/fan2go.db")
+	v.SetDefault("RunFanInitializationInParallel", true)
+	v.SetDefault("MaxRpmDiffForSettledFan", 20.0)
+	v.SetDefault("FanResponseDelay", 2)
+	v.SetDefault("TempSensorPollingRate", 200*time.Millisecond)
+	v.SetDefault("TempRollingWindowSize", 10)
+	v.SetDefault("RpmPollingRate", 1*time.Second)
+	v.SetDefault("RpmRollingWindowSize", 10)
+
+	v.SetDefault("Analysis", AnalysisConfig{
 		CoarseStep:    16,
 		SampleCount:   3,
 		SampleDelay:   200 * time.Millisecond,
 		SettleTimeout: 30 * time.Second,
 	})
-	viper.SetDefault("Analysis.CoarseStep", 16)
-	viper.SetDefault("Analysis.SampleCount", 3)
-	viper.SetDefault("Analysis.SampleDelay", 200*time.Millisecond)
-	viper.SetDefault("Analysis.SettleTimeout", 30*time.Second)
+	v.SetDefault("Analysis.CoarseStep", 16)
+	v.SetDefault("Analysis.SampleCount", 3)
+	v.SetDefault("Analysis.SampleDelay", 200*time.Millisecond)
+	v.SetDefault("Analysis.SettleTimeout", 30*time.Second)
 
-	viper.SetDefault("Statistics", StatisticsConfig{
+	v.SetDefault("Statistics", StatisticsConfig{
 		Enabled: false,
 		Port:    9000,
 	})
-	viper.SetDefault("Statistics.Port", 9000)
+	v.SetDefault("Statistics.Port", 9000)
 
-	viper.SetDefault("Api", ApiConfig{
+	v.SetDefault("Api", ApiConfig{
 		Enabled: false,
 		Host:    "127.0.0.1",
 		Port:    9001,
 	})
-	viper.SetDefault("Api.Host", "127.0.0.1")
-	viper.SetDefault("Api.Port", 9001)
+	v.SetDefault("Api.Host", "127.0.0.1")
+	v.SetDefault("Api.Port", 9001)
 
-	viper.SetDefault("Profiling", ProfilingConfig{
+	v.SetDefault("Profiling", ProfilingConfig{
 		Enabled: false,
 		Host:    "127.0.0.1",
 		Port:    6060,
 	})
-	viper.SetDefault("Profiling.Host", "127.0.0.1")
-	viper.SetDefault("Profiling.Port", 6060)
+	v.SetDefault("Profiling.Host", "127.0.0.1")
+	v.SetDefault("Profiling.Port", 6060)
 
 	// set default of deprecated value to 0 to detect unset value
-	viper.SetDefault("ControllerAdjustmentTickRate", 0*time.Millisecond)
-	viper.SetDefault("FanController.AdjustmentTickRate", 200*time.Millisecond)
-	viper.SetDefault("FanController.PwmSetDelay", 5*time.Millisecond)
+	v.SetDefault("ControllerAdjustmentTickRate", 0*time.Millisecond)
+	v.SetDefault("FanController.AdjustmentTickRate", 200*time.Millisecond)
+	v.SetDefault("FanController.PwmSetDelay", 5*time.Millisecond)
 
-	viper.SetDefault("sensors", []SensorConfig{})
-	viper.SetDefault("fans", []FanConfig{})
+	v.SetDefault("sensors", []SensorConfig{})
+	v.SetDefault("fans", []FanConfig{})
 }
 
 // DetectAndReadConfigFile detects the path of the first existing config file
@@ -147,24 +153,27 @@ func GetFilePath() string {
 	return viper.ConfigFileUsed()
 }
 
+// makeDecodeHookOptions returns the composite decode hook option used when
+// unmarshalling a configuration file, shared by LoadConfig and ReadAndValidateConfig.
+func makeDecodeHookOptions() viper.DecoderConfigOption {
+	return viper.DecodeHook(
+		mapstructure.ComposeDecodeHookFunc(
+			pwmMapPointsHookFunc(),
+			DefaultTrueBoolHookFunc(),
+			durationMillisecondsHookFunc(),
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+			mapstructure.TextUnmarshallerHookFunc(),
+		),
+	)
+}
+
 func LoadConfig() {
 	// load default configuration values
 	CurrentConfig = Configuration{}
 	applyDefaults()
 
-	err := viper.Unmarshal(
-		&CurrentConfig,
-		viper.DecodeHook(
-			mapstructure.ComposeDecodeHookFunc(
-				pwmMapPointsHookFunc(),
-				DefaultTrueBoolHookFunc(),
-				durationMillisecondsHookFunc(),
-				mapstructure.StringToTimeDurationHookFunc(),
-				mapstructure.StringToSliceHookFunc(","),
-				mapstructure.TextUnmarshallerHookFunc(),
-			),
-		),
-	)
+	err := viper.Unmarshal(&CurrentConfig, makeDecodeHookOptions())
 	if err != nil {
 		ui.Fatal("unable to decode into struct, %v", err)
 	}
@@ -184,10 +193,18 @@ func applyDefaults() {
 	}
 }
 
-// apply transformations between different formats available to configure fan curves
+// applyTransformations transforms the global CurrentConfig in place.
 func applyTransformations() {
-	// convert steps in linear curves from strings (with plain numbers or percent values) to floats between 0 and 255
-	for _, curve := range CurrentConfig.Curves {
+	if err := applyTransformationsTo(&CurrentConfig); err != nil {
+		ui.Fatal("%v", err)
+	}
+}
+
+// applyTransformationsTo converts steps in linear curves from string format (plain numbers
+// or percent values) to float64 values in the range [0..255] for the given Configuration.
+// Returns an error if any step value is malformed.
+func applyTransformationsTo(config *Configuration) error {
+	for _, curve := range config.Curves {
 		if curve.Linear != nil && len(curve.Linear.InSteps) > 0 {
 			curve.Linear.Steps = make(map[int]float64)
 
@@ -201,11 +218,11 @@ func applyTransformations() {
 				}
 				speed, err := strconv.ParseFloat(str, 64)
 				if err != nil {
-					ui.Fatal("Invalid curve step value '%s' in %s - must be either just a number or a number followed by '%%'", origstr, curve.ID)
+					return fmt.Errorf("invalid curve step value '%s' in %s - must be either just a number or a number followed by '%%'", origstr, curve.ID)
 				} else {
 					if isPercent {
 						if speed < 0 || speed > 100 {
-							ui.Fatal("invalid curve step value '%s' (=> %f) in %s - must be between 0%% and 100%%", origstr, speed, curve.ID)
+							return fmt.Errorf("invalid curve step value '%s' (=> %f) in %s - must be between 0%% and 100%%", origstr, speed, curve.ID)
 						}
 						// convert 0-100% into [0..255]
 						if speed < 1 {
@@ -218,20 +235,26 @@ func applyTransformations() {
 							speed = (speed-1)*(254.0/99.0) + 1
 						}
 					} else if speed < 0 || speed > 255 {
-						ui.Fatal("invalid curve step value '%s' in %s - must be between 0 and 255", origstr, curve.ID)
+						return fmt.Errorf("invalid curve step value '%s' in %s - must be between 0 and 255", origstr, curve.ID)
 					}
 					curve.Linear.Steps[temp] = speed
 				}
 			}
 		}
 	}
+	return nil
 }
 
-// apply deprecations and migrate values
+// applyDeprecations migrates deprecated global CurrentConfig values.
 func applyDeprecations() {
-	if CurrentConfig.ControllerAdjustmentTickRate > 0 {
+	applyDeprecationsTo(&CurrentConfig)
+}
+
+// applyDeprecationsTo migrates deprecated values within the given Configuration.
+func applyDeprecationsTo(config *Configuration) {
+	if config.ControllerAdjustmentTickRate > 0 {
 		ui.Warning("controllerAdjustmentTickRate is deprecated, use fanController.adjustmentTickRate instead")
-		CurrentConfig.FanController.AdjustmentTickRate = CurrentConfig.ControllerAdjustmentTickRate
+		config.FanController.AdjustmentTickRate = config.ControllerAdjustmentTickRate
 	}
 }
 

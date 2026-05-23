@@ -43,6 +43,11 @@ type FanController interface {
 	GetStatistics() FanControllerStatistics
 
 	UpdateFanSpeed() error
+
+	// SetCurve replaces the speed curve used by this controller.
+	// It is safe to call concurrently with Run and UpdateFanSpeed,
+	// enabling hot reloading of curve configuration (refs #424).
+	SetCurve(curve curves.SpeedCurve)
 }
 
 type DefaultFanController struct {
@@ -52,8 +57,9 @@ type DefaultFanController struct {
 	persistence persistence.Persistence
 	// the fan to control
 	fan fans.Fan
-	// the curve used to control the fan
-	curve curves.SpeedCurve
+	// the curve used to control the fan; protected by curveMu for hot-reload safety (refs #424)
+	curve   curves.SpeedCurve
+	curveMu sync.RWMutex
 	// rate to update the target fan speed
 	updateRate time.Duration
 	// the original ControlMode state of the fan before starting the controller
@@ -155,6 +161,15 @@ func (f *DefaultFanController) GetFanId() string {
 
 func (f *DefaultFanController) GetStatistics() FanControllerStatistics {
 	return f.stats
+}
+
+// SetCurve replaces the speed curve used by this controller.
+// It is safe to call from a separate goroutine (e.g. the hot-reload manager)
+// while the controller loop is running (refs #424).
+func (f *DefaultFanController) SetCurve(curve curves.SpeedCurve) {
+	f.curveMu.Lock()
+	defer f.curveMu.Unlock()
+	f.curve = curve
 }
 
 func (f *DefaultFanController) prepareController() (err error) {
@@ -644,8 +659,12 @@ func (f *DefaultFanController) restoreControlMode() {
 // - evaluating the associated curve
 // - cycling the control loop
 func (f *DefaultFanController) calculateTargetSpeed() (float64, error) {
+	f.curveMu.RLock()
+	curve := f.curve
+	f.curveMu.RUnlock()
+
 	fan := f.fan
-	target, err := f.curve.Evaluate()
+	target, err := curve.Evaluate()
 	if err != nil {
 		ui.Fatal("Unable to calculate optimal speed value for %s: %v", fan.GetId(), err)
 	}
