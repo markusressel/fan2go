@@ -124,8 +124,7 @@ func RunDaemon() {
 		sensorMapData := sensors.SnapshotSensorMap()
 		for _, sensor := range sensorMapData {
 			s := sensor
-			pollingRate := configuration.CurrentConfig.TempSensorPollingRate
-			mon := NewSensorMonitor(s, pollingRate)
+			mon := NewSensorMonitor(s)
 
 			g.Add(func() error {
 				err := mon.Run(ctx)

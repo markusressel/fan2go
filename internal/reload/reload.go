@@ -3,9 +3,11 @@
 // The ReloadManager watches the active configuration file for changes via fsnotify and
 // also responds to SIGHUP signals.  When a change is detected:
 //  1. The file is re-read and validated with ReadAndValidateConfig.
-//  2. If validation passes, CurrentConfig is updated and every registered SpeedCurve is
-//     recreated from the new config.  Fan controllers then receive the new curve via
-//     SetCurve.  Any running state (e.g. PID integral) is intentionally reset on reload.
+//  2. If validation passes, CurrentConfig is updated, every registered SpeedCurve is
+//     recreated from the new config, each fan's stored config is updated (including PWM
+//     boundaries and control algorithm), and fan controllers receive the new curve and
+//     control loop via SetCurve / SetControlLoop.  Any running state (e.g. PID integral)
+//     is intentionally reset on reload.
 //  3. If validation fails the daemon keeps running with the previous configuration and
 //     logs a warning – no state is changed.
 package reload
@@ -20,6 +22,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/control_loop"
 	"github.com/markusressel/fan2go/internal/controller"
 	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
@@ -135,7 +138,8 @@ func (r *ReloadManager) reload(ctx context.Context) {
 }
 
 // applyNewConfig updates the global CurrentConfig, recreates all SpeedCurve objects
-// from the new configuration, and updates each fan controller's curve reference.
+// from the new configuration, propagates per-fan config changes to fan objects, and
+// updates each fan controller's curve and control loop references.
 func (r *ReloadManager) applyNewConfig(newConfig *configuration.Configuration) {
 	configuration.CurrentConfig = *newConfig
 
@@ -154,7 +158,35 @@ func (r *ReloadManager) applyNewConfig(newConfig *configuration.Configuration) {
 		}
 	}
 
+	// Build a lookup table from fan ID to new fan config for O(1) access.
+	newFanConfigByID := make(map[string]configuration.FanConfig, len(newConfig.Fans))
+	for _, fc := range newConfig.Fans {
+		newFanConfigByID[fc.ID] = fc
+	}
+
 	for fan, ctrl := range r.fanControllers {
+		fanID := fan.GetId()
+
+		// Propagate new fan-specific config to the live fan object so that all
+		// per-fan settings (neverStop, sanityCheck, useUnscaledCurveValues,
+		// pwmSetDelay, controlMode, etc.) take effect immediately.
+		if newFanCfg, ok := newFanConfigByID[fanID]; ok {
+			fan.SetConfig(newFanCfg)
+			// Apply explicitly configured PWM boundary overrides.
+			if newFanCfg.MinPwm != nil {
+				fan.SetMinPwm(*newFanCfg.MinPwm, true)
+			}
+			if newFanCfg.MaxPwm != nil {
+				fan.SetMaxPwm(*newFanCfg.MaxPwm, true)
+			}
+			if newFanCfg.StartPwm != nil {
+				fan.SetStartPwm(*newFanCfg.StartPwm, true)
+			}
+
+			// Rebuild the control loop from the new config and hand it to the controller.
+			ctrl.SetControlLoop(buildControlLoopForFan(newFanCfg))
+		}
+
 		curveID := fan.GetCurveId()
 		newCurve, found := curves.GetSpeedCurve(curveID)
 		if !found {
@@ -165,4 +197,36 @@ func (r *ReloadManager) applyNewConfig(newConfig *configuration.Configuration) {
 	}
 
 	ui.Info("Config hot-reload: configuration applied successfully.")
+}
+
+// buildControlLoopForFan constructs the appropriate ControlLoop for the given fan config,
+// mirroring the logic used during initial fan controller setup in backend.go.
+func buildControlLoopForFan(config configuration.FanConfig) control_loop.ControlLoop {
+	// Deprecated ControlLoop field takes precedence for backward compatibility.
+	if config.ControlLoop != nil { //nolint:all
+		return control_loop.NewPidControlLoop(
+			config.ControlLoop.P, //nolint:all
+			config.ControlLoop.I, //nolint:all
+			config.ControlLoop.D, //nolint:all
+		)
+	}
+	if config.ControlAlgorithm != nil {
+		if config.ControlAlgorithm.Pid != nil {
+			return control_loop.NewPidControlLoop(
+				config.ControlAlgorithm.Pid.P,
+				config.ControlAlgorithm.Pid.I,
+				config.ControlAlgorithm.Pid.D,
+			)
+		}
+		if config.ControlAlgorithm.Direct != nil {
+			return control_loop.NewDirectControlLoop(
+				config.ControlAlgorithm.Direct.MaxPwmChangePerCycle,
+			)
+		}
+	}
+	return control_loop.NewPidControlLoop(
+		control_loop.DefaultPidConfig.P,
+		control_loop.DefaultPidConfig.I,
+		control_loop.DefaultPidConfig.D,
+	)
 }

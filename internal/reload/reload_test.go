@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/control_loop"
 	"github.com/markusressel/fan2go/internal/controller"
 	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
@@ -24,6 +25,7 @@ import (
 type fakeFan struct {
 	id      string
 	curveID string
+	config  configuration.FanConfig
 }
 
 func (f *fakeFan) GetId() string                                        { return f.id }
@@ -45,8 +47,8 @@ func (f *fakeFan) UpdateFanRpmCurveValue(_ int, _ float64)              {}
 func (f *fakeFan) ShouldNeverStop() bool                                { return false }
 func (f *fakeFan) GetControlMode() (fans.ControlMode, error)            { return 0, nil }
 func (f *fakeFan) SetControlMode(_ fans.ControlMode) error              { return nil }
-func (f *fakeFan) GetConfig() configuration.FanConfig                   { return configuration.FanConfig{} }
-func (f *fakeFan) SetConfig(_ configuration.FanConfig)                  {}
+func (f *fakeFan) GetConfig() configuration.FanConfig                   { return f.config }
+func (f *fakeFan) SetConfig(c configuration.FanConfig)                  { f.config = c }
 func (f *fakeFan) GetLabel() string                                     { return f.id }
 func (f *fakeFan) GetIndex() int                                        { return 1 }
 func (f *fakeFan) Supports(_ fans.FeatureFlag) bool                     { return false }
@@ -55,6 +57,7 @@ func (f *fakeFan) Supports(_ fans.FeatureFlag) bool                     { return
 // recently set curve so tests can inspect it.
 type fakeController struct {
 	currentCurve curves.SpeedCurve
+	currentLoop  control_loop.ControlLoop
 }
 
 func (c *fakeController) Run(_ context.Context) error         { return nil }
@@ -62,8 +65,9 @@ func (c *fakeController) GetFanId() string                    { return "fan1" }
 func (c *fakeController) GetStatistics() controller.FanControllerStatistics {
 	return controller.FanControllerStatistics{}
 }
-func (c *fakeController) UpdateFanSpeed() error              { return nil }
-func (c *fakeController) SetCurve(curve curves.SpeedCurve)   { c.currentCurve = curve }
+func (c *fakeController) UpdateFanSpeed() error                     { return nil }
+func (c *fakeController) SetCurve(curve curves.SpeedCurve)          { c.currentCurve = curve }
+func (c *fakeController) SetControlLoop(loop control_loop.ControlLoop) { c.currentLoop = loop }
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -329,4 +333,124 @@ func TestReloadManager_RunStopsOnContextCancel(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("Run did not return after context cancellation")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Control loop hot-reload tests
+// ---------------------------------------------------------------------------
+
+// TestApplyNewConfig_SetsControlLoopOnController verifies that applyNewConfig calls
+// SetControlLoop on each fan controller with the newly built control loop.
+func TestApplyNewConfig_SetsControlLoopOnController(t *testing.T) {
+	dir := t.TempDir()
+	sensorPath := filepath.Join(dir, "temp_input")
+	fanPath := filepath.Join(dir, "pwm1")
+	cfgPath := writeYAML(t, dir, linearYAML(sensorPath, fanPath))
+
+	newCfg, err := configuration.ReadAndValidateConfig(cfgPath)
+	require.NoError(t, err)
+
+	fan := &fakeFan{id: "fan1", curveID: "curve1"}
+	ctrl := &fakeController{}
+	fanControllers := map[fans.Fan]controller.FanController{fan: ctrl}
+
+	rm := NewReloadManager(cfgPath, fanControllers)
+	rm.applyNewConfig(newCfg)
+
+	assert.NotNil(t, ctrl.currentLoop, "controller should have received a new control loop")
+}
+
+// TestApplyNewConfig_UpdatesControlLoopOnAlgorithmChange verifies that changing the
+// controlAlgorithm from PID (default) to Direct results in a DirectControlLoop being
+// set on the controller after reload.
+func TestApplyNewConfig_UpdatesControlLoopOnAlgorithmChange(t *testing.T) {
+	dir := t.TempDir()
+	sensorPath := filepath.Join(dir, "temp_input")
+	fanPath := filepath.Join(dir, "pwm1")
+
+	// Initial config with default (PID) control algorithm.
+	cfgPath := writeYAML(t, dir, linearYAML(sensorPath, fanPath))
+
+	fan := &fakeFan{id: "fan1", curveID: "curve1"}
+	ctrl := &fakeController{}
+	fanControllers := map[fans.Fan]controller.FanController{fan: ctrl}
+
+	rm := NewReloadManager(cfgPath, fanControllers)
+	rm.reload(context.Background())
+
+	_, isPid := ctrl.currentLoop.(*control_loop.PidControlLoop)
+	assert.True(t, isPid, "initial reload should produce a PID control loop (default)")
+
+	// Update config to use direct control algorithm.
+	directYAML := fmt.Sprintf(`
+sensors:
+  - id: sensor1
+    file:
+      path: %s
+curves:
+  - id: curve1
+    linear:
+      sensor: sensor1
+      min: 40
+      max: 80
+fans:
+  - id: fan1
+    file:
+      path: %s
+    curve: curve1
+    controlAlgorithm:
+      direct: {}
+`, sensorPath, fanPath)
+
+	require.NoError(t, os.WriteFile(cfgPath, []byte(directYAML), 0o600))
+	rm.reload(context.Background())
+
+	_, isDirect := ctrl.currentLoop.(*control_loop.DirectControlLoop)
+	assert.True(t, isDirect, "after reload with direct algorithm the controller should use DirectControlLoop")
+}
+
+// TestApplyNewConfig_PropagatesFanConfigToFan verifies that per-fan config settings
+// (e.g. neverStop) are propagated to the live fan object after applyNewConfig.
+func TestApplyNewConfig_PropagatesFanConfigToFan(t *testing.T) {
+	dir := t.TempDir()
+	sensorPath := filepath.Join(dir, "temp_input")
+	fanPath := filepath.Join(dir, "pwm1")
+
+	neverStopYAML := func(neverStop bool) string {
+		return fmt.Sprintf(`
+sensors:
+  - id: sensor1
+    file:
+      path: %s
+curves:
+  - id: curve1
+    linear:
+      sensor: sensor1
+      min: 40
+      max: 80
+fans:
+  - id: fan1
+    file:
+      path: %s
+    curve: curve1
+    neverStop: %v
+`, sensorPath, fanPath, neverStop)
+	}
+
+	cfgPath := writeYAML(t, dir, neverStopYAML(false))
+
+	fan := &fakeFan{id: "fan1", curveID: "curve1"}
+	ctrl := &fakeController{}
+	fanControllers := map[fans.Fan]controller.FanController{fan: ctrl}
+
+	rm := NewReloadManager(cfgPath, fanControllers)
+	rm.reload(context.Background())
+
+	assert.False(t, fan.GetConfig().NeverStop, "neverStop should be false initially")
+
+	// Reload with neverStop: true.
+	require.NoError(t, os.WriteFile(cfgPath, []byte(neverStopYAML(true)), 0o600))
+	rm.reload(context.Background())
+
+	assert.True(t, fan.GetConfig().NeverStop, "neverStop should be true after reload")
 }
