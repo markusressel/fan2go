@@ -203,11 +203,11 @@ func (r *ReloadManager) applyNewConfig(newConfig *configuration.Configuration) {
 // mirroring the logic used during initial fan controller setup in backend.go.
 func buildControlLoopForFan(config configuration.FanConfig) control_loop.ControlLoop {
 	// Deprecated ControlLoop field takes precedence for backward compatibility.
-	if config.ControlLoop != nil { //nolint:all
+	if config.ControlLoop != nil { //nolint:staticcheck
 		return control_loop.NewPidControlLoop(
-			config.ControlLoop.P, //nolint:all
-			config.ControlLoop.I, //nolint:all
-			config.ControlLoop.D, //nolint:all
+			config.ControlLoop.P, //nolint:staticcheck
+			config.ControlLoop.I, //nolint:staticcheck
+			config.ControlLoop.D, //nolint:staticcheck
 		)
 	}
 	if config.ControlAlgorithm != nil {
