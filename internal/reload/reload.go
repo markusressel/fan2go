@@ -80,7 +80,7 @@ func (r *ReloadManager) Run(ctx context.Context) error {
 
 		case <-sighupCh:
 			ui.Info("Config hot-reload: received SIGHUP.")
-			r.reload()
+			r.reload(ctx)
 
 		case event, ok := <-watcher.Events:
 			if !ok {
@@ -92,7 +92,7 @@ func (r *ReloadManager) Run(ctx context.Context) error {
 				}
 				debounceTimer = time.AfterFunc(debounceDelay, func() {
 					ui.Info("Config hot-reload: config file changed.")
-					r.reload()
+					r.reload(ctx)
 				})
 			}
 
@@ -113,19 +113,25 @@ func (r *ReloadManager) runSighupOnly(ctx context.Context, sighupCh <-chan os.Si
 			return nil
 		case <-sighupCh:
 			ui.Info("Config hot-reload: received SIGHUP.")
-			r.reload()
+			r.reload(ctx)
 		}
 	}
 }
 
 // reload reads, validates, and – if valid – applies the configuration file.
-func (r *ReloadManager) reload() {
+// If ctx is already done (daemon shutting down) the apply step is skipped.
+func (r *ReloadManager) reload(ctx context.Context) {
 	newConfig, err := configuration.ReadAndValidateConfig(r.configPath)
 	if err != nil {
 		ui.Warning("Config hot-reload: rejected (validation failed): %v", err)
 		return
 	}
-	r.applyNewConfig(newConfig)
+	select {
+	case <-ctx.Done():
+		return // daemon is shutting down; skip the apply step
+	default:
+		r.applyNewConfig(newConfig)
+	}
 }
 
 // applyNewConfig updates the global CurrentConfig, recreates all SpeedCurve objects

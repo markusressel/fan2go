@@ -57,10 +57,8 @@ func RunDaemon() {
 		rm := reload.NewReloadManager(configuration.GetFilePath(), fanControllers)
 		g.Add(func() error {
 			return rm.Run(ctx)
-		}, func(err error) {
-			if err != nil {
-				ui.Warning("Config hot-reload manager stopped with error: %v", err)
-			}
+		}, func(_ error) {
+			// no-op: the reload manager exits when ctx is cancelled
 		})
 	}
 	{

@@ -153,8 +153,9 @@ func TestApplyNewConfig_RecreatesSpeedCurves(t *testing.T) {
 	require.NoError(t, err)
 
 	// Pre-register an "old" curve with a recognisable value.
-	oldCurve, _ := curves.NewSpeedCurve(newCfg.Curves[0])
-	oldCurve.(*curves.LinearSpeedCurve).Value = 42
+	oldCurve, err := curves.NewSpeedCurve(newCfg.Curves[0])
+	require.NoError(t, err)
+	oldCurve.(*curves.LinearSpeedCurve).SetValue(42)
 	curves.RegisterSpeedCurve(oldCurve)
 
 	rm := NewReloadManager(cfgPath, nil)
@@ -208,7 +209,7 @@ func TestReload_ValidConfig(t *testing.T) {
 	fanControllers := map[fans.Fan]controller.FanController{fan: ctrl}
 
 	rm := NewReloadManager(cfgPath, fanControllers)
-	rm.reload()
+	rm.reload(context.Background())
 
 	assert.Equal(t, "fan1", configuration.CurrentConfig.Fans[0].ID)
 	assert.NotNil(t, ctrl.currentCurve)
@@ -225,7 +226,7 @@ func TestReload_InvalidConfig(t *testing.T) {
 	configuration.CurrentConfig = configuration.Configuration{DbPath: "sentinel-value"}
 
 	rm := NewReloadManager(cfgPath, nil)
-	rm.reload()
+	rm.reload(context.Background())
 
 	assert.Equal(t, "sentinel-value", configuration.CurrentConfig.DbPath,
 		"invalid reload must not change CurrentConfig")
@@ -260,7 +261,7 @@ fans:
 	before := configuration.CurrentConfig
 
 	rm := NewReloadManager(cfgPath, nil)
-	rm.reload()
+	rm.reload(context.Background())
 
 	assert.Equal(t, before, configuration.CurrentConfig, "rejected reload must not change CurrentConfig")
 }
@@ -285,7 +286,7 @@ func TestReload_PidSetpointUpdate(t *testing.T) {
 	fanControllers := map[fans.Fan]controller.FanController{fan: ctrl}
 
 	rm := NewReloadManager(cfgPath, fanControllers)
-	rm.reload()
+	rm.reload(context.Background())
 
 	require.NotNil(t, ctrl.currentCurve)
 	pidCurve1, ok := ctrl.currentCurve.(*curves.PidSpeedCurve)
@@ -294,7 +295,7 @@ func TestReload_PidSetpointUpdate(t *testing.T) {
 
 	// Now update the config file with setPoint 70 and reload.
 	require.NoError(t, os.WriteFile(cfgPath, []byte(pidYAML(sensorPath, fanPath, 70.0)), 0o600))
-	rm.reload()
+	rm.reload(context.Background())
 
 	require.NotNil(t, ctrl.currentCurve)
 	pidCurve2, ok := ctrl.currentCurve.(*curves.PidSpeedCurve)
