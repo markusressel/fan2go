@@ -66,6 +66,13 @@ func NewSensor(config configuration.SensorConfig) (Sensor, error) {
 		}, nil
 	}
 
+	if config.Acpi != nil {
+		return &AcpiSensor{
+			Config: config,
+			mu:     sync.Mutex{},
+		}, nil
+	}
+
 	return nil, fmt.Errorf("no matching sensor type for sensor: %s", config.ID)
 }
 
