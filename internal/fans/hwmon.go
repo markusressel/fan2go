@@ -123,11 +123,9 @@ func (fan *HwMonFan) GetFanRpmCurveData() *map[int]float64 {
 // AttachFanCurveData attaches fan curve data from persistence to a fan
 // Note: When the given data is incomplete, all values up until the highest
 // value in the given dataset will be interpolated linearly
-// returns os.ErrInvalid if curveData is void of any data
 func (fan *HwMonFan) AttachFanRpmCurveData(curveData *map[int]float64) (err error) {
 	if curveData == nil || len(*curveData) <= 0 {
-		ui.Error("Can't attach empty fan curve data to fan %s", fan.GetId())
-		return os.ErrInvalid
+		return err
 	}
 
 	fan.FanCurveData = curveData
