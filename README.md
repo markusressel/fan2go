@@ -584,6 +584,25 @@ curves:
         - 80: 255
 ```
 
+#### Staircase
+
+To create a simple, staircase speed curve, use a curve of type `staircase`.
+
+It maintains a static fan speed and avoids constantly changing fan speeds.
+
+```yaml
+curves:
+  - id: staircase_curve
+    staircase:
+      sensor: cpu_package
+      threshold: 6
+      steps:
+        # Sensor value (in degress Celsius) -> Speed (0-255)
+        - 40: 1
+        - 50: 50
+        - 80: 255
+```
+
 #### PID
 
 If you want to get your hands dirty and use a PID based curve, you can use `pid`:
