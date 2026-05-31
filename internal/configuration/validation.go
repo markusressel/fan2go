@@ -124,6 +124,9 @@ func isSensorConfigInUse(config SensorConfig, curves []CurveConfig) bool {
 		if curveConfig.Linear != nil && curveConfig.Linear.Sensor == config.ID {
 			return true
 		}
+		if curveConfig.Staircase != nil && curveConfig.Staircase.Sensor == config.ID {
+			return true
+		}
 		if curveConfig.PID != nil && curveConfig.PID.Sensor == config.ID {
 			return true
 		}
@@ -144,6 +147,9 @@ func validateCurves(config *Configuration) error {
 
 		subConfigs := 0
 		if curveConfig.Linear != nil {
+			subConfigs++
+		}
+		if curveConfig.Staircase != nil {
 			subConfigs++
 		}
 		if curveConfig.PID != nil {
@@ -193,6 +199,20 @@ func validateCurves(config *Configuration) error {
 
 			if !sensorIdExists(curveConfig.Linear.Sensor, config) {
 				return fmt.Errorf("curve %s: no sensor definition with id '%s' found", curveConfig.ID, curveConfig.Linear.Sensor)
+			}
+		}
+
+		if curveConfig.Staircase != nil {
+			if len(curveConfig.Staircase.Sensor) <= 0 {
+				return fmt.Errorf("curve %s: missing sensorId", curveConfig.ID)
+			}
+
+			if !sensorIdExists(curveConfig.Staircase.Sensor, config) {
+				return fmt.Errorf("curve %s: no sensor definition with id '%s' found", curveConfig.ID, curveConfig.Staircase.Sensor)
+			}
+
+			if len(curveConfig.Staircase.InSteps) <= 0 {
+				return fmt.Errorf("curve %s: missing steps", curveConfig.ID)
 			}
 		}
 
