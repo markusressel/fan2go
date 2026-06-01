@@ -209,7 +209,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 
 	ui.Info("Gathering sensor data for %s...", fan.GetId())
 	// wait a bit to gather monitoring data
-	time.Sleep(2*time.Second + configuration.CurrentConfig.TempSensorPollingRate*2)
+	time.Sleep(2*time.Second + configuration.CurrentConfig.TempSensorPollingRate)
 
 	fanPwmData, err := f.runInitializationIfNeeded()
 	if err != nil {
