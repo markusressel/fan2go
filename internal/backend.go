@@ -21,6 +21,7 @@ import (
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/hwmon"
 	"github.com/markusressel/fan2go/internal/persistence"
+	"github.com/markusressel/fan2go/internal/reload"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/statistics"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -51,6 +52,15 @@ func RunDaemon() {
 	defer cancel()
 
 	var g run.Group
+	{
+		// === Config hot-reload manager
+		rm := reload.NewReloadManager(configuration.GetFilePath(), fanControllers)
+		g.Add(func() error {
+			return rm.Run(ctx)
+		}, func(_ error) {
+			// no-op: the reload manager exits when ctx is cancelled
+		})
+	}
 	{
 		if configuration.CurrentConfig.Profiling.Enabled {
 			g.Add(func() error {
@@ -114,8 +124,7 @@ func RunDaemon() {
 		sensorMapData := sensors.SnapshotSensorMap()
 		for _, sensor := range sensorMapData {
 			s := sensor
-			pollingRate := configuration.CurrentConfig.TempSensorPollingRate
-			mon := NewSensorMonitor(s, pollingRate)
+			mon := NewSensorMonitor(s)
 
 			g.Add(func() error {
 				err := mon.Run(ctx)

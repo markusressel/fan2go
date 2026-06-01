@@ -43,6 +43,16 @@ type FanController interface {
 	GetStatistics() FanControllerStatistics
 
 	UpdateFanSpeed() error
+
+	// SetCurve replaces the speed curve used by this controller.
+	// It is safe to call concurrently with Run and UpdateFanSpeed,
+	// enabling hot reloading of curve configuration.
+	SetCurve(curve curves.SpeedCurve)
+
+	// SetControlLoop replaces the control loop used by this controller.
+	// It is safe to call concurrently with Run and UpdateFanSpeed,
+	// enabling hot reloading of the control algorithm configuration.
+	SetControlLoop(loop control_loop.ControlLoop)
 }
 
 type DefaultFanController struct {
@@ -52,8 +62,9 @@ type DefaultFanController struct {
 	persistence persistence.Persistence
 	// the fan to control
 	fan fans.Fan
-	// the curve used to control the fan
-	curve curves.SpeedCurve
+	// the curve used to control the fan; protected by curveMu for hot-reload safety
+	curve   curves.SpeedCurve
+	curveMu sync.RWMutex
 	// rate to update the target fan speed
 	updateRate time.Duration
 	// the original ControlMode state of the fan before starting the controller
@@ -115,8 +126,10 @@ type DefaultFanController struct {
 	// (enabled by `fan2go fan --id <id> init --assume-pwm-map-identity`)
 	assumePwmMapIdentity bool
 
-	// control loop that specifies how the target value of the curve is approached
-	controlLoop control_loop.ControlLoop
+	// control loop that specifies how the target value of the curve is approached;
+	// protected by controlLoopMu for hot-reload safety
+	controlLoop   control_loop.ControlLoop
+	controlLoopMu sync.RWMutex
 
 	// offset applied to the actual minPwm of the fan to ensure "neverStops" constraint
 	minPwmOffset int
@@ -155,6 +168,24 @@ func (f *DefaultFanController) GetFanId() string {
 
 func (f *DefaultFanController) GetStatistics() FanControllerStatistics {
 	return f.stats
+}
+
+// SetCurve replaces the speed curve used by this controller.
+// It is safe to call from a separate goroutine (e.g. the hot-reload manager)
+// while the controller loop is running.
+func (f *DefaultFanController) SetCurve(curve curves.SpeedCurve) {
+	f.curveMu.Lock()
+	defer f.curveMu.Unlock()
+	f.curve = curve
+}
+
+// SetControlLoop replaces the control loop used by this controller.
+// It is safe to call from a separate goroutine (e.g. the hot-reload manager)
+// while the controller loop is running.
+func (f *DefaultFanController) SetControlLoop(loop control_loop.ControlLoop) {
+	f.controlLoopMu.Lock()
+	defer f.controlLoopMu.Unlock()
+	f.controlLoop = loop
 }
 
 func (f *DefaultFanController) prepareController() (err error) {
@@ -262,10 +293,9 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 
 	if fan.Supports(fans.FeatureRpmSensor) {
 		// === rpm monitoring
-		pollingRate := configuration.CurrentConfig.RpmPollingRate
-
 		g.Add(func() error {
-			tick := time.NewTicker(pollingRate)
+			currentRate := configuration.CurrentConfig.RpmPollingRate
+			tick := time.NewTicker(currentRate)
 			defer tick.Stop()
 			for {
 				select {
@@ -273,6 +303,10 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 					ui.Info("Fan %s: Stopping RPM monitor of fan controller...", fan.GetId())
 					return nil
 				case <-tick.C:
+					if newRate := configuration.CurrentConfig.RpmPollingRate; newRate != currentRate {
+						tick.Reset(newRate)
+						currentRate = newRate
+					}
 					f.measureRpm(fan)
 				}
 			}
@@ -287,7 +321,8 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	{
 		g.Add(func() error {
 			time.Sleep(1 * time.Second)
-			tick := time.NewTicker(f.updateRate)
+			currentRate := configuration.CurrentConfig.FanController.AdjustmentTickRate
+			tick := time.NewTicker(currentRate)
 			defer tick.Stop()
 			for {
 				select {
@@ -296,6 +331,10 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 					f.restoreControlMode()
 					return nil
 				case <-tick.C:
+					if newRate := configuration.CurrentConfig.FanController.AdjustmentTickRate; newRate != currentRate {
+						tick.Reset(newRate)
+						currentRate = newRate
+					}
 					err = f.UpdateFanSpeed()
 					if err != nil {
 						ui.ErrorAndNotify("Fan Control Error", "Fan %s: %v", fan.GetId(), err)
@@ -644,14 +683,22 @@ func (f *DefaultFanController) restoreControlMode() {
 // - evaluating the associated curve
 // - cycling the control loop
 func (f *DefaultFanController) calculateTargetSpeed() (float64, error) {
+	f.curveMu.RLock()
+	curve := f.curve
+	f.curveMu.RUnlock()
+
+	f.controlLoopMu.RLock()
+	loop := f.controlLoop
+	f.controlLoopMu.RUnlock()
+
 	fan := f.fan
-	target, err := f.curve.Evaluate()
+	target, err := curve.Evaluate()
 	if err != nil {
 		ui.Fatal("Unable to calculate optimal speed value for %s: %v", fan.GetId(), err)
 	}
 
 	// the new target speed to set, which approaches the actual target based on the control loop
-	newTarget := f.controlLoop.Cycle(target)
+	newTarget := loop.Cycle(target)
 
 	return newTarget, nil
 }

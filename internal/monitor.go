@@ -14,25 +14,29 @@ type SensorMonitor interface {
 }
 
 type sensorMonitor struct {
-	sensor      sensors.Sensor
-	pollingRate time.Duration
+	sensor sensors.Sensor
 }
 
-func NewSensorMonitor(sensor sensors.Sensor, pollingRate time.Duration) SensorMonitor {
+func NewSensorMonitor(sensor sensors.Sensor) SensorMonitor {
 	return sensorMonitor{
-		sensor:      sensor,
-		pollingRate: pollingRate,
+		sensor: sensor,
 	}
 }
 
 func (s sensorMonitor) Run(ctx context.Context) error {
-	tick := time.NewTicker(s.pollingRate)
+	currentRate := configuration.CurrentConfig.TempSensorPollingRate
+	tick := time.NewTicker(currentRate)
+	defer tick.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			ui.Info("Stopping sensor monitor for sensor %s...", s.sensor.GetId())
 			return nil
 		case <-tick.C:
+			if newRate := configuration.CurrentConfig.TempSensorPollingRate; newRate != currentRate {
+				tick.Reset(newRate)
+				currentRate = newRate
+			}
 			err := updateSensor(s.sensor)
 			if err != nil {
 				ui.Warning("Error updating sensor: %v", err)
