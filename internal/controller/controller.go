@@ -289,6 +289,14 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 			time.Sleep(1 * time.Second)
 			tick := time.NewTicker(f.updateRate)
 			defer tick.Stop()
+
+			err = f.UpdateFanSpeed()
+			if err != nil {
+				ui.ErrorAndNotify("Fan Control Error", "Fan %s: %v", fan.GetId(), err)
+				f.restoreControlMode()
+				return nil
+			}
+
 			for {
 				select {
 				case <-controllerCtx.Done():
