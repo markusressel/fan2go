@@ -189,40 +189,51 @@ func applyTransformations() {
 	// convert steps in linear curves from strings (with plain numbers or percent values) to floats between 0 and 255
 	for _, curve := range CurrentConfig.Curves {
 		if curve.Linear != nil && len(curve.Linear.InSteps) > 0 {
-			curve.Linear.Steps = make(map[int]float64)
-
-			for temp, origstr := range curve.Linear.InSteps {
-				str := strings.TrimSpace(origstr)
-				l := len(str)
-				isPercent := false
-				if l > 1 && str[l-1] == '%' {
-					isPercent = true
-					str = str[:l-1] // cut off '%' because ParseFloat() wouldn't like it
-				}
-				speed, err := strconv.ParseFloat(str, 64)
-				if err != nil {
-					ui.Fatal("Invalid curve step value '%s' in %s - must be either just a number or a number followed by '%%'", origstr, curve.ID)
-				} else {
-					if isPercent {
-						if speed < 0 || speed > 100 {
-							ui.Fatal("invalid curve step value '%s' (=> %f) in %s - must be between 0%% and 100%%", origstr, speed, curve.ID)
-						}
-						// convert 0-100% into [0..255]
-						if speed < 1 {
-							// less than 1% always turns into 0
-							speed = 0
-						} else {
-							// 1% turns into 1, 100% turns into 255
-							// => convert 1..100% to 1..255
-							// => 0..99 to 0..254 and then add 1
-							speed = (speed-1)*(254.0/99.0) + 1
-						}
-					} else if speed < 0 || speed > 255 {
-						ui.Fatal("invalid curve step value '%s' in %s - must be between 0 and 255", origstr, curve.ID)
-					}
-					curve.Linear.Steps[temp] = speed
-				}
+			transformCurveSteps(&curve.ID, &curve.Linear.Steps, &curve.Linear.InSteps)
+		}
+		if curve.Staircase != nil && len(curve.Staircase.InSteps) > 0 {
+			if len(curve.Staircase.InSteps) > 0 {
+				transformCurveSteps(&curve.ID, &curve.Staircase.Steps, &curve.Staircase.InSteps)
+			} else {
+				ui.Fatal("Missing steps in curve %s", curve.ID)
 			}
+		}
+	}
+}
+
+func transformCurveSteps(ID *string, Steps *map[int]float64, InSteps *map[int]string) {
+	*Steps = make(map[int]float64)
+
+	for temp, origstr := range *InSteps {
+		str := strings.TrimSpace(origstr)
+		l := len(str)
+		isPercent := false
+		if l > 1 && str[l-1] == '%' {
+			isPercent = true
+			str = str[:l-1] // cut off '%' because ParseFloat() wouldn't like it
+		}
+		speed, err := strconv.ParseFloat(str, 64)
+		if err != nil {
+			ui.Fatal("Invalid curve step value '%s' in %s - must be either just a number or a number followed by '%%'", origstr, *ID)
+		} else {
+			if isPercent {
+				if speed < 0 || speed > 100 {
+					ui.Fatal("invalid curve step value '%s' (=> %f) in %s - must be between 0%% and 100%%", origstr, speed, *ID)
+				}
+				// convert 0-100% into [0..255]
+				if speed < 1 {
+					// less than 1% always turns into 0
+					speed = 0
+				} else {
+					// 1% turns into 1, 100% turns into 255
+					// => convert 1..100% to 1..255
+					// => 0..99 to 0..254 and then add 1
+					speed = (speed-1)*(254.0/99.0) + 1
+				}
+			} else if speed < 0 || speed > 255 {
+				ui.Fatal("invalid curve step value '%s' in %s - must be between 0 and 255", origstr, *ID)
+			}
+			(*Steps)[temp] = speed
 		}
 	}
 }

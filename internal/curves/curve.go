@@ -2,6 +2,7 @@ package curves
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/util"
@@ -26,6 +27,14 @@ func NewSpeedCurve(config configuration.CurveConfig) (SpeedCurve, error) {
 	if config.Linear != nil {
 		ret := &LinearSpeedCurve{
 			Config: config,
+		}
+		return ret, nil
+	}
+
+	if config.Staircase != nil {
+		ret := &StaircaseSpeedCurve{
+			Config:   config,
+			LastTemp: math.MinInt,
 		}
 		return ret, nil
 	}

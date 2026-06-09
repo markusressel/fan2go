@@ -8,69 +8,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// helper function to create a linear curve configuration
-func createLinearCurveConfig(
+// helper function to create a staircase curve configuration
+func createStaircaseCurveConfig(
 	id string,
 	sensorId string,
-	minTemp int,
-	maxTemp int,
-) (curve configuration.CurveConfig) {
-	curve = configuration.CurveConfig{
-		ID: id,
-		Linear: &configuration.LinearCurveConfig{
-			Sensor: sensorId,
-			Min:    minTemp,
-			Max:    maxTemp,
-		},
-	}
-	return curve
-}
-
-// helper function to create a linear curve configuration with steps
-func createLinearCurveConfigWithSteps(
-	id string,
-	sensorId string,
+	threshold int,
 	steps map[int]float64,
 ) (curve configuration.CurveConfig) {
 	curve = configuration.CurveConfig{
 		ID: id,
-		Linear: &configuration.LinearCurveConfig{
-			Sensor: sensorId,
-			Steps:  steps,
+		Staircase: &configuration.StaircaseCurveConfig{
+			Sensor:    sensorId,
+			Threshold: threshold,
+			Steps:     steps,
 		},
 	}
 	return curve
 }
 
-func TestLinearCurveWithMinMax(t *testing.T) {
-	// GIVEN
-	avgTmp := 60000.0
-
-	s := &MockSensor{
-		Name:      "sensor",
-		MovingAvg: avgTmp,
-	}
-	sensors.RegisterSensor(s)
-
-	curveConfig := createLinearCurveConfig(
-		"curve",
-		s.GetId(),
-		40,
-		80,
-	)
-	curve, _ := NewSpeedCurve(curveConfig)
-
-	// WHEN
-	result, err := curve.Evaluate()
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
-
-	// THEN
-	assert.Equal(t, 127.5, result)
-}
-
-func TestLinearCurveWithStepsAtMin(t *testing.T) {
+func TestStaircaseCurveWithStepsAtMin(t *testing.T) {
 	// GIVEN
 	avgTmp := 40000.0
 	s := &MockSensor{
@@ -79,11 +35,11 @@ func TestLinearCurveWithStepsAtMin(t *testing.T) {
 	}
 	sensors.RegisterSensor(s)
 
-	curveConfig := createLinearCurveConfigWithSteps(
+	curveConfig := createStaircaseCurveConfig(
 		"curve",
 		s.GetId(),
+		8,
 		map[int]float64{
-			40: 0,
 			50: 30,
 			60: 100,
 			70: 255,
@@ -101,7 +57,7 @@ func TestLinearCurveWithStepsAtMin(t *testing.T) {
 	assert.Equal(t, 0.0, result)
 }
 
-func TestLinearCurveWithStepsInMiddle(t *testing.T) {
+func TestStaircaseCurveWithStepsInMiddle(t *testing.T) {
 	// GIVEN
 	avgTmp := 60000.0
 	s := &MockSensor{
@@ -110,11 +66,11 @@ func TestLinearCurveWithStepsInMiddle(t *testing.T) {
 	}
 	sensors.RegisterSensor(s)
 
-	curveConfig := createLinearCurveConfigWithSteps(
+	curveConfig := createStaircaseCurveConfig(
 		"curve",
 		s.GetId(),
+		8,
 		map[int]float64{
-			40: 0,
 			50: 30,
 			60: 100,
 			70: 255,
@@ -130,9 +86,30 @@ func TestLinearCurveWithStepsInMiddle(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, 100.0, result)
+
+	// WHEN
+	s.MovingAvg = 55000.0
+	result, err = curve.Evaluate()
+	if err != nil {
+		assert.Fail(t, err.Error())
+	}
+
+	// THEN
+	assert.Equal(t, 100.0, result)
+
+	// WHEN
+	s.MovingAvg = 52000.0
+	result, err = curve.Evaluate()
+	if err != nil {
+		assert.Fail(t, err.Error())
+	}
+
+	// THEN
+	assert.Equal(t, 30.0, result)
+
 }
 
-func TestLinearCurveWithStepsAtMax(t *testing.T) {
+func TestStaircaseCurveWithStepsAtMax(t *testing.T) {
 	// GIVEN
 	avgTmp := 70000.0
 	s := &MockSensor{
@@ -141,11 +118,11 @@ func TestLinearCurveWithStepsAtMax(t *testing.T) {
 	}
 	sensors.RegisterSensor(s)
 
-	curveConfig := createLinearCurveConfigWithSteps(
+	curveConfig := createStaircaseCurveConfig(
 		"curve",
 		s.GetId(),
+		8,
 		map[int]float64{
-			40: 0,
 			50: 30,
 			60: 100,
 			70: 255,
