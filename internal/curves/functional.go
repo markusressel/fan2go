@@ -43,39 +43,17 @@ func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
 
 	switch c.Config.Function.Type {
 	case configuration.FunctionSum:
-		sum := 0.0
-		for _, v := range values {
-			sum += v
-		}
-		value = math.Min(255, sum)
+		value = math.Min(255, util.Sum(values))
 	case configuration.FunctionDifference:
-		difference := 0.0
-		for idx, v := range values {
-			if idx == 0 {
-				difference = v
-			} else {
-				difference -= v
-			}
-		}
-		value = math.Max(0, difference)
+		value = math.Max(0, util.Difference(values))
 	case configuration.FunctionDelta:
-		var dmax = values[0]
-		var dmin = values[0]
-		for _, v := range values {
-			dmin = math.Min(dmin, v)
-			dmax = math.Max(dmax, v)
-		}
-		delta := dmax - dmin
-		value = delta
+		value = util.Delta(values)
 	case configuration.FunctionMinimum:
-		minimum := util.MinValOrElse(values, values[0])
-		value = minimum
+		value = util.MinValOrElse(values, values[0])
 	case configuration.FunctionMaximum:
-		maximum := util.MaxValOrElse(values, values[0])
-		value = maximum
+		value = util.MaxValOrElse(values, values[0])
 	case configuration.FunctionAverage:
-		avg := util.Avg(values)
-		value = avg
+		value = util.Avg(values)
 	default:
 		ui.Fatal("Unknown curve function: %s", c.Config.Function.Type)
 	}

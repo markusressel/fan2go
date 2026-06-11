@@ -446,7 +446,7 @@ sensors:
   # A user defined ID, which is used to reference
   # a sensor in a curve configuration (see below)
   - id: cpu_package
-    # The type of sensor configuration, one of: hwmon | nvidia | file | cmd | disk
+    # The type of sensor configuration, one of: hwmon | nvidia | file | cmd | disk | function
     hwmon:
       # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
       # "coretemp", "it8620", "corsaircpro-*" etc.
@@ -501,6 +501,22 @@ sensors:
       exec: /usr/bin/bash
       # (optional) arguments to pass to the executable
       args: [ '/home/markus/myscript.sh' ]
+```
+
+#### Function
+
+To create more complex sensor inputs you can combine existing sensors using a sensor of type `function`:
+
+```yaml
+sensors:
+  - id: avg_temp
+    function:
+      # Type of aggregation function to use, one of: minimum | maximum | average | delta | sum | difference
+      type: average
+      # A list of sensor IDs to use
+      sensors:
+        - cpu_package
+        - gpu_temp
 ```
 
 ### Curves
