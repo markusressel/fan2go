@@ -9,7 +9,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/guptarohit/asciigraph v0.9.0
 	github.com/labstack/echo-contrib v0.50.1
-	github.com/labstack/echo/v4 v4.15.2
+	github.com/labstack/echo/v4 v4.15.3
 	github.com/looplab/tarjan v0.1.0
 	github.com/md14454/gosensors v0.0.0-20180726083412-bded752ab001
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d
