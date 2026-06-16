@@ -4,3 +4,4 @@ dist
 fan2go*.db
 fan2go*.yaml
 test.db
+coverage.out
