@@ -58,6 +58,15 @@ run: build
 deploy: build
 	sudo cp "${OUTPUT_BIN}" "/usr/bin/${NAME}"
 
+man: build ## Generates man pages into the man/ directory
+	@mkdir -p man
+	@./${OUTPUT_BIN} man ./man
+
+deploy-man: man ## Deploys man pages to /usr/share/man/man1
+	sudo mkdir -p /usr/share/man/man1
+	sudo cp man/*.1 /usr/share/man/man1/
+	sudo mandb
+
 clean:
 	go clean
-	rm -f "${OUTPUT_BIN}"
+	rm -rf "${OUTPUT_BIN}" man
