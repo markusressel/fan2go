@@ -22,6 +22,14 @@ LDFLAGS := -w -s \
 test:   ## Run all tests
 	@go clean --testcache && go test -tags disable_nvml -v ./...
 
+coverage: ## Run all tests with coverage and show summary
+	@go test -coverprofile=coverage.out ./...
+	@go tool cover -func=coverage.out
+
+coverage-html: ## Run all tests with coverage and open HTML report
+	@go test -coverprofile=coverage.out ./...
+	@go tool cover -html=coverage.out
+
 build:  ## Builds the CLI for the native architecture
 	@go build ${GO_FLAGS} \
 	-ldflags "${LDFLAGS} -extldflags=-Wl,-z,lazy" \
