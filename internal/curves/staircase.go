@@ -1,6 +1,9 @@
 package curves
 
 import (
+	"fmt"
+	"math"
+
 	"github.com/markusressel/fan2go/internal/ui"
 
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -19,28 +22,34 @@ func (c *StaircaseSpeedCurve) GetId() string {
 }
 
 func (c *StaircaseSpeedCurve) Evaluate() (value float64, err error) {
-	sensor, _ := sensors.GetSensor(c.Config.Staircase.Sensor)
-	var measured float64
-	measured, err = sensor.GetValue()
-	if err != nil {
-                ui.Warning("Curve %s: Error getting sensor value: %v", c.Config.ID, err)
-                return c.Value, err
-        }
+	sensor, exists := sensors.GetSensor(c.Config.Staircase.Sensor)
+	if !exists || sensor == nil {
+		ui.Warning("Curve %s: Sensor not found with id '%s'", c.Config.ID, c.Config.Staircase.Sensor)
+		return c.Value, fmt.Errorf("sensor not found with id '%s'", c.Config.Staircase.Sensor)
+	}
 
+	measured := sensor.GetMovingAvg()
 	steps := c.Config.Staircase.Steps
 
-	var targetTemp int
+	targetTemp := math.MinInt
 	for temp := range steps {
 		if measured >= float64(temp)*1000 {
-			targetTemp = max(targetTemp, temp)
+			if targetTemp == math.MinInt || temp > targetTemp {
+				targetTemp = temp
+			}
 		}
 	}
-	if targetTemp < c.LastTemp && (c.LastTemp-int(measured/1000)) < c.Config.Staircase.Threshold {
+
+	if targetTemp < c.LastTemp && c.LastTemp != math.MinInt && (c.LastTemp-int(measured/1000)) < c.Config.Staircase.Threshold {
 		targetTemp = c.LastTemp
 	}
 
 	c.LastTemp = targetTemp
-	value = steps[targetTemp]
+	if targetTemp == math.MinInt {
+		value = 0.0
+	} else {
+		value = steps[targetTemp]
+	}
 
 	ui.Debug("Evaluating curve '%s'. Sensor '%s' temp '%.0f°'. Desired speed: %.2f", c.Config.ID, sensor.GetId(), measured/1000, value)
 	c.SetValue(value)

@@ -139,3 +139,71 @@ func TestStaircaseCurveWithStepsAtMax(t *testing.T) {
 	// THEN
 	assert.Equal(t, 255.0, result)
 }
+
+func TestStaircaseCurveWithNegativeTemperatures(t *testing.T) {
+	// GIVEN
+	s := &MockSensor{
+		ID:        "neg_sensor",
+		Name:      "neg_sensor",
+		MovingAvg: -5000.0, // -5°C
+	}
+	sensors.RegisterSensor(s)
+
+	curveConfig := createStaircaseCurveConfig(
+		"curve_neg",
+		s.GetId(),
+		3,
+		map[int]float64{
+			-10: 10,
+			10:  50,
+		},
+	)
+	curve, _ := NewSpeedCurve(curveConfig)
+
+	// WHEN
+	result, err := curve.Evaluate()
+	assert.NoError(t, err)
+
+	// THEN
+	assert.Equal(t, 10.0, result) // -5°C matches -10°C threshold
+
+	// WHEN: temperature drops to -12°C, which is within hysteresis threshold of 3 (from -10°C)
+	s.MovingAvg = -12000.0
+	result, err = curve.Evaluate()
+	assert.NoError(t, err)
+	assert.Equal(t, 10.0, result) // Holds 10.0 due to hysteresis
+
+	// WHEN: temperature drops to -14°C, which is beyond hysteresis threshold
+	s.MovingAvg = -14000.0
+	result, err = curve.Evaluate()
+	assert.NoError(t, err)
+	assert.Equal(t, 0.0, result) // Drops to 0.0
+}
+
+func TestStaircaseCurveWithStepAtZero(t *testing.T) {
+	// GIVEN
+	s := &MockSensor{
+		ID:        "zero_sensor",
+		Name:      "zero_sensor",
+		MovingAvg: 5000.0, // 5°C
+	}
+	sensors.RegisterSensor(s)
+
+	curveConfig := createStaircaseCurveConfig(
+		"curve_zero",
+		s.GetId(),
+		5,
+		map[int]float64{
+			0:  5,
+			40: 50,
+		},
+	)
+	curve, _ := NewSpeedCurve(curveConfig)
+
+	// WHEN
+	result, err := curve.Evaluate()
+	assert.NoError(t, err)
+
+	// THEN
+	assert.Equal(t, 5.0, result) // 5°C matches 0°C threshold
+}

@@ -191,7 +191,7 @@ func applyTransformations() {
 		if curve.Linear != nil && len(curve.Linear.InSteps) > 0 {
 			transformCurveSteps(&curve.ID, &curve.Linear.Steps, &curve.Linear.InSteps)
 		}
-		if curve.Staircase != nil && len(curve.Staircase.InSteps) > 0 {
+		if curve.Staircase != nil {
 			if len(curve.Staircase.InSteps) > 0 {
 				transformCurveSteps(&curve.ID, &curve.Staircase.Steps, &curve.Staircase.InSteps)
 			} else {
