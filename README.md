@@ -517,7 +517,7 @@ temperature sensors.
 
 #### Linear
 
-To create a simple, linear speed curve, use a curve of type `linear`.
+To create a linear speed curve, use a curve of type `linear`.
 
 This curve type can be used with a min/max sensor value, where the min temp will result in a curve value of `0` and the
 max temp will result in a curve value of `255`:
@@ -586,7 +586,7 @@ curves:
 
 #### Staircase
 
-To create a simple, staircase speed curve, use a curve of type `staircase`.
+To create a staircase speed curve, use a curve of type `staircase`.
 
 It maintains a static fan speed and avoids constantly changing fan speeds.
 
