@@ -34,22 +34,15 @@ func (c *StaircaseSpeedCurve) Evaluate() (value float64, err error) {
 	targetTemp := math.MinInt
 	for temp := range steps {
 		if measured >= float64(temp)*1000 {
-			if targetTemp == math.MinInt || temp > targetTemp {
-				targetTemp = temp
-			}
+			targetTemp = max(targetTemp, temp)
 		}
 	}
-
-	if targetTemp < c.LastTemp && c.LastTemp != math.MinInt && (c.LastTemp-int(measured/1000)) < c.Config.Staircase.Threshold {
+	if targetTemp < c.LastTemp && (c.LastTemp-int(measured/1000)) < c.Config.Staircase.Threshold {
 		targetTemp = c.LastTemp
 	}
 
 	c.LastTemp = targetTemp
-	if targetTemp == math.MinInt {
-		value = 0.0
-	} else {
-		value = steps[targetTemp]
-	}
+	value = steps[targetTemp]
 
 	ui.Debug("Evaluating curve '%s'. Sensor '%s' temp '%.0f°'. Desired speed: %.2f", c.Config.ID, sensor.GetId(), measured/1000, value)
 	c.SetValue(value)
