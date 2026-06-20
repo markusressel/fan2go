@@ -588,7 +588,9 @@ curves:
 
 To create a staircase speed curve, use a curve of type `staircase`.
 
-It maintains a static fan speed and avoids constantly changing fan speeds.
+It maintains static fan speeds at defined temperature ranges.
+This prevents fans from constantly ramping up and down (oscillating) in response to minor,
+rapid fluctuations in sensor temperature, offering a more consistent acoustic profile.
 
 ```yaml
 curves:
