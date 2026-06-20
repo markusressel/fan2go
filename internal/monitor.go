@@ -2,11 +2,12 @@ package internal
 
 import (
 	"context"
+	"time"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
-	"time"
 )
 
 type SensorMonitor interface {
@@ -27,6 +28,12 @@ func NewSensorMonitor(sensor sensors.Sensor, pollingRate time.Duration) SensorMo
 
 func (s sensorMonitor) Run(ctx context.Context) error {
 	tick := time.NewTicker(s.pollingRate)
+
+	err := updateSensor(s.sensor)
+	if err != nil {
+		ui.Warning("Error updating sensor: %v", err)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
