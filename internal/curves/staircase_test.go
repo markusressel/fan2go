@@ -12,15 +12,15 @@ import (
 func createStaircaseCurveConfig(
 	id string,
 	sensorId string,
-	threshold int,
+	hysteresis configuration.HysteresisConfig,
 	steps map[int]float64,
 ) (curve configuration.CurveConfig) {
 	curve = configuration.CurveConfig{
 		ID: id,
 		Staircase: &configuration.StaircaseCurveConfig{
-			Sensor:    sensorId,
-			Threshold: threshold,
-			Steps:     steps,
+			Sensor:     sensorId,
+			Hysteresis: hysteresis,
+			Steps:      steps,
 		},
 	}
 	return curve
@@ -38,7 +38,9 @@ func TestStaircaseCurveWithStepsAtMin(t *testing.T) {
 	curveConfig := createStaircaseCurveConfig(
 		"curve",
 		s.GetId(),
-		8,
+		configuration.HysteresisConfig{
+			Down: 8,
+		},
 		map[int]float64{
 			50: 30,
 			60: 100,
@@ -69,7 +71,9 @@ func TestStaircaseCurveWithStepsInMiddle(t *testing.T) {
 	curveConfig := createStaircaseCurveConfig(
 		"curve",
 		s.GetId(),
-		8,
+		configuration.HysteresisConfig{
+			Down: 8,
+		},
 		map[int]float64{
 			50: 30,
 			60: 100,
@@ -121,7 +125,9 @@ func TestStaircaseCurveWithStepsAtMax(t *testing.T) {
 	curveConfig := createStaircaseCurveConfig(
 		"curve",
 		s.GetId(),
-		8,
+		configuration.HysteresisConfig{
+			Down: 8,
+		},
 		map[int]float64{
 			50: 30,
 			60: 100,
@@ -152,7 +158,9 @@ func TestStaircaseCurveWithNegativeTemperatures(t *testing.T) {
 	curveConfig := createStaircaseCurveConfig(
 		"curve_neg",
 		s.GetId(),
-		3,
+		configuration.HysteresisConfig{
+			Down: 3,
+		},
 		map[int]float64{
 			-10: 10,
 			10:  50,
@@ -192,7 +200,9 @@ func TestStaircaseCurveWithStepAtZero(t *testing.T) {
 	curveConfig := createStaircaseCurveConfig(
 		"curve_zero",
 		s.GetId(),
-		5,
+		configuration.HysteresisConfig{
+			Down: 5,
+		},
 		map[int]float64{
 			0:  5,
 			40: 50,

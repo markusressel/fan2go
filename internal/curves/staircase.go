@@ -37,7 +37,7 @@ func (c *StaircaseSpeedCurve) Evaluate() (value float64, err error) {
 			targetTemp = max(targetTemp, temp)
 		}
 	}
-	if targetTemp < c.LastTemp && (c.LastTemp-int(measured/1000)) < c.Config.Staircase.Threshold {
+	if targetTemp < c.LastTemp && (c.LastTemp-int(measured/1000)) < c.Config.Staircase.Hysteresis.Down {
 		targetTemp = c.LastTemp
 	}
 
