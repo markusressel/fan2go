@@ -1,10 +1,11 @@
 package curves
 
 import (
+	"testing"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 // helper function to create a linear curve configuration

@@ -517,7 +517,7 @@ temperature sensors.
 
 #### Linear
 
-To create a simple, linear speed curve, use a curve of type `linear`.
+To create a linear speed curve, use a curve of type `linear`.
 
 This curve type can be used with a min/max sensor value, where the min temp will result in a curve value of `0` and the
 max temp will result in a curve value of `255`:
@@ -580,6 +580,27 @@ curves:
         # Sensor value (in degrees Celsius) -> Speed (0-255)
         - 40: 0
         - 41: 1
+        - 50: 50
+        - 80: 255
+```
+
+#### Staircase
+
+To create a staircase speed curve, use a curve of type `staircase`.
+
+It maintains static fan speeds at defined temperature ranges.
+This prevents fans from constantly ramping up and down (oscillating) in response to minor,
+rapid fluctuations in sensor temperature, offering a more consistent acoustic profile.
+
+```yaml
+curves:
+  - id: staircase_curve
+    staircase:
+      sensor: cpu_package
+      threshold: 6
+      steps:
+        # Sensor value (in degrees Celsius) -> Speed (0-255)
+        - 40: 1
         - 50: 50
         - 80: 255
 ```
