@@ -19,6 +19,21 @@ import (
 
 const (
 	FanModeSanityCheckDefaultThrottleDuration = 10 * time.Second
+
+	// FunctionSum computes the sum of all referenced values
+	FunctionSum = "sum"
+	// FunctionDifference computes the difference of all referenced values
+	FunctionDifference = "difference"
+	// FunctionAverage computes the average value of all referenced
+	// values using the arithmetic mean
+	FunctionAverage = "average"
+	// FunctionDelta computes the difference between the biggest and the smallest
+	// value of all referenced values
+	FunctionDelta = "delta"
+	// FunctionMinimum computes the smallest value of all referenced values
+	FunctionMinimum = "minimum"
+	// FunctionMaximum computes the biggest value of all referenced values
+	FunctionMaximum = "maximum"
 )
 
 type Configuration struct {

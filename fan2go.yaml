@@ -187,6 +187,16 @@ sensors:
       # e.g. just: ata-WDC_WD40EFRX_XXXXXXXX
       device: /dev/disk/by-id/ata-WDC_WD40EFRX_XXXXXXXX
 
+  - id: average_temp
+    # The type of sensor configuration, one of: hwmon | nvidia | file | cmd | disk | function
+    function:
+      # Type of aggregation function to use, one of: minimum | maximum | average | delta | sum | difference
+      type: average
+      # A list of sensor IDs to use
+      sensors:
+        - cpu_package
+        - mainboard
+
 # A list of control curves which can be utilized by fans
 # or other curves
 curves:

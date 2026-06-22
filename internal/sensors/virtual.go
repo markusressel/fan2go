@@ -13,6 +13,10 @@ func (sensor VirtualSensor) GetId() string {
 	return sensor.Name
 }
 
+func (sensor VirtualSensor) GetLabel() string {
+	return sensor.Name
+}
+
 func (sensor VirtualSensor) GetConfig() configuration.SensorConfig {
 	return configuration.SensorConfig{}
 }

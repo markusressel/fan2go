@@ -58,6 +58,7 @@ func containsCmdSensors() bool {
 }
 
 func validateSensors(config *Configuration) error {
+	graph := make(map[interface{}][]interface{})
 	sensorIds := []string{}
 
 	for _, sensorConfig := range config.Sensors {
@@ -86,14 +87,17 @@ func validateSensors(config *Configuration) error {
 		if sensorConfig.Disk != nil {
 			subConfigs++
 		}
+		if sensorConfig.Function != nil {
+			subConfigs++
+		}
 		if subConfigs > 1 {
 			return fmt.Errorf("sensor %s: only one sensor type can be used per sensor definition block", sensorConfig.ID)
 		}
 		if subConfigs <= 0 {
-			return fmt.Errorf("sensor %s: sub-configuration for sensor is missing, use one of: hwmon | nvidia | file | cmd | disk", sensorConfig.ID)
+			return fmt.Errorf("sensor %s: sub-configuration for sensor is missing, use one of: hwmon | nvidia | file | cmd | disk | function", sensorConfig.ID)
 		}
 
-		if !isSensorConfigInUse(sensorConfig, config.Curves) {
+		if !isSensorConfigInUse(sensorConfig, config.Sensors, config.Curves, make(map[string]bool)) {
 			ui.Warning("Unused sensor configuration: %s", sensorConfig.ID)
 		}
 
@@ -110,12 +114,51 @@ func validateSensors(config *Configuration) error {
 				return fmt.Errorf("sensor %s: disk sensor requires a device path", sensorConfig.ID)
 			}
 		}
+
+		if sensorConfig.Function != nil {
+			supportedTypes := []string{FunctionMinimum, FunctionAverage, FunctionMaximum, FunctionDelta, FunctionSum, FunctionDifference}
+			if !slices.Contains(supportedTypes, sensorConfig.Function.Type) {
+				return fmt.Errorf("sensor %s: unsupported function type '%s', use one of: %s", sensorConfig.ID, sensorConfig.Function.Type, strings.Join(supportedTypes, " | "))
+			}
+
+			if len(sensorConfig.Function.Sensors) < 2 {
+				return fmt.Errorf("sensor %s: function sensors must reference at least 2 other sensors", sensorConfig.ID)
+			}
+
+			var connections []interface{}
+			for _, sensorId := range sensorConfig.Function.Sensors {
+				if sensorId == sensorConfig.ID {
+					return fmt.Errorf("sensor %s: a sensor cannot reference itself", sensorConfig.ID)
+				}
+				connections = append(connections, sensorId)
+			}
+			graph[sensorConfig.ID] = connections
+		}
+	}
+
+	for sensorId, connections := range graph {
+		for _, conn := range connections {
+			if !sensorIdExists(conn.(string), config) {
+				return fmt.Errorf("sensor %s: no sensor definition with id '%s' found", sensorId, conn)
+			}
+		}
+	}
+
+	err := validateNoLoops(graph)
+	if err != nil {
+		return fmt.Errorf("sensor dependency cycle: %w", err)
 	}
 
 	return nil
 }
 
-func isSensorConfigInUse(config SensorConfig, curves []CurveConfig) bool {
+func isSensorConfigInUse(config SensorConfig, sensors []SensorConfig, curves []CurveConfig, visited map[string]bool) bool {
+	if visited[config.ID] {
+		return false
+	}
+	visited[config.ID] = true
+
+	// check if used by a curve
 	for _, curveConfig := range curves {
 		if curveConfig.Function != nil {
 			// function curves cannot reference sensors
@@ -129,6 +172,18 @@ func isSensorConfigInUse(config SensorConfig, curves []CurveConfig) bool {
 		}
 		if curveConfig.PID != nil && curveConfig.PID.Sensor == config.ID {
 			return true
+		}
+	}
+
+	// check if used by another sensor (functional sensor)
+	for _, sensorConfig := range sensors {
+		if sensorConfig.Function != nil {
+			if slices.Contains(sensorConfig.Function.Sensors, config.ID) {
+				// if the referencing sensor is in use, then this sensor is also in use
+				if isSensorConfigInUse(sensorConfig, sensors, curves, visited) {
+					return true
+				}
+			}
 		}
 	}
 

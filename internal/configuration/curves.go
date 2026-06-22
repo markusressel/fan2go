@@ -59,22 +59,6 @@ type PidCurveConfig struct {
 	D float64 `json:"d"`
 }
 
-const (
-	// FunctionSum computes the sum of all referenced curves
-	FunctionSum = "sum"
-	// FunctionDifference computes the difference of all referenced curves
-	FunctionDifference = "difference"
-	// FunctionAverage computes the average value of all referenced
-	// curves using the arithmetic mean
-	FunctionAverage = "average"
-	// FunctionDelta computes the difference between the biggest and the smallest
-	// value of all referenced curves
-	FunctionDelta = "delta"
-	// FunctionMinimum computes the smallest value of all referenced curves
-	FunctionMinimum = "minimum"
-	// FunctionMaximum computes the biggest value of all referenced curves
-	FunctionMaximum = "maximum"
-)
 
 type FunctionCurveConfig struct {
 	// Type is the type of function to use, can be one of the following:

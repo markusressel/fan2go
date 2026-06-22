@@ -450,3 +450,31 @@ func MedianFloat64(values []float64) float64 {
 	}
 	return sorted[n/2]
 }
+
+func Sum(values []float64) float64 {
+	sum := 0.0
+	for _, v := range values {
+		sum += v
+	}
+	return sum
+}
+
+func Difference(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	diff := values[0]
+	for i := 1; i < len(values); i++ {
+		diff -= values[i]
+	}
+	return diff
+}
+
+func Delta(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	min := MinValOrElse(values, values[0])
+	max := MaxValOrElse(values, values[0])
+	return max - min
+}
