@@ -597,7 +597,8 @@ curves:
   - id: staircase_curve
     staircase:
       sensor: cpu_package
-      threshold: 6
+      hysteresis:
+        down: 6
       steps:
         # Sensor value (in degrees Celsius) -> Speed (0-255)
         - 40: 1
