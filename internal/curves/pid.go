@@ -1,6 +1,8 @@
 package curves
 
 import (
+	"fmt"
+
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -19,7 +21,10 @@ func (c *PidSpeedCurve) GetId() string {
 }
 
 func (c *PidSpeedCurve) Evaluate() (value float64, err error) {
-	sensor, _ := sensors.GetSensor(c.Config.PID.Sensor)
+	sensor, exists := sensors.GetSensor(c.Config.PID.Sensor)
+	if !exists || sensor == nil {
+		return c.Value, fmt.Errorf("sensor not found with id '%s'", c.Config.PID.Sensor)
+	}
 	var measured float64
 	measured, err = sensor.GetValue()
 	if err != nil {

@@ -1,8 +1,10 @@
 package curves
 
 import (
-	"github.com/markusressel/fan2go/internal/ui"
+	"fmt"
 	"sync"
+
+	"github.com/markusressel/fan2go/internal/ui"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/sensors"
@@ -23,7 +25,10 @@ func (c *LinearSpeedCurve) GetId() string {
 }
 
 func (c *LinearSpeedCurve) Evaluate() (value float64, err error) {
-	sensor, _ := sensors.GetSensor(c.Config.Linear.Sensor)
+	sensor, exists := sensors.GetSensor(c.Config.Linear.Sensor)
+	if !exists || sensor == nil {
+		return c.Value, fmt.Errorf("sensor not found with id '%s'", c.Config.Linear.Sensor)
+	}
 	var avgTemp = sensor.GetMovingAvg()
 
 	steps := c.Config.Linear.Steps

@@ -1,6 +1,7 @@
 package curves
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -20,7 +21,10 @@ func (c *FunctionSpeedCurve) GetId() string {
 func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
 	var curves []SpeedCurve
 	for _, curveId := range c.Config.Function.Curves {
-		curve, _ := GetSpeedCurve(curveId)
+		curve, exists := GetSpeedCurve(curveId)
+		if !exists || curve == nil {
+			return c.Value, fmt.Errorf("sub-curve not found with id '%s'", curveId)
+		}
 		curves = append(curves, curve)
 	}
 

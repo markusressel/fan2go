@@ -24,7 +24,6 @@ func (c *StaircaseSpeedCurve) GetId() string {
 func (c *StaircaseSpeedCurve) Evaluate() (value float64, err error) {
 	sensor, exists := sensors.GetSensor(c.Config.Staircase.Sensor)
 	if !exists || sensor == nil {
-		ui.Warning("Curve %s: Sensor not found with id '%s'", c.Config.ID, c.Config.Staircase.Sensor)
 		return c.Value, fmt.Errorf("sensor not found with id '%s'", c.Config.Staircase.Sensor)
 	}
 

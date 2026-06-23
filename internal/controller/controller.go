@@ -123,6 +123,9 @@ type DefaultFanController struct {
 
 	// lastFanModeCheckTime is the last time we checked if some third party changed the fan control mode
 	lastFanModeCheckTime time.Time
+
+	// lastCurveError keeps track of the last error returned by the curve evaluation
+	lastCurveError string
 }
 
 func NewFanController(
@@ -655,7 +658,16 @@ func (f *DefaultFanController) calculateTargetSpeed() (float64, error) {
 	fan := f.fan
 	target, err := f.curve.Evaluate()
 	if err != nil {
-		ui.Fatal("Unable to calculate optimal speed value for %s: %v", fan.GetId(), err)
+		errStr := err.Error()
+		if f.lastCurveError != errStr {
+			errMsg := fmt.Sprintf("Unable to calculate optimal speed value for %s: %v. Running fan at maximum speed to prevent overheating.", fan.GetId(), err)
+			ui.Warning("%s", errMsg)
+			ui.NotifyWarn("Fan Control Warning", errMsg)
+			f.lastCurveError = errStr
+		}
+		target = float64(fans.MaxPwmValue)
+	} else {
+		f.lastCurveError = ""
 	}
 
 	// the new target speed to set, which approaches the actual target based on the control loop
