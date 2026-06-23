@@ -35,6 +35,8 @@ var (
 	pendingMu            sync.Mutex
 	pendingNotifications []pendingNotification
 	workerStarted        bool
+
+	workerPollInterval = 15 * time.Second
 )
 
 func NotifyInfo(title, text string) {
@@ -69,7 +71,7 @@ func NotifySend(urgency, title, text, icon string) {
 	}
 }
 
-func getDisplaySessions() []displaySession {
+var getDisplaySessions = func() []displaySession {
 	var sessions []displaySession
 
 	// If DISPLAY is set in environment, use it first
@@ -123,7 +125,7 @@ func getDisplaySessions() []displaySession {
 	return sessions
 }
 
-func sendToSession(session displaySession, urgency, title, text, icon string) {
+var sendToSession = func(session displaySession, urgency, title, text, icon string) {
 	cmd := exec.Command("id", "-u", session.user)
 	output, err := cmd.Output()
 	if err != nil {
@@ -175,7 +177,7 @@ func startNotificationWorker() {
 	workerStarted = true
 	go func() {
 		for {
-			time.Sleep(15 * time.Second)
+			time.Sleep(workerPollInterval)
 
 			pendingMu.Lock()
 			if len(pendingNotifications) == 0 {
