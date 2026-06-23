@@ -36,7 +36,7 @@ var (
 	pendingNotifications []pendingNotification
 	workerStarted        bool
 
-	workerPollInterval = 15 * time.Second
+	workerPollInterval = 1 * time.Second
 )
 
 func NotifyInfo(title, text string) {
