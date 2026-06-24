@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -50,7 +49,8 @@ func TestLinearCurveWithMinMax(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.RegisterSensor(s)
+	reg := NewMockRegistry()
+	reg.RegisterSensor(s)
 
 	curveConfig := createLinearCurveConfig(
 		"curve",
@@ -59,6 +59,7 @@ func TestLinearCurveWithMinMax(t *testing.T) {
 		80,
 	)
 	curve, _ := NewSpeedCurve(curveConfig)
+	reg.RegisterCurve(curve)
 
 	// WHEN
 	result, err := curve.Evaluate()
@@ -77,7 +78,8 @@ func TestLinearCurveWithStepsAtMin(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.RegisterSensor(s)
+	reg := NewMockRegistry()
+	reg.RegisterSensor(s)
 
 	curveConfig := createLinearCurveConfigWithSteps(
 		"curve",
@@ -90,6 +92,7 @@ func TestLinearCurveWithStepsAtMin(t *testing.T) {
 		},
 	)
 	curve, _ := NewSpeedCurve(curveConfig)
+	reg.RegisterCurve(curve)
 
 	// WHEN
 	result, err := curve.Evaluate()
@@ -108,7 +111,8 @@ func TestLinearCurveWithStepsInMiddle(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.RegisterSensor(s)
+	reg := NewMockRegistry()
+	reg.RegisterSensor(s)
 
 	curveConfig := createLinearCurveConfigWithSteps(
 		"curve",
@@ -121,6 +125,7 @@ func TestLinearCurveWithStepsInMiddle(t *testing.T) {
 		},
 	)
 	curve, _ := NewSpeedCurve(curveConfig)
+	reg.RegisterCurve(curve)
 
 	// WHEN
 	result, err := curve.Evaluate()
@@ -139,7 +144,8 @@ func TestLinearCurveWithStepsAtMax(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.RegisterSensor(s)
+	reg := NewMockRegistry()
+	reg.RegisterSensor(s)
 
 	curveConfig := createLinearCurveConfigWithSteps(
 		"curve",
@@ -152,6 +158,7 @@ func TestLinearCurveWithStepsAtMax(t *testing.T) {
 		},
 	)
 	curve, _ := NewSpeedCurve(curveConfig)
+	reg.RegisterCurve(curve)
 
 	// WHEN
 	result, err := curve.Evaluate()

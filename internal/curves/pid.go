@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 )
@@ -26,13 +25,10 @@ func (c *PidSpeedCurve) GetId() string {
 }
 
 func (c *PidSpeedCurve) Evaluate() (value float64, err error) {
-	var sensor sensors.Sensor
-	var exists bool
-	if c.registry != nil {
-		sensor, exists = c.registry.GetSensor(c.Config.PID.Sensor)
-	} else {
-		sensor, exists = sensors.GetSensor(c.Config.PID.Sensor)
+	if c.registry == nil {
+		return c.Value, fmt.Errorf("no registry bound to speed curve '%s'", c.Config.ID)
 	}
+	sensor, exists := c.registry.GetSensor(c.Config.PID.Sensor)
 	if !exists || sensor == nil {
 		return c.Value, fmt.Errorf("sensor not found with id '%s'", c.Config.PID.Sensor)
 	}

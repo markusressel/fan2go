@@ -24,15 +24,12 @@ func (c *FunctionSpeedCurve) GetId() string {
 }
 
 func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
+	if c.registry == nil {
+		return c.Value, fmt.Errorf("no registry bound to speed curve '%s'", c.Config.ID)
+	}
 	var curves []SpeedCurve
 	for _, curveId := range c.Config.Function.Curves {
-		var curve SpeedCurve
-		var exists bool
-		if c.registry != nil {
-			curve, exists = c.registry.GetCurve(curveId)
-		} else {
-			curve, exists = GetSpeedCurve(curveId)
-		}
+		curve, exists := c.registry.GetCurve(curveId)
 		if !exists || curve == nil {
 			return c.Value, fmt.Errorf("sub-curve not found with id '%s'", curveId)
 		}

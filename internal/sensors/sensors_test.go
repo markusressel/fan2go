@@ -16,6 +16,5 @@ func CreateSensor(
 		},
 		MovingAvg: avgTmp,
 	}
-	RegisterSensor(sensor)
 	return sensor
 }

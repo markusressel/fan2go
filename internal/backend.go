@@ -112,7 +112,7 @@ func RunDaemon() {
 	}
 	{
 		// === sensor monitoring
-		sensorMapData := sensors.SnapshotSensorMap()
+		sensorMapData := reg.SnapshotSensors()
 		for _, sensor := range sensorMapData {
 			s := sensor
 			pollingRate := configuration.CurrentConfig.TempSensorPollingRate
@@ -328,7 +328,6 @@ func initializeSensors(controllers []*hwmon.HwMonController, reg *registry.Regis
 		sensor.SetMovingAvg(currentValue)
 
 		reg.RegisterSensor(sensor)
-		sensors.RegisterSensor(sensor)
 	}
 
 	sensorCollector := statistics.NewSensorCollector(sensorList)
@@ -346,7 +345,6 @@ func initializeCurves(reg *registry.Registry) error {
 		}
 		curveList = append(curveList, curve)
 		reg.RegisterCurve(curve)
-		curves.RegisterSpeedCurve(curve)
 	}
 
 	curveCollector := statistics.NewCurveCollector(curveList)
@@ -379,7 +377,6 @@ func initializeFans(controllers []*hwmon.HwMonController, reg *registry.Registry
 			continue
 		}
 		reg.RegisterFan(fan)
-		fans.RegisterFan(fan)
 		result[config] = fan
 
 		fanList = append(fanList, fan)

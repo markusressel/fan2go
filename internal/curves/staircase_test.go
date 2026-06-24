@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -33,7 +32,8 @@ func TestStaircaseCurveWithStepsAtMin(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.RegisterSensor(s)
+	reg := NewMockRegistry()
+	reg.RegisterSensor(s)
 
 	curveConfig := createStaircaseCurveConfig(
 		"curve",
@@ -48,6 +48,7 @@ func TestStaircaseCurveWithStepsAtMin(t *testing.T) {
 		},
 	)
 	curve, _ := NewSpeedCurve(curveConfig)
+	reg.RegisterCurve(curve)
 
 	// WHEN
 	result, err := curve.Evaluate()
@@ -66,7 +67,8 @@ func TestStaircaseCurveWithStepsInMiddle(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.RegisterSensor(s)
+	reg := NewMockRegistry()
+	reg.RegisterSensor(s)
 
 	curveConfig := createStaircaseCurveConfig(
 		"curve",
@@ -81,6 +83,7 @@ func TestStaircaseCurveWithStepsInMiddle(t *testing.T) {
 		},
 	)
 	curve, _ := NewSpeedCurve(curveConfig)
+	reg.RegisterCurve(curve)
 
 	// WHEN
 	result, err := curve.Evaluate()
@@ -120,7 +123,8 @@ func TestStaircaseCurveWithStepsAtMax(t *testing.T) {
 		Name:      "sensor",
 		MovingAvg: avgTmp,
 	}
-	sensors.RegisterSensor(s)
+	reg := NewMockRegistry()
+	reg.RegisterSensor(s)
 
 	curveConfig := createStaircaseCurveConfig(
 		"curve",
@@ -135,6 +139,7 @@ func TestStaircaseCurveWithStepsAtMax(t *testing.T) {
 		},
 	)
 	curve, _ := NewSpeedCurve(curveConfig)
+	reg.RegisterCurve(curve)
 
 	// WHEN
 	result, err := curve.Evaluate()
@@ -153,7 +158,8 @@ func TestStaircaseCurveWithNegativeTemperatures(t *testing.T) {
 		Name:      "neg_sensor",
 		MovingAvg: -5000.0, // -5°C
 	}
-	sensors.RegisterSensor(s)
+	reg := NewMockRegistry()
+	reg.RegisterSensor(s)
 
 	curveConfig := createStaircaseCurveConfig(
 		"curve_neg",
@@ -167,6 +173,7 @@ func TestStaircaseCurveWithNegativeTemperatures(t *testing.T) {
 		},
 	)
 	curve, _ := NewSpeedCurve(curveConfig)
+	reg.RegisterCurve(curve)
 
 	// WHEN
 	result, err := curve.Evaluate()
@@ -195,7 +202,8 @@ func TestStaircaseCurveWithStepAtZero(t *testing.T) {
 		Name:      "zero_sensor",
 		MovingAvg: 5000.0, // 5°C
 	}
-	sensors.RegisterSensor(s)
+	reg := NewMockRegistry()
+	reg.RegisterSensor(s)
 
 	curveConfig := createStaircaseCurveConfig(
 		"curve_zero",
@@ -209,6 +217,7 @@ func TestStaircaseCurveWithStepAtZero(t *testing.T) {
 		},
 	)
 	curve, _ := NewSpeedCurve(curveConfig)
+	reg.RegisterCurve(curve)
 
 	// WHEN
 	result, err := curve.Evaluate()

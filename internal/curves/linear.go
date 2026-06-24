@@ -7,7 +7,6 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 
 	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/util"
 )
 
@@ -30,13 +29,10 @@ func (c *LinearSpeedCurve) GetId() string {
 }
 
 func (c *LinearSpeedCurve) Evaluate() (value float64, err error) {
-	var sensor sensors.Sensor
-	var exists bool
-	if c.registry != nil {
-		sensor, exists = c.registry.GetSensor(c.Config.Linear.Sensor)
-	} else {
-		sensor, exists = sensors.GetSensor(c.Config.Linear.Sensor)
+	if c.registry == nil {
+		return c.Value, fmt.Errorf("no registry bound to speed curve '%s'", c.Config.ID)
 	}
+	sensor, exists := c.registry.GetSensor(c.Config.Linear.Sensor)
 	if !exists || sensor == nil {
 		return c.Value, fmt.Errorf("sensor not found with id '%s'", c.Config.Linear.Sensor)
 	}

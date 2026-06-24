@@ -9,9 +9,7 @@ import (
 	"github.com/markusressel/fan2go/internal/control_loop"
 
 	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
-	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
 )
@@ -520,20 +518,11 @@ func TestCappedNeverStoppingFan(t *testing.T) {
 
 func TestCalculateTargetSpeedLinear(t *testing.T) {
 	// GIVEN
-	avgTmp := 50000.0
-	s := MockSensor{
-		ID:        "sensor",
-		Name:      "sensor",
-		MovingAvg: avgTmp,
-	}
-	sensors.RegisterSensor(&s)
-
 	curveValue := 127.0
 	curve := &MockCurve{
 		ID:    "curve",
 		Value: &curveValue,
 	}
-	curves.RegisterSpeedCurve(curve)
 
 	fan := &MockFan{
 		ID:              "fan",
@@ -542,7 +531,6 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 		curveId:         curve.GetId(),
 		speedCurve:      &LinearFan,
 	}
-	fans.RegisterFan(fan)
 
 	controlLoop := control_loop.NewDirectControlLoop(nil)
 
@@ -566,21 +554,11 @@ func TestCalculateTargetSpeedLinear(t *testing.T) {
 
 func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 	// GIVEN
-	avgTmp := 40000.0
-
-	s := &MockSensor{
-		ID:        "sensor",
-		Name:      "sensor",
-		MovingAvg: avgTmp,
-	}
-	sensors.RegisterSensor(s)
-
 	curveValue := 0.0
 	curve := &MockCurve{
 		ID:    "curve",
 		Value: &curveValue,
 	}
-	curves.RegisterSpeedCurve(curve)
 
 	fan := &MockFan{
 		ID:              "fan",
@@ -591,7 +569,6 @@ func TestCalculateTargetSpeedNeverStop(t *testing.T) {
 		shouldNeverStop: true,
 		speedCurve:      &NeverStoppingFan,
 	}
-	fans.RegisterFan(fan)
 
 	controlLoop := control_loop.NewDirectControlLoop(nil)
 
@@ -641,21 +618,11 @@ func TestFanController_ComputePwmBoundaries_FanCurveGaps(t *testing.T) {
 
 func TestFanController_UpdateFanSpeed_FanCurveGaps(t *testing.T) {
 	// GIVEN
-	avgTmp := 40000.0
-
-	s := &MockSensor{
-		ID:        "sensor",
-		Name:      "sensor",
-		MovingAvg: avgTmp,
-	}
-	sensors.RegisterSensor(s)
-
 	curveValue := 5.0
 	curve := &MockCurve{
 		ID:    "curve",
 		Value: &curveValue,
 	}
-	curves.RegisterSpeedCurve(curve)
 
 	fan := &MockFan{
 		ID:              "fan",
