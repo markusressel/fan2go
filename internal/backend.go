@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"sync"
 	"syscall"
 	"time"
 
@@ -48,6 +49,7 @@ func RunDaemon() {
 		ui.Fatal("Error initializing fan controllers: %v", err)
 	}
 
+	// Remove regHolder completely. We pass reg directly to the webserver functions.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -81,92 +83,119 @@ func RunDaemon() {
 			})
 		}
 	}
-	{
-		// === Global Webserver
+
+	var orchestratorWg sync.WaitGroup
+	orchestratorCtx, cancelOrchestrator := context.WithCancel(ctx)
+
+	// Since we want Option 1 (Restarting Webservers on SIGHUP), the webservers are started and stopped
+	// alongside the controllers and monitors using the orchestratorCtx.
+	var currentWebservers []*echo.Echo
+
+	var startWebservers = func(oCtx context.Context, r *registry.Registry) {
 		if configuration.CurrentConfig.Api.Enabled || configuration.CurrentConfig.Statistics.Enabled {
-			g.Add(func() error {
-				ui.Info("Starting Webserver...")
-
-				servers := createWebServer(reg)
-
-				<-ctx.Done()
+			ui.Info("Starting Webservers...")
+			currentWebservers = createWebServer(r)
+			orchestratorWg.Add(1)
+			go func() {
+				defer orchestratorWg.Done()
+				<-oCtx.Done()
 				ui.Debug("Stopping all webservers...")
-				timeoutCtx, timeoutCancel := context.WithTimeout(ctx, 5*time.Second)
+				timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer timeoutCancel()
 
-				for _, server := range servers {
+				for _, server := range currentWebservers {
 					err := server.Shutdown(timeoutCtx)
 					if err != nil {
-						return err
+						ui.Warning("Error stopping webserver: %v", err)
 					}
 				}
-				return nil
-			}, func(err error) {
-				if err != nil {
-					ui.Warning("Error stopping webservers: %v", err)
-				} else {
-					ui.Debug("Webservers stopped.")
-				}
-			})
+			}()
 		}
 	}
-	{
-		// === sensor monitoring
-		sensorMapData := reg.SnapshotSensors()
-		for _, sensor := range sensorMapData {
-			s := sensor
-			pollingRate := configuration.CurrentConfig.TempSensorPollingRate
-			mon := NewSensorMonitor(s, pollingRate)
 
-			g.Add(func() error {
-				err := mon.Run(ctx)
-				ui.Info("Sensor Monitor for sensor %s stopped.", s.GetId())
-				if err != nil {
-					panic(err)
-				}
-				return err
-			}, func(err error) {
-				if err != nil {
-					ui.Warning("Error monitoring sensor: %v", err)
-				}
-			})
-		}
-	}
 	{
-		// === fan controllers
-		for f, c := range fanControllers {
-			fan := f
-			fanController := c
-			g.Add(func() error {
-				err := fanController.Run(ctx)
-				ui.Info("Fan controller for fan %s stopped.", fan.GetId())
-				if err != nil {
-					ui.NotifyError(fmt.Sprintf("Fan Controller: %s", fan.GetId()), err.Error())
-					panic(err)
-				}
-				return err
-			}, func(err error) {
-				if err != nil {
-					ui.WarningAndNotify(fmt.Sprintf("Fan Controller: %s", fan.GetId()), "Something went wrong: %v", err)
-				}
-			})
-		}
+		// === sensor monitoring & fan controllers orchestrator
+		g.Add(func() error {
+			if len(reg.SnapshotFans()) == 0 {
+				ui.FatalWithoutStacktrace("No valid fan configurations, exiting.")
+			}
 
-		if len(reg.SnapshotFans()) == 0 {
-			ui.FatalWithoutStacktrace("No valid fan configurations, exiting.")
-		}
+			startControllersAndMonitors(orchestratorCtx, reg, fanControllers, &orchestratorWg)
+			startWebservers(orchestratorCtx, reg)
+			<-ctx.Done()
+			return nil
+		}, func(err error) {
+			cancelOrchestrator()
+			orchestratorWg.Wait()
+		})
 	}
 	{
 		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 
 		g.Add(func() error {
-			<-sig
-			ui.Info("Received SIGTERM signal, exiting...")
-			return nil
+			for {
+				select {
+				case s := <-sig:
+					if s == syscall.SIGHUP {
+						ui.Info("Received SIGHUP signal, reloading configuration...")
+						// 1. Load config
+						oldConfig := configuration.CurrentConfig
+						configuration.LoadConfig()
+						// 2. Validate
+						err := configuration.Validate(configuration.GetFilePath())
+						if err != nil {
+							ui.Error("Configuration validation failed: %v. Rolling back to old configuration.", err)
+							configuration.CurrentConfig = oldConfig
+							continue
+						}
+						ui.Info("Configuration validated successfully.")
+
+						// 3. Spin down old controllers and webservers
+						ui.Info("Stopping old fan controllers, sensor monitors and webservers...")
+						cancelOrchestrator()
+						orchestratorWg.Wait()
+
+						// 4. Initialize new Registry
+						newFanMap, newReg, err := InitializeObjects()
+						if err != nil {
+							ui.Error("Error re-initializing objects: %v. Rolling back to old configuration.", err)
+							configuration.CurrentConfig = oldConfig
+							newFanMap, newReg, _ = InitializeObjects()
+						}
+						if len(newReg.SnapshotFans()) == 0 {
+							ui.Error("No valid fan configurations in new configuration. Rolling back to old configuration.")
+							configuration.CurrentConfig = oldConfig
+							newFanMap, newReg, _ = InitializeObjects()
+						}
+						newFanControllers, err := initializeFanControllers(pers, newFanMap, newReg)
+						if err != nil {
+							ui.Error("Error re-initializing fan controllers: %v. Rolling back to old configuration.", err)
+							configuration.CurrentConfig = oldConfig
+							newFanMap, newReg, _ = InitializeObjects()
+							newFanControllers, _ = initializeFanControllers(pers, newFanMap, newReg)
+						}
+
+						reg = newReg
+
+						// 5. Spin up new controllers and webservers
+						orchestratorCtx, cancelOrchestrator = context.WithCancel(ctx)
+						ui.Info("Starting new fan controllers, sensor monitors and webservers...")
+						startControllersAndMonitors(orchestratorCtx, reg, newFanControllers, &orchestratorWg)
+						startWebservers(orchestratorCtx, reg)
+						ui.Info("Configuration reloaded successfully.")
+					} else {
+						ui.Info("Received SIGTERM/SIGINT signal, exiting...")
+						return nil
+					}
+				case <-ctx.Done():
+					return nil
+				}
+			}
 		}, func(err error) {
 			defer close(sig)
 			cancel()
+			cancelOrchestrator()
 		})
 	}
 
@@ -176,6 +205,41 @@ func RunDaemon() {
 	} else {
 		ui.Info("Done.")
 		os.Exit(0)
+	}
+}
+
+func startControllersAndMonitors(ctx context.Context, reg *registry.Registry, fanControllers map[fans.Fan]controller.FanController, wg *sync.WaitGroup) {
+	// === sensor monitoring
+	sensorMapData := reg.SnapshotSensors()
+	for _, sensor := range sensorMapData {
+		s := sensor
+		pollingRate := configuration.CurrentConfig.TempSensorPollingRate
+		mon := NewSensorMonitor(s, pollingRate)
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := mon.Run(ctx)
+			ui.Info("Sensor Monitor for sensor %s stopped.", s.GetId())
+			if err != nil && err != context.Canceled {
+				ui.Warning("Sensor monitor exited with error: %v", err)
+			}
+		}()
+	}
+
+	// === fan controllers
+	for f, c := range fanControllers {
+		fan := f
+		fanController := c
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := fanController.Run(ctx)
+			ui.Info("Fan controller for fan %s stopped.", fan.GetId())
+			if err != nil && err != context.Canceled {
+				ui.WarningAndNotify(fmt.Sprintf("Fan Controller: %s", fan.GetId()), "Something went wrong: %v", err)
+			}
+		}()
 	}
 }
 
