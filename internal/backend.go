@@ -71,28 +71,6 @@ func RunDaemon() {
 		}
 	}
 
-	var startWebservers = func(oCtx context.Context, r *registry.Registry, wg *sync.WaitGroup) {
-		if configuration.CurrentConfig.Api.Enabled || configuration.CurrentConfig.Statistics.Enabled {
-			ui.Info("Starting Webservers...")
-			servers := createWebServer(r)
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				<-oCtx.Done()
-				ui.Debug("Stopping all webservers...")
-				timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer timeoutCancel()
-
-				for _, server := range servers {
-					err := server.Shutdown(timeoutCtx)
-					if err != nil {
-						ui.Warning("Error stopping webserver: %v", err)
-					}
-				}
-			}()
-		}
-	}
-
 	{
 		// === sensor monitoring & fan controllers orchestrator
 		g.Add(func() error {
@@ -249,6 +227,28 @@ func startProfilingWebserver(ctx context.Context) error {
 	<-ctx.Done()
 	ui.Info("Stopping profiling webserver...")
 	return nil
+}
+
+func startWebservers(ctx context.Context, reg *registry.Registry, wg *sync.WaitGroup) {
+	if configuration.CurrentConfig.Api.Enabled || configuration.CurrentConfig.Statistics.Enabled {
+		ui.Info("Starting Webservers...")
+		servers := createWebServer(reg)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-ctx.Done()
+			ui.Debug("Stopping all webservers...")
+			timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer timeoutCancel()
+
+			for _, server := range servers {
+				err := server.Shutdown(timeoutCtx)
+				if err != nil {
+					ui.Warning("Error stopping webserver: %v", err)
+				}
+			}
+		}()
+	}
 }
 
 func startSensorMonitors(ctx context.Context, reg *registry.Registry, wg *sync.WaitGroup) {
