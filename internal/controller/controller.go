@@ -652,10 +652,9 @@ func (f *DefaultFanController) restoreControlMode() {
 // - evaluating the associated curve
 // - cycling the control loop
 func (f *DefaultFanController) calculateTargetSpeed() (float64, error) {
-	fan := f.fan
 	target, err := f.curve.Evaluate()
 	if err != nil {
-		ui.Fatal("Unable to calculate optimal speed value for %s: %v", fan.GetId(), err)
+		return 0, err
 	}
 
 	// the new target speed to set, which approaches the actual target based on the control loop

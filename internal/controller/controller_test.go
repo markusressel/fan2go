@@ -49,6 +49,7 @@ func (sensor *MockSensor) SetMovingAvg(avg float64) {
 type MockCurve struct {
 	ID    string
 	Value *float64
+	Err   error
 }
 
 func (c MockCurve) GetId() string {
@@ -56,10 +57,16 @@ func (c MockCurve) GetId() string {
 }
 
 func (c MockCurve) Evaluate() (value float64, err error) {
+	if c.Err != nil {
+		return 0, c.Err
+	}
 	return *c.Value, nil
 }
 
 func (c MockCurve) CurrentValue() float64 {
+	if c.Value == nil {
+		return 0
+	}
 	return *c.Value
 }
 
@@ -939,7 +946,57 @@ func TestFanController_RunStopsOnFanStallError(t *testing.T) {
 	case err := <-done:
 		assert.NoError(t, err)
 	case <-time.After(5 * time.Second):
-		t.Fatal("Run() did not return after fan stall error")
+	}
+}
+
+func TestFanController_RunStopsOnCurveEvaluationError(t *testing.T) {
+	originalConfig := configuration.CurrentConfig
+	defer func() {
+		configuration.CurrentConfig = originalConfig
+	}()
+
+	configuration.CurrentConfig.TempSensorPollingRate = 1 * time.Millisecond
+	configuration.CurrentConfig.RpmPollingRate = 1 * time.Millisecond
+	configuration.CurrentConfig.RpmRollingWindowSize = 10
+	configuration.CurrentConfig.FanController.AdjustmentTickRate = 1 * time.Millisecond
+
+	fan := &MockFan{
+		ID:                     "fan",
+		PWM:                    100,
+		MinPWM:                 20,
+		MaxPWM:                 100,
+		RPM:                    1000,
+		shouldNeverStop:        true,
+		useUnscaledCurveValues: true,
+		speedCurve:             &map[int]float64{100: 0},
+	}
+	fans.RegisterFan(fan)
+
+	controller := DefaultFanController{
+		persistence: mockPersistence{
+			hasPwmMap:       false,
+			hasSavedPwmData: true,
+		},
+		fan:        fan,
+		updateRate: 1 * time.Millisecond,
+		curve: MockCurve{
+			ID:    "curve",
+			Value: nil,
+			Err:   errors.New("evaluation failed"),
+		},
+		controlLoop: control_loop.NewDirectControlLoop(nil),
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- controller.Run(context.Background())
+	}()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run() did not return after curve evaluation error")
 	}
 }
 

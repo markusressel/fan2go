@@ -302,13 +302,19 @@ func initializeSensors(controllers []*hwmon.HwMonController) error {
 		if config.HwMon != nil {
 			err := hwmon.UpdateSensorConfigFromHwMonControllers(controllers, &config)
 			if err != nil {
-				return fmt.Errorf("couldn't find sensor for %s: %v", config.ID, err)
+				errMsg := fmt.Sprintf("couldn't find sensor for %s: %v. Skipping.", config.ID, err)
+				ui.Warning("%s", errMsg)
+				ui.NotifyError("Sensor Skipped", errMsg)
+				continue
 			}
 		}
 
 		sensor, err := sensors.NewSensor(config)
 		if err != nil {
-			return fmt.Errorf("unable to process sensor configuration: %s", config.ID)
+			errMsg := fmt.Sprintf("unable to process sensor configuration: %s: %v. Skipping.", config.ID, err)
+			ui.Warning("%s", errMsg)
+			ui.NotifyError("Sensor Skipped", errMsg)
+			continue
 		}
 		sensorList = append(sensorList, sensor)
 
@@ -353,13 +359,19 @@ func initializeFans(controllers []*hwmon.HwMonController) (map[configuration.Fan
 		if config.HwMon != nil {
 			err := hwmon.UpdateFanConfigFromHwMonControllers(controllers, &config)
 			if err != nil {
-				return nil, fmt.Errorf("couldn't update fan config from hwmon: %v", err)
+				errMsg := fmt.Sprintf("couldn't update fan config from hwmon for %s: %v. Skipping.", config.ID, err)
+				ui.Warning("%s", errMsg)
+				ui.NotifyError("Fan Skipped", errMsg)
+				continue
 			}
 		}
 
 		fan, err := fans.NewFan(config)
 		if err != nil {
-			return nil, fmt.Errorf("unable to process fan configuration of '%s': %v", config.ID, err)
+			errMsg := fmt.Sprintf("unable to process fan configuration of '%s': %v. Skipping.", config.ID, err)
+			ui.Warning("%s", errMsg)
+			ui.NotifyError("Fan Skipped", errMsg)
+			continue
 		}
 		fans.RegisterFan(fan)
 		result[config] = fan
