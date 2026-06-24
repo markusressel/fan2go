@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
@@ -242,7 +243,7 @@ func startSensorMonitors(ctx context.Context, reg *registry.Registry, wg *sync.W
 			defer wg.Done()
 			err := mon.Run(ctx)
 			ui.Info("Sensor Monitor for sensor %s stopped.", s.GetId())
-			if err != nil && err != context.Canceled {
+			if err != nil && !errors.Is(err, context.Canceled) {
 				ui.Warning("Sensor monitor exited with error: %v", err)
 			}
 		}()
