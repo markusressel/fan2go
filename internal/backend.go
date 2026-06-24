@@ -151,37 +151,52 @@ func RunDaemon() {
 						}
 						ui.Info("Configuration validated successfully.")
 
-						// 3. Spin down old controllers and webservers
-						ui.Info("Stopping old fan controllers, sensor monitors and webservers...")
-						cancelOrchestrator()
-						orchestratorWg.Wait()
-
-						// 4. Initialize new Registry
-						newFanMap, newReg, err := InitializeObjects()
+						// 3. Initialize new objects to build curves/sensors
+						_, newReg, err := InitializeObjects()
 						if err != nil {
 							ui.Error("Error re-initializing objects: %v. Rolling back to old configuration.", err)
 							configuration.CurrentConfig = oldConfig
-							newFanMap, newReg, _ = InitializeObjects()
+							continue
 						}
 						if len(newReg.SnapshotFans()) == 0 {
 							ui.Error("No valid fan configurations in new configuration. Rolling back to old configuration.")
 							configuration.CurrentConfig = oldConfig
-							newFanMap, newReg, _ = InitializeObjects()
+							continue
 						}
-						newFanControllers, err := initializeFanControllers(pers, newFanMap, newReg)
-						if err != nil {
-							ui.Error("Error re-initializing fan controllers: %v. Rolling back to old configuration.", err)
-							configuration.CurrentConfig = oldConfig
-							newFanMap, newReg, _ = InitializeObjects()
-							newFanControllers, _ = initializeFanControllers(pers, newFanMap, newReg)
+
+						// 4. Update the curves of all active fan controllers dynamically
+						ui.Info("Updating curves of active fan controllers...")
+						for _, ctrl := range fanControllers {
+							fanId := ctrl.GetFanId()
+							// Find the fan object to get its new curve ID
+							var newCurveId string
+							for _, fConfig := range configuration.CurrentConfig.Fans {
+								if fConfig.ID == fanId {
+									newCurveId = fConfig.Curve
+									break
+								}
+							}
+							if newCurveId != "" {
+								if newCurve, exists := newReg.GetCurve(newCurveId); exists {
+									ctrl.UpdateCurve(newCurve)
+									ui.Info("Updated curve of fan controller %s to curve %s", fanId, newCurveId)
+								} else {
+									ui.Warning("New curve %s not found in registry for fan %s", newCurveId, fanId)
+								}
+							}
 						}
+
+						// 5. Spin down old sensor monitors & webservers
+						ui.Info("Stopping old sensor monitors and webservers...")
+						cancelOrchestrator()
+						orchestratorWg.Wait()
 
 						reg = newReg
 
-						// 5. Spin up new controllers and webservers
+						// 6. Spin up new sensor monitors and webservers using the new registry
 						orchestratorCtx, cancelOrchestrator = context.WithCancel(ctx)
-						ui.Info("Starting new fan controllers, sensor monitors and webservers...")
-						startControllersAndMonitors(orchestratorCtx, reg, newFanControllers, &orchestratorWg)
+						ui.Info("Starting new sensor monitors and webservers...")
+						startSensorMonitors(orchestratorCtx, reg, &orchestratorWg)
 						startWebservers(orchestratorCtx, reg)
 						ui.Info("Configuration reloaded successfully.")
 					} else {
@@ -208,7 +223,7 @@ func RunDaemon() {
 	}
 }
 
-func startControllersAndMonitors(ctx context.Context, reg *registry.Registry, fanControllers map[fans.Fan]controller.FanController, wg *sync.WaitGroup) {
+func startSensorMonitors(ctx context.Context, reg *registry.Registry, wg *sync.WaitGroup) {
 	// === sensor monitoring
 	sensorMapData := reg.SnapshotSensors()
 	for _, sensor := range sensorMapData {
@@ -226,6 +241,10 @@ func startControllersAndMonitors(ctx context.Context, reg *registry.Registry, fa
 			}
 		}()
 	}
+}
+
+func startControllersAndMonitors(ctx context.Context, reg *registry.Registry, fanControllers map[fans.Fan]controller.FanController, wg *sync.WaitGroup) {
+	startSensorMonitors(ctx, reg, wg)
 
 	// === fan controllers
 	for f, c := range fanControllers {

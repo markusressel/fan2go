@@ -43,9 +43,14 @@ type FanController interface {
 	GetStatistics() FanControllerStatistics
 
 	UpdateFanSpeed() error
+
+	// UpdateCurve dynamically updates the curve reference
+	UpdateCurve(curve curves.SpeedCurve)
 }
 
 type DefaultFanController struct {
+	// protects concurrent access to curve
+	curveMutex sync.RWMutex
 	// controller statistics
 	stats FanControllerStatistics
 	// persistence where fan data is stored
@@ -123,6 +128,12 @@ type DefaultFanController struct {
 
 	// lastFanModeCheckTime is the last time we checked if some third party changed the fan control mode
 	lastFanModeCheckTime time.Time
+}
+
+func (f *DefaultFanController) UpdateCurve(curve curves.SpeedCurve) {
+	f.curveMutex.Lock()
+	defer f.curveMutex.Unlock()
+	f.curve = curve
 }
 
 func NewFanController(
@@ -649,7 +660,10 @@ func (f *DefaultFanController) restoreControlMode() {
 // - evaluating the associated curve
 // - cycling the control loop
 func (f *DefaultFanController) calculateTargetSpeed() (float64, error) {
-	target, err := f.curve.Evaluate()
+	f.curveMutex.RLock()
+	c := f.curve
+	f.curveMutex.RUnlock()
+	target, err := c.Evaluate()
 	if err != nil {
 		return 0, err
 	}
