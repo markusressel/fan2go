@@ -10,14 +10,12 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 )
 
-var (
-	valueMu = sync.Mutex{}
-)
-
 type LinearSpeedCurve struct {
 	Config   configuration.CurveConfig `json:"config"`
 	Value    float64                   `json:"value"`
 	registry RegistryReader
+
+	mu sync.RWMutex
 }
 
 func (c *LinearSpeedCurve) BindRegistry(registry RegistryReader) {
@@ -68,13 +66,13 @@ func (c *LinearSpeedCurve) Evaluate() (value float64, err error) {
 }
 
 func (c *LinearSpeedCurve) SetValue(value float64) {
-	valueMu.Lock()
-	defer valueMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.Value = value
 }
 
 func (c *LinearSpeedCurve) CurrentValue() float64 {
-	valueMu.Lock()
-	defer valueMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.Value
 }

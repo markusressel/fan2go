@@ -2,6 +2,7 @@ package curves
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -14,6 +15,8 @@ type PidSpeedCurve struct {
 	registry RegistryReader
 
 	pidLoop *util.PidLoop
+
+	mu sync.RWMutex
 }
 
 func (c *PidSpeedCurve) BindRegistry(registry RegistryReader) {
@@ -49,13 +52,13 @@ func (c *PidSpeedCurve) Evaluate() (value float64, err error) {
 }
 
 func (c *PidSpeedCurve) SetValue(value float64) {
-	valueMu.Lock()
-	defer valueMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.Value = value
 }
 
 func (c *PidSpeedCurve) CurrentValue() float64 {
-	valueMu.Lock()
-	defer valueMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.Value
 }

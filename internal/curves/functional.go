@@ -3,6 +3,7 @@ package curves
 import (
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -13,6 +14,8 @@ type FunctionSpeedCurve struct {
 	Config   configuration.CurveConfig `json:"config"`
 	Value    float64                   `json:"value"`
 	registry RegistryReader
+
+	mu sync.RWMutex
 }
 
 func (c *FunctionSpeedCurve) BindRegistry(registry RegistryReader) {
@@ -98,13 +101,13 @@ func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
 }
 
 func (c *FunctionSpeedCurve) SetValue(value float64) {
-	valueMu.Lock()
-	defer valueMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.Value = value
 }
 
 func (c *FunctionSpeedCurve) CurrentValue() float64 {
-	valueMu.Lock()
-	defer valueMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.Value
 }

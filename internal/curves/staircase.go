@@ -3,6 +3,7 @@ package curves
 import (
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/markusressel/fan2go/internal/ui"
 
@@ -15,6 +16,8 @@ type StaircaseSpeedCurve struct {
 	registry RegistryReader
 
 	LastTemp int
+
+	mu sync.RWMutex
 }
 
 func (c *StaircaseSpeedCurve) BindRegistry(registry RegistryReader) {
@@ -56,13 +59,13 @@ func (c *StaircaseSpeedCurve) Evaluate() (value float64, err error) {
 }
 
 func (c *StaircaseSpeedCurve) SetValue(value float64) {
-	valueMu.Lock()
-	defer valueMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.Value = value
 }
 
 func (c *StaircaseSpeedCurve) CurrentValue() float64 {
-	valueMu.Lock()
-	defer valueMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.Value
 }
