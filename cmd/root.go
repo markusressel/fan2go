@@ -30,8 +30,13 @@ on your computer based on temperature sensors.`,
 
 		configPath := configuration.DetectAndReadConfigFile()
 		ui.Info("Using configuration file at: %s", configPath)
-		configuration.LoadConfig()
-		err := configuration.Validate(configPath)
+		var err error
+		configuration.CurrentConfig, err = configuration.LoadConfig()
+		if err != nil {
+			ui.ErrorAndNotify("Config Loading Error", "%v", err)
+			return
+		}
+		err = configuration.Validate(configPath)
 		if err != nil {
 			ui.ErrorAndNotify("Config Validation Error: %v", "%v", err)
 			return

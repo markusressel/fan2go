@@ -140,16 +140,22 @@ func RunDaemon() {
 					if s == syscall.SIGHUP {
 						ui.Info("Received SIGHUP signal, reloading configuration...")
 						// 1. Load config
-						oldConfig := configuration.CurrentConfig
-						configuration.LoadConfig()
-						// 2. Validate
-						err := configuration.Validate(configuration.GetFilePath())
+						newConfig, err := configuration.LoadConfig()
 						if err != nil {
-							ui.Error("Configuration validation failed: %v. Rolling back to old configuration.", err)
-							configuration.CurrentConfig = oldConfig
+							ui.Error("Configuration parsing failed: %v. Keeping current configuration.", err)
+							continue
+						}
+						// 2. Validate
+						err = configuration.Validate(configuration.GetFilePath())
+						if err != nil {
+							ui.Error("Configuration validation failed: %v. Keeping current configuration.", err)
 							continue
 						}
 						ui.Info("Configuration validated successfully.")
+
+						// Temporarily swap config to initialize objects properly
+						oldConfig := configuration.CurrentConfig
+						configuration.CurrentConfig = newConfig
 
 						// 3. Initialize new objects to build curves/sensors
 						_, newReg, err := InitializeObjects()
