@@ -128,14 +128,11 @@ type DefaultFanController struct {
 func NewFanController(
 	persistence persistence.Persistence,
 	fan fans.Fan,
+	curve curves.SpeedCurve,
 	controlLoop control_loop.ControlLoop,
 	updateRate time.Duration,
 	assumePwmMapIdentity bool,
 ) *DefaultFanController {
-	curve, ok := curves.GetSpeedCurve(fan.GetCurveId())
-	if !ok {
-		ui.Fatal("Fan %s: Failed to create fan controller: Curve with ID '%s' not found", fan.GetId(), fan.GetCurveId())
-	}
 	return &DefaultFanController{
 		persistence:                      persistence,
 		fan:                              fan,

@@ -10,8 +10,13 @@ import (
 )
 
 type FunctionSpeedCurve struct {
-	Config configuration.CurveConfig `json:"config"`
-	Value  float64                   `json:"value"`
+	Config   configuration.CurveConfig `json:"config"`
+	Value    float64                   `json:"value"`
+	registry RegistryReader
+}
+
+func (c *FunctionSpeedCurve) BindRegistry(registry RegistryReader) {
+	c.registry = registry
 }
 
 func (c *FunctionSpeedCurve) GetId() string {
@@ -21,7 +26,13 @@ func (c *FunctionSpeedCurve) GetId() string {
 func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
 	var curves []SpeedCurve
 	for _, curveId := range c.Config.Function.Curves {
-		curve, exists := GetSpeedCurve(curveId)
+		var curve SpeedCurve
+		var exists bool
+		if c.registry != nil {
+			curve, exists = c.registry.GetCurve(curveId)
+		} else {
+			curve, exists = GetSpeedCurve(curveId)
+		}
 		if !exists || curve == nil {
 			return c.Value, fmt.Errorf("sub-curve not found with id '%s'", curveId)
 		}

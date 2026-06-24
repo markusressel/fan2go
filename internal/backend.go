@@ -21,6 +21,7 @@ import (
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/hwmon"
 	"github.com/markusressel/fan2go/internal/persistence"
+	"github.com/markusressel/fan2go/internal/registry"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/statistics"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -37,12 +38,12 @@ func RunDaemon() {
 
 	pers := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
 
-	fanMap, err := InitializeObjects()
+	fanMap, reg, err := InitializeObjects()
 	if err != nil {
 		ui.Fatal("Error initializing objects: %v", err)
 	}
 
-	fanControllers, err := initializeFanControllers(pers, fanMap)
+	fanControllers, err := initializeFanControllers(pers, fanMap, reg)
 	if err != nil {
 		ui.Fatal("Error initializing fan controllers: %v", err)
 	}
@@ -86,7 +87,7 @@ func RunDaemon() {
 			g.Add(func() error {
 				ui.Info("Starting Webserver...")
 
-				servers := createWebServer()
+				servers := createWebServer(reg)
 
 				<-ctx.Done()
 				ui.Debug("Stopping all webservers...")
@@ -151,7 +152,7 @@ func RunDaemon() {
 			})
 		}
 
-		if len(fans.SnapshotFanMap()) == 0 {
+		if len(reg.SnapshotFans()) == 0 {
 			ui.FatalWithoutStacktrace("No valid fan configurations, exiting.")
 		}
 	}
@@ -178,11 +179,11 @@ func RunDaemon() {
 	}
 }
 
-func createWebServer() []*echo.Echo {
+func createWebServer(reg *registry.Registry) []*echo.Echo {
 	result := []*echo.Echo{}
 	// Setup Main Server
 	if configuration.CurrentConfig.Api.Enabled {
-		result = append(result, startRestServer())
+		result = append(result, startRestServer(reg))
 	}
 
 	if configuration.CurrentConfig.Statistics.Enabled {
@@ -192,10 +193,10 @@ func createWebServer() []*echo.Echo {
 	return result
 }
 
-func startRestServer() *echo.Echo {
+func startRestServer(reg *registry.Registry) *echo.Echo {
 	ui.Info("Starting REST api server...")
 
-	restServer := api.CreateRestService()
+	restServer := api.CreateRestService(reg)
 
 	go func() {
 		apiConfig := configuration.CurrentConfig.Api
@@ -226,27 +227,28 @@ func startStatisticsServer() *echo.Echo {
 	return echoPrometheus
 }
 
-func InitializeObjects() (map[configuration.FanConfig]fans.Fan, error) {
+func InitializeObjects() (map[configuration.FanConfig]fans.Fan, *registry.Registry, error) {
 	controllers := hwmon.GetChips()
+	reg := registry.NewRegistry()
 
-	err := initializeSensors(controllers)
+	err := initializeSensors(controllers, reg)
 	if err != nil {
-		return nil, fmt.Errorf("error initializing sensors: %v", err)
+		return nil, nil, fmt.Errorf("error initializing sensors: %v", err)
 	}
-	err = initializeCurves()
+	err = initializeCurves(reg)
 	if err != nil {
-		return nil, fmt.Errorf("error initializing curves: %v", err)
-	}
-
-	fanMap, err := initializeFans(controllers)
-	if err != nil {
-		return nil, fmt.Errorf("error initializing fans: %v", err)
+		return nil, nil, fmt.Errorf("error initializing curves: %v", err)
 	}
 
-	return fanMap, err
+	fanMap, err := initializeFans(controllers, reg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error initializing fans: %v", err)
+	}
+
+	return fanMap, reg, nil
 }
 
-func initializeFanControllers(pers persistence.Persistence, fanMap map[configuration.FanConfig]fans.Fan) (result map[fans.Fan]controller.FanController, err error) {
+func initializeFanControllers(pers persistence.Persistence, fanMap map[configuration.FanConfig]fans.Fan, reg *registry.Registry) (result map[fans.Fan]controller.FanController, err error) {
 	result = map[fans.Fan]controller.FanController{}
 	for config, fan := range fanMap {
 		updateRate := configuration.CurrentConfig.FanController.AdjustmentTickRate
@@ -282,7 +284,8 @@ func initializeFanControllers(pers persistence.Persistence, fanMap map[configura
 			)
 		}
 
-		fanController := controller.NewFanController(pers, fan, controlLoop, updateRate, false)
+		curve, _ := reg.GetCurve(fan.GetCurveId())
+		fanController := controller.NewFanController(pers, fan, curve, controlLoop, updateRate, false)
 		result[fan] = fanController
 	}
 
@@ -296,7 +299,7 @@ func initializeFanControllers(pers persistence.Persistence, fanMap map[configura
 	return result, nil
 }
 
-func initializeSensors(controllers []*hwmon.HwMonController) error {
+func initializeSensors(controllers []*hwmon.HwMonController, reg *registry.Registry) error {
 	var sensorList []sensors.Sensor
 	for _, config := range configuration.CurrentConfig.Sensors {
 		if config.HwMon != nil {
@@ -324,6 +327,7 @@ func initializeSensors(controllers []*hwmon.HwMonController) error {
 		}
 		sensor.SetMovingAvg(currentValue)
 
+		reg.RegisterSensor(sensor)
 		sensors.RegisterSensor(sensor)
 	}
 
@@ -333,7 +337,7 @@ func initializeSensors(controllers []*hwmon.HwMonController) error {
 	return nil
 }
 
-func initializeCurves() error {
+func initializeCurves(reg *registry.Registry) error {
 	var curveList []curves.SpeedCurve
 	for _, config := range configuration.CurrentConfig.Curves {
 		curve, err := curves.NewSpeedCurve(config)
@@ -341,6 +345,7 @@ func initializeCurves() error {
 			return fmt.Errorf("unable to process curve configuration: %s: %v", config.ID, err)
 		}
 		curveList = append(curveList, curve)
+		reg.RegisterCurve(curve)
 		curves.RegisterSpeedCurve(curve)
 	}
 
@@ -350,7 +355,7 @@ func initializeCurves() error {
 	return nil
 }
 
-func initializeFans(controllers []*hwmon.HwMonController) (map[configuration.FanConfig]fans.Fan, error) {
+func initializeFans(controllers []*hwmon.HwMonController, reg *registry.Registry) (map[configuration.FanConfig]fans.Fan, error) {
 	var result = map[configuration.FanConfig]fans.Fan{}
 
 	var fanList []fans.Fan
@@ -373,6 +378,7 @@ func initializeFans(controllers []*hwmon.HwMonController) (map[configuration.Fan
 			ui.NotifyError("Fan Skipped", errMsg)
 			continue
 		}
+		reg.RegisterFan(fan)
 		fans.RegisterFan(fan)
 		result[config] = fan
 

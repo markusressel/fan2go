@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/util"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/qdm12/reprint"
@@ -17,6 +18,11 @@ type SpeedCurve interface {
 	Evaluate() (value float64, err error)
 	// CurrentValue returns the current value of the curve, which was calculated by the previous call to Evaluate
 	CurrentValue() float64
+}
+
+type RegistryReader interface {
+	GetSensor(id string) (sensors.Sensor, bool)
+	GetCurve(id string) (SpeedCurve, bool)
 }
 
 var (

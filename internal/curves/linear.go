@@ -16,8 +16,13 @@ var (
 )
 
 type LinearSpeedCurve struct {
-	Config configuration.CurveConfig `json:"config"`
-	Value  float64                   `json:"value"`
+	Config   configuration.CurveConfig `json:"config"`
+	Value    float64                   `json:"value"`
+	registry RegistryReader
+}
+
+func (c *LinearSpeedCurve) BindRegistry(registry RegistryReader) {
+	c.registry = registry
 }
 
 func (c *LinearSpeedCurve) GetId() string {
@@ -25,7 +30,13 @@ func (c *LinearSpeedCurve) GetId() string {
 }
 
 func (c *LinearSpeedCurve) Evaluate() (value float64, err error) {
-	sensor, exists := sensors.GetSensor(c.Config.Linear.Sensor)
+	var sensor sensors.Sensor
+	var exists bool
+	if c.registry != nil {
+		sensor, exists = c.registry.GetSensor(c.Config.Linear.Sensor)
+	} else {
+		sensor, exists = sensors.GetSensor(c.Config.Linear.Sensor)
+	}
 	if !exists || sensor == nil {
 		return c.Value, fmt.Errorf("sensor not found with id '%s'", c.Config.Linear.Sensor)
 	}

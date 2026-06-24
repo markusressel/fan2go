@@ -30,13 +30,15 @@ var initCmd = &cobra.Command{
 		ui.Info("Using persistence at: %s", dbPath)
 
 		p := persistence.NewPersistence(dbPath)
-		_, err = internal.InitializeObjects()
+		_, reg, err := internal.InitializeObjects()
 		if err != nil {
 			return err
 		}
+		curve, _ := reg.GetCurve(fan.GetCurveId())
 		fanController := controller.NewFanController(
 			p,
 			fan,
+			curve,
 			control_loop.NewDirectControlLoop(nil),
 			configuration.CurrentConfig.FanController.AdjustmentTickRate,
 			assumePwmMapIdentity,

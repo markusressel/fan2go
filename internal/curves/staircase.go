@@ -11,10 +11,15 @@ import (
 )
 
 type StaircaseSpeedCurve struct {
-	Config configuration.CurveConfig `json:"config"`
-	Value  float64                   `json:"value"`
+	Config   configuration.CurveConfig `json:"config"`
+	Value    float64                   `json:"value"`
+	registry RegistryReader
 
 	LastTemp int
+}
+
+func (c *StaircaseSpeedCurve) BindRegistry(registry RegistryReader) {
+	c.registry = registry
 }
 
 func (c *StaircaseSpeedCurve) GetId() string {
@@ -22,7 +27,13 @@ func (c *StaircaseSpeedCurve) GetId() string {
 }
 
 func (c *StaircaseSpeedCurve) Evaluate() (value float64, err error) {
-	sensor, exists := sensors.GetSensor(c.Config.Staircase.Sensor)
+	var sensor sensors.Sensor
+	var exists bool
+	if c.registry != nil {
+		sensor, exists = c.registry.GetSensor(c.Config.Staircase.Sensor)
+	} else {
+		sensor, exists = sensors.GetSensor(c.Config.Staircase.Sensor)
+	}
 	if !exists || sensor == nil {
 		return c.Value, fmt.Errorf("sensor not found with id '%s'", c.Config.Staircase.Sensor)
 	}

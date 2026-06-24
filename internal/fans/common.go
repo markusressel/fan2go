@@ -38,10 +38,6 @@ const (
 	ControlModeUnknown ControlMode = -1
 )
 
-var (
-	fanMap = cmap.New[Fan]()
-)
-
 type Fan interface {
 	GetId() string
 
@@ -197,17 +193,27 @@ func ComputePwmBoundariesFromCurveData(pwmRpmMap map[int]float64, userStartPwm i
 	return startPwm, maxPwm
 }
 
-// RegisterFan registers a new fan
-func RegisterFan(fan Fan) {
-	fanMap.Set(fan.GetId(), fan)
+type FanRepository struct {
+	fanMap cmap.ConcurrentMap[string, Fan]
 }
 
-// GetFan returns the fan with the given id
-func GetFan(id string) (Fan, bool) {
-	return fanMap.Get(id)
+func NewFanRepository() *FanRepository {
+	return &FanRepository{
+		fanMap: cmap.New[Fan](),
+	}
 }
 
-// SnapshotFanMap returns a snapshot of the current fan map
-func SnapshotFanMap() map[string]Fan {
-	return reprint.This(fanMap.Items()).(map[string]Fan)
+func (r *FanRepository) Register(fan Fan) {
+	r.fanMap.Set(fan.GetId(), fan)
 }
+
+func (r *FanRepository) Get(id string) (Fan, bool) {
+	return r.fanMap.Get(id)
+}
+
+func (r *FanRepository) Snapshot() map[string]Fan {
+	return reprint.This(r.fanMap.Items()).(map[string]Fan)
+}
+
+// RegisterFan is a deprecated no-op function for test compatibility.
+func RegisterFan(fan Fan) {}

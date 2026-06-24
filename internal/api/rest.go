@@ -1,8 +1,11 @@
 package api
 
 import (
-	"github.com/labstack/echo/v4"
 	"net/http"
+
+	"github.com/labstack/echo/v4"
+
+	"github.com/markusressel/fan2go/internal/registry"
 )
 
 const (
@@ -17,16 +20,16 @@ type (
 	}
 )
 
-func CreateRestService() *echo.Echo {
+func CreateRestService(reg *registry.Registry) *echo.Echo {
 	echoRest := CreateWebserver()
 
 	echoRest.GET("/alive/", isAlive)
 
 	// Authentication
 	// Group level middleware
-	registerFanEndpoints(echoRest)
-	registerSensorEndpoints(echoRest)
-	registerCurveEndpoints(echoRest)
+	registerFanEndpoints(echoRest, reg)
+	registerSensorEndpoints(echoRest, reg)
+	registerCurveEndpoints(echoRest, reg)
 	//registerWebsocketEndpoint(echoRest)
 
 	return echoRest

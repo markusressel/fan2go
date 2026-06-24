@@ -10,10 +10,15 @@ import (
 )
 
 type PidSpeedCurve struct {
-	Config configuration.CurveConfig `json:"config"`
-	Value  float64                   `json:"value"`
+	Config   configuration.CurveConfig `json:"config"`
+	Value    float64                   `json:"value"`
+	registry RegistryReader
 
 	pidLoop *util.PidLoop
+}
+
+func (c *PidSpeedCurve) BindRegistry(registry RegistryReader) {
+	c.registry = registry
 }
 
 func (c *PidSpeedCurve) GetId() string {
@@ -21,7 +26,13 @@ func (c *PidSpeedCurve) GetId() string {
 }
 
 func (c *PidSpeedCurve) Evaluate() (value float64, err error) {
-	sensor, exists := sensors.GetSensor(c.Config.PID.Sensor)
+	var sensor sensors.Sensor
+	var exists bool
+	if c.registry != nil {
+		sensor, exists = c.registry.GetSensor(c.Config.PID.Sensor)
+	} else {
+		sensor, exists = sensors.GetSensor(c.Config.PID.Sensor)
+	}
 	if !exists || sensor == nil {
 		return c.Value, fmt.Errorf("sensor not found with id '%s'", c.Config.PID.Sensor)
 	}
