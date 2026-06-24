@@ -60,23 +60,7 @@ func RunDaemon() {
 	{
 		if configuration.CurrentConfig.Profiling.Enabled {
 			g.Add(func() error {
-				mux := http.NewServeMux()
-				mux.HandleFunc("/debug/pprof/", pprof.Index)
-				mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-				mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-				mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-				mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-
-				go func() {
-					ui.Info("Starting profiling webserver...")
-					profilingConfig := configuration.CurrentConfig.Profiling
-					address := fmt.Sprintf("%s:%d", profilingConfig.Host, profilingConfig.Port)
-					ui.Error("Error running profiling webserver: %v", http.ListenAndServe(address, mux))
-				}()
-
-				<-ctx.Done()
-				ui.Info("Stopping profiling webserver...")
-				return nil
+				return startProfilingWebserver(ctx)
 			}, func(err error) {
 				if err != nil {
 					ui.Warning("Error stopping parca webserver: %v", err)
@@ -245,6 +229,26 @@ func RunDaemon() {
 
 	ui.Info("Done.")
 	os.Exit(0)
+}
+
+func startProfilingWebserver(ctx context.Context) error {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+	go func() {
+		ui.Info("Starting profiling webserver...")
+		profilingConfig := configuration.CurrentConfig.Profiling
+		address := fmt.Sprintf("%s:%d", profilingConfig.Host, profilingConfig.Port)
+		ui.Error("Error running profiling webserver: %v", http.ListenAndServe(address, mux))
+	}()
+
+	<-ctx.Done()
+	ui.Info("Stopping profiling webserver...")
+	return nil
 }
 
 func startSensorMonitors(ctx context.Context, reg *registry.Registry, wg *sync.WaitGroup) {
