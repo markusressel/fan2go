@@ -55,6 +55,7 @@ func (r *Registry) SnapshotSensors() map[string]sensors.Sensor {
 	return reprint.This(r.sensors.Items()).(map[string]sensors.Sensor)
 }
 
+// Curves
 func (r *Registry) RegisterCurve(curve curves.SpeedCurve) {
 	if binder, ok := curve.(interface{ BindRegistry(curves.RegistryReader) }); ok {
 		binder.BindRegistry(r)
