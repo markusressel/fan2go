@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
+	"os/user"
 	"strings"
 	"sync"
 	"time"
@@ -126,25 +128,21 @@ var getDisplaySessions = func() []displaySession {
 }
 
 var sendToSession = func(session displaySession, urgency, title, text, icon string) {
-	cmd := exec.Command("id", "-u", session.user)
-	output, err := cmd.Output()
+	u, err := user.Lookup(session.user)
 	if err != nil {
-		Error("Cannot send notification, unable to detect user id: %v", err)
-		return
-	}
-	userIdString := strings.TrimSpace(string(output))
-	if len(userIdString) <= 0 {
-		Error("Cannot send notification, user id empty")
+		Error("Cannot lookup user %s: %v", session.user, err)
 		return
 	}
 
-	dbusPath := "/run/user/" + userIdString + "/bus"
+	dbusPath := "/run/user/" + u.Uid + "/bus"
 
 	var notifCmd *exec.Cmd
 	if os.Getuid() == 0 {
-		notifCmd = exec.Command("sudo", "-u", session.user,
-			"DISPLAY="+session.display,
-			"DBUS_SESSION_BUS_ADDRESS=unix:path="+dbusPath,
+		notifCmd = exec.Command("systemd-run",
+			"--user",
+			"--machine="+session.user+"@.host",
+			"--setenv=DISPLAY="+session.display,
+			"--setenv=DBUS_SESSION_BUS_ADDRESS=unix:path="+dbusPath,
 			"notify-send",
 			"-a", "fan2go",
 			"-u", urgency,
@@ -164,9 +162,12 @@ var sendToSession = func(session displaySession, urgency, title, text, icon stri
 		)
 	}
 
+	var stderr bytes.Buffer
+	notifCmd.Stderr = &stderr
+
 	err = notifCmd.Run()
 	if err != nil {
-		Error("Error sending notification to user %s on display %s: %v", session.user, session.display, err)
+		Error("Error sending notification to user %s on display %s: %v (Stderr: %s)", session.user, session.display, err, strings.TrimSpace(stderr.String()))
 	}
 }
 

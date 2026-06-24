@@ -46,9 +46,9 @@ ReadWritePaths=/sys/devices
 ReadOnlyPaths=/sys/bus
 ReadOnlyPaths=/proc/cpuinfo
 ReadOnlyPaths=/proc/meminfo
-ReadOnlyPaths=/etc/sensors3.conf
-ReadOnlyPaths=/etc/sensors.conf
-ReadOnlyPaths=/usr/local/etc/sensors3.conf
+ReadOnlyPaths=-/etc/sensors3.conf
+ReadOnlyPaths=-/etc/sensors.conf
+ReadOnlyPaths=-/usr/local/etc/sensors3.conf
 ReadOnlyPaths=/proc/modules
 ReadOnlyPaths=/sys/module
 
