@@ -50,9 +50,11 @@ func RunDaemon() {
 		ui.Fatal("Error initializing fan controllers: %v", err)
 	}
 
-	// Remove regHolder completely. We pass reg directly to the webserver functions.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	fanCtx, cancelFans := context.WithCancel(ctx)
+	reloadChan := make(chan struct{}, 1)
 
 	var g run.Group
 	{
@@ -85,26 +87,19 @@ func RunDaemon() {
 		}
 	}
 
-	var orchestratorWg sync.WaitGroup
-	orchestratorCtx, cancelOrchestrator := context.WithCancel(ctx)
-
-	// Since we want Option 1 (Restarting Webservers on SIGHUP), the webservers are started and stopped
-	// alongside the controllers and monitors using the orchestratorCtx.
-	var currentWebservers []*echo.Echo
-
-	var startWebservers = func(oCtx context.Context, r *registry.Registry) {
+	var startWebservers = func(oCtx context.Context, r *registry.Registry, wg *sync.WaitGroup) {
 		if configuration.CurrentConfig.Api.Enabled || configuration.CurrentConfig.Statistics.Enabled {
 			ui.Info("Starting Webservers...")
-			currentWebservers = createWebServer(r)
-			orchestratorWg.Add(1)
+			servers := createWebServer(r)
+			wg.Add(1)
 			go func() {
-				defer orchestratorWg.Done()
+				defer wg.Done()
 				<-oCtx.Done()
 				ui.Debug("Stopping all webservers...")
 				timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer timeoutCancel()
 
-				for _, server := range currentWebservers {
+				for _, server := range servers {
 					err := server.Shutdown(timeoutCtx)
 					if err != nil {
 						ui.Warning("Error stopping webserver: %v", err)
@@ -121,15 +116,96 @@ func RunDaemon() {
 				ui.FatalWithoutStacktrace("No valid fan configurations, exiting.")
 			}
 
-			startControllersAndMonitors(orchestratorCtx, reg, fanControllers, &orchestratorWg)
-			startWebservers(orchestratorCtx, reg)
-			<-ctx.Done()
-			return nil
+			var fanControllerWg sync.WaitGroup
+			startFanControllers(fanCtx, fanControllers, &fanControllerWg)
+
+			defer func() {
+				cancelFans()
+				fanControllerWg.Wait()
+			}()
+
+			for {
+				appExiting := false
+
+				func() {
+					orchestratorCtx, cancelOrchestrator := context.WithCancel(ctx)
+					var orchestratorWg sync.WaitGroup
+
+					defer func() {
+						cancelOrchestrator()
+						orchestratorWg.Wait()
+					}()
+
+					startSensorMonitors(orchestratorCtx, reg, &orchestratorWg)
+					startWebservers(orchestratorCtx, reg, &orchestratorWg)
+
+					select {
+					case <-ctx.Done():
+						appExiting = true
+					case <-reloadChan:
+						ui.Info("Stopping old sensor monitors and webservers...")
+					}
+				}()
+
+				if appExiting {
+					return nil
+				}
+
+				// --- SIGHUP Reload Logic ---
+				ui.Info("Reloading configuration...")
+
+				newConfig, err := configuration.LoadConfig()
+				if err != nil {
+					ui.Error("Configuration parsing failed: %v. Keeping current configuration.", err)
+					continue
+				}
+
+				err = configuration.Validate(configuration.GetFilePath())
+				if err != nil {
+					ui.Error("Configuration validation failed: %v. Keeping current configuration.", err)
+					continue
+				}
+
+				oldConfig := configuration.CurrentConfig
+				configuration.CurrentConfig = newConfig
+
+				_, newReg, err := InitializeObjects()
+				if err != nil {
+					ui.Error("Error re-initializing objects: %v. Rolling back.", err)
+					configuration.CurrentConfig = oldConfig
+					continue
+				}
+
+				ui.Info("Updating fan controllers...")
+				for _, ctrl := range fanControllers {
+					_ = ctrl
+					fanId := ctrl.GetFanId()
+					// Find the fan object to get its new curve ID
+					var newCurveId string
+					for _, fConfig := range configuration.CurrentConfig.Fans {
+						if fConfig.ID == fanId {
+							newCurveId = fConfig.Curve
+							break
+						}
+					}
+					if newCurveId != "" {
+						if newCurve, exists := newReg.GetCurve(newCurveId); exists {
+							ctrl.UpdateCurve(newCurve)
+							ui.Info("Updated curve of fan controller %s to curve %s", fanId, newCurveId)
+						} else {
+							ui.Warning("New curve %s not found in registry for fan %s", newCurveId, fanId)
+						}
+					}
+				}
+
+				reg = newReg
+				ui.Info("Configuration reloaded successfully. Starting new monitors...")
+			}
 		}, func(err error) {
-			cancelOrchestrator()
-			orchestratorWg.Wait()
+			cancel()
 		})
 	}
+
 	{
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
@@ -139,73 +215,12 @@ func RunDaemon() {
 				select {
 				case s := <-sig:
 					if s == syscall.SIGHUP {
-						ui.Info("Received SIGHUP signal, reloading configuration...")
-						// 1. Load config
-						newConfig, err := configuration.LoadConfig()
-						if err != nil {
-							ui.Error("Configuration parsing failed: %v. Keeping current configuration.", err)
-							continue
+						ui.Info("Received SIGHUP signal, notifying orchestrator...")
+						select {
+						case reloadChan <- struct{}{}:
+						default:
+							ui.Warning("Reload already in progress, ignoring SIGHUP.")
 						}
-						// 2. Validate
-						err = configuration.Validate(configuration.GetFilePath())
-						if err != nil {
-							ui.Error("Configuration validation failed: %v. Keeping current configuration.", err)
-							continue
-						}
-						ui.Info("Configuration validated successfully.")
-
-						// Temporarily swap config to initialize objects properly
-						oldConfig := configuration.CurrentConfig
-						configuration.CurrentConfig = newConfig
-
-						// 3. Initialize new objects to build curves/sensors
-						_, newReg, err := InitializeObjects()
-						if err != nil {
-							ui.Error("Error re-initializing objects: %v. Rolling back to old configuration.", err)
-							configuration.CurrentConfig = oldConfig
-							continue
-						}
-						if len(newReg.SnapshotFans()) == 0 {
-							ui.Error("No valid fan configurations in new configuration. Rolling back to old configuration.")
-							configuration.CurrentConfig = oldConfig
-							continue
-						}
-
-						// 4. Update the curves of all active fan controllers dynamically
-						ui.Info("Updating curves of active fan controllers...")
-						for _, ctrl := range fanControllers {
-							fanId := ctrl.GetFanId()
-							// Find the fan object to get its new curve ID
-							var newCurveId string
-							for _, fConfig := range configuration.CurrentConfig.Fans {
-								if fConfig.ID == fanId {
-									newCurveId = fConfig.Curve
-									break
-								}
-							}
-							if newCurveId != "" {
-								if newCurve, exists := newReg.GetCurve(newCurveId); exists {
-									ctrl.UpdateCurve(newCurve)
-									ui.Info("Updated curve of fan controller %s to curve %s", fanId, newCurveId)
-								} else {
-									ui.Warning("New curve %s not found in registry for fan %s", newCurveId, fanId)
-								}
-							}
-						}
-
-						// 5. Spin down old sensor monitors & webservers
-						ui.Info("Stopping old sensor monitors and webservers...")
-						cancelOrchestrator()
-						orchestratorWg.Wait()
-
-						reg = newReg
-
-						// 6. Spin up new sensor monitors and webservers using the new registry
-						orchestratorCtx, cancelOrchestrator = context.WithCancel(ctx)
-						ui.Info("Starting new sensor monitors and webservers...")
-						startSensorMonitors(orchestratorCtx, reg, &orchestratorWg)
-						startWebservers(orchestratorCtx, reg)
-						ui.Info("Configuration reloaded successfully.")
 					} else {
 						ui.Info("Received SIGTERM/SIGINT signal, exiting...")
 						return nil
@@ -217,17 +232,19 @@ func RunDaemon() {
 		}, func(err error) {
 			defer close(sig)
 			cancel()
-			cancelOrchestrator()
 		})
 	}
 
-	if err := g.Run(); err != nil {
+	err = g.Run()
+
+	cancel()
+	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
-	} else {
-		ui.Info("Done.")
-		os.Exit(0)
 	}
+
+	ui.Info("Done.")
+	os.Exit(0)
 }
 
 func startSensorMonitors(ctx context.Context, reg *registry.Registry, wg *sync.WaitGroup) {
@@ -250,9 +267,7 @@ func startSensorMonitors(ctx context.Context, reg *registry.Registry, wg *sync.W
 	}
 }
 
-func startControllersAndMonitors(ctx context.Context, reg *registry.Registry, fanControllers map[fans.Fan]controller.FanController, wg *sync.WaitGroup) {
-	startSensorMonitors(ctx, reg, wg)
-
+func startFanControllers(ctx context.Context, fanControllers map[fans.Fan]controller.FanController, wg *sync.WaitGroup) {
 	// === fan controllers
 	for f, c := range fanControllers {
 		fan := f
@@ -262,7 +277,7 @@ func startControllersAndMonitors(ctx context.Context, reg *registry.Registry, fa
 			defer wg.Done()
 			err := fanController.Run(ctx)
 			ui.Info("Fan controller for fan %s stopped.", fan.GetId())
-			if err != nil && err != context.Canceled {
+			if err != nil && !errors.Is(err, context.Canceled) {
 				ui.WarningAndNotify(fmt.Sprintf("Fan Controller: %s", fan.GetId()), "Something went wrong: %v", err)
 			}
 		}()
