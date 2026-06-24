@@ -662,7 +662,7 @@ func (f *DefaultFanController) calculateTargetSpeed() (float64, error) {
 		if f.lastCurveError != errStr {
 			errMsg := fmt.Sprintf("Unable to calculate optimal speed value for %s: %v. Running fan at maximum speed to prevent overheating.", fan.GetId(), err)
 			ui.Warning("%s", errMsg)
-			ui.NotifyWarn("Fan Control Warning", errMsg)
+			ui.NotifyError("Fan Control Warning", errMsg)
 			f.lastCurveError = errStr
 		}
 		target = float64(fans.MaxPwmValue)
