@@ -323,7 +323,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 		}, func(err error) {
 			cancelController()
 			if err != nil {
-				ui.Fatal("Error in fan controller fan %s: %v", fan.GetId(), err)
+				ui.Error("Error in fan controller fan %s: %v", fan.GetId(), err)
 			}
 		})
 	}
@@ -1055,7 +1055,7 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
 func (f *DefaultFanController) computeFanSpecificMappings() (err error) {
 	err = f.computeSetPwmToGetPwmMap()
 	if err != nil {
-		ui.Fatal("Error computing setPwm(x) -> getPwm() map: %v", err)
+		ui.Error("Error computing setPwm(x) -> getPwm() map: %v", err)
 		return err
 	}
 
