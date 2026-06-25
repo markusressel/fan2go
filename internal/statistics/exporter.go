@@ -16,6 +16,10 @@ const (
 var (
 	mu               sync.Mutex
 	activeCollectors []prometheus.Collector
+
+	// Singleton variables for Echo HTTP metrics
+	httpMetricsOnce sync.Once
+	httpMetricsProm *echoProm.Prometheus
 )
 
 // Register adds the collector to Prometheus and tracks it for future cleanup.
@@ -47,14 +51,20 @@ func UnregisterAll() {
 func CreateStatisticsService() *echo.Echo {
 	parentServer := api.CreateWebserver()
 
-	// Create Prometheus server and Middleware
+	// Create Prometheus server
 	echoPrometheus := echo.New()
 	echoPrometheus.HideBanner = true
-	prom := echoProm.NewPrometheus("echo", nil)
 
-	// Scrape metrics from Main Server
-	parentServer.Use(prom.HandlerFunc)
-	// Setup metrics endpoint at another server
-	prom.SetMetricsPath(echoPrometheus)
+	// Initialize the Prometheus HTTP middleware exactly ONCE for the daemon's lifecycle
+	httpMetricsOnce.Do(func() {
+		httpMetricsProm = echoProm.NewPrometheus("echo", nil)
+	})
+
+	// Scrape metrics from Main Server using the singleton middleware
+	parentServer.Use(httpMetricsProm.HandlerFunc)
+
+	// Setup metrics endpoint at the dedicated statistics server
+	httpMetricsProm.SetMetricsPath(echoPrometheus)
+
 	return echoPrometheus
 }
