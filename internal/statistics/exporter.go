@@ -15,6 +15,10 @@ func Register(collector prometheus.Collector) {
 	prometheus.MustRegister(collector)
 }
 
+func UnregisterAll() {
+	prometheus.UnregisterAll()
+}
+
 func CreateStatisticsService() *echo.Echo {
 	parentServer := api.CreateWebserver()
 

@@ -255,15 +255,20 @@ func startWebservers(ctx context.Context, reg *registry.Registry, wg *sync.WaitG
 			defer wg.Done()
 			<-ctx.Done()
 			ui.Debug("Stopping all webservers...")
-			timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer timeoutCancel()
 
+			var shutdownWg sync.WaitGroup
 			for _, server := range servers {
-				err := server.Shutdown(timeoutCtx)
-				if err != nil {
-					ui.Warning("Error stopping webserver: %v", err)
-				}
+				shutdownWg.Add(1)
+				go func(srv *echo.Echo) {
+					defer shutdownWg.Done()
+					timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer timeoutCancel()
+					if err := srv.Shutdown(timeoutCtx); err != nil {
+						ui.Warning("Error stopping webserver: %v", err)
+					}
+				}(server)
 			}
+			shutdownWg.Wait()
 		}()
 	}
 }
@@ -378,38 +383,7 @@ func initializeFanControllers(pers persistence.Persistence, fanMap map[configura
 	result = map[fans.Fan]controller.FanController{}
 	for config, fan := range fanMap {
 		updateRate := configuration.CurrentConfig.FanController.AdjustmentTickRate
-
-		var controlLoop control_loop.ControlLoop
-
-		// compatibility fallback
-		if config.ControlLoop != nil { //nolint:all
-			ui.Warning("Using deprecated control loop configuration for fan %s. Please update your configuration to use the new control algorithm configuration.", config.ID)
-			controlLoop = control_loop.NewPidControlLoop(
-
-				config.ControlLoop.P, //nolint:all
-				config.ControlLoop.I, //nolint:all
-				config.ControlLoop.D, //nolint:all
-			)
-		} else if config.ControlAlgorithm != nil {
-			if config.ControlAlgorithm.Pid != nil {
-				controlLoop = control_loop.NewPidControlLoop(
-					config.ControlAlgorithm.Pid.P,
-					config.ControlAlgorithm.Pid.I,
-					config.ControlAlgorithm.Pid.D,
-				)
-			} else if config.ControlAlgorithm.Direct != nil {
-				controlLoop = control_loop.NewDirectControlLoop(
-					config.ControlAlgorithm.Direct.MaxPwmChangePerCycle,
-				)
-			}
-		} else {
-			controlLoop = control_loop.NewPidControlLoop(
-				control_loop.DefaultPidConfig.P,
-				control_loop.DefaultPidConfig.I,
-				control_loop.DefaultPidConfig.D,
-			)
-		}
-
+		controlLoop := createControlLoop(config)
 		curve, _ := reg.GetCurve(fan.GetCurveId())
 		fanController := controller.NewFanController(pers, fan, curve, controlLoop, updateRate, false)
 		result[fan] = fanController
@@ -423,6 +397,37 @@ func initializeFanControllers(pers persistence.Persistence, fanMap map[configura
 	statistics.Register(controllerCollector)
 
 	return result, nil
+}
+
+func createControlLoop(config configuration.FanConfig) control_loop.ControlLoop {
+	// 1. Check deprecated config first
+	if config.ControlLoop != nil { //nolint:all
+		ui.Warning("Using deprecated control loop configuration for fan %s...", config.ID)
+		return control_loop.NewPidControlLoop(
+			config.ControlLoop.P,
+			config.ControlLoop.I,
+			config.ControlLoop.D,
+		)
+	}
+
+	// 2. Check standard config
+	if config.ControlAlgorithm != nil {
+		if config.ControlAlgorithm.Pid != nil {
+			return control_loop.NewPidControlLoop(
+				config.ControlAlgorithm.Pid.P,
+				config.ControlAlgorithm.Pid.I,
+				config.ControlAlgorithm.Pid.D,
+			)
+		}
+		if config.ControlAlgorithm.Direct != nil {
+			return control_loop.NewDirectControlLoop(
+				config.ControlAlgorithm.Direct.MaxPwmChangePerCycle,
+			)
+		}
+	}
+
+	// 3. Fallback
+	return control_loop.NewPidControlLoop(control_loop.DefaultPidConfig.P, control_loop.DefaultPidConfig.I, control_loop.DefaultPidConfig.D)
 }
 
 func initializeSensors(controllers []*hwmon.HwMonController, reg *registry.Registry) error {
