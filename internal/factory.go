@@ -22,19 +22,16 @@ func InitializeObjects() (fanMap map[configuration.FanConfig]fans.Fan, reg *regi
 
 	statistics.UnregisterAll()
 
-	sensorConfigs := configuration.CurrentConfig.Sensors
-	err = initializeSensors(controllers, reg, sensorConfigs)
+	config := configuration.CurrentConfig
+	err = initializeSensors(controllers, reg, config.Sensors)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error initializing sensors: %v", err)
 	}
-	curveConfigs := configuration.CurrentConfig.Curves
-	err = initializeCurves(reg, curveConfigs)
+	err = initializeCurves(reg, config.Curves)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error initializing curves: %v", err)
 	}
-
-	fanConfigs := configuration.CurrentConfig.Fans
-	fanMap, err = initializeFans(controllers, reg, fanConfigs)
+	fanMap, err = initializeFans(controllers, reg, config.Fans)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error initializing fans: %v", err)
 	}
