@@ -20,6 +20,8 @@ func InitializeObjects() (map[configuration.FanConfig]fans.Fan, *registry.Regist
 	controllers := hwmon.GetChips()
 	reg := registry.NewRegistry()
 
+	statistics.UnregisterAll()
+
 	err := initializeSensors(controllers, reg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error initializing sensors: %v", err)
