@@ -16,22 +16,25 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 )
 
-func InitializeObjects() (map[configuration.FanConfig]fans.Fan, *registry.Registry, error) {
+func InitializeObjects() (fanMap map[configuration.FanConfig]fans.Fan, reg *registry.Registry, err error) {
 	controllers := hwmon.GetChips()
-	reg := registry.NewRegistry()
+	reg = registry.NewRegistry()
 
 	statistics.UnregisterAll()
 
-	err := initializeSensors(controllers, reg)
+	sensorConfigs := configuration.CurrentConfig.Sensors
+	err = initializeSensors(controllers, reg, sensorConfigs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error initializing sensors: %v", err)
 	}
-	err = initializeCurves(reg)
+	curveConfigs := configuration.CurrentConfig.Curves
+	err = initializeCurves(reg, curveConfigs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error initializing curves: %v", err)
 	}
 
-	fanMap, err := initializeFans(controllers, reg)
+	fanConfigs := configuration.CurrentConfig.Fans
+	fanMap, err = initializeFans(controllers, reg, fanConfigs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error initializing fans: %v", err)
 	}
@@ -39,7 +42,11 @@ func InitializeObjects() (map[configuration.FanConfig]fans.Fan, *registry.Regist
 	return fanMap, reg, nil
 }
 
-func initializeFanControllers(pers persistence.Persistence, fanMap map[configuration.FanConfig]fans.Fan, reg *registry.Registry) (result map[fans.Fan]controller.FanController, err error) {
+func initializeFanControllers(
+	pers persistence.Persistence,
+	fanMap map[configuration.FanConfig]fans.Fan,
+	reg *registry.Registry,
+) (result map[fans.Fan]controller.FanController, err error) {
 	result = map[fans.Fan]controller.FanController{}
 	for config, fan := range fanMap {
 		updateRate := configuration.CurrentConfig.FanController.AdjustmentTickRate
@@ -90,9 +97,13 @@ func createControlLoop(config configuration.FanConfig) control_loop.ControlLoop 
 	return control_loop.NewPidControlLoop(control_loop.DefaultPidConfig.P, control_loop.DefaultPidConfig.I, control_loop.DefaultPidConfig.D)
 }
 
-func initializeSensors(controllers []*hwmon.HwMonController, reg *registry.Registry) error {
+func initializeSensors(
+	controllers []*hwmon.HwMonController,
+	reg *registry.Registry,
+	configs []configuration.SensorConfig,
+) error {
 	var sensorList []sensors.Sensor
-	for _, config := range configuration.CurrentConfig.Sensors {
+	for _, config := range configs {
 		if config.HwMon != nil {
 			err := hwmon.UpdateSensorConfigFromHwMonControllers(controllers, &config)
 			if err != nil {
@@ -127,9 +138,9 @@ func initializeSensors(controllers []*hwmon.HwMonController, reg *registry.Regis
 	return nil
 }
 
-func initializeCurves(reg *registry.Registry) error {
+func initializeCurves(reg *registry.Registry, configs []configuration.CurveConfig) error {
 	var curveList []curves.SpeedCurve
-	for _, config := range configuration.CurrentConfig.Curves {
+	for _, config := range configs {
 		curve, err := curves.NewSpeedCurve(config)
 		if err != nil {
 			return fmt.Errorf("unable to process curve configuration: %s: %v", config.ID, err)
@@ -144,12 +155,16 @@ func initializeCurves(reg *registry.Registry) error {
 	return nil
 }
 
-func initializeFans(controllers []*hwmon.HwMonController, reg *registry.Registry) (map[configuration.FanConfig]fans.Fan, error) {
+func initializeFans(
+	controllers []*hwmon.HwMonController,
+	reg *registry.Registry,
+	configs []configuration.FanConfig,
+) (map[configuration.FanConfig]fans.Fan, error) {
 	var result = map[configuration.FanConfig]fans.Fan{}
 
 	var fanList []fans.Fan
 
-	for _, config := range configuration.CurrentConfig.Fans {
+	for _, config := range configs {
 		if config.HwMon != nil {
 			err := hwmon.UpdateFanConfigFromHwMonControllers(controllers, &config)
 			if err != nil {
