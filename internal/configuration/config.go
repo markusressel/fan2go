@@ -17,10 +17,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	FanModeSanityCheckDefaultThrottleDuration = 10 * time.Second
-)
-
 type Configuration struct {
 	DbPath string `json:"dbPath"`
 
