@@ -173,37 +173,46 @@ func LoadConfig() (Configuration, error) {
 
 	// apply default values again to set any nested struct defaults that were
 	// created after the initial parsing pass
-	if err := defaults.Set(&cfg); err != nil {
+	if err = defaults.Set(&cfg); err != nil {
 		return cfg, err
 	}
 
-	applyTransformations(&cfg)
+	if err = applyTransformations(&cfg); err != nil {
+		return cfg, err
+	}
 
-	applyDeprecations(&cfg)
+	if err = applyDeprecations(&cfg); err != nil {
+		return cfg, err
+	}
 
 	return cfg, nil
 }
 
 // apply transformations between different formats available to configure fan curves
-func applyTransformations(cfg *Configuration) {
+func applyTransformations(cfg *Configuration) error {
 	// convert steps in linear curves from strings (with plain numbers or percent values) to floats between 0 and 255
 	for i, curve := range cfg.Curves {
 		if curve.Linear != nil && len(curve.Linear.InSteps) > 0 {
-			transformCurveSteps(&curve.ID, &curve.Linear.Steps, &curve.Linear.InSteps)
+			if err := transformCurveSteps(&curve.ID, &curve.Linear.Steps, &curve.Linear.InSteps); err != nil {
+				return err
+			}
 			cfg.Curves[i] = curve
 		}
 		if curve.Staircase != nil {
 			if len(curve.Staircase.InSteps) > 0 {
-				transformCurveSteps(&curve.ID, &curve.Staircase.Steps, &curve.Staircase.InSteps)
+				if err := transformCurveSteps(&curve.ID, &curve.Staircase.Steps, &curve.Staircase.InSteps); err != nil {
+					return err
+				}
 				cfg.Curves[i] = curve
 			} else {
-				ui.Fatal("Missing steps in curve %s", curve.ID)
+				return fmt.Errorf("Missing steps in curve %s", curve.ID)
 			}
 		}
 	}
+	return nil
 }
 
-func transformCurveSteps(ID *string, Steps *map[int]float64, InSteps *map[int]string) {
+func transformCurveSteps(ID *string, Steps *map[int]float64, InSteps *map[int]string) error {
 	*Steps = make(map[int]float64)
 
 	for temp, origstr := range *InSteps {
@@ -216,36 +225,39 @@ func transformCurveSteps(ID *string, Steps *map[int]float64, InSteps *map[int]st
 		}
 		speed, err := strconv.ParseFloat(str, 64)
 		if err != nil {
-			ui.Fatal("Invalid curve step value '%s' in %s - must be either just a number or a number followed by '%%'", origstr, *ID)
-		} else {
-			if isPercent {
-				if speed < 0 || speed > 100 {
-					ui.Fatal("invalid curve step value '%s' (=> %f) in %s - must be between 0%% and 100%%", origstr, speed, *ID)
-				}
-				// convert 0-100% into [0..255]
-				if speed < 1 {
-					// less than 1% always turns into 0
-					speed = 0
-				} else {
-					// 1% turns into 1, 100% turns into 255
-					// => convert 1..100% to 1..255
-					// => 0..99 to 0..254 and then add 1
-					speed = (speed-1)*(254.0/99.0) + 1
-				}
-			} else if speed < 0 || speed > 255 {
-				ui.Fatal("invalid curve step value '%s' in %s - must be between 0 and 255", origstr, *ID)
-			}
-			(*Steps)[temp] = speed
+			return fmt.Errorf("invalid curve step value '%s' in %s - must be either just a number or a number followed by '%%'", origstr, *ID)
 		}
+
+		if isPercent {
+			if speed < 0 || speed > 100 {
+				return fmt.Errorf("invalid curve step value '%s' (=> %f) in %s - must be between 0%% and 100%%", origstr, speed, *ID)
+			}
+			// convert 0-100% into [0..255]
+			if speed < 1 {
+				// less than 1% always turns into 0
+				speed = 0
+			} else {
+				// 1% turns into 1, 100% turns into 255
+				// => convert 1..100% to 1..255
+				// => 0..99 to 0..254 and then add 1
+				speed = (speed-1)*(254.0/99.0) + 1
+			}
+		} else if speed < 0 || speed > 255 {
+			return fmt.Errorf("invalid curve step value '%s' (=> %f) in %s - must be between 0 and 255", origstr, speed, *ID)
+		}
+		(*Steps)[temp] = speed
 	}
+
+	return nil
 }
 
 // apply deprecations and migrate values
-func applyDeprecations(cfg *Configuration) {
+func applyDeprecations(cfg *Configuration) error {
 	if cfg.ControllerAdjustmentTickRate > 0 {
 		ui.Warning("controllerAdjustmentTickRate is deprecated, use fanController.adjustmentTickRate instead")
 		cfg.FanController.AdjustmentTickRate = cfg.ControllerAdjustmentTickRate
 	}
+	return nil
 }
 
 // UnmarshalText handles string shorthand forms for PwmMapConfig: "autodetect" and "identity".

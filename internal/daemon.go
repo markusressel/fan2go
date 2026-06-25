@@ -10,6 +10,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/controller"
 	"github.com/markusressel/fan2go/internal/fans"
@@ -66,6 +67,12 @@ func RunDaemon() {
 		func(err error) { cancel() },
 	)
 
+	// === ACTOR 3: Config File Watcher ===
+	g.Add(
+		func() error { return runFileWatcher(ctx, configuration.GetFilePath(), reloadChan) },
+		func(err error) { /* handled by context cancellation */ },
+	)
+
 	err = g.Run()
 
 	cancel()
@@ -78,7 +85,43 @@ func RunDaemon() {
 	os.Exit(0)
 }
 
-// --- Extracted Helper Functions ---
+func runFileWatcher(ctx context.Context, configPath string, reloadChan chan<- struct{}) error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	defer watcher.Close()
+
+	err = watcher.Add(configPath)
+	if err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return nil
+			}
+			// Trigger on Write or Rename (some editors rename temp files on save)
+			if event.Op&fsnotify.Write == fsnotify.Write {
+				ui.Info("Config file modification detected...")
+				select {
+				case reloadChan <- struct{}{}:
+				default:
+					// Ignore if a reload is already in progress
+				}
+			}
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return nil
+			}
+			ui.Warning("File watcher error: %v", err)
+		}
+	}
+}
 
 func checkProcessOwner() {
 	owner, err := getProcessOwner()
