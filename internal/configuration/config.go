@@ -147,13 +147,15 @@ func GetFilePath() string {
 	return viper.ConfigFileUsed()
 }
 
-func LoadConfig() {
+func LoadConfig() (Configuration, error) {
 	// load default configuration values
-	CurrentConfig = Configuration{}
-	applyDefaults()
+	cfg := Configuration{}
+	if err := defaults.Set(&cfg); err != nil {
+		return cfg, err
+	}
 
 	err := viper.Unmarshal(
-		&CurrentConfig,
+		&cfg,
 		viper.DecodeHook(
 			mapstructure.ComposeDecodeHookFunc(
 				pwmMapPointsHookFunc(),
@@ -166,34 +168,34 @@ func LoadConfig() {
 		),
 	)
 	if err != nil {
-		ui.Fatal("unable to decode into struct, %v", err)
+		return cfg, err
 	}
 
 	// apply default values again to set any nested struct defaults that were
 	// created after the initial parsing pass
-	applyDefaults()
-
-	applyTransformations()
-
-	applyDeprecations()
-}
-
-func applyDefaults() {
-	if err := defaults.Set(&CurrentConfig); err != nil {
-		panic(err)
+	if err := defaults.Set(&cfg); err != nil {
+		return cfg, err
 	}
+
+	applyTransformations(&cfg)
+
+	applyDeprecations(&cfg)
+
+	return cfg, nil
 }
 
 // apply transformations between different formats available to configure fan curves
-func applyTransformations() {
+func applyTransformations(cfg *Configuration) {
 	// convert steps in linear curves from strings (with plain numbers or percent values) to floats between 0 and 255
-	for _, curve := range CurrentConfig.Curves {
+	for i, curve := range cfg.Curves {
 		if curve.Linear != nil && len(curve.Linear.InSteps) > 0 {
 			transformCurveSteps(&curve.ID, &curve.Linear.Steps, &curve.Linear.InSteps)
+			cfg.Curves[i] = curve
 		}
 		if curve.Staircase != nil {
 			if len(curve.Staircase.InSteps) > 0 {
 				transformCurveSteps(&curve.ID, &curve.Staircase.Steps, &curve.Staircase.InSteps)
+				cfg.Curves[i] = curve
 			} else {
 				ui.Fatal("Missing steps in curve %s", curve.ID)
 			}
@@ -239,10 +241,10 @@ func transformCurveSteps(ID *string, Steps *map[int]float64, InSteps *map[int]st
 }
 
 // apply deprecations and migrate values
-func applyDeprecations() {
-	if CurrentConfig.ControllerAdjustmentTickRate > 0 {
+func applyDeprecations(cfg *Configuration) {
+	if cfg.ControllerAdjustmentTickRate > 0 {
 		ui.Warning("controllerAdjustmentTickRate is deprecated, use fanController.adjustmentTickRate instead")
-		CurrentConfig.FanController.AdjustmentTickRate = CurrentConfig.ControllerAdjustmentTickRate
+		cfg.FanController.AdjustmentTickRate = cfg.ControllerAdjustmentTickRate
 	}
 }
 

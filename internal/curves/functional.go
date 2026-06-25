@@ -3,6 +3,7 @@ package curves
 import (
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -10,8 +11,15 @@ import (
 )
 
 type FunctionSpeedCurve struct {
-	Config configuration.CurveConfig `json:"config"`
-	Value  float64                   `json:"value"`
+	Config   configuration.CurveConfig `json:"config"`
+	Value    float64                   `json:"value"`
+	registry RegistryReader
+
+	mu sync.RWMutex
+}
+
+func (c *FunctionSpeedCurve) BindRegistry(registry RegistryReader) {
+	c.registry = registry
 }
 
 func (c *FunctionSpeedCurve) GetId() string {
@@ -19,9 +27,12 @@ func (c *FunctionSpeedCurve) GetId() string {
 }
 
 func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
+	if c.registry == nil {
+		return c.Value, fmt.Errorf("no registry bound to speed curve '%s'", c.Config.ID)
+	}
 	var curves []SpeedCurve
 	for _, curveId := range c.Config.Function.Curves {
-		curve, exists := GetSpeedCurve(curveId)
+		curve, exists := c.registry.GetCurve(curveId)
 		if !exists || curve == nil {
 			return c.Value, fmt.Errorf("sub-curve not found with id '%s'", curveId)
 		}
@@ -90,13 +101,13 @@ func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
 }
 
 func (c *FunctionSpeedCurve) SetValue(value float64) {
-	valueMu.Lock()
-	defer valueMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.Value = value
 }
 
 func (c *FunctionSpeedCurve) CurrentValue() float64 {
-	valueMu.Lock()
-	defer valueMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.Value
 }

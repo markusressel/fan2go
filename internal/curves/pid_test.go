@@ -1,12 +1,12 @@
 package curves
 
 import (
-	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/sensors"
-	"github.com/markusressel/fan2go/internal/util"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/util"
+	"github.com/stretchr/testify/assert"
 )
 
 // helper function to create a pid curve configuration
@@ -51,7 +51,8 @@ func setupTest(t *testing.T, p, i, d float64, initialTemp float64) (*PidSpeedCur
 		Name:      "Mock Temp Sensor",
 		MovingAvg: initialTemp * 1000, // Store in milli-units
 	}
-	sensors.RegisterSensor(mockSensor)
+	reg := NewMockRegistry()
+	reg.RegisterSensor(mockSensor)
 
 	cfg := createPidCurveConfig(testCurveID, testSensorID, setPoint, p, i, d)
 
@@ -64,6 +65,7 @@ func setupTest(t *testing.T, p, i, d float64, initialTemp float64) (*PidSpeedCur
 		pidLoop: pidLoopInstance,
 		Value:   0, // Initial value
 	}
+	reg.RegisterCurve(curve)
 	// Replace above with actual call:
 	// curveInstance, err := NewSpeedCurve(cfg)
 	// if err != nil {

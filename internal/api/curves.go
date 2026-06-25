@@ -2,28 +2,33 @@ package api
 
 import (
 	"errors"
-	"github.com/labstack/echo/v4"
-	"github.com/markusressel/fan2go/internal/curves"
 	"net/http"
+
+	"github.com/labstack/echo/v4"
+	"github.com/markusressel/fan2go/internal/registry"
 )
 
-func registerCurveEndpoints(rest *echo.Echo) {
+func registerCurveEndpoints(rest *echo.Echo, reg *registry.Registry) {
 	group := rest.Group("/curve")
 
-	group.GET("/", getCurves)
-	group.GET("/:"+urlParamId+"/", getCurve)
+	group.GET("/", func(c echo.Context) error {
+		return getCurves(c, reg)
+	})
+	group.GET("/:"+urlParamId+"/", func(c echo.Context) error {
+		return getCurve(c, reg)
+	})
 	group.POST("/", createCurve)
 	group.DELETE("/:"+urlParamId+"/", deleteCurve)
 }
 
-func getCurves(c echo.Context) error {
-	data := curves.SnapshotSpeedCurveMap()
+func getCurves(c echo.Context, reg *registry.Registry) error {
+	data := reg.SnapshotCurves()
 	return c.JSONPretty(http.StatusOK, data, indentationChar)
 }
 
-func getCurve(c echo.Context) error {
+func getCurve(c echo.Context, reg *registry.Registry) error {
 	id := c.Param(urlParamId)
-	data, exists := curves.GetSpeedCurve(id)
+	data, exists := reg.GetCurve(id)
 	if !exists {
 		return returnNotFound(c, id)
 	} else {

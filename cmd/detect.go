@@ -51,9 +51,12 @@ func printTables(tables []table.Table) {
 var detectCmd = &cobra.Command{
 	Use:   "detect",
 	Short: "Detect fans and sensors",
-	Long:  `Detect fans and sensors on your system and print them to console.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		configuration.LoadConfig()
+		var err error
+		configuration.CurrentConfig, err = configuration.LoadConfig()
+		if err != nil {
+			ui.Fatal("configuration parsing failed: %v", err)
+		}
 
 		controllers := hwmon.GetChips()
 

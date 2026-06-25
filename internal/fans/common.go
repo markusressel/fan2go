@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"sort"
 
-	cmap "github.com/orcaman/concurrent-map/v2"
-	"github.com/qdm12/reprint"
-
 	"github.com/markusressel/fan2go/internal/configuration"
 )
 
@@ -36,10 +33,6 @@ const (
 
 	// ControlModeUnknown is used when the control mode cannot be determined
 	ControlModeUnknown ControlMode = -1
-)
-
-var (
-	fanMap = cmap.New[Fan]()
 )
 
 type Fan interface {
@@ -195,19 +188,4 @@ func ComputePwmBoundariesFromCurveData(pwmRpmMap map[int]float64, userStartPwm i
 	}
 
 	return startPwm, maxPwm
-}
-
-// RegisterFan registers a new fan
-func RegisterFan(fan Fan) {
-	fanMap.Set(fan.GetId(), fan)
-}
-
-// GetFan returns the fan with the given id
-func GetFan(id string) (Fan, bool) {
-	return fanMap.Get(id)
-}
-
-// SnapshotFanMap returns a snapshot of the current fan map
-func SnapshotFanMap() map[string]Fan {
-	return reprint.This(fanMap.Items()).(map[string]Fan)
 }

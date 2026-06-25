@@ -5,12 +5,6 @@ import (
 	"sync"
 
 	"github.com/markusressel/fan2go/internal/configuration"
-	cmap "github.com/orcaman/concurrent-map/v2"
-	"github.com/qdm12/reprint"
-)
-
-var (
-	sensorMap = cmap.New[Sensor]()
 )
 
 type Sensor interface {
@@ -67,19 +61,4 @@ func NewSensor(config configuration.SensorConfig) (Sensor, error) {
 	}
 
 	return nil, fmt.Errorf("no matching sensor type for sensor: %s", config.ID)
-}
-
-// RegisterSensor registers a new sensor
-func RegisterSensor(sensor Sensor) {
-	sensorMap.Set(sensor.GetId(), sensor)
-}
-
-// GetSensor returns the sensor with the given id
-func GetSensor(id string) (Sensor, bool) {
-	return sensorMap.Get(id)
-}
-
-// SnapshotSensorMap returns a snapshot of the current sensor map
-func SnapshotSensorMap() map[string]Sensor {
-	return reprint.This(sensorMap.Items()).(map[string]Sensor)
 }

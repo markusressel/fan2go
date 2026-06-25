@@ -23,9 +23,12 @@ var curveCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		configPath := configuration.DetectAndReadConfigFile()
 		ui.Info("Using configuration file at: %s", configPath)
-		configuration.LoadConfig()
+		configuration.CurrentConfig, err = configuration.LoadConfig()
+		if err != nil {
+			ui.FatalWithoutStacktrace("configuration parsing failed: %v", err)
+		}
 
-		err = configuration.Validate(configPath)
+		err = configuration.ValidateConfig(&configuration.CurrentConfig, configPath)
 		if err != nil {
 			ui.FatalWithoutStacktrace("configuration validation failed: %v", err)
 		}

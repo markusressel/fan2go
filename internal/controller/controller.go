@@ -43,9 +43,14 @@ type FanController interface {
 	GetStatistics() FanControllerStatistics
 
 	UpdateFanSpeed() error
+
+	// UpdateCurve dynamically updates the curve reference
+	UpdateCurve(curve curves.SpeedCurve)
 }
 
 type DefaultFanController struct {
+	// protects concurrent access to curve
+	curveMutex sync.RWMutex
 	// controller statistics
 	stats FanControllerStatistics
 	// persistence where fan data is stored
@@ -125,17 +130,20 @@ type DefaultFanController struct {
 	lastFanModeCheckTime time.Time
 }
 
+func (f *DefaultFanController) UpdateCurve(curve curves.SpeedCurve) {
+	f.curveMutex.Lock()
+	defer f.curveMutex.Unlock()
+	f.curve = curve
+}
+
 func NewFanController(
 	persistence persistence.Persistence,
 	fan fans.Fan,
+	curve curves.SpeedCurve,
 	controlLoop control_loop.ControlLoop,
 	updateRate time.Duration,
 	assumePwmMapIdentity bool,
 ) *DefaultFanController {
-	curve, ok := curves.GetSpeedCurve(fan.GetCurveId())
-	if !ok {
-		ui.Fatal("Fan %s: Failed to create fan controller: Curve with ID '%s' not found", fan.GetId(), fan.GetCurveId())
-	}
 	return &DefaultFanController{
 		persistence:                      persistence,
 		fan:                              fan,
@@ -315,7 +323,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 		}, func(err error) {
 			cancelController()
 			if err != nil {
-				ui.Fatal("Error in fan controller fan %s: %v", fan.GetId(), err)
+				ui.Error("Error in fan controller fan %s: %v", fan.GetId(), err)
 			}
 		})
 	}
@@ -652,7 +660,10 @@ func (f *DefaultFanController) restoreControlMode() {
 // - evaluating the associated curve
 // - cycling the control loop
 func (f *DefaultFanController) calculateTargetSpeed() (float64, error) {
-	target, err := f.curve.Evaluate()
+	f.curveMutex.RLock()
+	c := f.curve
+	f.curveMutex.RUnlock()
+	target, err := c.Evaluate()
 	if err != nil {
 		return 0, err
 	}
@@ -1044,7 +1055,7 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
 func (f *DefaultFanController) computeFanSpecificMappings() (err error) {
 	err = f.computeSetPwmToGetPwmMap()
 	if err != nil {
-		ui.Fatal("Error computing setPwm(x) -> getPwm() map: %v", err)
+		ui.Error("Error computing setPwm(x) -> getPwm() map: %v", err)
 		return err
 	}
 

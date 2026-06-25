@@ -3,18 +3,25 @@ package curves
 import (
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/markusressel/fan2go/internal/ui"
 
 	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/sensors"
 )
 
 type StaircaseSpeedCurve struct {
-	Config configuration.CurveConfig `json:"config"`
-	Value  float64                   `json:"value"`
+	Config   configuration.CurveConfig `json:"config"`
+	Value    float64                   `json:"value"`
+	registry RegistryReader
 
 	LastTemp int
+
+	mu sync.RWMutex
+}
+
+func (c *StaircaseSpeedCurve) BindRegistry(registry RegistryReader) {
+	c.registry = registry
 }
 
 func (c *StaircaseSpeedCurve) GetId() string {
@@ -22,7 +29,10 @@ func (c *StaircaseSpeedCurve) GetId() string {
 }
 
 func (c *StaircaseSpeedCurve) Evaluate() (value float64, err error) {
-	sensor, exists := sensors.GetSensor(c.Config.Staircase.Sensor)
+	if c.registry == nil {
+		return c.Value, fmt.Errorf("no registry bound to speed curve '%s'", c.Config.ID)
+	}
+	sensor, exists := c.registry.GetSensor(c.Config.Staircase.Sensor)
 	if !exists || sensor == nil {
 		return c.Value, fmt.Errorf("sensor not found with id '%s'", c.Config.Staircase.Sensor)
 	}
@@ -49,13 +59,13 @@ func (c *StaircaseSpeedCurve) Evaluate() (value float64, err error) {
 }
 
 func (c *StaircaseSpeedCurve) SetValue(value float64) {
-	valueMu.Lock()
-	defer valueMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.Value = value
 }
 
 func (c *StaircaseSpeedCurve) CurrentValue() float64 {
-	valueMu.Lock()
-	defer valueMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.Value
 }
