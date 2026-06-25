@@ -13,10 +13,6 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 )
 
-func Validate(configPath string) error {
-	return ValidateConfig(&CurrentConfig, configPath)
-}
-
 func ValidateConfig(config *Configuration, path string) error {
 	err := validateSensors(config)
 	if err != nil {
