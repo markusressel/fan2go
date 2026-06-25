@@ -68,9 +68,9 @@ func createControlLoop(config configuration.FanConfig) control_loop.ControlLoop 
 	if config.ControlLoop != nil { //nolint:all
 		ui.Warning("Using deprecated control loop configuration for fan %s...", config.ID)
 		return control_loop.NewPidControlLoop(
-			config.ControlLoop.P,
-			config.ControlLoop.I,
-			config.ControlLoop.D,
+			config.ControlLoop.P, //nolint:all
+			config.ControlLoop.I, //nolint:all
+			config.ControlLoop.D, //nolint:all
 		)
 	}
 
