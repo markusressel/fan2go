@@ -91,7 +91,12 @@ func runFileWatcher(ctx context.Context, configPath string, reloadChan chan<- st
 	if err != nil {
 		return err
 	}
-	defer watcher.Close()
+	defer func(watcher *fsnotify.Watcher) {
+		err := watcher.Close()
+		if err != nil {
+			ui.Warning("Could not close file watcher: %v", err)
+		}
+	}(watcher)
 
 	// Store the last known hash to compare against
 	lastHash, err := util.HashFile(configPath)

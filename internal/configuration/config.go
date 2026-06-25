@@ -201,7 +201,7 @@ func applyTransformations(cfg *Configuration) error {
 				}
 				cfg.Curves[i] = curve
 			} else {
-				return fmt.Errorf("Missing steps in curve %s", curve.ID)
+				return fmt.Errorf("missing steps in curve %s", curve.ID)
 			}
 		}
 	}

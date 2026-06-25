@@ -134,7 +134,12 @@ func HashFile(configPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			ui.Warning("File close error: %v", err)
+		}
+	}(f)
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
