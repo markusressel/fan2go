@@ -17,6 +17,7 @@ import (
 	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/registry"
 	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
 )
 
@@ -92,6 +93,12 @@ func runFileWatcher(ctx context.Context, configPath string, reloadChan chan<- st
 	}
 	defer watcher.Close()
 
+	// Store the last known hash to compare against
+	lastHash, err := util.HashFile(configPath)
+	if err != nil {
+		ui.Warning("Could not compute initial hash for config file: %v", err)
+	}
+
 	err = watcher.Add(configPath)
 	if err != nil {
 		return err
@@ -105,13 +112,27 @@ func runFileWatcher(ctx context.Context, configPath string, reloadChan chan<- st
 			if !ok {
 				return nil
 			}
-			// Trigger on Write or Rename (some editors rename temp files on save)
+
+			// Trigger on Write
 			if event.Op&fsnotify.Write == fsnotify.Write {
-				ui.Info("Config file modification detected...")
-				select {
-				case reloadChan <- struct{}{}:
-				default:
-					// Ignore if a reload is already in progress
+				newHash, err := util.HashFile(configPath)
+				if err != nil {
+					ui.Warning("Could not compute hash after file change: %v", err)
+					continue
+				}
+
+				// Only notify if the content actually changed
+				if newHash != lastHash {
+					ui.Info("Config file content change detected.")
+					lastHash = newHash
+
+					select {
+					case reloadChan <- struct{}{}:
+					default:
+						ui.Warning("Reload already in progress, ignoring SIGHUP.")
+					}
+				} else {
+					ui.Debug("File write detected, but content is identical. Skipping reload.")
 				}
 			}
 		case err, ok := <-watcher.Errors:
@@ -185,6 +206,10 @@ func runOrchestratorCycle(ctx context.Context, reloadChan <-chan struct{}, reg *
 func reloadConfiguration(pers persistence.Persistence) (*registry.Registry, map[fans.Fan]controller.FanController, error) {
 	ui.Info("Reloading configuration...")
 
+	err := configuration.ReadInConfig()
+	if err != nil {
+		return nil, nil, fmt.Errorf("error reading config file: %w", err)
+	}
 	newConfig, err := configuration.LoadConfig()
 	if err != nil {
 		return nil, nil, fmt.Errorf("parsing failed: %w", err)

@@ -130,19 +130,19 @@ func setDefaultValues() {
 
 // DetectAndReadConfigFile detects the path of the first existing config file
 func DetectAndReadConfigFile() string {
-	err := readInConfig()
+	err := ReadInConfig()
 	if err != nil {
 		ui.FatalWithoutStacktrace("Error reading config file, %s", err)
 	}
 	return GetFilePath()
 }
 
-// readInConfig reads and parses the config file
-func readInConfig() error {
+// ReadInConfig reads and parses the config file
+func ReadInConfig() error {
 	return viper.ReadInConfig()
 }
 
-// GetFilePath this is only populated _after_ readInConfig()
+// GetFilePath this is only populated _after_ ReadInConfig()
 func GetFilePath() string {
 	return viper.ConfigFileUsed()
 }
