@@ -1,16 +1,20 @@
 package util
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/markusressel/fan2go/internal/ui"
-	"github.com/natefinch/atomic"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/natefinch/atomic"
 )
 
 // CheckFilePermissionsForExecution checks whether the given filePath owner, group and permissions
@@ -122,4 +126,24 @@ func FindFilesMatching(path string, expr *regexp.Regexp) []string {
 	}
 
 	return result
+}
+
+// HashFile computes the SHA-256 hash of the file at configPath
+func HashFile(configPath string) (string, error) {
+	f, err := os.Open(configPath)
+	if err != nil {
+		return "", err
+	}
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			ui.Warning("File close error: %v", err)
+		}
+	}(f)
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

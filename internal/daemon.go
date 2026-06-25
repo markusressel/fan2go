@@ -10,12 +10,14 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/controller"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/registry"
 	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
 )
 
@@ -66,6 +68,12 @@ func RunDaemon() {
 		func(err error) { cancel() },
 	)
 
+	// === ACTOR 3: Config File Watcher ===
+	g.Add(
+		func() error { return runFileWatcher(ctx, configuration.GetFilePath(), reloadChan) },
+		func(err error) { /* handled by context cancellation */ },
+	)
+
 	err = g.Run()
 
 	cancel()
@@ -78,7 +86,68 @@ func RunDaemon() {
 	os.Exit(0)
 }
 
-// --- Extracted Helper Functions ---
+func runFileWatcher(ctx context.Context, configPath string, reloadChan chan<- struct{}) error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	defer func(watcher *fsnotify.Watcher) {
+		err := watcher.Close()
+		if err != nil {
+			ui.Warning("Could not close file watcher: %v", err)
+		}
+	}(watcher)
+
+	// Store the last known hash to compare against
+	lastHash, err := util.HashFile(configPath)
+	if err != nil {
+		ui.Warning("Could not compute initial hash for config file: %v", err)
+	}
+
+	err = watcher.Add(configPath)
+	if err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return nil
+			}
+
+			// Trigger on Write
+			if event.Op&fsnotify.Write == fsnotify.Write {
+				newHash, err := util.HashFile(configPath)
+				if err != nil {
+					ui.Warning("Could not compute hash after file change: %v", err)
+					continue
+				}
+
+				// Only notify if the content actually changed
+				if newHash != lastHash {
+					ui.Info("Config file content change detected.")
+					lastHash = newHash
+
+					select {
+					case reloadChan <- struct{}{}:
+					default:
+						ui.Warning("Reload already in progress, ignoring SIGHUP.")
+					}
+				} else {
+					ui.Debug("File write detected, but content is identical. Skipping reload.")
+				}
+			}
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return nil
+			}
+			ui.Warning("File watcher error: %v", err)
+		}
+	}
+}
 
 func checkProcessOwner() {
 	owner, err := getProcessOwner()
@@ -142,6 +211,10 @@ func runOrchestratorCycle(ctx context.Context, reloadChan <-chan struct{}, reg *
 func reloadConfiguration(pers persistence.Persistence) (*registry.Registry, map[fans.Fan]controller.FanController, error) {
 	ui.Info("Reloading configuration...")
 
+	err := configuration.ReadInConfig()
+	if err != nil {
+		return nil, nil, fmt.Errorf("error reading config file: %w", err)
+	}
 	newConfig, err := configuration.LoadConfig()
 	if err != nil {
 		return nil, nil, fmt.Errorf("parsing failed: %w", err)
