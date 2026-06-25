@@ -28,7 +28,7 @@ var curveCmd = &cobra.Command{
 			ui.FatalWithoutStacktrace("configuration parsing failed: %v", err)
 		}
 
-		err = configuration.Validate(configPath)
+		err = configuration.ValidateConfig(&configuration.CurrentConfig, configPath)
 		if err != nil {
 			ui.FatalWithoutStacktrace("configuration validation failed: %v", err)
 		}

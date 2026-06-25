@@ -153,7 +153,7 @@ func reloadConfiguration(fanControllers map[fans.Fan]controller.FanController) (
 		return nil, fmt.Errorf("parsing failed: %w", err)
 	}
 
-	err = configuration.Validate(configuration.GetFilePath())
+	err = configuration.ValidateConfig(&newConfig, configuration.GetFilePath())
 	if err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}

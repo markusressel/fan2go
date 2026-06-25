@@ -24,7 +24,7 @@ var validateCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		if err := configuration.Validate(configPath); err != nil {
+		if err := configuration.ValidateConfig(&configuration.CurrentConfig, configPath); err != nil {
 			ui.Error("Validation failed: %v", err)
 			os.Exit(1)
 		}

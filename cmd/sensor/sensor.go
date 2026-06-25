@@ -55,7 +55,7 @@ func getSensor(id string) (sensors.Sensor, error) {
 	if err != nil {
 		ui.FatalWithoutStacktrace("configuration parsing failed: %v", err)
 	}
-	err = configuration.Validate(configPath)
+	err = configuration.ValidateConfig(&configuration.CurrentConfig, configPath)
 	if err != nil {
 		ui.FatalWithoutStacktrace("%v", err)
 	}
