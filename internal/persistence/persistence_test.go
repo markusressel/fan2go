@@ -208,7 +208,6 @@ func createFan(neverStop bool, curveData map[int]float64) (fan fans.Fan, err err
 			Curve:     "curve",
 		},
 	}
-	fans.RegisterFan(fan)
 
 	err = fan.AttachFanRpmCurveData(&curveData)
 

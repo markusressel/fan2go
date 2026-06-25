@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"sort"
 
-	cmap "github.com/orcaman/concurrent-map/v2"
-	"github.com/qdm12/reprint"
-
 	"github.com/markusressel/fan2go/internal/configuration"
 )
 
@@ -192,28 +189,3 @@ func ComputePwmBoundariesFromCurveData(pwmRpmMap map[int]float64, userStartPwm i
 
 	return startPwm, maxPwm
 }
-
-type FanRepository struct {
-	fanMap cmap.ConcurrentMap[string, Fan]
-}
-
-func NewFanRepository() *FanRepository {
-	return &FanRepository{
-		fanMap: cmap.New[Fan](),
-	}
-}
-
-func (r *FanRepository) Register(fan Fan) {
-	r.fanMap.Set(fan.GetId(), fan)
-}
-
-func (r *FanRepository) Get(id string) (Fan, bool) {
-	return r.fanMap.Get(id)
-}
-
-func (r *FanRepository) Snapshot() map[string]Fan {
-	return reprint.This(r.fanMap.Items()).(map[string]Fan)
-}
-
-// RegisterFan is a deprecated no-op function for test compatibility.
-func RegisterFan(fan Fan) {}
