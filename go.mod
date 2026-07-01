@@ -3,9 +3,10 @@ module github.com/markusressel/fan2go
 go 1.25.0
 
 require (
-	github.com/NVIDIA/go-nvml v0.13.2-0
+	github.com/NVIDIA/go-nvml v0.13.3-0
 	github.com/asecurityteam/rolling v2.0.4+incompatible
 	github.com/creasty/defaults v1.8.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/guptarohit/asciigraph v0.10.0
 	github.com/labstack/echo-contrib v0.50.1
@@ -37,7 +38,6 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/containerd/console v1.0.5 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gookit/color v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/labstack/gommon v0.5.0 // indirect
