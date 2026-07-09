@@ -3,7 +3,7 @@ module github.com/markusressel/fan2go
 go 1.25.0
 
 require (
-	github.com/NVIDIA/go-nvml v0.13.3-0
+	github.com/NVIDIA/go-nvml v0.13.3-1
 	github.com/asecurityteam/rolling v2.0.4+incompatible
 	github.com/creasty/defaults v1.8.0
 	github.com/fsnotify/fsnotify v1.10.1
