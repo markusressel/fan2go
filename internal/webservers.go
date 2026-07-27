@@ -84,7 +84,7 @@ func startRestServer(reg *registry.Registry) *echo.Echo {
 
 	go func() {
 		apiConfig := configuration.CurrentConfig.Api
-		restAddress := fmt.Sprintf("%s:%d", apiConfig.Host, apiConfig.Port)
+		restAddress := webserverAddress(apiConfig.Host, apiConfig.Port)
 
 		if err := restServer.Start(restAddress); err != nil && err != http.ErrServerClosed {
 			ui.ErrorAndNotify("REST Error", "Cannot start REST Api endpoint (%s)", err.Error())
@@ -100,8 +100,8 @@ func startStatisticsServer() *echo.Echo {
 	echoPrometheus := statistics.CreateStatisticsService()
 
 	go func() {
-		prometheusPort := configuration.CurrentConfig.Statistics.Port
-		prometheusAddress := fmt.Sprintf(":%d", prometheusPort)
+		statisticsConfig := configuration.CurrentConfig.Statistics
+		prometheusAddress := webserverAddress(statisticsConfig.Host, statisticsConfig.Port)
 
 		if err := echoPrometheus.Start(prometheusAddress); err != nil && err != http.ErrServerClosed {
 			ui.ErrorAndNotify("Statistics Error", "Cannot start prometheus metrics endpoint (%s)", err.Error())
@@ -109,4 +109,8 @@ func startStatisticsServer() *echo.Echo {
 	}()
 
 	return echoPrometheus
+}
+
+func webserverAddress(host string, port int) string {
+	return fmt.Sprintf("%s:%d", host, port)
 }
