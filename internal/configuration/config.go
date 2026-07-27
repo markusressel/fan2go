@@ -95,8 +95,10 @@ func setDefaultValues() {
 
 	viper.SetDefault("Statistics", StatisticsConfig{
 		Enabled: false,
+		Host:    "",
 		Port:    9000,
 	})
+	viper.SetDefault("Statistics.Host", "")
 	viper.SetDefault("Statistics.Port", 9000)
 
 	viper.SetDefault("Api", ApiConfig{
