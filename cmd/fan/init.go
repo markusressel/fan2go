@@ -1,6 +1,11 @@
 package fan
 
 import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/markusressel/fan2go/internal"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/control_loop"
@@ -56,7 +61,10 @@ var initCmd = &cobra.Command{
 			return err
 		}
 
-		_, err = fanController.RunInitialization()
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+
+		_, err = fanController.RunInitialization(ctx)
 		if err == nil {
 			ui.Success("Done!")
 			// print measured fan curve

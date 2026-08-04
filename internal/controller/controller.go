@@ -46,6 +46,9 @@ type FanController interface {
 
 	// UpdateCurve dynamically updates the curve reference
 	UpdateCurve(curve curves.SpeedCurve)
+
+	// RunInitialization runs the fan initialization sequence.
+	RunInitialization(ctx context.Context) (map[int]float64, error)
 }
 
 type FanStateSnapshot struct {
@@ -231,7 +234,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	// wait a bit to gather monitoring data
 	time.Sleep(2*time.Second + configuration.CurrentConfig.TempSensorPollingRate)
 
-	fanPwmData, err := f.runInitializationIfNeeded()
+	fanPwmData, err := f.runInitializationIfNeeded(ctx)
 	if err != nil {
 		return err
 	}
@@ -344,7 +347,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	return err
 }
 
-func (f *DefaultFanController) runInitializationIfNeeded() (map[int]float64, error) {
+func (f *DefaultFanController) runInitializationIfNeeded(ctx context.Context) (map[int]float64, error) {
 	fan := f.fan
 	// check if we have data for this fan in persistence,
 	// if not we need to run the initialization sequence
@@ -354,7 +357,7 @@ func (f *DefaultFanController) runInitializationIfNeeded() (map[int]float64, err
 		config := fan.GetConfig()
 		if config.HwMon != nil || config.Nvidia != nil {
 			ui.Warning("Fan '%s' has not yet been analyzed, starting initialization sequence...", fan.GetId())
-			fanCurveData, err := f.RunInitialization()
+			fanCurveData, err := f.RunInitialization(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -368,25 +371,32 @@ func (f *DefaultFanController) runInitializationIfNeeded() (map[int]float64, err
 	return fanRpmData, err
 }
 
-func (f *DefaultFanController) RunInitialization() (map[int]float64, error) {
-	fan := f.fan
-
-	// the `fan init` CLI command calls this directly (without Run()), so the original fan state may not have been captured yet
+func (f *DefaultFanController) RunInitialization(ctx context.Context) (map[int]float64, error) {
 	err := f.storeCurrentFanState()
 	if err != nil {
 		return nil, err
 	}
 
-	err = f.computeFanSpecificMappings()
+	curveData, err := f.runInitialization(ctx)
+	if err != nil {
+		f.restoreControlMode()
+		return nil, err
+	}
+	return curveData, nil
+}
+
+func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]float64, error) {
+	fan := f.fan
+
+	err := f.computeFanSpecificMappings()
 	if err != nil {
 		ui.Error("Fan %s: Error computing fan specific mappings: %v", fan.GetId(), err)
 		return nil, err
 	}
 
 	fanAnalyzer := NewFanCurveAnalyzer(f)
-	curveData, err := fanAnalyzer.RunInitializationSequence()
+	curveData, err := fanAnalyzer.RunInitializationSequence(ctx)
 	if err != nil {
-		f.restoreControlMode()
 		return nil, err
 	}
 
@@ -407,7 +417,6 @@ func (f *DefaultFanController) RunInitialization() (map[int]float64, error) {
 
 	fanRpmData, err := f.persistence.LoadFanRpmData(fan)
 	if err != nil {
-		f.restoreControlMode()
 		return nil, err
 	}
 

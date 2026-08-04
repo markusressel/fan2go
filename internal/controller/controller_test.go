@@ -2121,13 +2121,57 @@ func TestRunInitialization_FailedInit_RestoresOriginalControlMode(t *testing.T) 
 		updateRate:  time.Duration(100),
 	}
 
-	_, err := controller.RunInitialization()
+	_, err := controller.RunInitialization(context.Background())
 
 	assert.Error(t, err)
 	assert.NotContains(t, fan.controlModeHistory, fans.ControlModeDisabled,
 		"the zero value of ControlMode must never be written to the fan")
 	assert.Equal(t, fans.ControlModeAutomatic, fan.ControlMode,
 		"failed init must restore the original (automatic) control mode")
+}
+
+func TestRunInitialization_Cancelled_RestoresOriginalControlMode(t *testing.T) {
+	originalConfig := configuration.CurrentConfig
+	defer func() {
+		configuration.CurrentConfig = originalConfig
+	}()
+	configuration.CurrentConfig.FanController.PwmSetDelay = 1 * time.Millisecond
+	// non-zero so the cancelled context is the only ready channel in sleepWithContext
+	configuration.CurrentConfig.FanResponseDelay = 1
+	configuration.CurrentConfig.Analysis.SampleCount = 1
+	configuration.CurrentConfig.Analysis.SampleDelay = 0
+	configuration.CurrentConfig.Analysis.SettleTimeout = 0
+
+	fan := &mockFanForFailedInit{
+		MockFan: MockFan{
+			ID:          "fan",
+			RPM:         0,
+			ControlMode: fans.ControlModeAutomatic,
+			PwmMap:      &configuration.PwmMapConfig{Identity: &configuration.PwmMapIdentityConfig{}},
+			SetPwmToGetPwmMap: &configuration.SetPwmToGetPwmMapConfig{
+				Identity: &configuration.SetPwmToGetPwmMapIdentityConfig{},
+			},
+			ControlModeConfig: &configuration.ControlModeConfig{
+				OnExit: &configuration.OnExitConfig{Restore: &configuration.OnExitRestoreConfig{}},
+			},
+		},
+	}
+	controller := DefaultFanController{
+		persistence: mockPersistence{hasPwmMap: false},
+		fan:         fan,
+		updateRate:  time.Duration(100),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := controller.RunInitialization(ctx)
+
+	assert.True(t, errors.Is(err, context.Canceled))
+	assert.NotContains(t, fan.controlModeHistory, fans.ControlModeDisabled,
+		"the zero value of ControlMode must never be written to the fan")
+	assert.Equal(t, fans.ControlModeAutomatic, fan.ControlMode,
+		"cancelled init must restore the original (automatic) control mode")
 }
 
 // --- setPwmToGetPwmMap / pwmMap edge-case tests ---

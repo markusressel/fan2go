@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -60,7 +61,7 @@ func TestMeasureAtPwm_LaggingReadback_HonorsFanResponseDelay(t *testing.T) {
 	analyzer := NewFanCurveAnalyzer(controller)
 
 	// WHEN
-	rpm, err := analyzer.measureAtPwm(fan, 128, 0)
+	rpm, err := analyzer.measureAtPwm(context.Background(), fan, 128, 0)
 
 	// THEN: after FanResponseDelay the reported PWM converges and the RPM is measured
 	assert.NoError(t, err)
