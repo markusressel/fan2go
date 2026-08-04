@@ -48,6 +48,14 @@ type FanController interface {
 	UpdateCurve(curve curves.SpeedCurve)
 }
 
+type FanStateSnapshot struct {
+	// the ControlMode the fan was in before the controller started
+	ControlMode fans.ControlMode
+	// the raw pwm value read from the fan before the controller started
+	// Note: this is the raw value, no pwmMap is applied to it
+	PwmValue int
+}
+
 type DefaultFanController struct {
 	// protects concurrent access to curve
 	curveMutex sync.RWMutex
@@ -61,11 +69,8 @@ type DefaultFanController struct {
 	curve curves.SpeedCurve
 	// rate to update the target fan speed
 	updateRate time.Duration
-	// the original ControlMode state of the fan before starting the controller
-	originalControlMode fans.ControlMode
-	// the original pwm value of the fan before starting the controller
-	// Note: this is the raw value read from the fan, no pwmMap is applied to it
-	originalPwmValue int
+	// the fan state as it was before the controller started (nil until captured)
+	originalFanState *FanStateSnapshot
 	// the last pwm value that was set to the fan, **before** applying the pwmMap to it
 	lastTarget *int
 	// a list of all pre-pwmMap pwm values where setPwm(x) != setPwm(y) for the controlled fan
@@ -181,13 +186,19 @@ func (f *DefaultFanController) prepareController() (err error) {
 }
 
 func (f *DefaultFanController) storeCurrentFanState() error {
+	if f.originalFanState != nil {
+		return nil
+	}
+
 	fan := f.fan
 	// store original pwm value
 	pwm, err := f.getPwm()
 	if err != nil {
 		ui.Warning("Cannot read pwm value of %s", fan.GetId())
 	}
-	f.originalPwmValue = pwm
+	snapshot := FanStateSnapshot{
+		PwmValue: pwm,
+	}
 
 	// store original pwm_enable value
 	if f.fan.Supports(fans.FeatureControlModeRead) {
@@ -195,8 +206,9 @@ func (f *DefaultFanController) storeCurrentFanState() error {
 		if err != nil {
 			ui.Warning("Cannot read pwm_enable value of %s", fan.GetId())
 		}
-		f.originalControlMode = controlMode
+		snapshot.ControlMode = controlMode
 	}
+	f.originalFanState = &snapshot
 	return nil
 }
 
@@ -359,7 +371,13 @@ func (f *DefaultFanController) runInitializationIfNeeded() (map[int]float64, err
 func (f *DefaultFanController) RunInitialization() (map[int]float64, error) {
 	fan := f.fan
 
-	err := f.computeFanSpecificMappings()
+	// the `fan init` CLI command calls this directly (without Run()), so the original fan state may not have been captured yet
+	err := f.storeCurrentFanState()
+	if err != nil {
+		return nil, err
+	}
+
+	err = f.computeFanSpecificMappings()
 	if err != nil {
 		ui.Error("Fan %s: Error computing fan specific mappings: %v", fan.GetId(), err)
 		return nil, err
@@ -582,6 +600,13 @@ func trySetManualPwm(fan fans.Fan) error {
 }
 
 func (f *DefaultFanController) restoreControlMode() {
+	if f.originalFanState == nil {
+		ui.Warning("Skipping fan settings restore for %s, original state was never captured", f.fan.GetId())
+		return
+	}
+	originalControlMode := f.originalFanState.ControlMode
+	originalPwmValue := f.originalFanState.PwmValue
+
 	ui.Info("Trying to restore fan settings for %s...", f.fan.GetId())
 
 	var onExit *configuration.OnExitConfig
@@ -602,7 +627,7 @@ func (f *DefaultFanController) restoreControlMode() {
 	if onExit != nil {
 		// determine control mode to set on exit, if any
 		if onExit.Restore != nil {
-			controlModeToSet = &f.originalControlMode
+			controlModeToSet = &originalControlMode
 		} else if onExit.ControlMode != nil {
 			parsedControlMode, err := parseControlModeValue(*onExit.ControlMode)
 			if err != nil {
@@ -612,8 +637,8 @@ func (f *DefaultFanController) restoreControlMode() {
 			}
 		} else {
 			// if no explicit control mode to set is provided, but the fan supports writing the control mode and the original mode was not automatic, restore the original mode
-			if f.originalControlMode != fans.ControlModeAutomatic {
-				controlModeToSet = &f.originalControlMode
+			if originalControlMode != fans.ControlModeAutomatic {
+				controlModeToSet = &originalControlMode
 			}
 		}
 
@@ -623,14 +648,13 @@ func (f *DefaultFanController) restoreControlMode() {
 		}
 	} else {
 		// default restore behavior
-		controlModeToSet = &f.originalControlMode
+		controlModeToSet = &originalControlMode
 	}
 
 	if pwmToSet == nil {
 		// if the original control mode was manual, restore it to manual and set the original PWM value
 		if controlModeToSet != nil && *controlModeToSet != fans.ControlModeAutomatic {
 			// if control mode is set to manual but no speed is provided, set the original value
-			originalPwmValue := f.originalPwmValue
 			pwmToSet = &originalPwmValue
 		}
 	}
