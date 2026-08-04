@@ -391,13 +391,17 @@ func (f *FanCurveAnalyzer) rpmCurveMeasurementCleanup(curveData map[int]float64)
 // measureAtPwm sets the fan to the given target PWM value, optionally waits for it to settle,
 // takes SampleCount RPM samples spaced SampleDelay apart, and returns
 // their median as a robust per-point estimate. Returns -1 (with nil error) if the reported PWM does not match the
-// expected value after setting it (indicates the hardware ignored the request).
+// expected value after setting it even after waiting FanResponseDelay (indicates the hardware ignored the request).
 // If settleTimeout > 0, waitForFanToSettle is called with that timeout (used for large PWM steps).
 // If settleTimeout == 0, a plain FanResponseDelay sleep is used instead (sufficient for small steps).
 func (f *FanCurveAnalyzer) measureAtPwm(fan fans.Fan, pwm int, settleTimeout time.Duration) (float64, error) {
 	actualPwm := f.fanController.applyPwmMapToTarget(pwm)
 	matchedPwm := false
 	for attempt := 0; attempt <= pwmMismatchRetries; attempt++ {
+		if attempt > 0 {
+			// The reported PWM may lag behind the requested value on some hardware, so wait FanResponseDelay before retrying.
+			time.Sleep(time.Duration(configuration.CurrentConfig.FanResponseDelay) * time.Second)
+		}
 		err := f.fanController.setPwm(actualPwm)
 		if err != nil {
 			return 0, fmt.Errorf("unable to set PWM %d: %w", actualPwm, err)
