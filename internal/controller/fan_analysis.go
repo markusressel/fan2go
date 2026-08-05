@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sort"
@@ -14,6 +15,15 @@ import (
 
 const pwmMismatchRetries = 2
 
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
+	}
+}
+
 type FanCurveAnalyzer struct {
 	fanController *DefaultFanController
 }
@@ -26,7 +36,7 @@ func NewFanCurveAnalyzer(
 	}
 }
 
-func (f *FanCurveAnalyzer) RunInitializationSequence() (rpmCurve map[int]float64, err error) {
+func (f *FanCurveAnalyzer) RunInitializationSequence(ctx context.Context) (rpmCurve map[int]float64, err error) {
 	fan := f.fanController.fan
 
 	if !fan.Supports(fans.FeatureRpmSensor) {
@@ -51,21 +61,21 @@ func (f *FanCurveAnalyzer) RunInitializationSequence() (rpmCurve map[int]float64
 	initStarted := time.Now()
 
 	startBoundaryStarted := time.Now()
-	startIdx, _, err := f.detectStartBoundary(fan, distinct, curveData)
+	startIdx, _, err := f.detectStartBoundary(ctx, fan, distinct, curveData)
 	if err != nil {
 		return nil, err
 	}
 	ui.Info("Fan %s: Boundary discovery (start) finished in %s", fan.GetId(), time.Since(startBoundaryStarted).Round(time.Millisecond))
 
 	maxBoundaryStarted := time.Now()
-	maxIdx, _, err := f.detectMaxBoundary(fan, distinct, startIdx, curveData)
+	maxIdx, _, err := f.detectMaxBoundary(ctx, fan, distinct, startIdx, curveData)
 	if err != nil {
 		return nil, err
 	}
 	ui.Info("Fan %s: Boundary discovery (max) finished in %s", fan.GetId(), time.Since(maxBoundaryStarted).Round(time.Millisecond))
 
 	interiorStarted := time.Now()
-	curveData, err = f.sampleInteriorCoarse(fan, distinct, startIdx, maxIdx, curveData)
+	curveData, err = f.sampleInteriorCoarse(ctx, fan, distinct, startIdx, maxIdx, curveData)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +92,7 @@ func (f *FanCurveAnalyzer) RunInitializationSequence() (rpmCurve map[int]float64
 }
 
 func (f *FanCurveAnalyzer) detectStartBoundary(
+	ctx context.Context,
 	fan fans.Fan,
 	distinct []int,
 	curveData map[int]float64,
@@ -95,7 +106,7 @@ func (f *FanCurveAnalyzer) detectStartBoundary(
 	for low <= high {
 		mid := (low + high) / 2
 		pwm := distinct[mid]
-		rpm, measureErr := f.measureAtPwm(fan, pwm, configuration.CurrentConfig.Analysis.SettleTimeout)
+		rpm, measureErr := f.measureAtPwm(ctx, fan, pwm, configuration.CurrentConfig.Analysis.SettleTimeout)
 		if measureErr != nil {
 			return 0, 0, measureErr
 		}
@@ -134,6 +145,7 @@ func (f *FanCurveAnalyzer) detectStartBoundary(
 }
 
 func (f *FanCurveAnalyzer) detectMaxBoundary(
+	ctx context.Context,
 	fan fans.Fan,
 	distinct []int,
 	startIdx int,
@@ -162,7 +174,7 @@ func (f *FanCurveAnalyzer) detectMaxBoundary(
 	ui.Info("Fan %s: Discovering max boundary...", fan.GetId())
 	for idx := lastIdx; idx >= topStartIdx; idx -= step {
 		pwm := distinct[idx]
-		rpm, measureErr := f.measureAtPwm(fan, pwm, 0)
+		rpm, measureErr := f.measureAtPwm(ctx, fan, pwm, 0)
 		if measureErr != nil {
 			return 0, 0, measureErr
 		}
@@ -186,7 +198,7 @@ func (f *FanCurveAnalyzer) detectMaxBoundary(
 		pwm := distinct[idx]
 		rpm, exists := fastScan[pwm]
 		if !exists {
-			measureRpm, measureErr := f.measureAtPwm(fan, pwm, 0)
+			measureRpm, measureErr := f.measureAtPwm(ctx, fan, pwm, 0)
 			if measureErr != nil {
 				return 0, 0, measureErr
 			}
@@ -204,7 +216,7 @@ func (f *FanCurveAnalyzer) detectMaxBoundary(
 	}
 
 	if roughIdx >= 0 {
-		confirmedIdx, confirmedPwm, confirmErr := f.confirmMaxBoundary(fan, distinct, startIdx, roughIdx, curveData)
+		confirmedIdx, confirmedPwm, confirmErr := f.confirmMaxBoundary(ctx, fan, distinct, startIdx, roughIdx, curveData)
 		if confirmErr != nil {
 			return 0, 0, confirmErr
 		}
@@ -219,6 +231,7 @@ func (f *FanCurveAnalyzer) detectMaxBoundary(
 }
 
 func (f *FanCurveAnalyzer) confirmMaxBoundary(
+	ctx context.Context,
 	fan fans.Fan,
 	distinct []int,
 	startIdx int,
@@ -246,7 +259,7 @@ func (f *FanCurveAnalyzer) confirmMaxBoundary(
 	peakConfirmed := 0.0
 	for _, idx := range confirmIndices {
 		pwm := distinct[idx]
-		rpm, measureErr := f.measureAtPwm(fan, pwm, configuration.CurrentConfig.Analysis.SettleTimeout)
+		rpm, measureErr := f.measureAtPwm(ctx, fan, pwm, configuration.CurrentConfig.Analysis.SettleTimeout)
 		if measureErr != nil {
 			return 0, 0, measureErr
 		}
@@ -284,6 +297,7 @@ func (f *FanCurveAnalyzer) confirmMaxBoundary(
 }
 
 func (f *FanCurveAnalyzer) sampleInteriorCoarse(
+	ctx context.Context,
 	fan fans.Fan,
 	distinct []int,
 	startIdx int,
@@ -308,7 +322,7 @@ func (f *FanCurveAnalyzer) sampleInteriorCoarse(
 			continue
 		}
 		settleTimeout := settleTimeoutForPwmJump(lastMeasuredPwm, pwm, configuration.CurrentConfig.Analysis.SettleTimeout)
-		rpm, err := f.measureAtPwm(fan, pwm, settleTimeout)
+		rpm, err := f.measureAtPwm(ctx, fan, pwm, settleTimeout)
 		if err != nil {
 			return curveData, err
 		}
@@ -391,13 +405,19 @@ func (f *FanCurveAnalyzer) rpmCurveMeasurementCleanup(curveData map[int]float64)
 // measureAtPwm sets the fan to the given target PWM value, optionally waits for it to settle,
 // takes SampleCount RPM samples spaced SampleDelay apart, and returns
 // their median as a robust per-point estimate. Returns -1 (with nil error) if the reported PWM does not match the
-// expected value after setting it (indicates the hardware ignored the request).
+// expected value after setting it even after waiting FanResponseDelay (indicates the hardware ignored the request).
 // If settleTimeout > 0, waitForFanToSettle is called with that timeout (used for large PWM steps).
 // If settleTimeout == 0, a plain FanResponseDelay sleep is used instead (sufficient for small steps).
-func (f *FanCurveAnalyzer) measureAtPwm(fan fans.Fan, pwm int, settleTimeout time.Duration) (float64, error) {
+func (f *FanCurveAnalyzer) measureAtPwm(ctx context.Context, fan fans.Fan, pwm int, settleTimeout time.Duration) (float64, error) {
 	actualPwm := f.fanController.applyPwmMapToTarget(pwm)
 	matchedPwm := false
 	for attempt := 0; attempt <= pwmMismatchRetries; attempt++ {
+		if attempt > 0 {
+			// The reported PWM may lag behind the requested value on some hardware, so wait FanResponseDelay before retrying.
+			if err := sleepWithContext(ctx, time.Duration(configuration.CurrentConfig.FanResponseDelay)*time.Second); err != nil {
+				return 0, err
+			}
+		}
 		err := f.fanController.setPwm(actualPwm)
 		if err != nil {
 			return 0, fmt.Errorf("unable to set PWM %d: %w", actualPwm, err)
@@ -423,10 +443,14 @@ func (f *FanCurveAnalyzer) measureAtPwm(fan fans.Fan, pwm int, settleTimeout tim
 	}
 
 	if settleTimeout > 0 {
-		f.waitForFanToSettle(fan, settleTimeout)
+		if err := f.waitForFanToSettle(ctx, fan, settleTimeout); err != nil {
+			return 0, err
+		}
 	} else {
 		// Small PWM step — a response-delay sleep is sufficient.
-		time.Sleep(time.Duration(configuration.CurrentConfig.FanResponseDelay) * time.Second)
+		if err := sleepWithContext(ctx, time.Duration(configuration.CurrentConfig.FanResponseDelay)*time.Second); err != nil {
+			return 0, err
+		}
 	}
 
 	sampleCount := configuration.CurrentConfig.Analysis.SampleCount
@@ -437,7 +461,9 @@ func (f *FanCurveAnalyzer) measureAtPwm(fan fans.Fan, pwm int, settleTimeout tim
 	samples := make([]float64, 0, sampleCount)
 	for i := 0; i < sampleCount; i++ {
 		if i > 0 {
-			time.Sleep(sampleDelay)
+			if err := sleepWithContext(ctx, sampleDelay); err != nil {
+				return 0, err
+			}
 		}
 		r, err := fan.GetRpm()
 		if err != nil {
@@ -455,7 +481,7 @@ func (f *FanCurveAnalyzer) measureAtPwm(fan fans.Fan, pwm int, settleTimeout tim
 // waitForFanToSettle waits until the fan's RPM readings are stable (requiredConsecutive consecutive
 // readings with diff <= MaxRpmDiffForSettledFan). If timeout > 0 and the deadline is exceeded, a
 // warning is logged and the function returns early rather than blocking forever.
-func (f *FanCurveAnalyzer) waitForFanToSettle(fan fans.Fan, timeout time.Duration) {
+func (f *FanCurveAnalyzer) waitForFanToSettle(ctx context.Context, fan fans.Fan, timeout time.Duration) error {
 	const requiredConsecutive = 3
 	const settleSampleInterval = 500 * time.Millisecond
 	const settleWindowSize = 8
@@ -480,9 +506,11 @@ func (f *FanCurveAnalyzer) waitForFanToSettle(fan fans.Fan, timeout time.Duratio
 	for consecutiveStable < requiredConsecutive {
 		if timeout > 0 && time.Now().After(deadline) {
 			ui.Warning("Fan %s did not settle within %v, continuing anyway (%d/%d stable readings)", fan.GetId(), timeout, consecutiveStable, requiredConsecutive)
-			return
+			return nil
 		}
-		time.Sleep(settleSampleInterval)
+		if err := sleepWithContext(ctx, settleSampleInterval); err != nil {
+			return err
+		}
 
 		currentRpm, err := fan.GetRpm()
 		if err != nil {
@@ -515,6 +543,7 @@ func (f *FanCurveAnalyzer) waitForFanToSettle(fan fans.Fan, timeout time.Duratio
 			fan.GetId(), consecutiveStable, requiredConsecutive, meanNow, rangeNow)
 	}
 	ui.Debug("Fan %s has settled (%d consecutive stable readings)", fan.GetId(), requiredConsecutive)
+	return nil
 }
 
 func evaluateAdaptiveSettling(window []float64, prevMean *float64, prevRange *float64, baseThreshold float64) (bool, float64, float64) {

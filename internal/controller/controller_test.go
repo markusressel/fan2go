@@ -1917,9 +1917,11 @@ func TestRestoreControlMode_Default_RestoresOriginal(t *testing.T) {
 		supportsControlMode: true,
 	}
 	controller := DefaultFanController{
-		fan:                 fan,
-		originalPwmValue:    100,
-		originalControlMode: fans.ControlModeAutomatic,
+		fan: fan,
+		originalFanState: &FanStateSnapshot{
+			PwmValue:    100,
+			ControlMode: fans.ControlModeAutomatic,
+		},
 	}
 
 	controller.restoreControlMode()
@@ -1940,9 +1942,11 @@ func TestRestoreControlMode_None_SkipsRestore(t *testing.T) {
 		supportsControlMode: true,
 	}
 	controller := DefaultFanController{
-		fan:                 fan,
-		originalPwmValue:    100,
-		originalControlMode: fans.ControlModeAutomatic,
+		fan: fan,
+		originalFanState: &FanStateSnapshot{
+			PwmValue:    100,
+			ControlMode: fans.ControlModeAutomatic,
+		},
 	}
 
 	controller.restoreControlMode()
@@ -1965,9 +1969,11 @@ func TestRestoreControlMode_ExplicitControlMode(t *testing.T) {
 		supportsControlMode: true,
 	}
 	controller := DefaultFanController{
-		fan:                 fan,
-		originalPwmValue:    100,
-		originalControlMode: fans.ControlModePWM,
+		fan: fan,
+		originalFanState: &FanStateSnapshot{
+			PwmValue:    100,
+			ControlMode: fans.ControlModePWM,
+		},
 	}
 
 	controller.restoreControlMode()
@@ -1990,9 +1996,11 @@ func TestRestoreControlMode_ExplicitSpeed(t *testing.T) {
 		supportsControlMode: true,
 	}
 	controller := DefaultFanController{
-		fan:                 fan,
-		originalPwmValue:    100,
-		originalControlMode: fans.ControlModePWM,
+		fan: fan,
+		originalFanState: &FanStateSnapshot{
+			PwmValue:    100,
+			ControlMode: fans.ControlModePWM,
+		},
 	}
 
 	controller.restoreControlMode()
@@ -2016,9 +2024,11 @@ func TestRestoreControlMode_ExplicitControlModeAndSpeed(t *testing.T) {
 		supportsControlMode: true,
 	}
 	controller := DefaultFanController{
-		fan:                 fan,
-		originalPwmValue:    100,
-		originalControlMode: fans.ControlModePWM,
+		fan: fan,
+		originalFanState: &FanStateSnapshot{
+			PwmValue:    100,
+			ControlMode: fans.ControlModePWM,
+		},
 	}
 
 	controller.restoreControlMode()
@@ -2040,15 +2050,128 @@ func TestRestoreControlMode_Restore_Explicit(t *testing.T) {
 		supportsControlMode: true,
 	}
 	controller := DefaultFanController{
-		fan:                 fan,
-		originalPwmValue:    75,
-		originalControlMode: fans.ControlModeAutomatic,
+		fan: fan,
+		originalFanState: &FanStateSnapshot{
+			PwmValue:    75,
+			ControlMode: fans.ControlModeAutomatic,
+		},
 	}
 
 	controller.restoreControlMode()
 
 	assert.Empty(t, fan.pwmHistory)
 	assert.Contains(t, fan.controlModeHistory, fans.ControlModeAutomatic)
+}
+
+func TestRestoreControlMode_StateNeverCaptured_DoesNothing(t *testing.T) {
+	fan := &mockFanForRestore{
+		MockFan:             MockFan{ID: "fan", PWM: 200},
+		supportsControlMode: true,
+	}
+	controller := DefaultFanController{
+		fan: fan,
+	}
+
+	controller.restoreControlMode()
+
+	assert.Empty(t, fan.pwmHistory)
+	assert.Empty(t, fan.controlModeHistory)
+}
+
+// mockFanForFailedInit never spins (0 RPM at any PWM value) and tracks all control mode changes.
+type mockFanForFailedInit struct {
+	MockFan
+	controlModeHistory []fans.ControlMode
+}
+
+func (f *mockFanForFailedInit) SetControlMode(mode fans.ControlMode) error {
+	f.controlModeHistory = append(f.controlModeHistory, mode)
+	f.ControlMode = mode
+	return nil
+}
+
+func TestRunInitialization_FailedInit_RestoresOriginalControlMode(t *testing.T) {
+	originalConfig := configuration.CurrentConfig
+	defer func() {
+		configuration.CurrentConfig = originalConfig
+	}()
+	configuration.CurrentConfig.FanController.PwmSetDelay = 1 * time.Millisecond
+	configuration.CurrentConfig.FanResponseDelay = 0
+	configuration.CurrentConfig.Analysis.SampleCount = 1
+	configuration.CurrentConfig.Analysis.SampleDelay = 0
+	configuration.CurrentConfig.Analysis.SettleTimeout = 0
+
+	fan := &mockFanForFailedInit{
+		MockFan: MockFan{
+			ID:          "fan",
+			RPM:         0,
+			ControlMode: fans.ControlModeAutomatic,
+			PwmMap:      &configuration.PwmMapConfig{Identity: &configuration.PwmMapIdentityConfig{}},
+			SetPwmToGetPwmMap: &configuration.SetPwmToGetPwmMapConfig{
+				Identity: &configuration.SetPwmToGetPwmMapIdentityConfig{},
+			},
+			ControlModeConfig: &configuration.ControlModeConfig{
+				OnExit: &configuration.OnExitConfig{Restore: &configuration.OnExitRestoreConfig{}},
+			},
+		},
+	}
+	controller := DefaultFanController{
+		persistence: mockPersistence{hasPwmMap: false},
+		fan:         fan,
+		updateRate:  time.Duration(100),
+	}
+
+	_, err := controller.RunInitialization(context.Background())
+
+	assert.Error(t, err)
+	assert.NotContains(t, fan.controlModeHistory, fans.ControlModeDisabled,
+		"the zero value of ControlMode must never be written to the fan")
+	assert.Equal(t, fans.ControlModeAutomatic, fan.ControlMode,
+		"failed init must restore the original (automatic) control mode")
+}
+
+func TestRunInitialization_Cancelled_RestoresOriginalControlMode(t *testing.T) {
+	originalConfig := configuration.CurrentConfig
+	defer func() {
+		configuration.CurrentConfig = originalConfig
+	}()
+	configuration.CurrentConfig.FanController.PwmSetDelay = 1 * time.Millisecond
+	// non-zero so the cancelled context is the only ready channel in sleepWithContext
+	configuration.CurrentConfig.FanResponseDelay = 1
+	configuration.CurrentConfig.Analysis.SampleCount = 1
+	configuration.CurrentConfig.Analysis.SampleDelay = 0
+	configuration.CurrentConfig.Analysis.SettleTimeout = 0
+
+	fan := &mockFanForFailedInit{
+		MockFan: MockFan{
+			ID:          "fan",
+			RPM:         0,
+			ControlMode: fans.ControlModeAutomatic,
+			PwmMap:      &configuration.PwmMapConfig{Identity: &configuration.PwmMapIdentityConfig{}},
+			SetPwmToGetPwmMap: &configuration.SetPwmToGetPwmMapConfig{
+				Identity: &configuration.SetPwmToGetPwmMapIdentityConfig{},
+			},
+			ControlModeConfig: &configuration.ControlModeConfig{
+				OnExit: &configuration.OnExitConfig{Restore: &configuration.OnExitRestoreConfig{}},
+			},
+		},
+	}
+	controller := DefaultFanController{
+		persistence: mockPersistence{hasPwmMap: false},
+		fan:         fan,
+		updateRate:  time.Duration(100),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := controller.RunInitialization(ctx)
+
+	assert.True(t, errors.Is(err, context.Canceled))
+	assert.NotContains(t, fan.controlModeHistory, fans.ControlModeDisabled,
+		"the zero value of ControlMode must never be written to the fan")
+	assert.Equal(t, fans.ControlModeAutomatic, fan.ControlMode,
+		"cancelled init must restore the original (automatic) control mode")
 }
 
 // --- setPwmToGetPwmMap / pwmMap edge-case tests ---
@@ -2226,4 +2349,69 @@ func TestGetPwmSetDelay_FallsBackToGlobal(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, globalDelay, result)
+}
+
+func TestStoreInitialFanState_OnlyCapturesOnce(t *testing.T) {
+	fan := &mockFanForRestore{
+		MockFan: MockFan{
+			ID:          "fan",
+			PWM:         100,
+			ControlMode: fans.ControlModePWM,
+		},
+		supportsControlMode: true,
+	}
+	controller := DefaultFanController{
+		fan: fan,
+	}
+
+	err := controller.storeInitialFanState()
+	assert.NoError(t, err)
+	assert.NotNil(t, controller.originalFanState)
+	assert.Equal(t, 100, controller.originalFanState.PwmValue)
+
+	// Change fan PWM to 200
+	fan.PWM = 200
+
+	// Subsequent storeInitialFanState call should not overwrite existing snapshot
+	err = controller.storeInitialFanState()
+	assert.NoError(t, err)
+	assert.Equal(t, 100, controller.originalFanState.PwmValue)
+}
+
+func TestStoreCurrentFanState_OverwritesSnapshot(t *testing.T) {
+	fan := &mockFanForRestore{
+		MockFan: MockFan{
+			ID:          "fan",
+			PWM:         100,
+			ControlMode: fans.ControlModePWM,
+		},
+		supportsControlMode: true,
+	}
+	controller := DefaultFanController{
+		fan: fan,
+	}
+
+	err := controller.storeInitialFanState()
+	assert.NoError(t, err)
+	assert.Equal(t, 100, controller.originalFanState.PwmValue)
+
+	// Change fan PWM to 200
+	fan.PWM = 200
+
+	// storeCurrentFanState should overwrite snapshot with new value
+	err = controller.storeCurrentFanState()
+	assert.NoError(t, err)
+	assert.Equal(t, 200, controller.originalFanState.PwmValue)
+}
+
+func TestClearInitialFanState_ResetsSnapshot(t *testing.T) {
+	controller := DefaultFanController{
+		originalFanState: &FanStateSnapshot{
+			PwmValue:    100,
+			ControlMode: fans.ControlModePWM,
+		},
+	}
+
+	controller.clearInitialFanState()
+	assert.Nil(t, controller.originalFanState)
 }
