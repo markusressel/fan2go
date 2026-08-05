@@ -2350,3 +2350,68 @@ func TestGetPwmSetDelay_FallsBackToGlobal(t *testing.T) {
 	// THEN
 	assert.Equal(t, globalDelay, result)
 }
+
+func TestStoreInitialFanState_OnlyCapturesOnce(t *testing.T) {
+	fan := &mockFanForRestore{
+		MockFan: MockFan{
+			ID:          "fan",
+			PWM:         100,
+			ControlMode: fans.ControlModePWM,
+		},
+		supportsControlMode: true,
+	}
+	controller := DefaultFanController{
+		fan: fan,
+	}
+
+	err := controller.storeInitialFanState()
+	assert.NoError(t, err)
+	assert.NotNil(t, controller.originalFanState)
+	assert.Equal(t, 100, controller.originalFanState.PwmValue)
+
+	// Change fan PWM to 200
+	fan.PWM = 200
+
+	// Subsequent storeInitialFanState call should not overwrite existing snapshot
+	err = controller.storeInitialFanState()
+	assert.NoError(t, err)
+	assert.Equal(t, 100, controller.originalFanState.PwmValue)
+}
+
+func TestStoreCurrentFanState_OverwritesSnapshot(t *testing.T) {
+	fan := &mockFanForRestore{
+		MockFan: MockFan{
+			ID:          "fan",
+			PWM:         100,
+			ControlMode: fans.ControlModePWM,
+		},
+		supportsControlMode: true,
+	}
+	controller := DefaultFanController{
+		fan: fan,
+	}
+
+	err := controller.storeInitialFanState()
+	assert.NoError(t, err)
+	assert.Equal(t, 100, controller.originalFanState.PwmValue)
+
+	// Change fan PWM to 200
+	fan.PWM = 200
+
+	// storeCurrentFanState should overwrite snapshot with new value
+	err = controller.storeCurrentFanState()
+	assert.NoError(t, err)
+	assert.Equal(t, 200, controller.originalFanState.PwmValue)
+}
+
+func TestClearInitialFanState_ResetsSnapshot(t *testing.T) {
+	controller := DefaultFanController{
+		originalFanState: &FanStateSnapshot{
+			PwmValue:    100,
+			ControlMode: fans.ControlModePWM,
+		},
+	}
+
+	controller.clearInitialFanState()
+	assert.Nil(t, controller.originalFanState)
+}

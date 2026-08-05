@@ -188,11 +188,9 @@ func (f *DefaultFanController) prepareController() (err error) {
 	return err
 }
 
+// storeCurrentFanState captures the current fan control mode and PWM value,
+// overwriting any previously saved snapshot in originalFanState.
 func (f *DefaultFanController) storeCurrentFanState() error {
-	if f.originalFanState != nil {
-		return nil
-	}
-
 	fan := f.fan
 	// store original pwm value
 	pwm, err := f.getPwm()
@@ -215,6 +213,20 @@ func (f *DefaultFanController) storeCurrentFanState() error {
 	return nil
 }
 
+// storeInitialFanState stores the initial fan state snapshot if it hasn't been captured yet.
+// Subsequent calls are no-ops to preserve the state before any controller actions.
+func (f *DefaultFanController) storeInitialFanState() error {
+	if f.originalFanState != nil {
+		return nil
+	}
+	return f.storeCurrentFanState()
+}
+
+// clearInitialFanState resets the captured initial fan state snapshot.
+func (f *DefaultFanController) clearInitialFanState() {
+	f.originalFanState = nil
+}
+
 func (f *DefaultFanController) Run(ctx context.Context) error {
 	// prepare the controller by initializing persistence and checking the fan
 	err := f.prepareController()
@@ -223,7 +235,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	}
 
 	// store the current fan state to restore it when stopping the controller
-	err = f.storeCurrentFanState()
+	err = f.storeInitialFanState()
 	if err != nil {
 		return err
 	}
@@ -372,7 +384,7 @@ func (f *DefaultFanController) runInitializationIfNeeded(ctx context.Context) (m
 }
 
 func (f *DefaultFanController) RunInitialization(ctx context.Context) (map[int]float64, error) {
-	err := f.storeCurrentFanState()
+	err := f.storeInitialFanState()
 	if err != nil {
 		return nil, err
 	}
