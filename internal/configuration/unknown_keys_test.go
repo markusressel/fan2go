@@ -11,7 +11,7 @@ func TestLevenshtein(t *testing.T) {
 		want int
 	}{
 		{"fan", "fans", 1},
-		{"platorm", "platform", 1},
+		{"platorm", "platform", 1}, // codespell:ignore
 		{"sensors", "sensor", 1},
 		{"same", "same", 0},
 	}
