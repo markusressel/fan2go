@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/creasty/defaults"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/markusressel/fan2go/internal/control_loop"
-	"github.com/mitchellh/mapstructure"
 
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/mitchellh/go-homedir"
@@ -152,6 +152,7 @@ func LoadConfig() (Configuration, error) {
 		return cfg, err
 	}
 
+	var md mapstructure.Metadata
 	err := viper.Unmarshal(
 		&cfg,
 		viper.DecodeHook(
@@ -164,10 +165,15 @@ func LoadConfig() (Configuration, error) {
 				mapstructure.TextUnmarshallerHookFunc(),
 			),
 		),
+		func(dc *mapstructure.DecoderConfig) {
+			dc.Metadata = &md
+		},
 	)
 	if err != nil {
 		return cfg, err
 	}
+
+	WarnUnknownKeys(&cfg, md.Unused, viper.Get)
 
 	// apply default values again to set any nested struct defaults that were
 	// created after the initial parsing pass
