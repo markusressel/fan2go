@@ -98,7 +98,7 @@ func getValidKeys(parentType reflect.Type) []string {
 	if parentType == nil {
 		return keys
 	}
-	for parentType.Kind() == reflect.Ptr {
+	for parentType.Kind() == reflect.Pointer {
 		parentType = parentType.Elem()
 	}
 	if parentType.Kind() != reflect.Struct {
@@ -127,7 +127,7 @@ func getValidKeys(parentType reflect.Type) []string {
 }
 
 func getParentType(path []string, currentType reflect.Type) reflect.Type {
-	for currentType.Kind() == reflect.Ptr {
+	for currentType.Kind() == reflect.Pointer {
 		currentType = currentType.Elem()
 	}
 	if len(path) == 0 {
