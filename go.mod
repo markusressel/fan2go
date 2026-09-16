@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/NVIDIA/go-nvml v0.13.3-1
 	github.com/asecurityteam/rolling v2.0.4+incompatible
-	github.com/creasty/defaults v1.8.0
+	github.com/creasty/defaults v1.9.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/guptarohit/asciigraph v0.10.0
