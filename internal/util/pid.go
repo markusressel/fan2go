@@ -102,6 +102,13 @@ func (p *PidLoop) Loop(target float64, measured float64) float64 {
 	if !windupDetected && !winddownDetected {
 		p.integral = p.integral + err*dt
 	}
+	// Keep the I term within the output range. Without this the integral grows without bound
+	// while the output sits at a limit the guards above do not cover (e.g. a cooling curve with
+	// negative gains idling far below its setpoint), and the output then lags for as long as
+	// the integral took to build up.
+	if p.i != 0 {
+		p.integral = Coerce(p.i*p.integral, p.outMin, p.outMax) / p.i
+	}
 
 	// --- Update State for Next Loop ---
 	p.lastTime = loopTime
