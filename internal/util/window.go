@@ -1,6 +1,6 @@
 package util
 
-import "github.com/asecurityteam/rolling"
+import "github.com/asecurityteam/rolling/v2"
 
 func CreateRollingWindow(size int) *rolling.PointPolicy {
 	return rolling.NewPointPolicy(rolling.NewWindow(size))
