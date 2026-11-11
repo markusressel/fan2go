@@ -28,6 +28,9 @@ type PidLoop struct {
 	lastTime time.Time
 	// last output value
 	lastOutput float64
+
+	// now returns the current time, replaceable in tests
+	now func() time.Time
 }
 
 func NewPidLoop(p, i, d, min, max float64, antiWindup, antiWinddown bool) *PidLoop {
@@ -39,13 +42,20 @@ func NewPidLoop(p, i, d, min, max float64, antiWindup, antiWinddown bool) *PidLo
 		outMax:       max,
 		antiWindup:   antiWindup,
 		antiWinddown: antiWinddown,
+		now:          time.Now,
 	}
+}
+
+// SetClock replaces the time source used to compute the time between two Loop calls.
+// Intended for tests, which can then advance time deterministically instead of sleeping.
+func (p *PidLoop) SetClock(now func() time.Time) {
+	p.now = now
 }
 
 // Loop advances the pid loop
 func (p *PidLoop) Loop(target float64, measured float64) float64 {
 	initialized := !p.lastTime.IsZero()
-	loopTime := time.Now()
+	loopTime := p.now()
 	if !initialized {
 		p.lastMeasured = measured
 		p.lastTime = loopTime
