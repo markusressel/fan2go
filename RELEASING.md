@@ -48,11 +48,15 @@ For a breaking change:
    pacman shows these lines when a user upgrades across that version (both `fan2go` and `fan2go-git`). Keep each
    entry short and actionable; link to the release notes for details. Merge this change before publishing the release.
 
-3. **Update the Makefile default version** (`VERSION ?=` in the [`Makefile`](Makefile)) to the new version, so local
+3. **Sync the design docs with the code.** Check that the documents in [`docs/`](docs/README.md) still describe the
+   code that is being released: decisions, defaults, config keys and known limitations. Fix any drift in a PR and
+   merge it before publishing the release.
+
+4. **Update the Makefile default version** (`VERSION ?=` in the [`Makefile`](Makefile)) to the new version, so local
    builds from the tag report it. CI and the Arch packages pass the version explicitly, so release artifacts are
    correct either way.
 
-4. **Publish the GitHub release; this creates the tag.** Open the draft release that Release Drafter keeps up to date
+5. **Publish the GitHub release; this creates the tag.** Open the draft release that Release Drafter keeps up to date
    (Releases page, or `gh release list`). Then:
    - fill the "Upgrade notes" section from step 1, or remove it if there are no breaking changes,
    - check the proposed version against the rules above and correct it if needed (e.g. if a PR was labeled wrong),
@@ -65,7 +69,7 @@ For a breaking change:
    - the [AUR Packages workflow](.github/workflows/aur-packages.yml): test-builds the `fan2go` (from the tag's source
      tarball) and `fan2go-git` packages from [`packaging/aur`](packaging/aur). It doesn't publish anything.
 
-5. **Publish the AUR packages** once the AUR Packages workflow for the tag has passed. On an Arch Linux machine with
+6. **Publish the AUR packages** once the AUR Packages workflow for the tag has passed. On an Arch Linux machine with
    your AUR SSH key:
 
    ```shell
