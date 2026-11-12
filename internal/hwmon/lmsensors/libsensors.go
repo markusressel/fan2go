@@ -9,6 +9,7 @@ package lmsensors
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 // The libsensors types used here, as declared in <sensors/sensors.h>. The ABI is stable across libsensors.so.4 and
 // libsensors.so.5 (lm-sensors 3.x), so fan2go doesn't need the libsensors headers to build.
@@ -69,6 +70,14 @@ static int f2g_sensors_init(const char *config, int *used_config, int *open_errn
 	*used_config = 1;
 	*open_errno = 0;
 	FILE *f = fopen(config, "r");
+	// libsensors exits the process if it can't read the file (its scanner calls exit()), e.g. for a directory
+	struct stat st;
+	if (f != NULL && (fstat(fileno(f), &st) != 0 || !S_ISREG(st.st_mode))) {
+		int err = S_ISDIR(st.st_mode) ? EISDIR : EINVAL;
+		fclose(f);
+		*open_errno = err;
+		return 0;
+	}
 	if (f == NULL && errno == ENOENT) {
 		*used_config = 0;
 		f = fopen("/dev/null", "r");
