@@ -1,7 +1,7 @@
 # Upgrade warnings for the fan2go and fan2go-git Arch packages.
 #
 # Maintained in https://github.com/markusressel/fan2go/tree/master/packaging/aur and copied into both AUR packages by
-# the "AUR Release" workflow. See RELEASING.md for how to add an entry.
+# packaging/aur/publish.sh. See RELEASING.md for how to add an entry.
 #
 # Each entry starts with a line "== <version>", followed by the upgrade notes for that version. post_upgrade prints
 # every entry whose version is newer than the installed one and not newer than the new one. Keep entries ordered

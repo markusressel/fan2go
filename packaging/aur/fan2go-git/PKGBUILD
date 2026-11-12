@@ -1,7 +1,7 @@
 # Maintainer: markusressel <mail+archlinuxaur@markusressel.de>
 #
 # This file is maintained in https://github.com/markusressel/fan2go/tree/master/packaging/aur/fan2go-git
-# and pushed to the AUR by the "AUR Release" workflow on every release tag. Don't edit it on the AUR directly.
+# and published to the AUR with packaging/aur/publish.sh (see RELEASING.md). Don't edit it on the AUR directly.
 pkgname=fan2go-git
 pkgver=0.15.0.r8.gdb2b5a4
 pkgrel=1

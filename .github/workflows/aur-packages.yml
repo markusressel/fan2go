@@ -1,0 +1,78 @@
+name: AUR Packages
+
+# Test-builds the Arch packages from packaging/aur:
+# - fan2go:     stable package, built from the release tag's source tarball
+# - fan2go-git: development package, built from master
+# This workflow never publishes: the maintainer publishes with packaging/aur/publish.sh, so the AUR SSH key never has
+# to be stored in GitHub (see RELEASING.md).
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'packaging/aur/**'
+      - '.github/workflows/aur-packages.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  aur:
+    name: Build AUR packages
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+
+    steps:
+      - name: Install build dependencies
+        run: pacman -Syu --noconfirm --needed git pacman-contrib go lm_sensors
+
+      - name: Checkout the repository
+        uses: actions/checkout@v7
+
+      - name: Determine version
+        id: meta
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            # PR: build the version currently in the stable PKGBUILD
+            version="$(sed -n 's/^pkgver=//p' packaging/aur/fan2go/PKGBUILD)"
+          fi
+          if ! [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'${version}' is not a release version (expected X.Y.Z)"
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check the publish script
+        run: bash -n packaging/aur/publish.sh
+
+      - name: Prepare build user
+        run: |
+          useradd --create-home builder
+          mkdir -p /build
+          cp -r packaging/aur/fan2go packaging/aur/fan2go-git /build/
+          cp packaging/aur/fan2go.install /build/fan2go/
+          cp packaging/aur/fan2go.install /build/fan2go-git/
+          chown -R builder:builder /build
+
+      - name: Build fan2go (stable)
+        shell: bash
+        working-directory: /build/fan2go
+        run: |
+          sed -i "s/^pkgver=.*/pkgver=${{ steps.meta.outputs.version }}/; s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          su builder -c "updpkgsums && makepkg --printsrcinfo > .SRCINFO && makepkg --force --noconfirm"
+          bash -n fan2go.install
+          cat PKGBUILD .SRCINFO
+
+      - name: Build fan2go-git
+        shell: bash
+        working-directory: /build/fan2go-git
+        run: |
+          # makepkg updates pkgver in the PKGBUILD from `git describe`
+          su builder -c "makepkg --force --noconfirm && makepkg --printsrcinfo > .SRCINFO"
+          cat .SRCINFO

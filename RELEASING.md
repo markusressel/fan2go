@@ -56,10 +56,22 @@ For a breaking change:
    This triggers:
    - the [Go workflow](.github/workflows/go.yml): builds the binaries (with the version from the tag) and attaches
      them to the GitHub release, and
-   - the [AUR Release workflow](.github/workflows/aur-release.yml): builds and publishes the `fan2go` (stable, from
-     the tag's source tarball) and `fan2go-git` AUR packages from [`packaging/aur`](packaging/aur).
+   - the [AUR Packages workflow](.github/workflows/aur-packages.yml): test-builds the `fan2go` (from the tag's source
+     tarball) and `fan2go-git` packages from [`packaging/aur`](packaging/aur). It doesn't publish anything.
 
-5. **Publish the release notes.** Open the draft release created by Release Drafter, fill the "Upgrade notes"
+5. **Publish the AUR packages** once the AUR Packages workflow for the tag has passed. On an Arch Linux machine with
+   your AUR SSH key:
+
+   ```shell
+   packaging/aur/publish.sh 0.16.0
+   ```
+
+   The script updates your AUR clones (`$AUR_DIR/fan2go` and `$AUR_DIR/fan2go-git`, default `AUR_DIR=~/programming`;
+   missing clones are created), sets `pkgver` and the checksum of the stable package, test-builds both packages in a
+   temporary directory, shows the diff and pushes after you confirm. Answering "no" restores the clones. See
+   `packaging/aur/publish.sh --help` for options (e.g. `--pkgrel 2` for a packaging-only fix of the same version).
+
+6. **Publish the release notes.** Open the draft release created by Release Drafter, fill the "Upgrade notes"
    section from step 1 (or remove it if there are no breaking changes), check the version, and publish it.
 
 ## AUR packages
@@ -67,12 +79,11 @@ For a breaking change:
 The PKGBUILDs live in [`packaging/aur`](packaging/aur) and are the source of truth; don't edit them on the AUR
 directly, the next release overwrites them.
 
-- `fan2go`: built from the release tarball. Its `pkgver` and checksum are set by the workflow.
+- `fan2go`: built from the release tarball. Its `pkgver` and checksum are set by `publish.sh`.
 - `fan2go-git`: built from `master`. It contains unreleased changes, including breaking ones; its upgrade warnings
   only fire once the corresponding version has been tagged.
 
-Publishing needs the repository secret `AUR_SSH_PRIVATE_KEY`: the private SSH key of the AUR account that maintains
-both packages. If a publish failed, re-run it for an existing tag via the workflow's "Run workflow" button
-(`workflow_dispatch`).
+Publishing is deliberately manual (`packaging/aur/publish.sh`): an AUR SSH key grants push access to every package of
+the account, and a PKGBUILD runs code on users' machines, so the key is not stored in GitHub.
 
-Pull requests that change `packaging/aur` build both packages in CI without publishing them.
+Pull requests that change `packaging/aur` and release tags build both packages in CI.
