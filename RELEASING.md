@@ -74,7 +74,9 @@ For a breaking change:
 
    The script updates your AUR clones (`$AUR_DIR/fan2go` and `$AUR_DIR/fan2go-git`, default `AUR_DIR=~/programming/AUR`;
    missing clones are created), sets `pkgver` and the checksum of the stable package, test-builds both packages in a
-   temporary directory, shows the diff and pushes after you confirm. Answering "no" restores the clones. See
+   temporary directory, shows the diff and pushes after you confirm. Answering "no" restores the clones; so does an
+   error, for the packages that were not pushed. If your checkout is not on `master` or is behind `origin/master`, the
+   script warns and asks before it continues (the stable package is built from the PKGBUILD of the checkout). See
    `packaging/aur/publish.sh --help` for options (e.g. `--pkgrel 2` for a packaging-only fix of the same version).
 
 ## AUR packages
