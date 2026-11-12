@@ -347,10 +347,11 @@ CLI: `fan2go fan --id <id> init [--fan-response-delay <delay>] [--assume-pwm-map
 - `runFanInitializationInParallel` and the database lock only coordinate within one process; `fan init` next to a
   running daemon is not prevented.
 - A running daemon doesn't pick up data written by `fan init` until restart or reload.
-- A config reload (SIGHUP or a saved config file) or a shutdown cancels a running analysis. The fan is handed back
-  and no RPM curve is saved, so the new controller (or the next start) measures it again from the beginning. With the
-  config file watcher, saving the config during the first start restarts the analysis. See [Daemon](daemon.md).
-- `dbPath` changes need a restart: the daemon creates its persistence once (`RunDaemon`) and reuses it on reload.
+- A shutdown cancels a running analysis. The fan is handed back and no RPM curve is saved, so the next start measures
+  it again from the beginning. A config reload (SIGHUP or a saved config file) doesn't: it is deferred until no fan is
+  analyzed anymore, so the new config only takes effect after the analysis. See [Daemon](daemon.md#config-reload).
+- `dbPath` changes need a restart: the daemon creates its persistence once (`RunDaemon`) and reuses it on reload
+  (a reload logs a warning if `dbPath` changed).
 - `fanResponseDelay` has no per-fan override; the settle sample interval (500 ms), the 50 RPM noise threshold and the
   95% max ratio are hard-coded.
 - The RPM curve is never updated at runtime; the `neverStop` `minPwm` offset is not persisted.

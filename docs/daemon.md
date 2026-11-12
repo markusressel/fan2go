@@ -60,7 +60,7 @@ RunDaemon (run.Group)
 │     │     └── update loop                  one update per evaluator cycle, the only writer to the fan
 │     └── REST API / statistics servers     if enabled
 ├── signal handler                           SIGINT/SIGTERM: shut down, SIGHUP: reload
-├── config file watcher                      content change: reload
+├── config file watcher                      content change: reload (watches the config directory)
 └── profiling webserver                      if enabled (pprof)
 ```
 
@@ -71,17 +71,36 @@ sensors and curves).
 
 ### Config reload
 
-`SIGHUP` or a change of the config file content triggers a reload (`runOrchestrator`):
+`SIGHUP` or a change of the config file content triggers a reload (`runOrchestrator`, `waitForReload`):
 
-1. The current cycle is cancelled. The orchestrator waits until all fan controllers, sensor monitors and webservers
+1. While the current cycle keeps running, `loadNewConfiguration` re-reads, parses and validates the file. If that
+   fails, the error is logged and notified ("Reload failed: ... Keeping current configuration."), and nothing else
+   happens: no fan is touched. viper replaces its in-memory config only after a successful parse, and
+   `configuration.CurrentConfig` is not changed.
+2. If a fan controller is analyzing its fan (`FanController.IsInitializing`: the fan has no saved data yet), the
+   reload is deferred ("Config reload deferred until the analysis of fan(s) ... has finished.") and checked again
+   every second. Another reload request meanwhile reads the file again: a valid file replaces the deferred config,
+   an invalid one drops it. A shutdown is never deferred.
+3. The current cycle is cancelled. The orchestrator waits until all fan controllers, sensor monitors and webservers
    have stopped, then stops the curve evaluator. Every fan controller restores its fan on the way out (`onExit`).
-2. `reloadConfiguration` re-reads, parses and validates the file, then creates new objects from scratch (hwmon scan,
-   registry, curves, fans, controllers, evaluator, collectors).
-3. On success, the new cycle starts. On failure, the error is logged ("Reload failed: ... Keeping current
-   configuration.") and the previous objects are started again.
+4. `applyConfiguration` makes the validated config the current one and creates new objects from scratch (hwmon
+   scan, registry, curves, fans, controllers, evaluator, collectors).
+5. On success, the new cycle starts, and a warning is logged for each changed key that only applies on startup
+   (`dbPath`, `profiling.*`). If the objects can't be created, the error is logged and notified, the old config
+   stays current, and the previous objects are started again. Each restarted fan controller resets its runtime
+   state first (`resetRuntimeState`), so it starts like a new one (only the fan state from before fan2go took over
+   the fan is kept).
 
 Fan controllers don't survive a reload. Every fan is handed back to its pre-fan2go state and taken over again by a
 new controller after the startup delays.
+
+The config file watcher (`runFileWatcher`) watches the directory of the config file, not the file itself, so it also
+sees atomic saves (a temporary file renamed over the config, as vim, most GUI editors, `sed -i` and Ansible do).
+Events of other files in the directory are ignored. If the config file is a symlink, the directory of its target is
+watched too (re-resolved after each change), and any change in the directory of the symlink is considered. After the
+last change, the watcher waits 500 ms (`configWatchDebounce`), then hashes the file and requests a reload only if
+the content changed. If the watcher can't be set up (e.g. the inotify limits are reached) or stops, it warns and
+notifies once ("Automatic config reload is disabled"), and the daemon keeps running; `SIGHUP` still reloads.
 
 ### Shutdown
 
@@ -130,29 +149,36 @@ restore either). The structure came with the SIGHUP reload (#497) and the file w
 **Who benefits:** Maintainers: every worker has the same lifecycle (start with ctx, stop on cancel, wait on a
 `WaitGroup`). Users: a reload and a shutdown restore the fans in the same way.
 
-**Trade-offs:** Any top-level actor that returns stops the whole daemon. That includes the file watcher, which returns
-an error if it can't create the inotify watch (see "Known limitations").
+**Trade-offs:** Any top-level actor that returns stops the whole daemon. Optional actors must therefore not return on
+their own errors: the file watcher warns and then waits for the shutdown instead.
 
 ### Reload rebuilds everything
 
-**Decision:** A reload stops all fan controllers (which restore their fans), then creates every object again. The
-new config is validated before anything is replaced. If the new config can't be read, parsed or validated, or the
-objects can't be created, the old objects are restarted and `configuration.CurrentConfig` keeps the old value.
+**Decision:** A reload reads, parses and validates the new config while the old objects keep running. A config that
+fails this keeps the old objects running untouched. A valid config stops all fan controllers (which restore their
+fans), then every object is created again. If the objects can't be created, the old objects are restarted with a
+reset runtime state, and `configuration.CurrentConfig` keeps the old value.
 
 **Why:** Rebuilding avoids reconciling old and new state (fan IDs, curve graphs, PID state, collectors). An earlier
 version kept the controllers and swapped their curves (#497); the code on master rebuilds them. Validation on reload
-was added in #540: before, an invalid config was applied on SIGHUP and could crash the daemon.
+was added in #540: before, an invalid config was applied on SIGHUP and could crash the daemon. Validating before
+the old cycle stops means that a typo in a saved config doesn't hand every fan back to the BIOS for a few seconds.
+The objects are still created after the old cycle stopped: object creation swaps the global
+`configuration.CurrentConfig`, which the running workers read without a lock.
 
 **Who benefits:** Users who tune curves or PID values (#424) and see the effect without `systemctl restart`.
 
 **Trade-offs:** During a reload each fan is briefly back in its original mode (usually automatic) for the startup
-delays, about 3 s plus `tempSensorPollingRate`, and longer if a new fan needs its initialization. A reload also
-cancels a fan initialization that is still running: the fan is handed back, the RPM curve is not saved, and the new
-controller analyzes the fan again from the start. Saving the config during the first start (auto-reload) therefore
-restarts the analysis. A successful reload resets settings that the controller learned at runtime (e.g. the minPwm
-offset of a stalling fan, runtime-disabled sanity checks); a rejected one restarts the old controllers with their
-state. The profiling webserver and the persistence are created once in `RunDaemon`, so `profiling` and `dbPath`
-changes need a restart.
+delays, about 3 s plus `tempSensorPollingRate`, and longer if a new fan needs its initialization. A reload doesn't
+cancel a running fan initialization (it would start over, since the RPM curve is saved only after a complete run):
+it is deferred until no fan is analyzed anymore, which can take a few minutes on the first start. Every reload resets
+settings that the controller learned at runtime (e.g. the minPwm offset of a stalling fan), also when the old
+controllers are restarted after a failed object creation. The profiling webserver and the persistence are created
+once in `RunDaemon`, so `profiling` and `dbPath` changes need a restart; a reload logs a warning for them.
+
+**Alternatives considered:** Keeping the controllers of unchanged fans running (a diff-based reload) would avoid the
+handback and the deferral, but needs per-object reconciliation. Letting a second `SIGHUP` force a deferred reload was
+not done: the analysis ends on its own, and the extra path adds little.
 
 ### Signals: restore before exit, ignore repeated signals
 
@@ -360,15 +386,14 @@ described in the subsystem documents.
 
 ## Known limitations and open questions
 
-- **The config file watcher misses atomic saves.** It watches the file itself and only reacts to `Write` events.
-  Editors that save by writing a temporary file and renaming it over the config (e.g. vim with default settings)
-  replace the inode; the watch is lost, and no later change triggers a reload until restart. `SIGHUP` still works.
-- **The file watcher can stop the daemon.** If the inotify watch can't be created (e.g. the inotify instance limit is
-  reached), `runFileWatcher` returns an error, which ends the `run.Group` and exits with code 1.
-- **A reload releases all fans briefly**, even if only an unrelated key changed. A successful reload resets
-  runtime-learned state and restarts a running fan initialization from scratch. The old objects are stopped before
-  the new config is read and validated, so a rejected config causes the same release and takeover (the old
-  controllers keep their state).
+- **The config file watcher doesn't follow every symlink chain.** It watches the directory of the config file and of
+  its final target. A change of an intermediate symlink in a third directory is not seen; `SIGHUP` still works. On
+  network or FUSE file systems inotify may not report changes at all.
+- **A valid reload releases all fans briefly**, even if only an unrelated key changed, and resets runtime-learned
+  state. Errors that only object creation detects (not validation) also cause a release and takeover by the old
+  controllers.
+- **A reload during the first analysis waits for it.** Until the analysis of every new fan has finished, the old
+  config stays active.
 - **`fan2go fan init` next to a running daemon is not prevented.** The initialization lock only works within one
   process, and the database is opened per operation, so nothing stops both from writing to the same fan. Run
   `fan init` with the daemon stopped. A running daemon picks up the new data only after a reload or restart (see

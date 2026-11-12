@@ -7,7 +7,10 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"path/filepath"
 	"runtime/debug"
+	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -89,10 +92,67 @@ func RunDaemon() {
 	os.Exit(0)
 }
 
+// configWatchDebounce is the time the config file watcher waits after the last change of the config file
+// before it reads the file. Editors and tools often change the file in several steps (e.g. write a temporary
+// file and rename it over the config file), and the reload should only see the final content.
+const configWatchDebounce = 500 * time.Millisecond
+
+// notifyError logs an error and notifies the user about it, replaceable in tests
+var notifyError = ui.ErrorAndNotify
+
+// notifyWarning logs a warning and notifies the user about it, replaceable in tests
+var notifyWarning = func(title string, format string, a ...any) {
+	ui.Warning(format, a...)
+	ui.NotifyWarn(title, fmt.Sprintf(format, a...))
+}
+
+// configWatchHook is called with what the config file watcher did with an event or a debounced change
+// ("ignored", "debounced", "unreadable", "unchanged", "reload", "dropped"), nil outside of tests.
+var configWatchHook func(what string)
+
+// runFileWatcher requests a reload whenever the content of the config file changes. The automatic reload is
+// optional: if the watcher can't be set up or stops working, the user is warned, and it waits until ctx is
+// done without stopping the daemon (SIGHUP still reloads the config).
 func runFileWatcher(ctx context.Context, configPath string, reloadChan chan<- struct{}) error {
+	err := watchConfigFile(ctx, configPath, reloadChan, util.RealClock)
+	if err != nil {
+		notifyWarning("Config File Watcher", "Automatic config reload is disabled: %v. Send SIGHUP to fan2go to reload the config.", err)
+		<-ctx.Done()
+	}
+	return nil
+}
+
+// configFileWatch tracks the paths the config file watcher is interested in.
+type configFileWatch struct {
+	watcher *fsnotify.Watcher
+	// absolute path of the config file
+	path string
+	// true if path is a symlink
+	isSymlink bool
+	// the resolved path of the config file (path itself, if it isn't a symlink)
+	target string
+	// the directory of target, if it is watched in addition to the directory of path, else ""
+	watchedTargetDir string
+}
+
+// watchConfigFile watches the config file until ctx is done (returns nil) or the watcher fails (returns an error).
+//
+// It watches the directory of the config file instead of the file itself: editors and tools that save atomically
+// replace the file (write a temporary file, then rename it over the config file), which would end a watch on the
+// file. Events of other files in the directory are ignored. If the config file is a symlink, the directory of its
+// target is watched as well, and every change in the directory of the symlink is considered, since it may
+// retarget the symlink (directly or through other symlinks in that directory).
+// After a change, it waits for configWatchDebounce without further changes, then requests a reload if the
+// content of the file changed.
+func watchConfigFile(ctx context.Context, configPath string, reloadChan chan<- struct{}, clock util.Clock) error {
+	path, err := filepath.Abs(configPath)
+	if err != nil {
+		return fmt.Errorf("could not resolve the config file path %s: %w", configPath, err)
+	}
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return err
+		return fmt.Errorf("could not create the file watcher: %w", err)
 	}
 	defer func(watcher *fsnotify.Watcher) {
 		err := watcher.Close()
@@ -101,54 +161,122 @@ func runFileWatcher(ctx context.Context, configPath string, reloadChan chan<- st
 		}
 	}(watcher)
 
+	dir := filepath.Dir(path)
+	if err := watcher.Add(dir); err != nil {
+		return fmt.Errorf("could not watch the config directory %s: %w", dir, err)
+	}
+	w := &configFileWatch{watcher: watcher, path: path, target: path}
+	w.updateTarget()
+
 	// Store the last known hash to compare against
-	lastHash, err := util.HashFile(configPath)
+	lastHash, err := util.HashFile(path)
 	if err != nil {
 		ui.Warning("Could not compute initial hash for config file: %v", err)
 	}
 
-	err = watcher.Add(configPath)
-	if err != nil {
-		return err
+	hook := func(what string) {
+		if configWatchHook != nil {
+			configWatchHook(what)
+		}
 	}
 
+	// receives once the config file didn't change for configWatchDebounce (nil if there is no pending change)
+	var debounced <-chan time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case event, ok := <-watcher.Events:
 			if !ok {
-				return nil
+				return errors.New("the file watcher stopped (event channel closed)")
 			}
-
-			// Trigger on Write
-			if event.Op&fsnotify.Write == fsnotify.Write {
-				newHash, err := util.HashFile(configPath)
-				if err != nil {
-					ui.Warning("Could not compute hash after file change: %v", err)
-					continue
-				}
-
-				// Only notify if the content actually changed
-				if newHash != lastHash {
-					ui.Info("Config file content change detected.")
-					lastHash = newHash
-
-					select {
-					case reloadChan <- struct{}{}:
-					default:
-						ui.Warning("Reload already in progress, ignoring SIGHUP.")
-					}
-				} else {
-					ui.Debug("File write detected, but content is identical. Skipping reload.")
-				}
+			if !w.isRelevant(event) {
+				hook("ignored")
+				continue
+			}
+			ui.Debug("Config file event: %v", event)
+			// (re)start the debounce timer, an earlier timer is ignored
+			debounced = clock.After(configWatchDebounce)
+			hook("debounced")
+		case <-debounced:
+			debounced = nil
+			w.updateTarget()
+			newHash, err := util.HashFile(path)
+			if err != nil {
+				// e.g. removed during an atomic save: the file watcher sees the new file being created
+				ui.Debug("Could not read the config file after a change, waiting for the next change: %v", err)
+				hook("unreadable")
+				continue
+			}
+			if newHash == lastHash {
+				ui.Debug("Config file changed, but its content is identical. Skipping reload.")
+				hook("unchanged")
+				continue
+			}
+			ui.Info("Config file content change detected.")
+			lastHash = newHash
+			select {
+			case reloadChan <- struct{}{}:
+				hook("reload")
+			default:
+				ui.Warning("Reload already pending, ignoring config file change.")
+				hook("dropped")
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
-				return nil
+				return errors.New("the file watcher stopped (error channel closed)")
 			}
 			ui.Warning("File watcher error: %v", err)
 		}
+	}
+}
+
+// isRelevant returns true if event may have changed the content of the config file.
+func (w *configFileWatch) isRelevant(event fsnotify.Event) bool {
+	if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) && !event.Has(fsnotify.Rename) && !event.Has(fsnotify.Remove) {
+		// Chmod
+		return false
+	}
+	name := filepath.Clean(event.Name)
+	if name == w.path || name == w.target {
+		return true
+	}
+	// a change in the directory of a symlinked config file may retarget the symlink
+	return w.isSymlink && filepath.Dir(name) == filepath.Dir(w.path)
+}
+
+// updateTarget resolves the config file path, and watches the directory of the resolved file in addition to the
+// directory of the config file, if it differs. Keeps the last known target if the path can't be resolved right now.
+func (w *configFileWatch) updateTarget() {
+	info, err := os.Lstat(w.path)
+	if err != nil {
+		return
+	}
+	w.isSymlink = info.Mode()&os.ModeSymlink != 0
+	target, err := filepath.EvalSymlinks(w.path)
+	if err != nil {
+		return
+	}
+	w.target = target
+
+	targetDir := filepath.Dir(target)
+	// the directory of the config file itself is always watched; it may be reached through symlinks as well
+	if realDir, err := filepath.EvalSymlinks(filepath.Dir(w.path)); err == nil && realDir == targetDir {
+		targetDir = ""
+	}
+	if targetDir == w.watchedTargetDir {
+		return
+	}
+	if w.watchedTargetDir != "" {
+		_ = w.watcher.Remove(w.watchedTargetDir)
+		w.watchedTargetDir = ""
+	}
+	if targetDir != "" {
+		if err := w.watcher.Add(targetDir); err != nil {
+			ui.Warning("Could not watch the directory %s of the config file target %s: %v", targetDir, target, err)
+			return
+		}
+		w.watchedTargetDir = targetDir
 	}
 }
 
@@ -166,19 +294,23 @@ func runOrchestrator(ctx context.Context, reloadChan <-chan struct{}, pers persi
 		ui.FatalWithoutStacktrace("No valid fan configurations, exiting.")
 	}
 
+	// the config the persistence and the profiling webserver were created with (they are not recreated on reload)
+	startupConfig := configuration.CurrentConfig
+
 	for {
-		// Run the active cycle. Blocks until app exit or reload signal.
-		appExiting := runOrchestratorCycle(ctx, reloadChan, reg, fanControllers, evaluator)
+		// Run the active cycle. Blocks until app exit or until a reload request yields a valid config.
+		newConfig, appExiting := runOrchestratorCycle(ctx, reloadChan, reg, fanControllers, evaluator)
 		if appExiting {
 			return nil
 		}
 
 		// Handle Configuration Reload
-		newReg, newControllers, newEvaluator, err := reloadConfiguration(pers)
+		newReg, newControllers, newEvaluator, err := applyConfiguration(pers, *newConfig)
 		if err != nil {
-			ui.Error("Reload failed: %v. Keeping current configuration.", err)
+			notifyError("Config Reload Failed", "Reload failed: %v. Keeping current configuration.", err)
 			continue
 		}
+		warnAboutSettingsThatNeedARestart(startupConfig, *newConfig)
 
 		// Safely swap the active state to the new objects!
 		reg = newReg
@@ -189,8 +321,9 @@ func runOrchestrator(ctx context.Context, reloadChan <-chan struct{}, pers persi
 }
 
 // runOrchestratorCycle manages the localized context for sensors, the curve evaluator, fan controllers and webservers.
-// It returns true if the application is shutting down, and false if a reload was requested.
-func runOrchestratorCycle(ctx context.Context, reloadChan <-chan struct{}, reg *registry.Registry, fanControllers map[fans.Fan]controller.FanController, evaluator *curves.CurveEvaluator) bool {
+// It returns true if the application is shutting down. Otherwise, it returns the new, valid config once a reload
+// was requested (see waitForReload). All workers of the cycle have stopped when it returns.
+func runOrchestratorCycle(ctx context.Context, reloadChan <-chan struct{}, reg *registry.Registry, fanControllers map[fans.Fan]controller.FanController, evaluator *curves.CurveEvaluator) (newConfig *configuration.Configuration, appExiting bool) {
 	orchestratorCtx, cancelOrchestrator := context.WithCancel(ctx)
 	var orchestratorWg sync.WaitGroup
 	// the curve evaluator is stopped only after the fan controllers, which are driven by its cycles
@@ -210,33 +343,112 @@ func runOrchestratorCycle(ctx context.Context, reloadChan <-chan struct{}, reg *
 	startFanControllers(orchestratorCtx, fanControllers, &orchestratorWg)
 	startWebservers(orchestratorCtx, reg, &orchestratorWg)
 
-	select {
-	case <-ctx.Done():
-		return true
-	case <-reloadChan:
+	newConfig, appExiting = waitForReload(ctx, reloadChan, fanControllers, util.RealClock)
+	if !appExiting {
 		ui.Info("Stopping old controllers, sensor monitors, and webservers...")
-		return false
+	}
+	return newConfig, appExiting
+}
+
+// deferredReloadCheckInterval is the interval in which a deferred config reload checks whether the fan
+// initializations it waits for have finished.
+const deferredReloadCheckInterval = time.Second
+
+// waitForReload waits until ctx is done (returns true) or a reload request yields a config that can be applied
+// (returns it). The workers of the current cycle keep running meanwhile:
+//   - Each reload request reads, parses and validates the config file. If that fails, the error is logged and
+//     notified, and the current config stays active without touching any fan.
+//   - A valid config is applied only when no fan controller is analyzing its fan: cancelling the analysis would
+//     start it over on the next run. Until then, the reload is deferred (a new reload request replaces the
+//     deferred config, or drops it if the new file is invalid).
+func waitForReload(ctx context.Context, reloadChan <-chan struct{}, fanControllers map[fans.Fan]controller.FanController, clock util.Clock) (newConfig *configuration.Configuration, appExiting bool) {
+	// the validated config to apply, nil if there is none
+	var pending *configuration.Configuration
+	// ticks while a reload is deferred
+	var ticker util.Ticker
+	var tickC <-chan time.Time
+	defer func() {
+		if ticker != nil {
+			ticker.Stop()
+		}
+	}()
+
+	for {
+		requested := false
+		select {
+		case <-ctx.Done():
+			return nil, true
+		case <-reloadChan:
+			requested = true
+			config, err := loadNewConfiguration()
+			if err != nil {
+				if pending != nil {
+					err = fmt.Errorf("%w (the deferred reload of the previous version of the config file is dropped too)", err)
+				}
+				notifyError("Config Reload Failed", "Reload failed: %v. Keeping current configuration.", err)
+				pending = nil
+				continue
+			}
+			pending = &config
+		case <-tickC:
+		}
+		if pending == nil {
+			continue
+		}
+
+		initializing := initializingFans(fanControllers)
+		if len(initializing) == 0 {
+			return pending, false
+		}
+		if requested {
+			ui.Info("Config reload deferred until the analysis of fan(s) %s has finished.", strings.Join(initializing, ", "))
+		}
+		if ticker == nil {
+			ticker = clock.NewTicker(deferredReloadCheckInterval)
+			tickC = ticker.C()
+		}
 	}
 }
 
-// reloadConfiguration reads and validates the config file, and creates the registry, the fan controllers
-// and the curve evaluator for it (new curves are evaluated by the new evaluator only).
-func reloadConfiguration(pers persistence.Persistence) (*registry.Registry, map[fans.Fan]controller.FanController, *curves.CurveEvaluator, error) {
+// initializingFans returns the sorted ids of the fans whose controllers are analyzing them (see
+// FanController.IsInitializing).
+func initializingFans(fanControllers map[fans.Fan]controller.FanController) []string {
+	var ids []string
+	for _, c := range fanControllers {
+		if c.IsInitializing() {
+			ids = append(ids, c.GetFanId())
+		}
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// loadNewConfiguration reads, parses and validates the config file. It changes neither CurrentConfig nor any
+// object of the running config.
+func loadNewConfiguration() (configuration.Configuration, error) {
 	ui.Info("Reloading configuration...")
 
+	// viper replaces its config only if the file could be read and parsed
 	err := configuration.ReadInConfig()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error reading config file: %w", err)
+		return configuration.Configuration{}, fmt.Errorf("error reading config file: %w", err)
 	}
 	newConfig, err := configuration.LoadConfig()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("parsing failed: %w", err)
+		return configuration.Configuration{}, fmt.Errorf("parsing failed: %w", err)
 	}
 	err = configuration.ValidateConfig(&newConfig, configuration.GetFilePath())
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("validation failed: %w", err)
+		return configuration.Configuration{}, fmt.Errorf("validation failed: %w", err)
 	}
+	return newConfig, nil
+}
 
+// applyConfiguration makes newConfig the current config, and creates the registry, the fan controllers
+// and the curve evaluator for it (new curves are evaluated by the new evaluator only).
+// On error, the previous config stays the current config.
+// Must only be called while no worker of the previous config is running: they read CurrentConfig.
+func applyConfiguration(pers persistence.Persistence, newConfig configuration.Configuration) (*registry.Registry, map[fans.Fan]controller.FanController, *curves.CurveEvaluator, error) {
 	oldConfig := configuration.CurrentConfig
 	configuration.CurrentConfig = newConfig
 
@@ -254,6 +466,36 @@ func reloadConfiguration(pers persistence.Persistence) (*registry.Registry, map[
 	}
 
 	return newReg, newControllers, newEvaluator, nil
+}
+
+// warnAboutSettingsThatNeedARestart warns about each setting that differs between the config the daemon
+// was started with and newConfig, but is only applied on startup.
+func warnAboutSettingsThatNeedARestart(startupConfig configuration.Configuration, newConfig configuration.Configuration) {
+	for _, key := range settingsThatNeedARestart(startupConfig, newConfig) {
+		ui.Warning("Config key '%s' changed, restart fan2go to apply it. The value fan2go was started with stays in effect until then.", key)
+	}
+}
+
+// settingsThatNeedARestart returns the config keys that differ between startupConfig and newConfig,
+// but are only applied on startup.
+func settingsThatNeedARestart(startupConfig configuration.Configuration, newConfig configuration.Configuration) []string {
+	var keys []string
+	if startupConfig.DbPath != newConfig.DbPath {
+		keys = append(keys, "dbPath")
+	}
+	if startupConfig.Profiling.Enabled != newConfig.Profiling.Enabled {
+		keys = append(keys, "profiling.enabled")
+	}
+	// the address only matters if the profiling webserver runs (it is started with the startup config)
+	if startupConfig.Profiling.Enabled {
+		if startupConfig.Profiling.Host != newConfig.Profiling.Host {
+			keys = append(keys, "profiling.host")
+		}
+		if startupConfig.Profiling.Port != newConfig.Profiling.Port {
+			keys = append(keys, "profiling.port")
+		}
+	}
+	return keys
 }
 
 func runSignalHandler(ctx context.Context, reloadChan chan<- struct{}) error {

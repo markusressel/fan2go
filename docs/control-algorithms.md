@@ -39,8 +39,10 @@ type ControlLoop interface {
 ```
 
 Each fan controller owns one `ControlLoop` instance. A new instance is created on every start and every successful
-config reload, so all algorithm state starts over then. If a reload fails, fan2go restarts the old fan controllers
-with their old `ControlLoop` instances, so the state is kept.
+config reload, so all algorithm state starts over then. If a reload fails after the old controllers were stopped
+(an error while creating the new objects; an invalid config doesn't stop them), fan2go restarts the old fan
+controllers with their old `ControlLoop` instances, and `Run` resets them first (`ControlLoop.Reset`), so the state
+starts over as well.
 
 ### Direct
 
@@ -259,8 +261,7 @@ precedence over `controlAlgorithm`.
   before the failure, curve value 50 after a gap of 5 s or more: outputs `97.5`, then `0.0`, then `7.4`, then a
   ramp back to about 50 over about 10 s. For a curve value of 200: `105`, then `255`, then a ramp down. With a 2 s
   gap the effect is smaller (`97.5`, then `57.8`). There is no jump if the curve value is unchanged after the gap.
-  A failed config reload has the same effect: the old fan controllers restart with their old loops after the
-  startup delays (several seconds). Unlike the `pid` curve, which resets its loop after a stale period
+  Unlike the `pid` curve, which resets its loop after a stale period
   (see [curves.md](curves.md)), the control algorithm has no such reset. System suspend doesn't trigger this on
   Linux, because Go measures `dt` with a monotonic clock that stops during suspend.
 - **No stability check for the cycle rate.** With the default values, `adjustmentTickRate` of about `2.7s` or

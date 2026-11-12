@@ -796,6 +796,21 @@ Alternatively you can specify the path to your configuration file like this:
 > sudo fan2go -c /home/markus/my_fan2go_config.yaml
 ```
 
+### Reloading the configuration
+
+fan2go reloads its configuration when the content of the config file changes, or when it receives `SIGHUP`
+(e.g. `sudo systemctl kill -s HUP fan2go`):
+
+- The new config is validated first. If it is invalid, the error is logged and sent as a notification, and fan2go
+  keeps running with the current config without touching the fans.
+- A valid config replaces all fan controllers: each fan is handed back for a few seconds and then controlled with
+  the new config.
+- While a fan is being analyzed for the first time, the reload waits until the analysis has finished, so the
+  analysis isn't started over.
+- `dbPath` and `profiling` only take effect after a restart; a reload logs a warning if they changed.
+- If the config file can't be watched (e.g. because the inotify limits are reached), fan2go warns once and keeps
+  running; `SIGHUP` still works.
+
 ## As a Service
 
 ### Systemd

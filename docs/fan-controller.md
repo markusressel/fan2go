@@ -358,10 +358,14 @@ enforced.
 
 ### Reload rebuilds everything
 
-**Decision**: On SIGHUP or a changed config file, the daemon stops all controllers (each restores its fan) and the
-curve evaluator, then reads and validates the new config, and starts new fans, a new evaluator and new controllers
-(`runOrchestrator`, `reloadConfiguration`). If the new config is invalid, the old controllers and evaluator are
-started again with the old config.
+**Decision**: On SIGHUP or a changed config file, the daemon first reads and validates the new config while the
+controllers keep running; an invalid config leaves them untouched. While a controller analyzes its fan
+(`IsInitializing`), the reload is deferred. Then the daemon stops all controllers (each restores its fan) and the
+curve evaluator, and starts new fans, a new evaluator and new controllers (`runOrchestrator`, `applyConfiguration`).
+If the new objects can't be created, the old controllers and evaluator are started again with the old config. `Run`
+resets the runtime state of a controller at its start (`resetRuntimeState`: failure states, last PWM, `minPwmOffset`,
+stall timers, RPM average seed, the control algorithm via `ControlLoop.Reset`), so a restarted controller behaves
+like a new one. Only the fan state from before fan2go first took over the fan is kept.
 
 **Why**: New objects don't carry stale state (offsets, overrides, failure states) into a changed config, and the
 reload reuses the tested shutdown path. **Who benefits**: users who tune their config while fan2go runs.
@@ -408,7 +412,5 @@ threshold 50 RPM, stall reaction 3 RPM polling periods, PWM write failure timeou
   expects PWM mode even with another `controlMode.active`.
 - A stopped controller (`ErrPwmWriteFailed`, `ErrFanStalledAtMaxPwm`, panic) is not restarted, and the daemon keeps
   running even if no fan is controlled anymore.
-- After a failed reload, the old controller objects run again with the state of their previous run (failure
-  states, `minPwmOffset`, stall timers, RPM average). Only `restoreOnce` and `mayHaveWrittenToFan` are reset.
 - Also see the trade-offs above: `minPwmOffset` is not persisted, stall detection skips alternating targets and
   steps before the `pwmMap`, no restore after SIGKILL, one global update rate, a ~3.2 s handback on every reload.
