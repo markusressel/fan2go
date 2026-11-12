@@ -1,8 +1,6 @@
 package config
 
 import (
-	"os"
-
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/spf13/cobra"
@@ -14,19 +12,9 @@ var validateCmd = &cobra.Command{
 	Long:  ``,
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		configPath := configuration.DetectAndReadConfigFile()
-
-		ui.Info("Using configuration file at: %s", configPath)
-		var err error
-		configuration.CurrentConfig, err = configuration.LoadConfig()
+		_, err := configuration.LoadAndValidateConfigFile()
 		if err != nil {
-			ui.Error("Parsing failed: %v", err)
-			os.Exit(1)
-		}
-
-		if err := configuration.ValidateConfig(&configuration.CurrentConfig, configPath); err != nil {
-			ui.Error("Validation failed: %v", err)
-			os.Exit(1)
+			return err
 		}
 
 		ui.Success("Config looks good! :)")

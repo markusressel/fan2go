@@ -51,7 +51,7 @@ func runSignalsAfterReturnInChild(name string) {
 	// GIVEN: a signal handler that returned, because the daemon is shutting down
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_ = runSignalHandler(ctx, make(chan struct{}, 1))
+	_ = handleSignals(ctx, subscribeSignals(), make(chan struct{}, 1))
 
 	// WHEN: signals arrive during shutdown
 	for i := 0; i < 2; i++ {
@@ -70,6 +70,43 @@ func runSignalsAfterReturnInChild(name string) {
 		}
 	}
 	fmt.Println("child survived")
+}
+
+const signalTestEarlyChildEnv = "FAN2GO_SIGNAL_TEST_EARLY_CHILD"
+
+func TestSubscribeSignals_SigtermBeforeHandlerRuns_IsHandledNotFatal(t *testing.T) {
+	if os.Getenv(signalTestEarlyChildEnv) != "" {
+		runSigtermBeforeHandlerInChild()
+		return
+	}
+
+	// WHEN
+	cmd := exec.Command(os.Args[0], "-test.run=^TestSubscribeSignals_SigtermBeforeHandlerRuns_IsHandledNotFatal$")
+	cmd.Env = append(os.Environ(), signalTestEarlyChildEnv+"=1")
+	out, err := cmd.CombinedOutput()
+
+	// THEN: the SIGTERM didn't kill the child, the handler received it once it ran
+	require.NoError(t, err, "child output:\n%s", out)
+	assert.Contains(t, string(out), "handler returned")
+}
+
+func runSigtermBeforeHandlerInChild() {
+	// GIVEN: the daemon subscribed to the signals, but the signal handler doesn't run yet
+	// (e.g. the fan controllers are started first)
+	sig := subscribeSignals()
+
+	// WHEN: SIGTERM arrives in that window
+	_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
+
+	// THEN: the handler gets it once it runs, and returns so the daemon shuts down
+	done := make(chan error, 1)
+	go func() { done <- handleSignals(context.Background(), sig, make(chan struct{}, 1)) }()
+	select {
+	case <-done:
+		fmt.Println("handler returned")
+	case <-time.After(signalTestTimeout):
+		os.Exit(3)
+	}
 }
 
 func TestHandleSignals_SighupRequestsReload(t *testing.T) {
