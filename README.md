@@ -94,6 +94,14 @@ nix-env -f '<nixpkgs>' -iA fan2go
 
 See: https://github.com/johnwbyrd/fan2go-package/
 
+### Gentoo ![Gentoo](https://img.shields.io/badge/Gentoo-%2354487A.svg?logo=gentoo&logoColor=white)
+
+Enable the repository as read in [Project:GURU/Information for End Users](https://wiki.gentoo.org/wiki/Project:GURU/Information_for_End_Users) then emerge the package:
+
+```sh
+emerge --ask sys-power/fan2go
+```
+
 </details>
 
 ### Manual
