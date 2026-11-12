@@ -248,7 +248,8 @@ PWM is only written when the fan is not handed back to automatic.
 - Entries of fans that are no longer configured are logged once and deleted at daemon start (see
   [daemon.md](daemon.md)).
 - Database errors never stop a controller. A load error (e.g. the database is locked): the read state is used,
-  and this controller neither overwrites nor deletes the entry, so a later run can still use it. A save error: fan2go
+  and this controller neither overwrites nor deletes the entry, so a later run can still use it. The load is retried
+  once per `Run`, right before fan2go takes over the fan. A save error: fan2go
   takes control anyway (as before). A delete error: the next run restores to the same state again. These operations
   wait at most 5 s for the database lock, not 1 minute.
 

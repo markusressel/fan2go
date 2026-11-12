@@ -256,10 +256,11 @@ func TestFanController_Run_DatabaseErrors_FanIsControlledAndRestoredAsBefore(t *
 		})
 	}
 
-	t.Run("load fails: an existing saved state is neither overwritten nor deleted", func(t *testing.T) {
+	t.Run("load fails twice: an existing saved state is neither overwritten nor deleted", func(t *testing.T) {
 		fan := newPanickingFan()
 		p := newFakePersistence()
-		p.loadOriginalStateErrors = []error{dbErr}
+		// at the snapshot, and when it is retried before fan2go takes control
+		p.loadOriginalStateErrors = []error{dbErr, dbErr}
 		p.originalStates["fan"] = persistence.FanOriginalState{Hardware: originalStateHardwareKey(fan.GetConfig())}
 
 		test := startOriginalStateRun(t, fan, p, "")
@@ -267,6 +268,42 @@ func TestFanController_Run_DatabaseErrors_FanIsControlledAndRestoredAsBefore(t *
 
 		assert.Equal(t, 0, p.originalStateSaves)
 		assert.Equal(t, 0, p.originalStateDeletes)
+		assert.Equal(t, []fans.ControlMode{fans.ControlModePWM, fans.ControlModeAutomatic}, fan.getControlModeWrites())
+	})
+
+	t.Run("load fails once: the load is retried before fan2go takes control, the saved state wins", func(t *testing.T) {
+		// GIVEN: a fan left in manual mode by a killed run, and its saved original state (automatic)
+		fan := newPanickingFan()
+		fan.ControlMode = fans.ControlModePWM
+		p := newFakePersistence()
+		p.loadOriginalStateErrors = []error{dbErr}
+		p.originalStates["fan"] = persistence.FanOriginalState{
+			Hardware:    originalStateHardwareKey(fan.GetConfig()),
+			ControlMode: intPointer(int(fans.ControlModeAutomatic)),
+		}
+
+		test := startOriginalStateRun(t, fan, p, "")
+		test.stop()
+
+		assert.Equal(t, fans.ControlModeAutomatic, fan.ControlMode)
+		assert.Equal(t, 0, p.originalStateSaves)
+		_, ok := p.originalState("fan")
+		assert.False(t, ok)
+	})
+
+	t.Run("load fails once, no saved state: the read state is saved at takeover", func(t *testing.T) {
+		fan := newPanickingFan()
+		p := newFakePersistence()
+		p.loadOriginalStateErrors = []error{dbErr}
+
+		test := startOriginalStateRun(t, fan, p, "")
+		_, ok := p.originalState("fan")
+		assert.True(t, ok)
+		test.stop()
+
+		assert.Equal(t, 1, p.originalStateSaves)
+		_, ok = p.originalState("fan")
+		assert.False(t, ok)
 	})
 }
 

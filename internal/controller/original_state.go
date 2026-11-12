@@ -85,11 +85,29 @@ func (f *DefaultFanController) useSavedOriginalFanState() {
 
 // markMayWriteToFan is called right before fan2go may write to the fan (it takes control of it):
 // it sets mayHaveWrittenToFan, and saves the original fan state in the database, unless it is saved already.
+//
+// It accesses the database, which may take up to the lock timeout of the original state functions (5 s).
+// That's acceptable also in the update loop (on recovery after onSensorFailure: restore): it happens rarely,
+// at most once per Run if the database is unusable, and the fan is handed back meanwhile.
 func (f *DefaultFanController) markMayWriteToFan() {
 	f.mayHaveWrittenToFan = true
-	if f.originalFanStateSaved || f.originalFanStateUnusable || f.originalFanStateSaveFailed ||
-		f.originalFanState == nil || f.persistence == nil {
+	if f.originalFanStateSaved || f.originalFanStateSaveFailed || f.originalFanState == nil || f.persistence == nil {
 		return
+	}
+	if f.originalFanStateUnusable {
+		// loading failed before (e.g. the database was locked): try again, a saved state may exist. The fan is
+		// still in the state the snapshot was taken in, or fan2go handed it back since.
+		f.originalFanStateUnusable = false
+		f.useSavedOriginalFanState()
+		if f.originalFanStateUnusable {
+			// don't try (and log) again in this Run
+			f.originalFanStateSaveFailed = true
+			return
+		}
+		if f.originalFanStateSaved {
+			// found a saved state, it is in use now
+			return
+		}
 	}
 	fan := f.fan
 	state := toFanOriginalState(f.originalFanState, originalStateHardwareKey(fan.GetConfig()))

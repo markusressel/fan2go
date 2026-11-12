@@ -196,7 +196,8 @@ type DefaultFanController struct {
 	// fan, saved by markMayWriteToFan or loaded by storeInitialFanState. Deleted after a complete restore.
 	originalFanStateSaved bool
 	// originalFanStateUnusable is true if the saved original fan state couldn't be loaded (e.g. the database
-	// is locked): it may exist, so this controller neither overwrites nor deletes it.
+	// is locked): it may exist, so this controller neither overwrites nor deletes it. markMayWriteToFan
+	// tries to load it again (once per Run).
 	originalFanStateUnusable bool
 	// originalFanStateSaveFailed is true if saving the original fan state failed in the current Run,
 	// so it isn't tried (and logged) again until the next Run.
