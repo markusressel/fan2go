@@ -100,7 +100,12 @@ deterministic tests under `-race`); users (shutdown isn't delayed by waits).
 
 `minPwm`, `startPwm` and `maxPwm` come from the config if set, otherwise from the saved fan analysis
 (`AttachFanRpmCurveData`). Without config values, `minPwm` is set to the measured `startPwm`. `startPwm` itself
-is not used by the update loop: it is only logged, and `Run` warns if `minPwm > startPwm`. fan2go has no
+is not used by the update loop: it is only logged, and `Run` warns if `minPwm > startPwm`. If a derived `minPwm` or
+`startPwm` ends up above `maxPwm` (e.g. `maxPwm: 100` and a measured start of 120), `AttachFanRpmCurveData` logs a
+warning and clamps (`clampDerivedPwmBoundaries`), so the scaling can't run backwards. A configured value always
+wins: with a configured `maxPwm`, the derived `minPwm`/`startPwm` are lowered to it; otherwise the derived `maxPwm`
+is raised to the (configured or derived) `minPwm`/`startPwm` (a higher PWM is the safe direction), as far as the
+fan allows (nvidia: 100); derived values still above it are lowered. fan2go has no
 "jump-start" from standstill (open issue #30). File and cmd fans always report `minPwm` 0 and `maxPwm` 255; nvidia
 fans default to `maxPwm` 100, because NVML speeds are percent.
 
@@ -383,7 +388,7 @@ state, not the original one.
 | `tempSensorPollingRate` | `200ms` | Added to the 2 s startup warm-up; also sets the default `sensorStaleTimeout`. |
 | `sensorStaleTimeout` | max(10s, 10 x `tempSensorPollingRate`) | When a sensor counts as stale, so when `onSensorFailure` applies. See [sensors.md](sensors.md). |
 | `fans[].neverStop` | `false` | Floor at `minPwm`; with an RPM sensor, stall detection. |
-| `fans[].minPwm`, `startPwm`, `maxPwm` | from analysis | Range for scaling; validation requires `minPwm`, `startPwm` <= `maxPwm` if set. |
+| `fans[].minPwm`, `startPwm`, `maxPwm` | from analysis | Range for scaling; validation requires `minPwm`, `startPwm` <= `maxPwm` if set; derived values are clamped. |
 | `fans[].useUnscaledCurveValues` | `false` | Skip the scaling to `[minPwm..maxPwm]`. |
 | `fans[].pwmMap`, `setPwmToGetPwmMap` | autodetect | See [fan-analysis.md](fan-analysis.md). |
 | `fans[].controlMode.active` | `pwm` | Mode written when fan2go takes control: `pwm`/`manual`, `disabled`, `auto`, or an integer. |
@@ -402,8 +407,6 @@ threshold 50 RPM, stall reaction 3 RPM polling periods, PWM write failure timeou
 
 - `startPwm` is not used at runtime; without config values `minPwm` equals the measured `startPwm`, and there is no
   jump-start from standstill (#30).
-- If only `maxPwm` is configured and it is below the measured `startPwm`, `minPwm > maxPwm` is possible. Validation
-  only checks configured values, so the scaling then runs backwards.
 - A successful fallback to `disabled` hides a failed switch to `pwm` mode; the `fanModeChangedByThirdParty` check
   expects PWM mode even with another `controlMode.active`.
 - A stopped controller (`ErrPwmWriteFailed`, `ErrFanStalledAtMaxPwm`, panic) is not restarted, and the daemon keeps

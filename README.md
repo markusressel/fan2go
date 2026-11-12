@@ -356,6 +356,10 @@ fans:
     maxPwm: 255
     # Note: minPwm, startPwm and maxPwm must be in [0..255], and minPwm and startPwm
     #       must not be greater than maxPwm. minPwm > startPwm only causes a warning.
+    #       Values that aren't configured are derived from the measured fan curve. If a derived
+    #       minPwm or startPwm is above maxPwm (e.g. maxPwm: 100 and the fan only starts at 120),
+    #       fan2go logs a warning: a configured maxPwm wins, the derived values are lowered to it.
+    #       Otherwise the derived maxPwm is raised to minPwm/startPwm.
     # (Optional) Override the global fanController.pwmSetDelay for this specific fan.
     # Useful when a fan requires more or less time to respond to PWM changes than the global default.
     # pwmSetDelay: 10ms
@@ -580,7 +584,7 @@ max temp will result in a curve value of `255`:
 ```yaml
 curves:
   - id: cpu_curve
-    # The type of the curve, one of: linear | function
+    # The type of the curve, one of: linear | staircase | pid | function
     linear:
       # The sensor ID to use as a temperature input
       sensor: cpu_package
@@ -590,6 +594,9 @@ curves:
       # Sensor input value at which the curve is at maximum speed
       max: 80
 ```
+
+Without `steps`, `max` must be greater than `min`. If `steps` are set too, `min` and `max` are ignored (with a
+warning).
 
 You can also define the curve in multiple, linear sections using the `steps` parameter,
 where the left side refers to the sensor input value and the right side refers to the curve value at that sensor input.
@@ -688,6 +695,11 @@ specified `controlAlgorithm`) which would also affect how the curve is applied t
 
 `setPoint` is the target temperature.
 
+The curve computes its error as `setPoint - temperature`, so a temperature above the `setPoint` gives a negative
+error. To cool, the gains must therefore be negative, like in the example above: then the curve value rises with the
+temperature. fan2go warns if all non-zero gains are positive (the curve value then falls when it gets hotter), but
+accepts it for heating use cases.
+
 See: [PID controller on Wikipedia](https://en.wikipedia.org/wiki/Proportional%E2%80%93integral%E2%80%93derivative_controller)
 for more information on what a PID controller is.
 
@@ -748,7 +760,9 @@ Running external commands repeatedly through fan2go can have unintended side eff
 graphics, running `nvidia-settings` can cause the dedicated GPU to wake up, resulting in substantial increase in power
 consumption while on battery. Also, fan2go expects to be able to update sensor values with a minimal delay, so using a
 long running script or some network call with a long timeout could also cause problems. Each command is killed and
-treated as failed after its `timeout` (default: 2s). Each command runs in its own process group: on timeout, the whole
+treated as failed after its `timeout` (default: 2s). fan2go warns if the `timeout` of a sensor command is not shorter
+than the [`sensorStaleTimeout`](#sensor-failures): the sensor value would become stale while the command is still
+running. Each command runs in its own process group: on timeout, the whole
 process group is killed, including processes the command started in the background. A command that starts a
 long-running background process (e.g. a daemon) and exits in time is not killed. If the background process keeps the
 command's output open, fan2go uses the output shortly after the command itself has exited and closes its end of it, so
@@ -1169,8 +1183,22 @@ fans:
 ```
 
 The loop is advanced at a constant rate, determined by the [cycle rate](#cycle) (`fanController.adjustmentTickRate`),
-which defaults to `200ms`. The values depend on the cycle rate: with the default values, a cycle rate of `1s` or slower
-makes the output overshoot the curve value. If you increase `adjustmentTickRate`, lower `i` accordingly.
+which defaults to `200ms`. The values depend on the cycle rate: with the default values, the output starts to
+overshoot the curve value at a cycle rate of about `700ms` (by more than 1 % above about `800ms`, about 8 % at `1s`). If you increase `adjustmentTickRate`, lower `i` accordingly.
+
+fan2go checks the values against the cycle rate when it loads the config. Because the loop compares the curve value
+with its own previous output, it is a linear system of its own, so its stability can be computed exactly:
+
+- `i` must be greater than `0`. Omitted values are `0`, so `pid: {p: 0.1}` is rejected. Without an I term, the
+  output would settle at a small fraction of the curve value (about 9 % with `p: 0.1`).
+- fan2go rejects values that are unstable with the configured cycle rate: the output would oscillate between `0`
+  and `255`. With the default values, this is the case for a cycle rate of about `2.64s` or slower (`i` too large for
+  the time step) and of `20ms` or faster (`d` too large for the time step).
+- fan2go warns if the output overshoots a change of the curve value by more than 1 %.
+
+This also applies to fans without a `controlAlgorithm` (they use the default values) and to the deprecated
+`controlLoop` setting. Only one of `direct` and `pid` may be set, and `controlLoop` can't be combined with
+`controlAlgorithm`.
 
 The first cycle after fan2go starts (or reloads its config) applies the curve value directly, like the direct control
 algorithm. The PID loop is initialized as if it had already settled at that value, so it only smooths later changes
