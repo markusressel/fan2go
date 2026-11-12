@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -59,7 +60,9 @@ func runProfilingWebserver(ctx context.Context, address string) error {
 		_ = server.Close()
 	}
 	// Serve returns http.ErrServerClosed after Shutdown or Close
-	<-serveErr
+	if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		ui.Warning("Profiling webserver stopped with an error: %v", err)
+	}
 	ui.Debug("Profiling webserver stopped.")
 	return nil
 }

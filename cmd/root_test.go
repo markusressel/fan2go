@@ -60,7 +60,7 @@ func runRootCommandWithConfigPath(t *testing.T, path string, daemon func() error
 	t.Cleanup(viper.Reset)
 	previousConfig := configuration.CurrentConfig
 	t.Cleanup(func() { configuration.CurrentConfig = previousConfig })
-	configuration.InitConfig(path)
+	require.NoError(t, configuration.InitConfig(path))
 
 	// don't send desktop notifications from tests
 	previousErrorAndNotify := errorAndNotify

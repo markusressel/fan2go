@@ -102,7 +102,8 @@ func runSigtermBeforeHandlerInChild() {
 	done := make(chan error, 1)
 	go func() { done <- handleSignals(context.Background(), sig, make(chan struct{}, 1)) }()
 	select {
-	case <-done:
+	case err := <-done:
+		_ = err // only returning matters here
 		fmt.Println("handler returned")
 	case <-time.After(signalTestTimeout):
 		os.Exit(3)
