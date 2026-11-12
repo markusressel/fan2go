@@ -19,6 +19,10 @@ type FanAnalysisInfo struct {
 	Quirk string `json:"quirk"`
 	// QuirkVersion is the version of that entry, 0 if none
 	QuirkVersion int `json:"quirkVersion"`
+	// ReadbackDelayMillis is the longest time (in milliseconds) the fan took to report a written PWM value when
+	// it was read back, measured during the analysis. nil if it wasn't measured (e.g. data saved by an older
+	// version, or a fan whose PWM can't be read). It doesn't invalidate the analysis data when it changes.
+	ReadbackDelayMillis *int64 `json:"readbackDelayMillis,omitempty"`
 }
 
 // SaveFanAnalysisInfo saves the analysis info of the given fan, overwriting a saved one.
