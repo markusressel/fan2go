@@ -78,13 +78,19 @@ fans:
     # speed of this fan
     curve: cpu_curve
     # (Optional) The algorithm how the target speed, determined by the curve is approached.
-    #   direct: the target value will be directly applied to the fan
+    #   direct: the target value will be directly applied to the fan (optionally smoothed)
     #   pid: uses a PID loop with default tuning variables
+    # Default (if omitted): direct with timeConstant: 2s and deadband: 1%
     controlAlgorithm:
       direct:
-        # together with maxPwmChangePerCycle, fan speeds will approach target value
-        # with the given max speed.
-        maxPwmChangePerCycle: 10
+        # (Optional) low-pass filter on the curve value, default: 0 (off)
+        timeConstant: 2s
+        # (Optional) max increase per second, in curve units (0..255) or percent, default: 0 (no limit)
+        rampUp: 20%
+        # (Optional) max decrease per second, default: 0 (no limit)
+        rampDown: 2%
+        # (Optional) changes smaller than this are ignored (0 and 255 are always applied), default: 0 (off)
+        deadband: 1%
     # (Optional) Override for the lowest PWM value at which the
     # fan is able to maintain rotation if it was spinning previously.
     minPwm: 30
@@ -174,6 +180,7 @@ fans:
     hwmon:
       platform: it8620
       rpmChannel: 4
+    # no smoothing at all
     controlAlgorithm: direct
     neverStop: true
     curve: case_avg_curve
@@ -226,6 +233,10 @@ curves:
         - 41: 1%   # at 41°C the fan should run at its minimum (non-stopped) speed
         - 65: 33%  # at 65°C the fan should run at 33% speed
         - 80: 100% # from 80°C on the fan should run at full speed
+      # (Optional) temperature hysteresis, default: off
+      hysteresis:
+        # only lower the speed once the temperature dropped by more than 2°C
+        down: 2
 
   - id: mainboard_curve
     linear:

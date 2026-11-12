@@ -648,6 +648,26 @@ curves:
         - 80: 255
 ```
 
+To keep the fan from speeding up and slowing down while the temperature hovers around a steep part of the curve, a
+linear curve can ignore small temperature drops (in degrees Celsius, both forms of the curve):
+
+```yaml
+curves:
+  - id: cpu_curve
+    linear:
+      sensor: cpu_package
+      # (Optional) default: 0 (off)
+      hysteresis:
+        # The curve value only decreases once the temperature has dropped by more than 3°C,
+        # and then follows the temperature 3°C later. A temperature above the last one used is followed at once.
+        down: 3
+      min: 40
+      max: 80
+```
+
+`hysteresis.down` is in the unit of the sensor value divided by 1000, which is °C for temperature sensors (`cmd` and
+`file` sensors report millidegrees).
+
 #### Staircase
 
 To create a staircase speed curve, use a curve of type `staircase`.
@@ -692,8 +712,9 @@ It uses the last successful (raw) reading of the sensor monitor, which is at mos
 between two readings for its I and D terms. Evaluating the curve more often than the sensor is
 polled therefore doesn't change its result. The curve is evaluated once per [cycle](#cycle), even if
 several fans (or `function` curves) use it.
-Keep in mind though that the fan controller may also be PID based (depending on the
-specified `controlAlgorithm`) which would also affect how the curve is applied to the fan.
+Keep in mind though that the control algorithm of the fan also smooths the curve value (the default one has a time
+constant of 2 seconds), which adds lag to the PID loop. Use `controlAlgorithm: direct` for fans with a PID curve to
+apply its value directly.
 
 `setPoint` is the target temperature.
 
@@ -1156,8 +1177,9 @@ control again for `restore`) as soon as it can. Entering this state is logged an
 recovery. The fan controller only stops for good if a fan with `neverStop: true` doesn't spin even at its `maxPwm`
 (see above); this check is paused while the fan is in the failure state. A PID curve starts over when its sensor
 recovers from a stale value. After `max`, the control algorithm continues from the fan's maximum speed, so the fan
-comes down gradually (with the `pid` control algorithm, or `direct` with `maxPwmChangePerCycle`) instead of
-jumping to the curve value. After `restore`, it starts at the curve value, like on startup.
+comes down gradually (with the default control algorithm, or any other one that smooths: `direct` with a
+`timeConstant` or ramps, or `pid`) instead of jumping to the curve value. After `restore`, it starts at the curve
+value, like on startup.
 
 ```yaml
 # (Optional) default: 10 x tempSensorPollingRate, but at least 10s
@@ -1203,7 +1225,8 @@ fanController:
   adjustmentTickRate: 200ms
 ```
 
-This setting also determines the time unit implied by `maxPwmChangePerCycle` in the Direct control algorithm.
+The time-based options of the direct control algorithm (`timeConstant`, `rampUp`, `rampDown`) don't depend on this
+setting. The deprecated `maxPwmChangePerCycle` and the PID control algorithm do.
 
 If writing the PWM value to the hardware fails, fan2go tries again in the next cycle. Only the first failure, every
 25th failure in a row and the recovery are logged. If writing keeps failing for 10 seconds, fan2go stops controlling
@@ -1221,17 +1244,19 @@ control algorithm is the direct control algorithm, which simply forwards the tar
 
 #### Direct Control Algorithm
 
-The simplest control algorithm is the direct control algorithm. It simply forwards the curve value to the fan
-controller.
+The direct control algorithm forwards the curve value to the fan controller, optionally smoothed. It is the
+default: fans without a `controlAlgorithm` use it with `timeConstant: 2s` and `deadband: 1%` (see below).
 
 ```yaml
 fans:
   - id: some_fan
     ...
+    # forward the curve value as it is, without any smoothing
     controlAlgorithm: direct
 ```
 
-This control algorithm can also be used to approach the curve value more slowly:
+All smoothing options are optional and off unless you set them. They are based on time, so they don't depend on the
+[cycle rate](#cycle):
 
 ```yaml
 fans:
@@ -1239,17 +1264,72 @@ fans:
     ...
     controlAlgorithm:
       direct:
-        maxPwmChangePerCycle: 10
+        # Smooths the curve value with a first-order low-pass filter: after a change of the curve value, the fan
+        # covers about 63% of the change within this time, and about 99% within 5 times this time.
+        # A number of seconds (2, 0.5) or a duration like "2s" or "500ms". Default: 0 (off)
+        timeConstant: 2s
+        # Maximum increase per second, as curve units (0..255) or as a percentage of the curve value range
+        # ("10%" = 25.5 units). Default: 0 (no limit)
+        rampUp: 10%
+        # Maximum decrease per second, same units. Default: 0 (no limit)
+        rampDown: 2%
+        # Changes smaller than this are not applied, which avoids constant small speed changes (and writes) at a
+        # steady temperature. Same units. Fan off (0), full speed (255), and starting or stopping the fan are
+        # always applied. With useUnscaledCurveValues, a start or stop is only detected when the value crosses 1,
+        # not minPwm, so it can be delayed by up to the deadband. Default: 0 (off)
+        deadband: 1%
 ```
+
+The values are in curve units, before the curve value is scaled to the `minPwm`..`maxPwm` range of the fan. A
+percentage is converted linearly (`"N%"` = `N x 2.55`), unlike the speeds of curve steps, where `1%` is `1`.
+
+Fans without a `controlAlgorithm` use:
+
+```yaml
+    controlAlgorithm:
+      direct:
+        timeConstant: 2s
+        deadband: 1%
+```
+
+This follows a change of the curve value smoothly and without overshoot, at any cycle rate. It is close to the old
+default, the PID control algorithm (see below). Note that `controlAlgorithm: direct` without options means no
+smoothing at all.
+
+Suggestions for `timeConstant` (set `controlAlgorithm.direct` with these values, plus `deadband: 1%`):
+
+| Setup | `timeConstant` |
+|---|---|
+| Laptop | `1s` (small heatsinks heat up fast) |
+| Desktop CPU with an air cooler | `2s` to `3s` |
+| GPU | `2s` |
+| Water cooling | `5s` to `10s`, and use the coolant temperature as the sensor of the curve (the coolant changes slowly, the CPU temperature doesn't) |
+
+To speed up quickly but slow down gently, add `rampDown` (for example `2%`: from full speed to off takes 50
+seconds).
+
+`maxPwmChangePerCycle` is deprecated, because it depends on the cycle rate. It still works, but fan2go logs a warning.
+To convert it, divide by the [cycle rate](#cycle) in seconds: `maxPwmChangePerCycle: 10` with the default
+`adjustmentTickRate` of `200ms` is 50 per second:
+
+```yaml
+    controlAlgorithm:
+      direct:
+        # before: maxPwmChangePerCycle: 10
+        rampUp: 50
+        rampDown: 50
+```
+
+`maxPwmChangePerCycle` can't be combined with `rampUp` or `rampDown`.
 
 ### PID Control Algorithm
 
-The PID control algorithm smooths the curve value before it is applied to the fan. It is the default control
-algorithm: fans without a `controlAlgorithm` use it with the default values below.
+The PID control algorithm smooths the curve value before it is applied to the fan. It was the default control
+algorithm before 1.0.0. To keep its behaviour for a fan without a `controlAlgorithm`, set `controlAlgorithm: pid`.
 
 The loop doesn't measure the fan: it compares the curve value with its own previous output, not with the fan's actual
 PWM or RPM. In effect, it is a low-pass filter on the curve value that avoids abrupt speed changes, and it writes to
-the fan less often than the direct control algorithm. It doesn't correct for a fan that runs faster or slower than
+the fan less often than the direct control algorithm without options. It doesn't correct for a fan that runs faster or slower than
 expected. (To control a temperature with a real feedback loop, use a [PID curve](#pid) instead.)
 
 The default values are:
@@ -1293,8 +1373,8 @@ with its own previous output, it is a linear system of its own, so its stability
   whose every update takes longer than `max(2s, 5 x adjustmentTickRate)` (e.g. a slow `cmd` fan) runs the loop at
   that rate.
 
-This also applies to fans without a `controlAlgorithm` (they use the default values) and to the deprecated
-`controlLoop` setting. Only one of `direct` and `pid` may be set, and `controlLoop` can't be combined with
+This also applies to the deprecated `controlLoop` setting (fans without a `controlAlgorithm` use the direct control
+algorithm and are not affected). Only one of `direct` and `pid` may be set (and one must be, if `controlAlgorithm` is given), and `controlLoop` can't be combined with
 `controlAlgorithm`.
 
 The first cycle after fan2go starts (or reloads its config) applies the curve value directly, like the direct control
