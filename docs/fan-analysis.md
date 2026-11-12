@@ -242,13 +242,14 @@ next to the daemon is not serialized.
 `Load`/`Save`/`Delete` opens the database, runs one transaction and closes it again. bbolt takes an exclusive
 file lock on open and waits up to 1 minute (`bolt.Options{Timeout: 1 * time.Minute}`) before it gives up.
 
-Data format: three buckets, keyed by fan `id`, values are JSON:
+Data format: four buckets, keyed by fan `id`, values are JSON:
 
 | Bucket                 | Content                                  | Example                       |
 |------------------------|------------------------------------------|-------------------------------|
 | `fans`                 | RPM curve, target PWM to RPM (or `null`) | `{"0":0,"1":0,...,"255":1510}`|
 | `fanSetPwmToGetPwmMap` | set PWM to reported PWM                  | `{"0":0,"1":1,...}`           |
 | `fanPwmMapping`        | `pwmMap`, an array of exactly 256 values | `[0,1,2,...,255]`             |
+| `fanOriginalState`     | state before fan2go took control, only while it controls the fan | `{"hardware":"hwmon:nct6798/0/pwm1","controlMode":2,"automaticControlMode":5,"pwm":120}` |
 
 A fan without an RPM sensor stores `null` in `fans`: it counts as "analyzed, no curve". File and cmd fans store their
 fixed linear curve (0..255 to 0..255).
@@ -263,14 +264,18 @@ daemon runs.
 
 **Trade-offs**: Every access pays for opening the file and taking the lock; parallel controllers in one process
 serialize on it. If another process keeps the file open for more than a minute, loads fail and the affected
-controllers stop (see above). Data of fans that were removed from the config is never cleaned up.
+controllers stop (see above). Analysis data of fans that were removed from the config is never cleaned up.
+`fanOriginalState` is not analysis data: it is described in [fan-controller.md](fan-controller.md), uses a 5 s lock
+timeout, and its entries of removed fans are deleted at daemon start.
 
 ### `fan2go fan init`: fresh data and hand-back
 
 **Decision**: `fan2go fan --id <id> init` deletes the saved RPM curve, `setPwmToGetPwmMap` and `pwmMap` of the fan,
 runs `RunInitializationAndRestore`, and prints the measured curve. It always hands the fan back afterwards: on success,
 on errors, on SIGINT/SIGTERM and on panics (unless it failed before writing to the fan). Hand-back means the original
-control mode and PWM, or `controlMode.onExit` (see [Fan controller](fan-controller.md)).
+control mode and PWM, or `controlMode.onExit` (see [Fan controller](fan-controller.md)). Like the daemon, it
+saves the original state in `fanOriginalState` while it controls the fan, uses a saved one (left behind by a killed
+daemon or `fan init`) instead of the current state, and deletes it after a complete hand-back. `reset` doesn't touch it.
 Flags: `--fan-response-delay` (`-e`) and `--assume-pwm-map-identity`. `fan2go fan --id <id> reset` only deletes
 the data.
 

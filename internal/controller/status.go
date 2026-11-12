@@ -59,12 +59,20 @@ func (f *DefaultFanController) getState() status.State {
 	return f.GetStatus().State
 }
 
+// errHandbackIncomplete is the error of the stopped state after an incomplete restore of the fan settings.
+var errHandbackIncomplete = errors.New("fan not handed back completely, see the log")
+
 // setStoppedState records that Run returned err, unless the update loop already recorded why it stopped.
 func (f *DefaultFanController) setStoppedState(err error) {
 	if f.getState().IsStopped() {
 		return
 	}
 	if err == nil || errors.Is(err, context.Canceled) {
+		if f.handbackPending {
+			// the last restore was incomplete: the fan may still be in fan2go's state
+			f.setState(status.StateStopped, errHandbackIncomplete)
+			return
+		}
 		f.setState(status.StateStopped, nil)
 		return
 	}

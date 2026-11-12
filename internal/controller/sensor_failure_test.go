@@ -290,21 +290,30 @@ func TestFanController_SensorFailure_ConcurrentReads(t *testing.T) {
 	test.stop()
 }
 
+// assertRestoreResult calls restoreControlMode and checks whether it reports that it handed the fan over,
+// and that the restore was complete.
+func assertRestoreResult(t *testing.T, controller *DefaultFanController, handedOver bool, complete bool, msg string) {
+	t.Helper()
+	gotHandedOver, gotComplete := controller.restoreControlMode()
+	assert.Equal(t, handedOver, gotHandedOver, "handedOver: %s", msg)
+	assert.Equal(t, complete, gotComplete, "complete: %s", msg)
+}
+
 func TestRestoreControlMode_ReportsWhetherItHandedTheFanOver(t *testing.T) {
 	pwm := 100
 	auto := fans.ControlModeAutomatic
 
 	fan := newPanickingFan()
 	controller := &DefaultFanController{fan: fan, originalFanState: &FanStateSnapshot{ControlMode: &auto, PwmValue: &pwm}}
-	assert.True(t, controller.restoreControlMode())
+	assertRestoreResult(t, controller, true, true, "auto mode restored")
 
 	controller = &DefaultFanController{fan: fan}
-	assert.False(t, controller.restoreControlMode(), "original state never captured")
+	assertRestoreResult(t, controller, false, false, "original state never captured")
 
 	fan = newPanickingFan()
 	fan.ControlModeConfig = &configuration.ControlModeConfig{OnExit: &configuration.OnExitConfig{None: &configuration.OnExitNoneConfig{}}}
 	controller = &DefaultFanController{fan: fan, originalFanState: &FanStateSnapshot{ControlMode: &auto, PwmValue: &pwm}}
-	assert.False(t, controller.restoreControlMode(), "onExit: none")
+	assertRestoreResult(t, controller, false, true, "onExit: none")
 	assert.Empty(t, fan.getWrites())
 
 	// a fan without control mode support, whose PWM value is known
@@ -314,14 +323,14 @@ func TestRestoreControlMode_ReportsWhetherItHandedTheFanOver(t *testing.T) {
 	}
 	controller = &DefaultFanController{fan: pwmOnlyFan}
 	require.NoError(t, controller.storeCurrentFanState())
-	assert.False(t, controller.restoreControlMode(), "only the original PWM value is written, the fan stays at a fixed speed")
+	assertRestoreResult(t, controller, false, true, "only the original PWM value is written, the fan stays at a fixed speed")
 	assert.Equal(t, []int{180}, pwmOnlyFan.pwmWrites)
 
 	// a fan whose original control mode was manual PWM
 	manual := fans.ControlModePWM
 	fan = newPanickingFan()
 	controller = &DefaultFanController{fan: fan, originalFanState: &FanStateSnapshot{ControlMode: &manual, PwmValue: &pwm}}
-	assert.False(t, controller.restoreControlMode(), "original mode is manual PWM")
+	assertRestoreResult(t, controller, false, true, "original mode is manual PWM")
 	assert.Equal(t, []string{"mode", "pwm"}, fan.getWrites())
 
 	// a fan whose original control mode is unknown, and that rejects automatic control:
@@ -332,19 +341,19 @@ func TestRestoreControlMode_ReportsWhetherItHandedTheFanOver(t *testing.T) {
 		failingControlModes: map[fans.ControlMode]bool{fans.ControlModeAutomatic: true},
 	}
 	controller = &DefaultFanController{fan: rejectsAutoFan, originalFanState: &FanStateSnapshot{PwmValue: &pwm}}
-	assert.False(t, controller.restoreControlMode(), "fell back to a fixed PWM value")
+	assertRestoreResult(t, controller, false, false, "fell back to a fixed PWM value")
 	assert.Equal(t, []int{100}, rejectsAutoFan.pwmWrites)
 
 	// ... and that accepts automatic control
 	acceptsAutoFan := &restoreTestFan{MockFan: MockFan{ID: "fan", PWM: 180}, features: allFanFeatures}
 	controller = &DefaultFanController{fan: acceptsAutoFan, originalFanState: &FanStateSnapshot{PwmValue: &pwm}}
-	assert.True(t, controller.restoreControlMode(), "handed back to automatic control")
+	assertRestoreResult(t, controller, true, true, "handed back to automatic control")
 
 	// a fan without control mode support and without PWM readback (e.g. a cmd fan without getPwm)
 	unknownFan := &restoreTestFan{MockFan: MockFan{ID: "fan", PWM: 180}, features: map[fans.FeatureFlag]bool{}}
 	controller = &DefaultFanController{fan: unknownFan}
 	require.NoError(t, controller.storeCurrentFanState())
-	assert.False(t, controller.restoreControlMode(), "nothing known, nothing written")
+	assertRestoreResult(t, controller, false, true, "nothing known, nothing written")
 	assert.Empty(t, unknownFan.pwmWrites)
 }
 

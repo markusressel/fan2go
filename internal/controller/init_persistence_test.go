@@ -25,10 +25,18 @@ type fakePersistence struct {
 	rpmData            map[string]map[int]float64
 	setPwmToGetPwmMaps map[string]map[int]int
 	pwmMaps            map[string][]int
+	originalStates     map[string]persistence.FanOriginalState
 
 	loadRpmDataErrors           []error
 	loadSetPwmToGetPwmMapErrors []error
 	loadPwmMapErrors            []error
+	// original state: errors for the next Load, Save or Delete call (nil: no error)
+	loadOriginalStateErrors   []error
+	saveOriginalStateErrors   []error
+	deleteOriginalStateErrors []error
+	// number of SaveFanOriginalState and DeleteFanOriginalState calls
+	originalStateSaves   int
+	originalStateDeletes int
 }
 
 func newFakePersistence() *fakePersistence {
@@ -36,6 +44,7 @@ func newFakePersistence() *fakePersistence {
 		rpmData:            map[string]map[int]float64{},
 		setPwmToGetPwmMaps: map[string]map[int]int{},
 		pwmMaps:            map[string][]int{},
+		originalStates:     map[string]persistence.FanOriginalState{},
 	}
 }
 
@@ -133,6 +142,59 @@ func (p *fakePersistence) DeleteFanPwmMap(fanId string) error {
 	defer p.mu.Unlock()
 	delete(p.pwmMaps, fanId)
 	return nil
+}
+
+func (p *fakePersistence) LoadFanOriginalState(fanId string) (persistence.FanOriginalState, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := popError(&p.loadOriginalStateErrors); err != nil {
+		return persistence.FanOriginalState{}, err
+	}
+	state, ok := p.originalStates[fanId]
+	if !ok {
+		return persistence.FanOriginalState{}, os.ErrNotExist
+	}
+	return state, nil
+}
+
+func (p *fakePersistence) LoadFanOriginalStates() (map[string]persistence.FanOriginalState, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	result := map[string]persistence.FanOriginalState{}
+	for id, state := range p.originalStates {
+		result[id] = state
+	}
+	return result, nil
+}
+
+func (p *fakePersistence) SaveFanOriginalState(fanId string, state persistence.FanOriginalState) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.originalStateSaves++
+	if err := popError(&p.saveOriginalStateErrors); err != nil {
+		return err
+	}
+	p.originalStates[fanId] = state
+	return nil
+}
+
+func (p *fakePersistence) DeleteFanOriginalState(fanId string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.originalStateDeletes++
+	if err := popError(&p.deleteOriginalStateErrors); err != nil {
+		return err
+	}
+	delete(p.originalStates, fanId)
+	return nil
+}
+
+// originalState returns the saved original state of the fan, and false if there is none.
+func (p *fakePersistence) originalState(fanId string) (persistence.FanOriginalState, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	state, ok := p.originalStates[fanId]
+	return state, ok
 }
 
 func (p *fakePersistence) hasRpmData(fanId string) bool {

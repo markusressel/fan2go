@@ -44,6 +44,13 @@ Details of the individual subsystems are in their own documents:
    configurations, exiting"). This is not a config error: the fans may have been skipped because their hardware isn't
    available yet, so systemd restarts fan2go.
 
+Between steps 5 and 6, `forgetOriginalStatesOfUnconfiguredFans` deletes the saved original states (see
+[fan-controller.md](fan-controller.md)) of fans whose id is not in the config anymore. Fans that are configured but
+couldn't be created (e.g. their hwmon chip wasn't found) keep theirs. Such an entry means that an earlier run didn't
+hand the fan back completely (it was killed, or its restore failed), so each one is logged once as a warning, with the
+saved control mode and PWM, so the user can check that fan. This runs only at startup: on reload, the stopped
+controllers delete the entries of their fans when they hand them back.
+
 Each fan controller first creates the database directory (`Persistence.Init`). Then it waits before it touches its
 fan: `startupSensorWarmup` (2 s) plus one `tempSensorPollingRate`, so the sensor monitors have fresh readings. It then
 runs the fan initialization if needed, loads the saved curve and PWM mappings (which can still run the 0..255
@@ -441,8 +448,10 @@ described in the subsystem documents.
   `fan init` with the daemon stopped. A running daemon picks up the new data only after a reload or restart (see
   [fan-analysis.md](fan-analysis.md)).
 - **Skipped hardware is never retried** (#510). A device that appears after startup needs a reload or restart.
-- **Restore state is in memory only.** After `SIGKILL` or an OOM kill, fans stay in manual mode. The restarted daemon
-  then captures that manual state as the "original" state and restores to it on its next exit.
+- **A killed daemon can't hand the fans back.** After `SIGKILL` or an OOM kill, fans stay in manual mode at their
+  last PWM until the next run stops; that run restores them to the state saved before the killed run took over (see
+  [fan-controller.md](fan-controller.md)). Without a working database, the next run takes the manual state as the
+  original one.
 - **`CurrentConfig` is global mutable state.** Passing the config into the components is not done yet (out of scope
   of #542).
 - **`-c` help text** says the default is `$HOME/.fan2go.yaml`; the actual search is `fan2go.yaml` (or `.yml`, etc.) in

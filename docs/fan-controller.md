@@ -32,8 +32,9 @@ polling and staleness in [sensors.md](sensors.md), and curves and the curve eval
 Main types and state:
 
 - `FanController` (interface, used by the daemon, statistics and CLI), implemented by `DefaultFanController`.
-- `FanStateSnapshot` holds the control mode and raw PWM value the fan had before fan2go touched it. Both are
-  pointers; `nil` means "unknown".
+- `FanStateSnapshot` holds the control mode and raw PWM value the fan had before fan2go touched it, and for hwmon
+  fans the driver value behind "automatic" (e.g. `pwm_enable=5`). All are pointers; `nil` means "unknown". While
+  fan2go controls the fan, the snapshot is also saved in the database (see below).
 - `lastTarget` is the last target fan2go wrote, before the `pwmMap`. `lastSetPwm` is the raw value after the
   `pwmMap`, exposed to statistics through `GetLastSetPwm`.
 - `minPwmOffset`, `pwmFloorSetAt`, `rpmAvgSeeded` (stall detection); `sensorFailureAction`, `pwmWriteFailures`,
@@ -225,6 +226,60 @@ PWM is only written when the fan is not handed back to automatic.
 **Trade-offs**: Fans whose state could not be read keep their last speed on exit, which may be low (set
 `onExit.speed`). The restore is best effort: failures are logged, not retried.
 
+### Persist the original state until the fan is handed back
+
+**Decision**: The snapshot is also saved in the bbolt database (bucket `fanOriginalState`, keyed by fan id, see
+[fan-analysis.md](fan-analysis.md)) while fan2go controls the fan (`internal/controller/original_state.go`):
+
+- Saved right before fan2go may write to the fan (`markMayWriteToFan`: start of the initialization, the set -> get
+  PWM sweep, `takeManualControl` in `Run`, and taking control again after `onSensorFailure: restore`). A `Run` that
+  stops during the warm-up saves nothing.
+- Deleted after a complete restore (`restoreControlModeOnceAndForget`): no write failed, no fallback to full speed,
+  no panic. This covers exit, reload, update errors, panics, `fan2go fan init` and `onSensorFailure: restore` if
+  the fan was handed over. `onExit: none` counts as complete. If `restore` falls back to `max`, fan2go still controls
+  the fan and the entry stays. After an incomplete restore, the entry stays too, and the stopped controller reports
+  the error "fan not handed back completely, see the log" in its status (`/controller`).
+- On start, `storeInitialFanState` reads the fan as before, then loads the entry. A saved state wins over the
+  read one (logged as a warning): the fan is presumably still in the state a killed run left behind. The hwmon
+  driver value of the automatic mode is seeded into the fan (`fans.AutomaticControlModeKeeper`), so the restore
+  writes e.g. 5 and not 2. Because the fan is not in its original state, the controller also restores it on errors
+  or a stop before it touched the fan (`handbackPending`).
+- The entry stores a hardware key built from stable config values (hwmon `platform/index/pwmChannel`, nvidia
+  `device/index`, file `path`, cmd `setPwm` command), not from resolved sysfs paths. An entry whose key doesn't match
+  the fan config is logged, deleted, and the read state is used. Editing these values (e.g. the `platform` regex)
+  without changing the hardware also drops the entry.
+- Corrupt entries (unparsable, PWM outside 0..255, control mode other than 0, 1, 2) are deleted and ignored.
+- `controlMode.onExit.controlMode` that can't be parsed counts as an incomplete restore. A fan that can't write
+  its control mode counts as complete (nothing more can be done).
+- Entries of fans that are no longer configured are logged once and deleted at daemon start (see
+  [daemon.md](daemon.md)).
+- Database errors never stop a controller. A load error (e.g. the database is locked): the read state is used,
+  and this controller neither overwrites nor deletes the entry, so a later run can still use it. The load is retried
+  once per `Run`, right before fan2go takes over the fan. A save error: fan2go
+  takes control anyway (as before). A delete error: the next run restores to the same state again. These operations
+  wait at most 5 s for the database lock, not 1 minute.
+
+**Why**: Before, the snapshot lived in memory only. After SIGKILL or an OOM kill (`MemoryMax=256M` in the unit),
+the fan stays in manual mode at the last PWM; systemd restarts fan2go, which took that state as "original" and
+"restored" manual mode at a fixed PWM on its next exit. The same happened on reload when the old controller's
+restore was incomplete: the new controller snapshotted fan2go's own state. An entry that only exists while fan2go
+controls the fan is a precise marker for "not handed back".
+
+**Who benefits**: Users running fan2go under systemd (OOM kills, crashes, hard restarts); hwmon users with a
+driver specific automatic mode.
+
+**Alternatives considered**: Treating manual mode at startup as unknown and handing the fan back to automatic
+control (wrong for users who keep a fan in manual mode on purpose). A boot id check, so that entries from before a
+reboot are ignored (rejected: a warm reboot can keep manual mode, and the saved state is still the one from before
+fan2go touched the fan). An `ExecStopPost` helper that restores without a new start (not implemented).
+
+**Trade-offs**: A fan left behind by a killed run is only restored when fan2go stops the next time, not right
+after the kill. If the user changes the fan state between the kill and the next start, the saved state still wins.
+Without a working database, the behaviour is the old one. A fan whose restore always fails (e.g. a driver that
+rejects automatic mode) keeps its entry, so every start logs the "didn't hand the fan back completely" warning; the
+saved state is still its true original. Running `fan2go fan init` while the daemon controls the
+same fan uses and then deletes the daemon's entry; that combination is not supported anyway.
+
 ### Panics, signals and hanging commands must not skip the restore
 
 **Decision**:
@@ -248,8 +303,8 @@ left all fans in manual mode.
 
 **Who benefits**: People running fan2go headless under systemd; `cmd` fan and sensor users.
 
-**Trade-offs**: SIGKILL, OOM kills and power loss still leave the fan at its last PWM. Ctrl-C twice still waits
-for the restore. A stopped controller stays stopped until restart or reload.
+**Trade-offs**: SIGKILL, OOM kills and power loss still leave the fan at its last PWM until the next run restores
+it on its exit (see above). Ctrl-C twice still waits for the restore. A stopped controller stays stopped until restart or reload.
 
 ### Sensor and curve failures: `max` by default, `restore` on request
 
@@ -411,8 +466,9 @@ reload reuses the tested shutdown path. **Who benefits**: users who tune their c
 
 **Trade-offs**: During a reload, each fan is handed back for about 3.2 s (warm-up plus update delay) before the
 new controller takes over. The `minPwmOffset` and runtime sanity check overrides are lost. The new controller takes
-its snapshot after the old one restored the fan; if that restore was incomplete, the new snapshot is fan2go's own
-state, not the original one.
+its snapshot after the old one restored the fan; if that restore was incomplete, the old controller kept the saved
+original state in the database, and the new controller uses it (without a working database, the new snapshot is
+fan2go's own state).
 
 ## Configuration
 
@@ -450,6 +506,10 @@ threshold 50 RPM, stall reaction 3 RPM polling periods, PWM write failure timeou
 - A stopped controller (`ErrPwmWriteFailed`, `ErrFanStalledAtMaxPwm`, panic) is not restarted, and the daemon keeps
   running even if no fan is controlled anymore.
 - After a failed reload, the old controller objects run again with the state of their previous run (failure
-  states, `minPwmOffset`, stall timers, RPM average). Only `restoreOnce` and `mayHaveWrittenToFan` are reset.
+  states, `minPwmOffset`, stall timers, RPM average) and keep their snapshot. Only `restoreOnce`,
+  `mayHaveWrittenToFan` (set again if the last restore was incomplete, `handbackPending`) and
+  `originalFanStateSaveFailed` are reset. The saved original state is saved again at the next takeover if the last
+  restore deleted it.
 - Also see the trade-offs above: `minPwmOffset` is not persisted, stall detection skips alternating targets and
-  steps before the `pwmMap`, no restore after SIGKILL, one global update rate, a ~3.2 s handback on every reload.
+  steps before the `pwmMap`, a fan left behind by SIGKILL is only restored on the next exit, one global update
+  rate, a ~3.2 s handback on every reload.

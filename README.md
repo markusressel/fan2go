@@ -438,6 +438,8 @@ fans:
     #   This also applies when a fan controller stops because of an error, and to onSensorFailure: restore.
     #   Further SIGINT/SIGTERM/SIGHUP
     #   signals during shutdown are ignored until all fans are handled; use SIGKILL to force an exit.
+    #   The original state is also saved in the database (dbPath) while fan2go controls the fan. If fan2go
+    #   is killed (SIGKILL, OOM, crash), the next run restores the fan to that saved state when it stops.
     #   String shorthand:
     #     onExit: restore   # restore original control mode and PWM value (default).
     #                       # Values fan2go could not read when it started (e.g. a cmd fan without
