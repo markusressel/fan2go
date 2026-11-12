@@ -6,17 +6,17 @@ import (
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/hwmon/lmsensors"
 	"github.com/markusressel/fan2go/internal/sensors"
-	"github.com/md14454/gosensors"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestComputeIdentifierIsa(t *testing.T) {
 	// GIVEN
-	c := gosensors.Chip{
+	c := lmsensors.Chip{
 		Prefix: "ucsi_source_psy_USBC000:002",
 		Addr:   0x0f1,
-		Bus: gosensors.Bus{
+		Bus: lmsensors.Bus{
 			Type: BusTypeIsa,
 			Nr:   1,
 		},
@@ -33,10 +33,10 @@ func TestComputeIdentifierIsa(t *testing.T) {
 
 func TestComputeIdentifierPci(t *testing.T) {
 	// GIVEN
-	c := gosensors.Chip{
+	c := lmsensors.Chip{
 		Prefix: "nvme",
 		Addr:   0x5,
-		Bus: gosensors.Bus{
+		Bus: lmsensors.Bus{
 			Type: BusTypePci,
 			Nr:   1,
 		},
@@ -53,9 +53,9 @@ func TestComputeIdentifierPci(t *testing.T) {
 
 func TestComputeIdentifierAcpi(t *testing.T) {
 	// GIVEN
-	c := gosensors.Chip{
+	c := lmsensors.Chip{
 		Prefix: "nvme",
-		Bus: gosensors.Bus{
+		Bus: lmsensors.Bus{
 			Type: BusTypeAcpi,
 			Nr:   1,
 		},
@@ -73,10 +73,10 @@ func TestComputeIdentifierAcpi(t *testing.T) {
 func TestComputeIdentifierPciHighAddress(t *testing.T) {
 	// GIVEN a PCI chip at an address >= 0x1000, which libsensors (`sensors`) prints as "nvme-pci-5a00".
 	// libsensors uses bus number 0 for PCI chips.
-	c := gosensors.Chip{
+	c := lmsensors.Chip{
 		Prefix: "nvme",
 		Addr:   0x5a00,
-		Bus: gosensors.Bus{
+		Bus: lmsensors.Bus{
 			Type: BusTypePci,
 			Nr:   0,
 		},
@@ -92,10 +92,10 @@ func TestComputeIdentifierPciHighAddress(t *testing.T) {
 
 func TestComputeIdentifierPciLowAddressMatchesLmSensorsFormat(t *testing.T) {
 	// GIVEN a PCI chip at an address < 0x1000 on bus number 0
-	c := gosensors.Chip{
+	c := lmsensors.Chip{
 		Prefix: "amdgpu",
 		Addr:   0x0300,
-		Bus: gosensors.Bus{
+		Bus: lmsensors.Bus{
 			Type: BusTypePci,
 			Nr:   0,
 		},
@@ -112,24 +112,24 @@ func TestComputeIdentifierPciLowAddressMatchesLmSensorsFormat(t *testing.T) {
 func TestComputeLmSensorsName(t *testing.T) {
 	tests := []struct {
 		name     string
-		chip     gosensors.Chip
+		chip     lmsensors.Chip
 		expected string
 	}{
-		{name: "pci, address >= 0x1000", chip: gosensors.Chip{Prefix: "nvme", Addr: 0x5a00, Bus: gosensors.Bus{Type: BusTypePci}}, expected: "nvme-pci-5a00"},
-		{name: "pci, address < 0x1000", chip: gosensors.Chip{Prefix: "amdgpu", Addr: 0x0300, Bus: gosensors.Bus{Type: BusTypePci}}, expected: "amdgpu-pci-0300"},
-		{name: "isa", chip: gosensors.Chip{Prefix: "nct6798", Addr: 0x290, Bus: gosensors.Bus{Type: BusTypeIsa}}, expected: "nct6798-isa-0290"},
+		{name: "pci, address >= 0x1000", chip: lmsensors.Chip{Prefix: "nvme", Addr: 0x5a00, Bus: lmsensors.Bus{Type: BusTypePci}}, expected: "nvme-pci-5a00"},
+		{name: "pci, address < 0x1000", chip: lmsensors.Chip{Prefix: "amdgpu", Addr: 0x0300, Bus: lmsensors.Bus{Type: BusTypePci}}, expected: "amdgpu-pci-0300"},
+		{name: "isa", chip: lmsensors.Chip{Prefix: "nct6798", Addr: 0x290, Bus: lmsensors.Bus{Type: BusTypeIsa}}, expected: "nct6798-isa-0290"},
 		// fan2go names this chip "ucsi_source_psy_USBC000:002-isa-10f1", see TestComputeIdentifierIsa
-		{name: "isa, bus number 1", chip: gosensors.Chip{Prefix: "ucsi_source_psy_USBC000:002", Addr: 0x0f1, Bus: gosensors.Bus{Type: BusTypeIsa, Nr: 1}}, expected: "ucsi_source_psy_USBC000:002-isa-00f1"},
-		{name: "i2c", chip: gosensors.Chip{Prefix: "jc42", Addr: 0x1b, Bus: gosensors.Bus{Type: BusTypeI2c, Nr: 0}}, expected: "jc42-i2c-0-1b"},
-		{name: "i2c, short address", chip: gosensors.Chip{Prefix: "jc42", Addr: 0x8, Bus: gosensors.Bus{Type: BusTypeI2c, Nr: 3}}, expected: "jc42-i2c-3-08"},
-		{name: "spi", chip: gosensors.Chip{Prefix: "chip", Addr: 0x1, Bus: gosensors.Bus{Type: BusTypeSpi, Nr: 2}}, expected: "chip-spi-2-1"},
-		{name: "virtual", chip: gosensors.Chip{Prefix: "iwlwifi_1", Addr: 0, Bus: gosensors.Bus{Type: BusTypeVirtual}}, expected: "iwlwifi_1-virtual-0"},
-		{name: "acpi", chip: gosensors.Chip{Prefix: "acpitz", Addr: 0, Bus: gosensors.Bus{Type: BusTypeAcpi}}, expected: "acpitz-acpi-0"},
-		{name: "hid", chip: gosensors.Chip{Prefix: "corsaircpro", Addr: 0x3, Bus: gosensors.Bus{Type: BusTypeHid, Nr: 3}}, expected: "corsaircpro-hid-3-3"},
-		{name: "mdio", chip: gosensors.Chip{Prefix: "r8169_0_600:00", Addr: 0, Bus: gosensors.Bus{Type: BusTypeMdio}}, expected: "r8169_0_600:00-mdio-0"},
-		{name: "scsi", chip: gosensors.Chip{Prefix: "drivetemp", Addr: 0, Bus: gosensors.Bus{Type: BusTypeScsi, Nr: 6}}, expected: "drivetemp-scsi-6-0"},
-		{name: "unknown bus type", chip: gosensors.Chip{Prefix: "chip", Bus: gosensors.Bus{Type: 42}}, expected: ""},
-		{name: "no prefix", chip: gosensors.Chip{Addr: 0x5a00, Bus: gosensors.Bus{Type: BusTypePci}}, expected: ""},
+		{name: "isa, bus number 1", chip: lmsensors.Chip{Prefix: "ucsi_source_psy_USBC000:002", Addr: 0x0f1, Bus: lmsensors.Bus{Type: BusTypeIsa, Nr: 1}}, expected: "ucsi_source_psy_USBC000:002-isa-00f1"},
+		{name: "i2c", chip: lmsensors.Chip{Prefix: "jc42", Addr: 0x1b, Bus: lmsensors.Bus{Type: BusTypeI2c, Nr: 0}}, expected: "jc42-i2c-0-1b"},
+		{name: "i2c, short address", chip: lmsensors.Chip{Prefix: "jc42", Addr: 0x8, Bus: lmsensors.Bus{Type: BusTypeI2c, Nr: 3}}, expected: "jc42-i2c-3-08"},
+		{name: "spi", chip: lmsensors.Chip{Prefix: "chip", Addr: 0x1, Bus: lmsensors.Bus{Type: BusTypeSpi, Nr: 2}}, expected: "chip-spi-2-1"},
+		{name: "virtual", chip: lmsensors.Chip{Prefix: "iwlwifi_1", Addr: 0, Bus: lmsensors.Bus{Type: BusTypeVirtual}}, expected: "iwlwifi_1-virtual-0"},
+		{name: "acpi", chip: lmsensors.Chip{Prefix: "acpitz", Addr: 0, Bus: lmsensors.Bus{Type: BusTypeAcpi}}, expected: "acpitz-acpi-0"},
+		{name: "hid", chip: lmsensors.Chip{Prefix: "corsaircpro", Addr: 0x3, Bus: lmsensors.Bus{Type: BusTypeHid, Nr: 3}}, expected: "corsaircpro-hid-3-3"},
+		{name: "mdio", chip: lmsensors.Chip{Prefix: "r8169_0_600:00", Addr: 0, Bus: lmsensors.Bus{Type: BusTypeMdio}}, expected: "r8169_0_600:00-mdio-0"},
+		{name: "scsi", chip: lmsensors.Chip{Prefix: "drivetemp", Addr: 0, Bus: lmsensors.Bus{Type: BusTypeScsi, Nr: 6}}, expected: "drivetemp-scsi-6-0"},
+		{name: "unknown bus type", chip: lmsensors.Chip{Prefix: "chip", Bus: lmsensors.Bus{Type: 42}}, expected: ""},
+		{name: "no prefix", chip: lmsensors.Chip{Addr: 0x5a00, Bus: lmsensors.Bus{Type: BusTypePci}}, expected: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

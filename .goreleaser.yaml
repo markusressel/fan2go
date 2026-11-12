@@ -1,8 +1,9 @@
 # GoReleaser configuration for fan2go releases (https://goreleaser.com).
 #
 # The Go workflow (.github/workflows/go.yml) runs this on an amd64 Ubuntu 24.04 runner; foreign architectures are
-# cross-compiled with cgo against the multiarch libsensors-dev packages (.github/scripts/install-cross-toolchains.sh).
-# Every binary is checked by .github/scripts/check-binary.sh (glibc floor, libsensors, NVML symbols, smoke test).
+# cross-compiled with cgo (toolchains: .github/scripts/install-cross-toolchains.sh).
+# Every binary is checked by .github/scripts/check-binary.sh (glibc floor, no libsensors link, NVML symbols, smoke
+# test).
 #
 # Local snapshot build (needs the same toolchains, see the install script):
 #   goreleaser release --snapshot --clean
@@ -85,24 +86,6 @@ builds:
         - cmd: ./.github/scripts/check-binary.sh "{{ .Path }}" "{{ .Arch }}" no-nvml
           output: true
 
-  # The NVML build again, for the .rpm packages: Fedora and openSUSE ship libsensors 3.6 with the soname
-  # libsensors.so.4 (Debian, Ubuntu and Arch Linux: libsensors.so.5). The headers and symbols are identical, only the
-  # soname differs, so the binary's dependency is renamed to libsensors.so.4.
-  - <<: *build
-    id: fan2go-rpm
-    overrides: *cross-cc
-    hooks:
-      post:
-        - cmd: go run ./.github/scripts/replace-needed.go "{{ .Path }}" libsensors.so.5 libsensors.so.4
-          # the tool runs on the build machine, not on the target
-          env:
-            - GOOS=
-            - GOARCH=
-            - CGO_ENABLED=0
-          output: true
-        - cmd: ./.github/scripts/check-binary.sh "{{ .Path }}" "{{ .Arch }}" nvml libsensors.so.4
-          output: true
-
 archives:
   # raw binaries with the asset names of earlier releases: fan2go-linux-<arch>[-no-nvml]
   - id: binary
@@ -120,7 +103,8 @@ archives:
 
 nfpms:
   # Both package formats ship the NVML build: it runs without the NVIDIA driver and supports NVIDIA GPUs where the
-  # driver is installed.
+  # driver is installed. fan2go loads libsensors at runtime (libsensors.so.5 or .so.4) and detects the hwmon chips
+  # directly in sysfs without it, so libsensors is only a weak dependency.
   - &package
     id: deb
     ids:
@@ -145,9 +129,13 @@ nfpms:
         dst: /usr/lib/systemd/system/fan2go.service
         file_info:
           mode: 0644
+      # the config has to be written for the hardware, so the package only ships the example and owns the directory
+      - dst: /etc/fan2go
+        type: dir
+        file_info:
+          mode: 0755
       - src: fan2go.yaml
-        dst: /etc/fan2go/fan2go.yaml
-        type: config|noreplace
+        dst: /usr/share/doc/fan2go/fan2go.yaml.example
         file_info:
           mode: 0644
       - src: README.md
@@ -171,22 +159,20 @@ nfpms:
       postremove: packaging/nfpm/postremove.sh
     dependencies:
       - libc6 (>= 2.34)
+    recommends:
       - libsensors5
     suggests:
       - libnotify-bin
 
   - <<: *package
     id: rpm
-    ids:
-      - fan2go-rpm
     formats:
       - rpm
     dependencies:
       - glibc >= 2.34
-      # the library and its config file, which libsensors fails to initialize without. Fedora/RHEL: lm_sensors-libs
-      # and lm_sensors (the config isn't in -libs); openSUSE: libsensors4 (both).
-      - libsensors.so.4()(64bit)
-      - /etc/sensors3.conf
+    recommends:
+      # Fedora/RHEL: lm_sensors-libs, openSUSE: libsensors4 (both ship libsensors.so.4)
+      - (lm_sensors-libs or libsensors4)
     suggests:
       - libnotify
 

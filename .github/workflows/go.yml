@@ -17,8 +17,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install libsensors-dev (needed for gosensors testing)
-        run: sudo apt-get install -y libsensors-dev
+      - name: Install libsensors (the hwmon tests compare its detection with the sysfs fallback)
+        run: sudo apt-get install -y libsensors5
 
       - name: Checkout the repository
         uses: actions/checkout@v7
@@ -38,7 +38,7 @@ jobs:
 
   # Builds everything a release ships (binaries, .deb/.rpm packages, source archive, checksums) without publishing it,
   # so .goreleaser.yaml is exercised on every pull request and push. Every binary is checked by
-  # .github/scripts/check-binary.sh (glibc floor, libsensors, NVML symbols, qemu smoke test).
+  # .github/scripts/check-binary.sh (glibc floor, no libsensors link, NVML symbols, qemu smoke test).
   snapshot:
     name: GoReleaser snapshot
     runs-on: ubuntu-24.04

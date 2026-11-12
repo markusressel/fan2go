@@ -426,10 +426,12 @@ the NVIDIA fans, sensors and the NVML handle. CI builds both variants for every 
 the `disable_nvml` variant. The `.deb` and `.rpm` packages ship the NVML variant. The test suite runs with
 `disable_nvml`.
 
-All release binaries are built on Ubuntu 24.04 and link `libsensors.so.5`. Fedora, RHEL and openSUSE ship the same
-libsensors 3.6 (identical headers and symbols) under the older soname `libsensors.so.4`, so the `.rpm` packages
-contain a separate build whose dependency is renamed to `libsensors.so.4` (`.github/scripts/replace-needed.go`).
-CI rejects binaries that need a glibc newer than 2.34.
+All release binaries are built on Ubuntu 24.04. They don't link libsensors: fan2go loads `libsensors.so.5`,
+`libsensors.so.4` (Fedora, RHEL, openSUSE) or `libsensors.so` at runtime and detects the hwmon chips in sysfs if none
+is installed (see [sensors](sensors.md#libsensors-is-loaded-at-runtime-with-a-sysfs-fallback)). So the plain
+binaries, the `.deb` and the `.rpm` packages contain the same binary, and the packages only recommend libsensors. CI
+rejects binaries that need a glibc newer than 2.34 or have a `NEEDED` entry for libsensors, and runs `fan2go detect`
+with libsensors on every architecture.
 
 The NVML variant doesn't link `libnvidia-ml`: go-nvml leaves the NVML symbols unresolved at link time and loads
 `libnvidia-ml.so.1` with `dlopen()` when fan2go initializes NVML. The binary is linked with lazy binding

@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Checks a fan2go binary built by GoReleaser (called as a post-build hook, see .goreleaser.yaml):
 # - it doesn't need a glibc newer than MAX_GLIBC, so it runs on all distributions we support,
-# - it links the expected libsensors soname (libsensors.so.5, or libsensors.so.4 for the .rpm build),
+# - it doesn't link libsensors: fan2go loads it at runtime (libsensors.so.5 or libsensors.so.4), so one binary works
+#   on all distributions,
 # - the NVML build references the (lazily bound) NVML symbols, the no-nvml build doesn't reference any,
-# - it starts and prints its version (foreign architectures run under qemu-user-static).
+# - it starts and prints its version, and `fan2go detect` finds and loads libsensors (foreign architectures run under
+#   qemu-user-static, with the libsensors5 package of the target architecture).
 #
-# Usage: check-binary.sh <binary> <goarch> <nvml|no-nvml> [libsensors soname, default: libsensors.so.5]
-# Without qemu, the smoke test of foreign binaries is skipped, except in CI (CI=true), where it fails.
+# Usage: check-binary.sh <binary> <goarch> <nvml|no-nvml>
+# Without qemu or libsensors, these parts are skipped, except in CI (CI=true), where they fail.
 set -euo pipefail
 
 MAX_GLIBC="2.34"
@@ -14,11 +16,15 @@ MAX_GLIBC="2.34"
 bin="$1"
 goarch="$2"
 variant="$3"
-libsensors="${4:-libsensors.so.5}"
 
 fail() {
   echo "check-binary: ${bin}: $*" >&2
   exit 1
+}
+
+skip() {
+  [ "${CI:-}" != "true" ] || fail "$*"
+  echo "check-binary: ${bin}: $*, skipping" >&2
 }
 
 # glibc symbol versions the binary requires (from .gnu.version_r)
@@ -30,7 +36,10 @@ if [ "$(printf '%s\n%s\n' "${newest_glibc}" "${MAX_GLIBC}" | sort -V | tail -n 1
 fi
 
 needed="$(readelf -d -W "${bin}" | sed -n 's/.*Shared library: \[\(.*\)\]/\1/p')"
-printf '%s\n' "${needed}" | grep -qxF "${libsensors}" || fail "doesn't link ${libsensors} (links: ${needed//$'\n'/ })"
+if printf '%s\n' "${needed}" | grep -q 'libsensors'; then
+  fail "links libsensors (links: ${needed//$'\n'/ }), it must be loaded at runtime"
+fi
+printf '%s\n' "${needed}" | grep -qxF "libc.so.6" || fail "doesn't link libc.so.6 (links: ${needed//$'\n'/ })"
 
 nvml_symbols="$(readelf --dyn-syms -W "${bin}" | grep -c 'nvml' || true)"
 case "${variant}" in
@@ -46,33 +55,18 @@ case "${variant}" in
 esac
 
 case "${goarch}" in
-  amd64) triplet="x86_64-linux-gnu" qemu="qemu-x86_64-static" ;;
-  arm64) triplet="aarch64-linux-gnu" qemu="qemu-aarch64-static" ;;
-  ppc64le) triplet="powerpc64le-linux-gnu" qemu="qemu-ppc64le-static" ;;
-  s390x) triplet="s390x-linux-gnu" qemu="qemu-s390x-static" ;;
-  riscv64) triplet="riscv64-linux-gnu" qemu="qemu-riscv64-static" ;;
+  amd64) qemu="qemu-x86_64-static" ;;
+  arm64) qemu="qemu-aarch64-static" ;;
+  ppc64le) qemu="qemu-ppc64le-static" ;;
+  s390x) qemu="qemu-s390x-static" ;;
+  riscv64) qemu="qemu-riscv64-static" ;;
   *) fail "unknown architecture ${goarch}" ;;
 esac
-
-# The build machine (Debian/Ubuntu) only has libsensors.so.5. For a binary that links another soname (the .rpm
-# build), point that soname at it, so the smoke test also checks that the patched binary loads.
-lib_dir=""
-if [ "${libsensors}" != "libsensors.so.5" ]; then
-  lib_dir="$(mktemp -d)"
-  trap 'rm -rf "${lib_dir}"' EXIT
-  host_lib="/usr/lib/${triplet}/libsensors.so.5"
-  if [ "${goarch}" = "$(go env GOHOSTARCH)" ]; then
-    host_lib="$(ldconfig -p | awk '$1 == "libsensors.so.5" { print $NF; exit }')"
-  fi
-  [ -e "${host_lib}" ] || fail "libsensors.so.5 for ${goarch} not found on this machine"
-  ln -s "${host_lib}" "${lib_dir}/${libsensors}"
-fi
 
 runner=()
 if [ "${goarch}" != "$(go env GOHOSTARCH)" ]; then
   if ! command -v "${qemu}" > /dev/null; then
-    [ "${CI:-}" != "true" ] || fail "${qemu} not found"
-    echo "check-binary: ${bin}: ${qemu} not found, skipping the smoke test" >&2
+    skip "${qemu} not found, can't run the binary"
     echo "check-binary: ${bin}: ok (GLIBC_${newest_glibc}, ${nvml_symbols} NVML symbols, not run)"
     exit 0
   fi
@@ -80,5 +74,20 @@ if [ "${goarch}" != "$(go env GOHOSTARCH)" ]; then
   runner=("${qemu}")
 fi
 
-version_output="$(LD_LIBRARY_PATH="${lib_dir}" "${runner[@]}" "${bin}" version)" || fail "'fan2go version' failed"
-echo "check-binary: ${bin}: ok (GLIBC_${newest_glibc}, ${nvml_symbols} NVML symbols, version: ${version_output})"
+version_output="$("${runner[@]}" "${bin}" version)" || fail "'fan2go version' failed"
+
+# detect logs the loaded libsensors at debug level; it fails if it can't run at all
+detect_output="$("${runner[@]}" "${bin}" detect --verbose --no-style 2>&1)" || {
+  printf '%s\n' "${detect_output}" | tail -n 20 >&2
+  fail "'fan2go detect' failed"
+}
+libsensors="$(printf '%s\n' "${detect_output}" | grep -oE 'Detecting hwmon chips with libsensors\.so[.0-9]*' | head -n 1 ||
+  true)"
+if [ -z "${libsensors}" ]; then
+  printf '%s\n' "${detect_output}" | grep -i 'libsensors' | head -n 3 >&2 || true
+  skip "'fan2go detect' didn't load libsensors"
+  libsensors="sysfs fallback"
+fi
+
+echo "check-binary: ${bin}: ok (GLIBC_${newest_glibc}, ${nvml_symbols} NVML symbols, version: ${version_output}," \
+  "detect: ${libsensors#Detecting hwmon chips with })"

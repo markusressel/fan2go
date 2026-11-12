@@ -2,7 +2,9 @@ package configuration
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"math"
 	"strconv"
 	"strings"
@@ -154,9 +156,24 @@ func setDefaultValues() {
 func DetectAndReadConfigFile() (string, error) {
 	err := ReadInConfig()
 	if err != nil {
+		if isConfigFileMissing(err) {
+			return "", fmt.Errorf("error reading config file: %w. %s", err, missingConfigFileHint)
+		}
 		return "", fmt.Errorf("error reading config file: %w", err)
 	}
 	return GetFilePath(), nil
+}
+
+// missingConfigFileHint tells the user how to create a config file
+const missingConfigFileHint = "Create the config file /etc/fan2go/fan2go.yaml for your hardware " +
+	"(`fan2go detect` lists fans and sensors). The .deb and .rpm packages contain an example at " +
+	"/usr/share/doc/fan2go/fan2go.yaml.example, see also https://github.com/markusressel/fan2go#configuration"
+
+// isConfigFileMissing reports whether err means that no config file was found (searched paths) or that the given
+// config file doesn't exist
+func isConfigFileMissing(err error) bool {
+	var notFound viper.ConfigFileNotFoundError
+	return errors.As(err, &notFound) || errors.Is(err, fs.ErrNotExist)
 }
 
 // LoadAndValidateConfigFile detects, reads, decodes and validates the config file, and sets CurrentConfig to it.

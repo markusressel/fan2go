@@ -10,7 +10,8 @@ The code lives in:
 - `internal/sensors`: the `Sensor` interface, one type per backend, `ReadingTracker` and `FreshReading`.
 - `internal/monitor.go`: the sensor monitor (`sensorMonitor.Run`, `updateSensor`).
 - `internal/factory.go`: `initializeSensors` creates the sensors at startup and on reload.
-- `internal/hwmon`: discovery of hwmon chips through libsensors and resolution of hwmon sensor configs.
+- `internal/hwmon`: discovery of hwmon chips and resolution of hwmon sensor configs.
+- `internal/hwmon/lmsensors`: loads libsensors at runtime and lists its chips; the sysfs fallback without libsensors.
 - `internal/nvidia_base`: NVML initialization and device lookup for NVIDIA sensors (and fans).
 - `internal/configuration/sensors.go`, `config.go` and `validation.go`: config types, defaults and validation.
 
@@ -213,7 +214,8 @@ weight. The reason for an EMA isn't documented; likely simplicity and no buffer 
 ### hwmon sensors are resolved by platform regex plus index or channel
 
 **Decision**: An hwmon sensor is configured with a `platform` regex and exactly one of `index` or `channel`
-(both >= 1). `hwmon.GetChips` discovers chips and their `tempN` features through libsensors (`gosensors`).
+(both >= 1). `hwmon.GetChips` discovers chips and their `tempN` features through libsensors, or in sysfs if
+libsensors is missing (see below).
 `hwmon.FindSensorForConfig` (used by `UpdateSensorConfigFromHwMonControllers`) then picks the first matching sensor
 and stores its index, channel and sysfs input path in the config. The daemon copies the label, min and max of the
 matched sensor into the runtime `HwmonSensor` (shown in the REST API; `-1` if the chip doesn't report min or max).
@@ -231,7 +233,7 @@ matched sensor into the runtime `HwmonSensor` (shown in the REST API; `-1` if th
 plus a channel identifies the input independently of that numbering. The fan2go names and the libsensors names
 differ for PCI and ISA addresses >= 0x1000 (`nvme-pci-05a00` vs. `nvme-pci-5a00`), so a name copied from `sensors`
 didn't match before #550. Matching the fan2go names first keeps existing configs resolving to the same sensor.
-The libsensors name is formatted in Go, because `gosensors.Chip.String()` could crash on a libsensors error (#550).
+The libsensors name is formatted in Go, because the libsensors function for it could crash on an error (#550).
 
 **Who benefits**: Users who copy names from `sensors`, users with NVMe drives or other PCI chips at high addresses,
 and users whose chips expose several temperature inputs.
@@ -247,7 +249,43 @@ and users whose chips expose several temperature inputs.
 - A sensor that can't be resolved is skipped with a warning and a "Sensor Skipped" notification. The daemon keeps
   running. Curves that use the sensor then fail with "sensor not found", and their fans apply `onSensorFailure`.
 - libsensors is used only for discovery. fan2go reads the raw sysfs value, so `compute` statements from the
-  libsensors config don't apply.
+  libsensors config don't apply to it.
+
+### libsensors is loaded at runtime, with a sysfs fallback
+
+**Decision**: fan2go doesn't link libsensors. `internal/hwmon/lmsensors` loads it with `dlopen()` the first time chips
+are detected, trying `libsensors.so.5`, `libsensors.so.4` and `libsensors.so` in this order, and resolves the few
+functions it uses with `dlsym()`. The C types are declared in fan2go, so the build needs no libsensors headers. CI
+checks that the release binaries have no `NEEDED` entry for libsensors. libsensors is initialized with
+`/etc/sensors3.conf` only, like before (gosensors did the same): `/etc/sensors.conf` and `/etc/sensors.d` are not
+read. If `/etc/sensors3.conf` doesn't exist, libsensors runs with an empty configuration (previously fan2go exited).
+
+If libsensors can't be loaded or initialized (or fan2go was built without cgo), fan2go logs one warning and
+enumerates `/sys/class/hwmon` itself (`lmsensors.SysfsChips`). The fallback mirrors libsensors 3.6.2: the same chip
+prefixes, bus types and addresses (so the same platform names), the same features in the same order, and the same
+value scaling. A test compares both on the machine that runs the tests, if libsensors is installed.
+
+**Why**: Debian, Ubuntu and Arch Linux ship libsensors as `libsensors.so.5`, Fedora, RHEL and openSUSE ship the
+same library as `libsensors.so.4`. A binary linked against one soname doesn't start on the other distributions.
+Loading at runtime lets one binary run everywhere, and fan2go keeps working where libsensors is missing (minimal
+systems, containers). libsensors itself only adds the configuration file on top of sysfs for what fan2go needs.
+
+**Who benefits**: Users of the plain binaries on any distribution, packagers (no hard dependency), and users without
+lm-sensors.
+
+**Trade-offs**:
+
+- Without libsensors, `ignore` and `compute` statements of `/etc/sensors3.conf` don't apply. An `ignore` changes
+  the `index` of the following inputs of a chip, so an `index` based config can resolve to a different input with
+  and without libsensors. `channel` is not affected. `compute` only changes min, max and the value shown by
+  `fan2go detect`.
+- `ignore` statements in `/etc/sensors.d` were never applied, and still aren't.
+- The libsensors version decides the details, and the fallback follows 3.6.2. libsensors 3.6.0 (Debian 12,
+  Ubuntu 22.04/24.04, Fedora) doesn't list `pwmN` as features (3.6.1+ shows them as fans with only a mode), and uses
+  a different address for some platform devices (e.g. `asus-ec-sensors-isa-0000` instead of `-000a`), so platform
+  names and fan lists can differ between distributions and between libsensors and the fallback. Leap 15.6 has 3.5.0.
+- The libsensors ABI is declared in fan2go. It is stable since lm-sensors 3.0 (2007), and a missing symbol makes
+  loading fail, which falls back to sysfs.
 
 ### NVIDIA sensors through NVML, optional at build time
 

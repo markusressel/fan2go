@@ -50,9 +50,10 @@ external programs to interact with it. This API can be used to create UI clients
 
 # How to use
 
-fan2go relies on [lm-sensors](https://github.com/lm-sensors/lm-sensors) to get both temperature and RPM sensor readings,
-as well as PWM controls, so you will have
-to [set it up first](https://wiki.archlinux.org/index.php/Lm_sensors#Installation).
+fan2go uses the hwmon devices of the kernel for temperature and RPM sensor readings, as well as PWM controls.
+[lm-sensors](https://github.com/lm-sensors/lm-sensors) helps to find and load the kernel modules for your hardware,
+so you should [set it up first](https://wiki.archlinux.org/index.php/Lm_sensors#Installation). fan2go loads the
+libsensors library of lm-sensors at runtime if it is installed (see [Device detection](#device-detection)).
 
 ## Installation
 
@@ -99,8 +100,8 @@ See: https://github.com/johnwbyrd/fan2go-package/
 ### Debian / Ubuntu ![](https://img.shields.io/badge/.deb-A81D33?logo=debian&logoColor=white)
 
 Releases after `0.16.0` have `.deb` packages for `amd64`, `arm64`, `ppc64el`, `s390x` and `riscv64`. There is no
-package repository: download the package of the release and install it with apt, which also installs the dependencies
-(`libsensors5`). The packages need glibc 2.34 or newer (Debian 12, Ubuntu 22.04 or newer):
+package repository: download the package of the release and install it with apt, which also installs the recommended
+`libsensors5`. The packages need glibc 2.34 or newer (Debian 12, Ubuntu 22.04 or newer):
 
 ```shell
 VERSION=1.0.0 # the release you want to install
@@ -113,8 +114,8 @@ For a pre-release, the package file names use `~` instead of `-` (e.g. `fan2go_1
 ### Fedora / openSUSE ![](https://img.shields.io/badge/.rpm-51A2DA?logo=fedora&logoColor=white)
 
 Releases after `0.16.0` have `.rpm` packages for `x86_64`, `aarch64`, `ppc64le`, `s390x` and `riscv64`. They need
-glibc 2.34 or newer (Fedora 35, RHEL 9, openSUSE Leap 15.6 or newer) and install `lm_sensors-libs` and `lm_sensors`
-(Fedora/RHEL) or `libsensors4` (openSUSE):
+glibc 2.34 or newer (Fedora 35, RHEL 9, openSUSE Leap 15.6 or newer) and recommend `lm_sensors-libs` (Fedora/RHEL)
+or `libsensors4` (openSUSE), which dnf and zypper install by default:
 
 ```shell
 VERSION=1.0.0 # the release you want to install
@@ -129,13 +130,22 @@ The `.deb` and `.rpm` packages install:
 
 - the binary as `/usr/bin/fan2go` (with NVIDIA GPU support, see below),
 - the [systemd unit](#systemd) as `/usr/lib/systemd/system/fan2go.service`,
-- the [example configuration](/fan2go.yaml) as `/etc/fan2go/fan2go.yaml`. Your changes to this file are kept on
-  upgrades.
+- the [example configuration](/fan2go.yaml) as `/usr/share/doc/fan2go/fan2go.yaml.example`, and an empty
+  `/etc/fan2go` directory.
 
-The service is not enabled or started. Adapt `/etc/fan2go/fan2go.yaml` to your hardware first (see
-[Configuration](#configuration)), then enable it with `sudo systemctl enable --now fan2go`. Upgrades don't restart a
-running service; restart it yourself to run the new version. Removing the package stops and disables the service.
-Desktop notifications need `notify-send` (`libnotify-bin` on Debian/Ubuntu, `libnotify` on Fedora/openSUSE).
+The packages don't install a configuration, and the service is not enabled or started. Copy the example and adapt it
+to your hardware first (see [Configuration](#configuration)), then enable the service:
+
+```shell
+sudo cp /usr/share/doc/fan2go/fan2go.yaml.example /etc/fan2go/fan2go.yaml
+sudo nano /etc/fan2go/fan2go.yaml
+sudo systemctl enable --now fan2go
+```
+
+Minimal container images (e.g. the `ubuntu` Docker image) exclude `/usr/share/doc` from installed packages; there,
+download [fan2go.yaml](/fan2go.yaml) from the repository instead. Upgrades restart a running service, so it runs the
+new version. Removing the package stops and disables the service. Desktop notifications need `notify-send`
+(`libnotify-bin` on Debian/Ubuntu, `libnotify` on Fedora/openSUSE).
 
 ### Binary
 
@@ -146,10 +156,10 @@ Every release also has the plain binaries:
 - `fan2go-linux-<arch>-no-nvml`: without NVIDIA GPU support.
 
 `<arch>` is one of `amd64`, `arm64`, `ppc64le`, `s390x` and `riscv64`. The binaries need glibc 2.34 or newer (e.g.
-Debian 12, Ubuntu 22.04, Fedora 35, RHEL 9 or newer) and `libsensors.so.5` (`libsensors5` on Debian/Ubuntu,
-`lm_sensors` on Arch Linux). Fedora, RHEL and openSUSE ship the same library as `libsensors.so.4`, so the plain
-binaries don't start there; use the `.rpm` package, which is built for it. `notify-send` (libnotify) is optional, for
-desktop notifications.
+Debian 12, Ubuntu 22.04, Fedora 35, RHEL 9, openSUSE Leap 15.6 or newer). The same binary runs on all of them.
+libsensors is optional (`libsensors5` on Debian/Ubuntu, `lm_sensors-libs` on Fedora/RHEL, `libsensors4` on
+openSUSE, `lm_sensors` on Arch Linux), see [Device detection](#device-detection). `notify-send` (libnotify) is
+optional, for desktop notifications.
 
 ```shell
 curl -L -o fan2go https://github.com/markusressel/fan2go/releases/latest/download/fan2go-linux-amd64
@@ -191,8 +201,7 @@ cosign verify-blob-attestation \
 
 ### Compile yourself
 
-fan2go needs Go, a C compiler and the libsensors headers (`libsensors-dev` on Debian/Ubuntu, `lm_sensors-devel` on
-Fedora, `libsensors4-devel` on openSUSE, `lm_sensors` on Arch Linux):
+fan2go needs Go and a C compiler. It doesn't need the libsensors headers, because it loads libsensors at runtime:
 
 ```shell
 git clone https://github.com/markusressel/fan2go.git
@@ -202,7 +211,8 @@ sudo cp ./bin/fan2go /usr/bin/fan2go
 sudo chmod ug+x /usr/bin/fan2go
 ```
 
-Use `make build-no-nvml` for a build without NVIDIA GPU support. Releases after `0.16.0` also have a source archive
+Use `make build-no-nvml` for a build without NVIDIA GPU support. A build without cgo
+(`CGO_ENABLED=0 go build -tags disable_nvml`) works too, but always detects devices without libsensors. Releases after `0.16.0` also have a source archive
 with all Go modules vendored (`fan2go-<version>-source.tar.gz`): with Go 1.26 or newer, it builds without network
 access.
 
@@ -215,9 +225,13 @@ Then configure fan2go by creating a YAML configuration file in **one** of the fo
 * `./fan2go.yaml`
 
 ```shell
-sudo mkdir /etc/fan2go
+sudo mkdir -p /etc/fan2go
 sudo nano /etc/fan2go/fan2go.yaml
 ```
+
+The [example configuration](/fan2go.yaml) (installed by the `.deb` and `.rpm` packages as
+`/usr/share/doc/fan2go/fan2go.yaml.example`) is a good starting point. Without a configuration file, fan2go exits
+with an error that names the expected location.
 
 The most important configuration options you need to define are the `fans:`, `sensors:` and `curves:` sections.
 
@@ -1191,7 +1205,17 @@ stale), `error` contains the reason, and `value` is the value of the last succes
 
 ## Device detection
 
-fan2go uses [gosensors](https://github.com/md14454/gosensors) to directly interact with lm-sensors.
+fan2go finds the hwmon chips, their sensors and fans with libsensors (lm-sensors). It doesn't link libsensors; it
+loads `libsensors.so.5`, `libsensors.so.4` or `libsensors.so` (in this order) at runtime, so the same binary works with
+the library names of all distributions. libsensors reads `/etc/sensors3.conf` (if it exists), so its `ignore`
+statements hide sensors and fans from fan2go, and its `compute` statements apply to the min and max values fan2go
+reads during detection. Files in `/etc/sensors.d` are not read. fan2go reads and writes the sensor, fan and PWM
+values in sysfs directly.
+
+If libsensors is not installed, fan2go logs a warning once and finds the chips in `/sys/class/hwmon` itself, the same
+way libsensors 3.6.2 does. Everything works, but `/etc/sensors3.conf` doesn't apply. Note that sensor and fan
+`index` values count only the inputs that are not ignored, so an `ignore` statement can change them; `channel` is not
+affected. Use `fan2go detect` to check the result. See [docs/sensors.md](docs/sensors.md) for details.
 
 ## Known hardware quirks
 
