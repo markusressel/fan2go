@@ -275,6 +275,10 @@ fans:
       setPwm:
         exec: /usr/bin/some-program
         args: [ "--set", "%pwm%" ]
+        # (optional) maximum time the command may run before it is killed and treated as failed,
+        # default: 2s (available for setPwm, getPwm and getRpm).
+        # Use a unit: like for other durations, a plain number means milliseconds.
+        timeout: 2s
       # Command to retrieve the current PWM value (0..255)
       getPwm:
         exec: /usr/bin/nvidia-settings
@@ -514,6 +518,9 @@ sensors:
       exec: /usr/bin/bash
       # (optional) arguments to pass to the executable
       args: [ '/home/markus/myscript.sh' ]
+      # (optional) maximum time the command may run before it is killed and treated as failed, default: 2s.
+      # Use a unit: like for other durations, a plain number means milliseconds.
+      timeout: 2s
 ```
 
 ### Curves
@@ -700,8 +707,9 @@ allow the root user (UID 0) to modify the file.
 Running external commands repeatedly through fan2go can have unintended side effects. F.ex., on a laptop using hybrid
 graphics, running `nvidia-settings` can cause the dedicated GPU to wake up, resulting in substantial increase in power
 consumption while on battery. Also, fan2go expects to be able to update sensor values with a minimal delay, so using a
-long running script or some network call with a long timeout could also cause problems. With great power comes great
-responsibility, always remember that :)
+long running script or some network call with a long timeout could also cause problems. Each command is killed and
+treated as failed after its `timeout` (default: 2s). With great power comes great responsibility, always remember
+that :)
 
 ## Run
 
@@ -919,8 +927,10 @@ To reduce risk while analyzing multiple fans, you can force fan2go to
 initialize only one fan at a time, using the `runFanInitializationInParallel: false` config option.
 
 Some PWM controllers or fans may require more time to react to PWM changes. If fan2go is failing to characterize a fan,
-you can try increasing the fan response delay by passing `--fan-response-delay <seconds>` to the `fan init` command or
-by setting `fanResponseDelay` in the config. The default value is 2 seconds.
+you can try increasing the fan response delay by passing `--fan-response-delay <delay>` to the `fan init` command or
+by setting `fanResponseDelay` in the config. The default value is 2 seconds. The value is either a plain number of
+seconds (e.g. `2` or `0.5`) or a duration (e.g. `500ms`, `3s`). Note that a plain number means seconds here, so
+existing configs keep working, while it means milliseconds for all other duration options.
 
 ## Monitoring
 

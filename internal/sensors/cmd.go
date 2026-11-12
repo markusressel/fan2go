@@ -7,7 +7,6 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 	"strconv"
 	"sync"
-	"time"
 )
 
 type CmdSensor struct {
@@ -31,10 +30,9 @@ func (sensor *CmdSensor) GetConfig() configuration.SensorConfig {
 }
 
 func (sensor *CmdSensor) GetValue() (float64, error) {
-	timeout := 2 * time.Second
 	exec := sensor.Config.Cmd.Exec
 	args := sensor.Config.Cmd.Args
-	result, err := util.SafeCmdExecution(exec, args, timeout)
+	result, err := util.SafeCmdExecution(exec, args, sensor.Config.Cmd.GetTimeout())
 	if err != nil {
 		return 0, fmt.Errorf("sensor %s: %s", sensor.GetId(), err.Error())
 	}

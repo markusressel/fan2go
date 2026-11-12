@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -61,8 +60,7 @@ func (fan *CmdFan) GetRpm() (int, error) {
 
 	conf := fan.Config.Cmd.GetRpm
 
-	timeout := 2 * time.Second
-	result, err := util.SafeCmdExecution(conf.Exec, conf.Args, timeout)
+	result, err := util.SafeCmdExecution(conf.Exec, conf.Args, conf.GetTimeout())
 	if err != nil {
 		return 0, err
 	}
@@ -89,8 +87,7 @@ func (fan *CmdFan) SetRpmAvg(rpm float64) {
 func (fan *CmdFan) GetPwm() (result int, err error) {
 	conf := fan.Config.Cmd.GetPwm
 
-	timeout := 2 * time.Second
-	output, err := util.SafeCmdExecution(conf.Exec, conf.Args, timeout)
+	output, err := util.SafeCmdExecution(conf.Exec, conf.Args, conf.GetTimeout())
 	if err != nil {
 		return 0, err
 	}
@@ -115,8 +112,7 @@ func (fan *CmdFan) SetPwm(pwm int) (err error) {
 		args = append(args, replaced)
 	}
 
-	timeout := 2 * time.Second
-	_, err = util.SafeCmdExecution(conf.Exec, args, timeout)
+	_, err = util.SafeCmdExecution(conf.Exec, args, conf.GetTimeout())
 	if err != nil {
 		return fmt.Errorf("%s", err.Error())
 	}

@@ -3,6 +3,7 @@ package fans
 import (
 	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/util"
@@ -214,19 +215,45 @@ func TestCmdFan_GetRpm_Timeout(t *testing.T) {
 	config := configuration.FanConfig{
 		Cmd: &configuration.CmdFanConfig{
 			GetRpm: &configuration.ExecConfig{
-				Exec: "/usr/bin/sleep",
-				Args: []string{"5"},
+				Exec:    "/usr/bin/sleep",
+				Args:    []string{"5"},
+				Timeout: 50 * time.Millisecond,
 			},
 		},
 	}
 	fan, _ := NewFan(config)
 
 	// WHEN
+	start := time.Now()
 	result, err := fan.GetRpm()
 
-	// THEN
+	// THEN: the configured timeout is used instead of the 2 s default
 	assert.Error(t, err)
 	assert.Equal(t, 0, result)
+	assert.Less(t, time.Since(start), 1*time.Second)
+}
+
+func TestCmdFan_GetPwm_Timeout(t *testing.T) {
+	// GIVEN
+	config := configuration.FanConfig{
+		Cmd: &configuration.CmdFanConfig{
+			GetPwm: &configuration.ExecConfig{
+				Exec:    "/usr/bin/sleep",
+				Args:    []string{"5"},
+				Timeout: 50 * time.Millisecond,
+			},
+		},
+	}
+	fan, _ := NewFan(config)
+
+	// WHEN
+	start := time.Now()
+	result, err := fan.GetPwm()
+
+	// THEN: the configured timeout is used instead of the 2 s default
+	assert.Error(t, err)
+	assert.Equal(t, 0, result)
+	assert.Less(t, time.Since(start), 1*time.Second)
 }
 
 func TestCmdFan_GetRpmAvg(t *testing.T) {
@@ -328,18 +355,21 @@ func TestCmdFan_SetPwm_Timeout(t *testing.T) {
 	config := configuration.FanConfig{
 		Cmd: &configuration.CmdFanConfig{
 			SetPwm: &configuration.ExecConfig{
-				Exec: "/usr/bin/sleep",
-				Args: []string{"5"},
+				Exec:    "/usr/bin/sleep",
+				Args:    []string{"5"},
+				Timeout: 50 * time.Millisecond,
 			},
 		},
 	}
 	fan, _ := NewFan(config)
 
 	// WHEN
+	start := time.Now()
 	err := fan.SetPwm(255)
 
-	// THEN
+	// THEN: the configured timeout is used instead of the 2 s default
 	assert.Error(t, err)
+	assert.Less(t, time.Since(start), 1*time.Second)
 }
 
 func TestCmdFan_GetFanCurveData(t *testing.T) {

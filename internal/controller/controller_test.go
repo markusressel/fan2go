@@ -755,7 +755,7 @@ func TestFanController_SetPwm(t *testing.T) {
 		fan:        fan,
 		updateRate: time.Duration(100),
 	}
-	err := controller.computeFanSpecificMappings()
+	err := controller.computeFanSpecificMappings(context.Background())
 	assert.NoError(t, err)
 
 	// WHEN
@@ -788,7 +788,7 @@ func TestFanController_SetPwm_UserOverridePwmMap(t *testing.T) {
 		fan:        fan,
 		updateRate: time.Duration(100),
 	}
-	err := controller.computeFanSpecificMappings()
+	err := controller.computeFanSpecificMappings(context.Background())
 	assert.NoError(t, err)
 
 	// WHEN
@@ -823,7 +823,7 @@ func TestFanController_PwmMapping(t *testing.T) {
 	}
 
 	// WHEN
-	err := controller.computeFanSpecificMappings()
+	err := controller.computeFanSpecificMappings(context.Background())
 
 	// THEN
 	assert.NoError(t, err)
@@ -864,7 +864,10 @@ func TestFanController_RunStopsOnFanStallError(t *testing.T) {
 	}()
 
 	configuration.CurrentConfig.TempSensorPollingRate = 1 * time.Millisecond
-	configuration.CurrentConfig.RpmPollingRate = 1 * time.Millisecond
+	// long enough that the RPM monitor never ticks during the test
+	configuration.CurrentConfig.RpmPollingRate = 1 * time.Hour
+	// the automatic setPwm -> getPwm detection must not wait on the fake clock
+	configuration.CurrentConfig.FanController.PwmSetDelay = 0
 	configuration.CurrentConfig.RpmRollingWindowSize = 10
 	configuration.CurrentConfig.FanController.AdjustmentTickRate = 1 * time.Millisecond
 
@@ -881,6 +884,7 @@ func TestFanController_RunStopsOnFanStallError(t *testing.T) {
 
 	curveValue := 100.0
 	lastTarget := 100
+	clock := util.NewFakeClock(time.Unix(1000, 0))
 	controller := DefaultFanController{
 		persistence: mockPersistence{
 			hasPwmMap:       false,
@@ -892,8 +896,11 @@ func TestFanController_RunStopsOnFanStallError(t *testing.T) {
 			ID:    "curve",
 			Value: &curveValue,
 		},
-		controlLoop: control_loop.NewDirectControlLoop(nil),
-		lastTarget:  &lastTarget,
+		controlLoop:         control_loop.NewDirectControlLoop(nil),
+		lastTarget:          &lastTarget,
+		clock:               clock,
+		startupSensorWarmup: defaultStartupSensorWarmup,
+		startupUpdateDelay:  defaultStartupUpdateDelay,
 	}
 
 	done := make(chan error, 1)
@@ -901,11 +908,29 @@ func TestFanController_RunStopsOnFanStallError(t *testing.T) {
 		done <- controller.Run(context.Background())
 	}()
 
+	advanceThroughRunStartup(t, clock)
+
 	select {
 	case err := <-done:
 		assert.NoError(t, err)
 	case <-time.After(5 * time.Second):
+		t.Fatal("Run() did not return after the fan stalled at max pwm")
 	}
+	// the stall is what stopped the controller
+	assert.ErrorIs(t, controller.UpdateFanSpeed(), ErrFanStalledAtMaxPwm)
+}
+
+// advanceThroughRunStartup drives a Run() that uses the given fake clock through its startup delays,
+// up to (and including) the first UpdateFanSpeed call.
+// Expects the RPM monitor ticker to be active (fan supports RPM) and the default startup delays.
+func advanceThroughRunStartup(t *testing.T, clock *util.FakeClock) {
+	t.Helper()
+	// startup sensor warm-up
+	clock.BlockUntil(1)
+	clock.Advance(defaultStartupSensorWarmup + configuration.CurrentConfig.TempSensorPollingRate)
+	// RPM monitor ticker + startup delay of the update loop
+	clock.BlockUntil(2)
+	clock.Advance(defaultStartupUpdateDelay)
 }
 
 func TestFanController_RunStopsOnCurveEvaluationError(t *testing.T) {
@@ -915,7 +940,10 @@ func TestFanController_RunStopsOnCurveEvaluationError(t *testing.T) {
 	}()
 
 	configuration.CurrentConfig.TempSensorPollingRate = 1 * time.Millisecond
-	configuration.CurrentConfig.RpmPollingRate = 1 * time.Millisecond
+	// long enough that the RPM monitor never ticks during the test
+	configuration.CurrentConfig.RpmPollingRate = 1 * time.Hour
+	// the automatic setPwm -> getPwm detection must not wait on the fake clock
+	configuration.CurrentConfig.FanController.PwmSetDelay = 0
 	configuration.CurrentConfig.RpmRollingWindowSize = 10
 	configuration.CurrentConfig.FanController.AdjustmentTickRate = 1 * time.Millisecond
 
@@ -930,6 +958,7 @@ func TestFanController_RunStopsOnCurveEvaluationError(t *testing.T) {
 		speedCurve:             &map[int]float64{100: 0},
 	}
 
+	clock := util.NewFakeClock(time.Unix(1000, 0))
 	controller := DefaultFanController{
 		persistence: mockPersistence{
 			hasPwmMap:       false,
@@ -942,13 +971,18 @@ func TestFanController_RunStopsOnCurveEvaluationError(t *testing.T) {
 			Value: nil,
 			Err:   errors.New("evaluation failed"),
 		},
-		controlLoop: control_loop.NewDirectControlLoop(nil),
+		controlLoop:         control_loop.NewDirectControlLoop(nil),
+		clock:               clock,
+		startupSensorWarmup: defaultStartupSensorWarmup,
+		startupUpdateDelay:  defaultStartupUpdateDelay,
 	}
 
 	done := make(chan error, 1)
 	go func() {
 		done <- controller.Run(context.Background())
 	}()
+
+	advanceThroughRunStartup(t, clock)
 
 	select {
 	case err := <-done:
@@ -989,7 +1023,7 @@ func TestFanController_PwmMapping2(t *testing.T) {
 	}
 
 	// WHEN
-	err := controller.computeFanSpecificMappings()
+	err := controller.computeFanSpecificMappings(context.Background())
 
 	// THEN
 	assert.NoError(t, err)
@@ -1045,7 +1079,7 @@ func TestFanController_PwmMapping3(t *testing.T) {
 	}
 
 	// WHEN
-	err := controller.computeFanSpecificMappings()
+	err := controller.computeFanSpecificMappings(context.Background())
 
 	// THEN
 	assert.NoError(t, err)
@@ -1104,7 +1138,7 @@ func TestFanController_PwmMapping4(t *testing.T) {
 	}
 
 	// WHEN
-	err := controller.computeFanSpecificMappings()
+	err := controller.computeFanSpecificMappings(context.Background())
 
 	// THEN
 	assert.NoError(t, err)
@@ -1164,7 +1198,7 @@ func TestFanController_UseUnscaledCurveValues(t *testing.T) {
 	}
 
 	// WHEN
-	err := controller.computeFanSpecificMappings()
+	err := controller.computeFanSpecificMappings(context.Background())
 
 	// THEN
 	assert.NoError(t, err)
@@ -1240,7 +1274,7 @@ func TestFanController_UseScaledCurveValues(t *testing.T) {
 	}
 
 	// WHEN
-	err := controller.computeFanSpecificMappings()
+	err := controller.computeFanSpecificMappings(context.Background())
 
 	// THEN
 	assert.NoError(t, err)
@@ -1341,7 +1375,7 @@ func TestFanController_AlwaysSetPwmMode(t *testing.T) {
 		controlLoop: control_loop.NewDirectControlLoop(nil),
 	}
 
-	err := controller.computeFanSpecificMappings()
+	err := controller.computeFanSpecificMappings(context.Background())
 	assert.NoError(t, err)
 
 	assertControlMode(t, fans.ControlModePWM, controller.fan)
@@ -1387,7 +1421,7 @@ func TestFanController_AlwaysSetPwmModeDisabled(t *testing.T) {
 		controlLoop: control_loop.NewDirectControlLoop(nil),
 	}
 
-	err := controller.computeFanSpecificMappings()
+	err := controller.computeFanSpecificMappings(context.Background())
 	assert.NoError(t, err)
 
 	assertControlMode(t, fans.ControlModePWM, controller.fan)
@@ -1554,7 +1588,7 @@ func TestFanController_SetPwm_FanReportsDifferentPwmFromSetValue(t *testing.T) {
 		fan:        fan,
 		updateRate: time.Duration(100),
 	}
-	err := controller.computeFanSpecificMappings()
+	err := controller.computeFanSpecificMappings(context.Background())
 	assert.NoError(t, err)
 
 	// WHEN
@@ -1690,7 +1724,7 @@ func TestFanController_ComputeSetPwmToGetPwmMap_Identity(t *testing.T) {
 	}
 
 	// WHEN
-	err := controller.computeSetPwmToGetPwmMap()
+	err := controller.computeSetPwmToGetPwmMap(context.Background())
 
 	// THEN
 	assert.NoError(t, err)
@@ -1721,7 +1755,7 @@ func TestFanController_ComputeSetPwmToGetPwmMap_Values(t *testing.T) {
 	}
 
 	// WHEN
-	err := controller.computeSetPwmToGetPwmMap()
+	err := controller.computeSetPwmToGetPwmMap(context.Background())
 
 	// THEN
 	assert.NoError(t, err)
@@ -1754,7 +1788,7 @@ func TestFanController_ComputeSetPwmToGetPwmMap_Linear(t *testing.T) {
 	}
 
 	// WHEN
-	err := controller.computeSetPwmToGetPwmMap()
+	err := controller.computeSetPwmToGetPwmMap(context.Background())
 
 	// THEN
 	assert.NoError(t, err)
@@ -2137,7 +2171,7 @@ func TestRunInitialization_Cancelled_RestoresOriginalControlMode(t *testing.T) {
 	}()
 	configuration.CurrentConfig.FanController.PwmSetDelay = 1 * time.Millisecond
 	// non-zero so the cancelled context is the only ready channel in sleepWithContext
-	configuration.CurrentConfig.FanResponseDelay = 1
+	configuration.CurrentConfig.FanResponseDelay = configuration.SecondsOrDuration(time.Second)
 	configuration.CurrentConfig.Analysis.SampleCount = 1
 	configuration.CurrentConfig.Analysis.SampleDelay = 0
 	configuration.CurrentConfig.Analysis.SettleTimeout = 0
@@ -2193,7 +2227,7 @@ func TestFanController_ComputeSetPwmToGetPwmMap_AllWritesFail(t *testing.T) {
 	}
 
 	// WHEN
-	err := controller.computeSetPwmToGetPwmMapAutomatically()
+	err := controller.computeSetPwmToGetPwmMapAutomatically(context.Background())
 
 	// THEN: no error, but map is nil because no data points were collected
 	assert.NoError(t, err)
@@ -2298,7 +2332,7 @@ func TestFanController_ComputeFanSpecificMappings_AllWritesFail(t *testing.T) {
 	}
 
 	// WHEN: must not panic
-	err := controller.computeFanSpecificMappings()
+	err := controller.computeFanSpecificMappings(context.Background())
 
 	// THEN: completes without error, pwmMapping is identity
 	assert.NoError(t, err)
@@ -2316,6 +2350,10 @@ func TestGetPwmSetDelay_UsesPerFanOverride(t *testing.T) {
 		RPM:         100,
 		PwmSetDelay: &perFanDelay,
 	}
+	originalConfig := configuration.CurrentConfig
+	defer func() {
+		configuration.CurrentConfig = originalConfig
+	}()
 	configuration.CurrentConfig.FanController.PwmSetDelay = 5 * time.Millisecond
 
 	controller := DefaultFanController{
@@ -2338,6 +2376,10 @@ func TestGetPwmSetDelay_FallsBackToGlobal(t *testing.T) {
 		RPM: 100,
 	}
 	// PwmSetDelay is nil (not set on fan config)
+	originalConfig := configuration.CurrentConfig
+	defer func() {
+		configuration.CurrentConfig = originalConfig
+	}()
 	configuration.CurrentConfig.FanController.PwmSetDelay = globalDelay
 
 	controller := DefaultFanController{

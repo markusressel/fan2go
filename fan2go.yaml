@@ -8,7 +8,9 @@ runFanInitializationInParallel: false
 # Note: This parameter is only used for initial analysis of fan curve
 #       and has no effect during normal operation
 maxRpmDiffForSettledFan: 20
-# The time in seconds to wait before checking that a fan has responded to a control change
+# The time to wait before checking that a fan has responded to a control change.
+# Either a plain number of seconds (e.g. 2 or 0.5) or a duration (e.g. 500ms).
+# Unlike other duration options, a plain number means seconds here.
 # Note: This parameter is only used for initial analysis of fan curve
 #       and has no effect during normal operation
 fanResponseDelay: 2

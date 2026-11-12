@@ -76,7 +76,7 @@ var initCmd = &cobra.Command{
 }
 
 func init() {
-	initCmd.Flags().IntP("fan-response-delay", "e", 2, "Delay in seconds to wait before checking that a fan has responded to a control change")
+	initCmd.Flags().StringP("fan-response-delay", "e", "2", "Delay to wait before checking that a fan has responded to a control change: a number of seconds (e.g. 2) or a duration (e.g. 500ms)")
 	_ = viper.BindPFlag("FanResponseDelay", initCmd.Flags().Lookup("fan-response-delay"))
 	initCmd.Flags().BoolVar(&assumePwmMapIdentity, "assume-pwm-map-identity", false, "Skip automatic detection of setPwmToGetPwmMap; assume a 1:1 mapping instead")
 	Command.AddCommand(initCmd)
