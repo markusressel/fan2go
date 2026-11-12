@@ -29,8 +29,11 @@ const (
 )
 
 type HwMonController struct {
-	Name     string
-	DType    string
+	Name string
+	// HwmonName is the content of the name file of the hwmon device, e.g. "nct6798" (used to look up known quirks)
+	HwmonName string
+	DType     string
+	// Modalias is the content of the device/modalias file of the hwmon device
 	Modalias string
 	// Platform is the fan2go name of the chip (see computeIdentifier), as shown by `fan2go detect`
 	Platform string
@@ -69,6 +72,7 @@ func GetChips() []*HwMonController {
 
 		c := &HwMonController{
 			Name:          identifier,
+			HwmonName:     getDeviceName(chip.Path),
 			DType:         dType,
 			Modalias:      modalias,
 			Platform:      identifier,
@@ -169,6 +173,8 @@ var (
 func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 	var result = []*fans.HwMonFan{}
 
+	hwmonName := getDeviceName(chip.Path)
+	modalias := getDeviceModalias(chip.Path)
 	features := chip.GetFeatures()
 	for j := 0; j < len(features); j++ {
 		feature := features[j]
@@ -245,6 +251,8 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 					RpmChannel: rpmChannel,
 					PwmChannel: pwmChannel,
 					SysfsPath:  chip.Path,
+					HwmonName:  hwmonName,
+					Modalias:   modalias,
 				},
 			},
 			Label:        label,
@@ -430,6 +438,8 @@ func updateFanConfigFromMatchingControllers(controllers []*HwMonController, conf
 			config.HwMon.Index = controllerConfig.Index
 			config.HwMon.RpmChannel = controllerConfig.RpmChannel
 			config.HwMon.SysfsPath = controllerConfig.SysfsPath
+			config.HwMon.HwmonName = controllerConfig.HwmonName
+			config.HwMon.Modalias = controllerConfig.Modalias
 			if config.HwMon.PwmChannel == 0 {
 				config.HwMon.PwmChannel = controllerConfig.PwmChannel
 			}

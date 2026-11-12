@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/quirks"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 )
@@ -40,6 +41,11 @@ type HwMonFan struct {
 	// the statistics collector and the REST API access the fan from different goroutines.
 	// It is a leaf lock: no I/O and no calls to other fan methods while holding it.
 	mu sync.RWMutex
+
+	// knownQuirks is the entry of the known hardware quirks registry that applies to this fan (nil if none).
+	// It is set on creation (from the config passed to NewFan) and never changed, so it is read without mu.
+	// SetConfig doesn't change it.
+	knownQuirks *quirks.Entry
 }
 
 // hwMonFanJson has the same fields and json tags as HwMonFan, without the mutex.
@@ -54,6 +60,13 @@ type hwMonFanJson struct {
 	FanCurveData *map[int]float64        `json:"fanCurveData"`
 	Rpm          int                     `json:"rpm"`
 	Pwm          int                     `json:"pwm"`
+	Quirks       *knownQuirksJson        `json:"quirks,omitempty"`
+}
+
+// knownQuirksJson identifies the known hardware quirks entry applied to a fan in its JSON representation.
+type knownQuirksJson struct {
+	ID      string `json:"id"`
+	Version int    `json:"version"`
 }
 
 // MarshalJSON serializes a snapshot of the fan that is taken under its lock.
@@ -71,6 +84,9 @@ func (fan *HwMonFan) MarshalJSON() ([]byte, error) {
 		Rpm:          fan.Rpm,
 		Pwm:          fan.Pwm,
 	}
+	if fan.knownQuirks != nil {
+		snapshot.Quirks = &knownQuirksJson{ID: fan.knownQuirks.ID, Version: fan.knownQuirks.Version}
+	}
 	fan.mu.RUnlock()
 	return json.Marshal(snapshot)
 }
@@ -83,6 +99,13 @@ func (fan *HwMonFan) hwMonConfig() configuration.HwMonFanConfig {
 		return configuration.HwMonFanConfig{}
 	}
 	return *fan.Config.HwMon
+}
+
+var _ KnownQuirksProvider = (*HwMonFan)(nil)
+
+// KnownQuirks returns the known hardware quirks entry that applies to this fan, nil if none.
+func (fan *HwMonFan) KnownQuirks() *quirks.Entry {
+	return fan.knownQuirks
 }
 
 func (fan *HwMonFan) GetId() string {

@@ -712,6 +712,11 @@ func (f *DefaultFanController) runInitializationIfNeeded(ctx context.Context) (m
 	fan := f.fan
 	// check if we have data for this fan in persistence,
 	// if not we need to run the initialization sequence
+	if fan.GetConfig().HwMon != nil {
+		if err := f.deleteAnalysisDataIfKnownQuirksChanged(); err != nil {
+			return nil, err
+		}
+	}
 	ui.Info("Fan %s: Loading fan curve data...", fan.GetId())
 	fanRpmData, err := f.persistence.LoadFanRpmData(fan)
 	if err == nil {
@@ -746,6 +751,57 @@ func (f *DefaultFanController) runInitializationIfNeeded(ctx context.Context) (m
 		}
 	}
 	return fanRpmData, err
+}
+
+// deleteAnalysisDataIfKnownQuirksChanged deletes the saved analysis data of the fan (RPM curve, setPwmToGetPwmMap,
+// pwmMap) if it was measured with another known hardware quirks readback formula than the one that applies now
+// (see analysisQuirkFingerprint), so it is measured again. Data without analysis info was measured without one.
+func (f *DefaultFanController) deleteAnalysisDataIfKnownQuirksChanged() error {
+	fan := f.fan
+	id, version := f.analysisQuirkFingerprint()
+	saved, err := f.persistence.LoadFanAnalysisInfo(fan.GetId())
+	if err != nil && !persistence.IsMissingOrCorrupt(err) {
+		return fmt.Errorf("unable to load the analysis info of fan %s: %w", fan.GetId(), err)
+	}
+	if saved.Quirk == id && saved.QuirkVersion == version {
+		return nil
+	}
+
+	if _, err := f.persistence.LoadFanRpmData(fan); err == nil {
+		ui.Info("Fan %s: The known hardware quirks of the fan changed since it was analyzed (%s -> %s), analyzing it again",
+			fan.GetId(), quirkFingerprintName(saved.Quirk, saved.QuirkVersion), quirkFingerprintName(id, version))
+	}
+	if err := f.persistence.DeleteFanRpmData(fan); err != nil {
+		return fmt.Errorf("unable to delete the fan curve data of fan %s: %w", fan.GetId(), err)
+	}
+	if err := f.persistence.DeleteFanSetPwmToGetPwmMap(fan.GetId()); err != nil {
+		return fmt.Errorf("unable to delete the setPwmToGetPwmMap of fan %s: %w", fan.GetId(), err)
+	}
+	if err := f.persistence.DeleteFanPwmMap(fan.GetId()); err != nil {
+		return fmt.Errorf("unable to delete the pwm map of fan %s: %w", fan.GetId(), err)
+	}
+	if err := f.persistence.DeleteFanAnalysisInfo(fan.GetId()); err != nil {
+		return fmt.Errorf("unable to delete the analysis info of fan %s: %w", fan.GetId(), err)
+	}
+	return nil
+}
+
+// analysisQuirkFingerprint returns the id and version of the known hardware quirks entry that the analysis data
+// of the fan depends on: the entry, if its readback formula is used as the setPwmToGetPwmMap, else ("", 0).
+func (f *DefaultFanController) analysisQuirkFingerprint() (id string, version int) {
+	entry := fans.KnownQuirksOf(f.fan)
+	if !entry.UsesReadback(f.fan.GetConfig(), f.assumePwmMapIdentity) {
+		return "", 0
+	}
+	return entry.Fingerprint()
+}
+
+// quirkFingerprintName returns a known hardware quirks entry id and version for log messages.
+func quirkFingerprintName(id string, version int) string {
+	if id == "" {
+		return "none"
+	}
+	return fmt.Sprintf("%s v%d", id, version)
 }
 
 // RunInitialization runs the fan initialization sequence. If it fails, the fan settings are restored.
@@ -860,6 +916,12 @@ func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]f
 	err = f.persistence.SaveFanRpmData(fan)
 	if err != nil {
 		ui.Error("Fan %s: Failed to save RPM data: %v", fan.GetId(), err)
+	} else if fan.GetConfig().HwMon != nil {
+		id, version := f.analysisQuirkFingerprint()
+		info := persistence.FanAnalysisInfo{Quirk: id, QuirkVersion: version}
+		if err := f.persistence.SaveFanAnalysisInfo(fan.GetId(), info); err != nil {
+			ui.Error("Fan %s: Failed to save analysis info: %v", fan.GetId(), err)
+		}
 	}
 
 	fanRpmData, err := f.persistence.LoadFanRpmData(fan)
@@ -1096,11 +1158,20 @@ func takeManualControl(fan fans.Fan) error {
 		cm, e := fan.GetControlMode()
 		// if the control mode is PWM even though trySetManualPwm() failed, ignore that error
 		if e != nil || cm != fans.ControlModePWM {
-			return fmt.Errorf("fan2go can't control the fan: %w", err)
+			return fmt.Errorf("fan2go can't control the fan: %w", withKnownQuirksHint(fan, err))
 		}
 		ui.Debug("Fan %s: is in manual PWM mode already, ignoring: %v", fan.GetId(), err)
 	}
 	return nil
+}
+
+// withKnownQuirksHint adds the hint of the known hardware quirks entry of the fan (if any) to err.
+func withKnownQuirksHint(fan fans.Fan, err error) error {
+	entry := fans.KnownQuirksOf(fan)
+	if entry == nil || entry.Hint == "" {
+		return err
+	}
+	return fmt.Errorf("%w (known hardware quirk '%s': %s)", err, entry.ID, entry.Hint)
 }
 
 // trySetManualPwm writes the control mode fan2go uses while it controls the fan: controlMode.active,
@@ -1644,6 +1715,14 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMap(ctx context.Context) (er
 			return nil
 		}
 		// cfg.Autodetect != nil → fall through to persistence / auto-detect
+	}
+
+	// the readback formula of a known driver, unless setPwmToGetPwmMap (also autodetect) is configured
+	// or the identity is requested explicitly
+	if entry := fans.KnownQuirksOf(f.fan); entry.UsesReadback(f.fan.GetConfig(), f.assumePwmMapIdentity) {
+		ui.Info("Fan %s: Using the set→get PWM map of the driver formula (known hardware quirk '%s')", f.fan.GetId(), entry.ID)
+		f.setPwmToGetPwmMap = entry.SetPwmToGetPwmMap()
+		return nil
 	}
 
 	// load the setPwmToGetPwmMap from persistence, if it exists

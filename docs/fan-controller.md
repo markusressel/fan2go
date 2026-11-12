@@ -174,7 +174,9 @@ with state `stopped_error` and that error (status, `fan2go_controller_state`, `/
 as manual PWM (e.g. a read-only `pwm_enable` that is 1 already), the error is ignored. When the recovery after
 `onSensorFailure: restore` can't take manual control again, the fan stays handed back (see "Controller state"). The fan analysis and the
 set→get PWM sweep take manual control the same way and fail with that error instead of measuring a fan that fan2go
-doesn't control. Fans that cannot write a control mode (file, cmd, hwmon without `pwm_enable`) skip this step.
+doesn't control. Fans that cannot write a control mode (file, cmd, hwmon without `pwm_enable`) skip this step. If
+the fan has a [known hardware quirks](hardware-quirks.md) entry with a hint (e.g. `thinkpad_acpi fan_control=1`), the
+hint is added to the error.
 
 On hwmon, `SetControlMode` reads `pwm_enable` back to verify it. Any value `>= 2` counts as automatic; the last
 automatic value seen (e.g. 5 on nct6775) is remembered and written when fan2go hands the fan back to automatic.

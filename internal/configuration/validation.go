@@ -562,6 +562,10 @@ func validateFans(config *Configuration) error {
 			return err
 		}
 
+		if fanConfig.Quirks != nil && fanConfig.HwMon == nil {
+			return fmt.Errorf("fan %s: quirks can only be configured for hwmon fans", fanConfig.ID)
+		}
+
 		if fanConfig.PwmSetDelay != nil && *fanConfig.PwmSetDelay < 0 {
 			return fmt.Errorf("fan %s: pwmSetDelay must be >= 0, got %s", fanConfig.ID, *fanConfig.PwmSetDelay)
 		}
