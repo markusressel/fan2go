@@ -759,7 +759,7 @@ func TestFanController_SetPwm(t *testing.T) {
 	assert.NoError(t, err)
 
 	// WHEN
-	err = controller.setPwm(100)
+	err = controller.setTargetPwm(100)
 
 	// THEN
 	assert.NoError(t, err)
@@ -792,7 +792,7 @@ func TestFanController_SetPwm_UserOverridePwmMap(t *testing.T) {
 	assert.NoError(t, err)
 
 	// WHEN
-	err = controller.setPwm(100)
+	err = controller.setTargetPwm(100)
 
 	// THEN
 	assert.NoError(t, err)
@@ -1558,7 +1558,7 @@ func TestFanController_SetPwm_FanReportsDifferentPwmFromSetValue(t *testing.T) {
 	assert.NoError(t, err)
 
 	// WHEN
-	err = controller.setPwm(100)
+	err = controller.setTargetPwm(100)
 
 	// THEN
 	assert.NoError(t, err)
