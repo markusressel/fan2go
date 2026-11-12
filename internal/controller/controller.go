@@ -28,7 +28,15 @@ var (
 	ErrFanStalledAtMaxPwm = errors.New("fan stalled at max pwm")
 )
 
-var InitializationSequenceMutex sync.Mutex
+// initializationSequenceLock serializes the parts of the fan initialization that move the fans
+// (the fan curve analysis and the setPwm -> getPwm detection) across all fan controllers,
+// if runFanInitializationInParallel is false. A channel instead of a sync.Mutex, so waiting for it
+// can be cancelled.
+var initializationSequenceLock = make(chan struct{}, 1)
+
+// initializationLockWaitHook is called (if set) when a controller has to wait for another fan
+// to finish its initialization. Only used by tests.
+var initializationLockWaitHook func(fanId string)
 
 type FanControllerStatistics struct {
 	UnexpectedPwmValueCount int
@@ -141,6 +149,16 @@ type DefaultFanController struct {
 	// pwmMapComputed is true once pwmMapping has been computed (see computeFanSpecificMappings).
 	// Before that, pwmMapping only contains zeros and must not be applied on restore.
 	pwmMapComputed bool
+
+	// holdsInitializationLock is true while this controller holds initializationSequenceLock,
+	// so nested initialization steps don't try to acquire it again.
+	// Only accessed by the goroutine that runs the initialization.
+	holdsInitializationLock bool
+	// mayHaveWrittenToFan is set once the current Run (or initialization) may have written to the fan:
+	// the initialization or the setPwm -> getPwm detection started, or Run switched the fan to manual mode.
+	// Errors before that don't restore the fan settings, so a fan fan2go never wrote to isn't changed
+	// (e.g. by an explicit controlMode.onExit speed). Only accessed by the goroutine that runs Run.
+	mayHaveWrittenToFan bool
 
 	// don't get and set PWMs in computeSetPwmToGetPwmMapAutomatically(), assume 1:1 mapping instead
 	// (enabled by `fan2go fan --id <id> init --assume-pwm-map-identity`)
@@ -301,14 +319,20 @@ func (f *DefaultFanController) clearInitialFanState() {
 // if fan2go may have written to the fan already.
 func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 	f.restoreOnce = &sync.Once{}
+	f.mayHaveWrittenToFan = false
 	// set once fan2go may write to the fan (initialization, set -> get PWM detection, control loop)
 	fanMayBeTouched := false
 	defer func() {
+		panicked := false
 		if r := recover(); r != nil {
 			err = f.panicToError("fan controller", r)
-			if fanMayBeTouched {
-				f.restoreControlModeOnce()
-			}
+			panicked = true
+		}
+		// after a panic, it's unclear what has been written to the fan already
+		if (panicked && fanMayBeTouched) || (err != nil && f.mayHaveWrittenToFan) {
+			// e.g. the initialization succeeded, but its result can't be used: it left the fan in manual mode.
+			// A no-op if the fan settings have been restored already.
+			f.restoreControlModeOnce()
 		}
 	}()
 
@@ -352,10 +376,6 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 
 	err = f.computeFanSpecificMappings(ctx)
 	if err != nil {
-		if ctx.Err() != nil {
-			// cancelled during the automatic setPwm -> getPwm detection, which already wrote to the fan
-			f.restoreControlModeOnce()
-		}
 		return err
 	}
 
@@ -374,6 +394,7 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 	//       Alternatively, should fans that don't support switching the mode but run in manual mode
 	//       by default (cmd or file fans?) just always return ControlModePWM in fan.GetControlMode()
 	//       so we can check that?
+	f.mayHaveWrittenToFan = true
 	err = trySetManualPwm(fan)
 	if err != nil {
 		cm, e := fan.GetControlMode()
@@ -475,36 +496,113 @@ func (f *DefaultFanController) runInitializationIfNeeded(ctx context.Context) (m
 	// if not we need to run the initialization sequence
 	ui.Info("Fan %s: Loading fan curve data...", fan.GetId())
 	fanRpmData, err := f.persistence.LoadFanRpmData(fan)
-	if err != nil {
-		config := fan.GetConfig()
-		if config.HwMon != nil || config.Nvidia != nil {
+	if err == nil {
+		return fanRpmData, nil
+	}
+	if !persistence.IsMissingOrCorrupt(err) {
+		// the data may exist, but can't be read right now (e.g. the database is locked by another process):
+		// don't re-run the whole initialization because of that
+		return nil, fmt.Errorf("unable to load fan curve data of fan %s: %w", fan.GetId(), err)
+	}
+
+	config := fan.GetConfig()
+	if config.HwMon != nil || config.Nvidia != nil {
+		if errors.Is(err, persistence.ErrCorruptData) {
+			ui.Warning("Saved data of fan '%s' is corrupt, starting initialization sequence...", fan.GetId())
+		} else {
 			ui.Warning("Fan '%s' has not yet been analyzed, starting initialization sequence...", fan.GetId())
-			fanCurveData, err := f.RunInitialization(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return fanCurveData, nil
-		} else { // file/cmd fan
-			if fan.GetFanRpmCurveData() != nil {
-				err = f.persistence.SaveFanRpmData(fan)
-			}
+		}
+		fanCurveData, err := f.RunInitialization(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return fanCurveData, nil
+	} else { // file/cmd fan
+		if fan.GetFanRpmCurveData() != nil {
+			err = f.persistence.SaveFanRpmData(fan)
 		}
 	}
 	return fanRpmData, err
 }
 
+// RunInitialization runs the fan initialization sequence. If it fails, the fan settings are restored.
+// If it succeeds, the fan is left in manual mode, at the last PWM value of the analysis.
+// If runFanInitializationInParallel is false, it waits until no other fan is being initialized.
 func (f *DefaultFanController) RunInitialization(ctx context.Context) (map[int]float64, error) {
 	err := f.storeInitialFanState()
 	if err != nil {
 		return nil, err
 	}
 
-	curveData, err := f.runInitialization(ctx)
+	curveData, err := f.runInitializationSequentially(ctx)
 	if err != nil {
-		f.restoreControlMode()
+		if f.mayHaveWrittenToFan {
+			f.restoreControlModeOnce()
+		}
 		return nil, err
 	}
 	return curveData, nil
+}
+
+// RunInitializationAndRestore runs the fan initialization sequence (see RunInitialization) on its own,
+// outside of Run (e.g. for `fan2go fan init`), and restores the fan settings afterwards, also if it panics
+// (unless it failed before it wrote to the fan). A panic is returned as an error.
+// Must not be called while Run is running on the same controller.
+func (f *DefaultFanController) RunInitializationAndRestore(ctx context.Context) (curveData map[int]float64, err error) {
+	f.restoreOnce = &sync.Once{}
+	f.mayHaveWrittenToFan = false
+	defer func() {
+		if r := recover(); r != nil {
+			curveData = nil
+			err = f.panicToError("fan initialization", r)
+		}
+		if f.mayHaveWrittenToFan {
+			f.restoreControlModeOnce()
+		}
+	}()
+	return f.RunInitialization(ctx)
+}
+
+// runInitializationSequentially runs runInitialization, holding the initialization lock
+// (see lockInitializationSequence).
+func (f *DefaultFanController) runInitializationSequentially(ctx context.Context) (map[int]float64, error) {
+	unlock, err := f.lockInitializationSequence(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	f.mayHaveWrittenToFan = true
+	return f.runInitialization(ctx)
+}
+
+// lockInitializationSequence waits until no other fan controller runs a part of the initialization
+// that moves the fan, if runFanInitializationInParallel is false, and returns the function to call
+// when this controller is done. Returns ctx.Err() if ctx is done while waiting.
+// Nested calls (e.g. the setPwm -> getPwm detection during the initialization) don't wait again.
+func (f *DefaultFanController) lockInitializationSequence(ctx context.Context) (unlock func(), err error) {
+	if configuration.CurrentConfig.RunFanInitializationInParallel || f.holdsInitializationLock {
+		return func() {}, nil
+	}
+
+	select {
+	case initializationSequenceLock <- struct{}{}:
+	default:
+		ui.Info("Fan %s: Waiting for the initialization of another fan to finish...", f.fan.GetId())
+		if hook := initializationLockWaitHook; hook != nil {
+			hook(f.fan.GetId())
+		}
+		select {
+		case initializationSequenceLock <- struct{}{}:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	f.holdsInitializationLock = true
+	return func() {
+		f.holdsInitializationLock = false
+		<-initializationSequenceLock
+	}, nil
 }
 
 func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]float64, error) {
@@ -1120,6 +1218,10 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMap(ctx context.Context) (er
 		ui.Info("FanController: Using saved value for setPwmToGetPwmMap of Fan '%s'", f.fan.GetId())
 		return nil
 	}
+	if err != nil && !persistence.IsMissingOrCorrupt(err) {
+		// the data may exist, but can't be read right now: don't sweep the fan because of that
+		return fmt.Errorf("unable to load setPwmToGetPwmMap of fan %s: %w", f.fan.GetId(), err)
+	}
 
 	err = f.computeSetPwmToGetPwmMapAutomatically(ctx)
 	if err != nil {
@@ -1142,11 +1244,6 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMap(ctx context.Context) (er
 // Ensure that computeSetPwmToGetPwmMap has been called before this method,
 // otherwise the pwmMap will always fall back to a linear 1:1 interpolation in the range of [0..255].
 func (f *DefaultFanController) computePwmMap() (err error) {
-	if !configuration.CurrentConfig.RunFanInitializationInParallel {
-		InitializationSequenceMutex.Lock()
-		defer InitializationSequenceMutex.Unlock()
-	}
-
 	cfg := f.fan.GetConfig().PwmMap
 
 	if cfg != nil {
@@ -1191,6 +1288,9 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 			f.pwmMapping[i] = savedPwmMap[i]
 		}
 		return nil
+	}
+	if err != nil && !persistence.IsMissingOrCorrupt(err) {
+		return fmt.Errorf("unable to load pwm map of fan %s: %w", f.fan.GetId(), err)
 	}
 
 	{
@@ -1307,6 +1407,14 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically(ctx context
 		return nil
 	}
 
+	// this sweeps the fan through all PWM values, so it is a part of the initialization sequence
+	unlock, err := f.lockInitializationSequence(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	f.mayHaveWrittenToFan = true
 	_ = trySetManualPwm(f.fan)
 
 	setPwmToGetPwmMap := map[int]int{}

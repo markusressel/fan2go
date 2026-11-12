@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -467,7 +469,7 @@ func (p mockPersistence) LoadFanRpmData(fan fans.Fan) (map[int]float64, error) {
 		fanCurveDataMap := map[int]float64{}
 		return fanCurveDataMap, nil
 	} else {
-		return nil, errors.New("no pwm data found")
+		return nil, fmt.Errorf("no pwm data found: %w", os.ErrNotExist)
 	}
 }
 func (p mockPersistence) DeleteFanRpmData(fan fans.Fan) (err error) { return nil }
@@ -477,7 +479,7 @@ func (p mockPersistence) LoadFanSetPwmToGetPwmMap(fanId string) (map[int]int, er
 		pwmMap := map[int]int{}
 		return pwmMap, nil
 	} else {
-		return nil, errors.New("no pwm map found")
+		return nil, fmt.Errorf("no pwm map found: %w", os.ErrNotExist)
 	}
 }
 func (p mockPersistence) SaveFanSetPwmToGetPwmMap(fanId string, pwmMap map[int]int) (err error) {
@@ -490,7 +492,7 @@ func (p mockPersistence) LoadFanPwmMap(fanId string) ([]int, error) {
 		pwmMap := make([]int, 256)
 		return pwmMap, nil
 	} else {
-		return nil, errors.New("no pwm map found")
+		return nil, fmt.Errorf("no pwm map found: %w", os.ErrNotExist)
 	}
 }
 func (p mockPersistence) SaveFanPwmMap(fanId string, pwmMap []int) (err error) { return nil }

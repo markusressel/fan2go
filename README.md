@@ -937,10 +937,18 @@ depends on fan response characteristics and the analysis config (`analysis.settl
 `analysis.sampleDelay`, and `fanResponseDelay`).
 
 All of this is saved to a local database (path given by the `dbPath` config option), so it is only needed once per fan
-configuration.
+configuration. If the saved data of a fan can't be read because it is corrupt, it is deleted and the fan is analyzed
+again. If the database itself can't be read (e.g. because another process keeps it locked for more than a minute), the
+fan is not analyzed again: its controller stops with an error and, if it already changed the fan's settings, hands the
+fan back (as configured in `controlMode.onExit`).
 
 To reduce risk while analyzing multiple fans, you can force fan2go to
-initialize only one fan at a time, using the `runFanInitializationInParallel: false` config option.
+initialize only one fan at a time, using the `runFanInitializationInParallel: false` config option. The other fans wait
+until it is done; fans whose analysis data is saved usually start right away.
+
+`fan2go fan --id <id> init` re-runs the analysis for a single fan and hands the fan back afterwards (restoring its
+original control mode, or as configured in `controlMode.onExit`), so it doesn't stay at the last PWM value of the
+analysis.
 
 Some PWM controllers or fans may require more time to react to PWM changes. If fan2go is failing to characterize a fan,
 you can try increasing the fan response delay by passing `--fan-response-delay <delay>` to the `fan init` command or

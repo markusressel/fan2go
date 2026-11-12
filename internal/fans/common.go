@@ -166,7 +166,22 @@ func IsRpmLikelySpinning(rpm float64) bool {
 // value) avoids noise spikes at low PWM values being mistaken for the true peak.
 func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 	pwmRpmMap := fan.GetFanRpmCurveData()
-	return ComputePwmBoundariesFromCurveData(*pwmRpmMap, fan.GetStartPwm())
+	if pwmRpmMap == nil {
+		// no curve data, e.g. because the fan has no RPM sensor
+		pwmRpmMap = &map[int]float64{}
+	}
+	return ComputePwmBoundariesFromCurveData(*pwmRpmMap, configuredStartPwm(fan))
+}
+
+// configuredStartPwm returns the startPwm the user configured for the fan, or MaxPwmValue if there is none
+// (which makes ComputePwmBoundariesFromCurveData use the measured value).
+// Note: fan.GetStartPwm() can't be used for this, it returns the start PWM computed from the
+// previously attached curve data.
+func configuredStartPwm(fan Fan) int {
+	if startPwm := fan.GetConfig().StartPwm; startPwm != nil {
+		return *startPwm
+	}
+	return MaxPwmValue
 }
 
 // ComputePwmBoundariesFromCurveData calculates startPwm and maxPwm directly from curve data.

@@ -64,7 +64,8 @@ var initCmd = &cobra.Command{
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		_, err = fanController.RunInitialization(ctx)
+		// hands the fan back afterwards (also on errors and panics): the analysis leaves it in manual mode
+		_, err = fanController.RunInitializationAndRestore(ctx)
 		if err == nil {
 			ui.Success("Done!")
 			// print measured fan curve
