@@ -119,15 +119,15 @@ func (test *evaluatorTest) awaitPwm(expected map[*panickingFan]int) {
 // sub-curves) itself, concurrently with the others, which races on the state of the shared curves.
 func TestCurveEvaluator_SharedStatefulCurves_ConcurrentControllersMonitorAndApi(t *testing.T) {
 	test := newEvaluatorTest(t)
-	controllerA, fanA := test.newController("a", "staircase")
-	controllerB, fanB := test.newController("b", "staircase")
-	controllerC, fanC := test.newController("c", "function")
-	controllerD, fanD := test.newController("d", "pid")
+	ctrlA, fanA := test.newController("a", "staircase")
+	ctrlB, fanB := test.newController("b", "staircase")
+	ctrlC, fanC := test.newController("c", "function")
+	ctrlD, fanD := test.newController("d", "pid")
 
 	stopEvaluator := test.startEvaluator()
 	ctx, cancel := context.WithCancel(context.Background())
 	var runs []<-chan error
-	for _, controller := range []*DefaultFanController{controllerA, controllerB, controllerC, controllerD} {
+	for _, controller := range []*DefaultFanController{ctrlA, ctrlB, ctrlC, ctrlD} {
 		runs = append(runs, startRun(controller, ctx))
 	}
 
