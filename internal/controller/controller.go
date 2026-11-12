@@ -521,7 +521,6 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 		// FanController can't do anything if manual fan control doesn't work
 		return err
 	}
-	f.setState(status.StateRunning, nil)
 
 	var g run.Group
 	controllerCtx, cancelController := context.WithCancel(ctx)
@@ -816,6 +815,10 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 	if !f.recoverFromCurveFailure() {
 		return nil
 	}
+	// only now, after the first update that could evaluate the curve: a controller that is (still) in the
+	// failure state, e.g. when Run started again after a failed reload, goes from initializing straight
+	// back to its sensor_failure_* state, and never reports running in between
+	f.setState(status.StateRunning, nil)
 
 	f.ensureNoThirdPartyIsMessingWithUs()
 
@@ -1151,7 +1154,6 @@ func (f *DefaultFanController) recoverFromCurveFailure() bool {
 	f.sensorFailureMaxWriteFailed = false
 	// PWM write failures before the failure state don't count towards pwmWriteFailureTimeout anymore
 	f.pwmWriteFailures.succeed()
-	f.setState(status.StateRunning, nil)
 	ui.Info("Fan %s: Curve can be evaluated again, resuming normal control", f.fan.GetId())
 	return true
 }

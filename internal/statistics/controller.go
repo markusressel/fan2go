@@ -1,6 +1,8 @@
 package statistics
 
 import (
+	"strings"
+
 	"github.com/markusressel/fan2go/internal/controller"
 	"github.com/markusressel/fan2go/internal/controller/status"
 	"github.com/prometheus/client_golang/prometheus"
@@ -33,8 +35,7 @@ func NewControllerCollector(controllers []controller.FanController) *ControllerC
 			[]string{"id"}, nil,
 		),
 		state: prometheus.NewDesc(prometheus.BuildFQName(namespace, controllerSubsystem, "state"),
-			"State of the fan controller: 1 for the current state, 0 for all others (stopped, initializing, running, "+
-				"sensor_failure_max, sensor_failure_restored, stopped_pwm_write_failed, stopped_stalled, stopped_error)",
+			"State of the fan controller: 1 for the current state, 0 for all others ("+allStatesText()+")",
 			[]string{"id", "state"}, nil,
 		),
 	}
@@ -62,4 +63,13 @@ func (collector *ControllerCollector) Collect(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(collector.state, prometheus.GaugeValue, boolToFloat(state == current), contr.GetFanId(), string(state))
 		}
 	}
+}
+
+// allStatesText returns all controller states, separated by commas.
+func allStatesText() string {
+	var states []string
+	for _, state := range status.AllStates {
+		states = append(states, string(state))
+	}
+	return strings.Join(states, ", ")
 }

@@ -402,7 +402,13 @@ func TestFanController_SensorFailure_Max_StateAfterRunStartsAgain(t *testing.T) 
 	ctx, cancel := context.WithCancel(context.Background())
 	test.cancel = cancel
 	test.done = startRun(test.controller, ctx)
-	advanceThroughRunStartup(t, test.clock)
+	test.clock.BlockUntil(1)
+	test.clock.Advance(defaultStartupSensorWarmup + configuration.CurrentConfig.TempSensorPollingRate)
+	// manual control is taken, the update loop waits for its startup delay: no update yet,
+	// so the controller must not report running (alerts on sensor_failure_* would resolve and fire again)
+	test.clock.BlockUntil(2)
+	assert.Equal(t, status.StateInitializing, test.controller.GetStatus().State)
+	test.clock.Advance(defaultStartupUpdateDelay)
 	test.awaitPwm(200)
 	test.tick(2)
 

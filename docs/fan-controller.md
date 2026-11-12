@@ -349,8 +349,8 @@ and the REST API (`/controller`, `/controller/<fan id>`) show it.
 | State | Meaning |
 |---|---|
 | `stopped` | Not started yet, or stopped cleanly (shutdown, reload, cancelled during startup) |
-| `initializing` | `Run` started: sensor warm-up, fan initialization, `setPwm -> getPwm` detection |
-| `running` | Normal control (set after manual control was taken) |
+| `initializing` | `Run` started: sensor warm-up, fan initialization, `setPwm -> getPwm` detection, until the first update |
+| `running` | Normal control (set by the first update that could evaluate the curve) |
 | `sensor_failure_max` | The curve fails, the fan is held at `maxPwm` (`onSensorFailure: max`, or `restore` that couldn't hand the fan over) |
 | `sensor_failure_restored` | The curve fails, the fan was handed back (`onSensorFailure: restore`) |
 | `stopped_pwm_write_failed` | Stopped after `ErrPwmWriteFailed` |
@@ -360,7 +360,8 @@ and the REST API (`/controller`, `/controller/<fan id>`) show it.
 The update loop records the reason when it stops the controller (`stopAfterUpdateError`); `Run` doesn't overwrite
 it when it returns. A `Run` that starts again (after a failed reload) starts with `initializing`. While the curve
 fails, every update sets the `sensor_failure_*` state again, so it is also correct if `Run` started again in the
-failure state. If the curve recovers but manual control can't be taken again, the state stays
+failure state. Because `running` is only set by an update that could evaluate the curve, such a controller goes from
+`initializing` straight back to `sensor_failure_*`, so alerts on the failure state don't resolve and fire again. If the curve recovers but manual control can't be taken again, the state stays
 `sensor_failure_restored` with that error.
 
 **Why**: Before, a fan in a failure state or a stopped controller was only visible in the log and a desktop

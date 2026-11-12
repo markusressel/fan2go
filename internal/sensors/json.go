@@ -25,6 +25,10 @@ type readingStatusJson struct {
 	Stale bool `json:"stale"`
 }
 
+// newReadingStatusJson returns the reading status of a sensor for the REST API. Staleness is always computed
+// with the real time (util.RealClock), unlike the Prometheus collector, whose clock can be replaced in tests.
+// Tests of the JSON output therefore use readings that are clearly fresh or stale, or no reading at all
+// (always stale).
 func newReadingStatusJson(status ReadingStatus) readingStatusJson {
 	snapshot := readingStatusJson{
 		ConsecutiveFailures: status.ConsecutiveFailures,
