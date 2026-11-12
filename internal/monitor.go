@@ -2,6 +2,8 @@ package internal
 
 import (
 	"context"
+	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -26,10 +28,21 @@ func NewSensorMonitor(sensor sensors.Sensor, pollingRate time.Duration) SensorMo
 	}
 }
 
-func (s sensorMonitor) Run(ctx context.Context) error {
-	tick := time.NewTicker(s.pollingRate)
+// Run updates the sensor every pollingRate until ctx is done.
+// A panic while updating the sensor is logged like an error, and the monitor keeps running.
+// Any other panic stops the monitor and is returned as an error.
+func (s sensorMonitor) Run(ctx context.Context) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			ui.Error("Panic in sensor monitor for sensor %s: %v\n%s", s.sensor.GetId(), r, debug.Stack())
+			err = fmt.Errorf("panic in sensor monitor for sensor %s: %v", s.sensor.GetId(), r)
+		}
+	}()
 
-	err := updateSensor(s.sensor)
+	tick := time.NewTicker(s.pollingRate)
+	defer tick.Stop()
+
+	err = safeUpdateSensor(s.sensor)
 	if err != nil {
 		ui.Warning("Error updating sensor: %v", err)
 	}
@@ -40,12 +53,23 @@ func (s sensorMonitor) Run(ctx context.Context) error {
 			ui.Info("Stopping sensor monitor for sensor %s...", s.sensor.GetId())
 			return nil
 		case <-tick.C:
-			err := updateSensor(s.sensor)
+			err := safeUpdateSensor(s.sensor)
 			if err != nil {
 				ui.Warning("Error updating sensor: %v", err)
 			}
 		}
 	}
+}
+
+// safeUpdateSensor calls updateSensor, and returns a panic (e.g. of a sensor backend) as an error.
+func safeUpdateSensor(s sensors.Sensor) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			ui.Error("Panic while updating sensor %s: %v\n%s", s.GetId(), r, debug.Stack())
+			err = fmt.Errorf("panic while updating sensor %s: %v", s.GetId(), r)
+		}
+	}()
+	return updateSensor(s)
 }
 
 // read the current value of a sensors and append it to the moving window

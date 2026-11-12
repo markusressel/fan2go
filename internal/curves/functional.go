@@ -92,7 +92,8 @@ func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
 		avg := util.Avg(values)
 		value = avg
 	default:
-		ui.Fatal("Unknown curve function: %s", c.Config.Function.Type)
+		// unreachable after config validation, but must not exit the process on the control path
+		return 0, fmt.Errorf("unknown curve function %q in curve '%s'", c.Config.Function.Type, c.Config.ID)
 	}
 
 	ui.Debug("Evaluating curve '%s'. Curve values: '%v' Desired speed: %.2f", c.Config.ID, values, value)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -80,6 +81,12 @@ type DefaultFanController struct {
 	updateRate time.Duration
 	// the fan state as it was before the controller started (nil until captured)
 	originalFanState *FanStateSnapshot
+	// restoreOnce makes Run restore the fan settings only once, no matter whether it stops normally,
+	// because of an error or because of a panic (see restoreControlModeOnce). Replaced on every Run.
+	restoreOnce *sync.Once
+	// errorNotifier logs an error and notifies the user about it (nil means ui.ErrorAndNotify),
+	// replaceable in tests
+	errorNotifier func(title, format string, a ...any)
 	// the last pwm value that was set to the fan, **before** applying the pwmMap to it.
 	// This is always a target value (pre-pwmMap), never a raw value: only setTargetPwm writes it.
 	// Apply the pwmMap (applyPwmMapToTarget) to get the raw value that was written to the fan.
@@ -289,9 +296,24 @@ func (f *DefaultFanController) clearInitialFanState() {
 	f.originalFanState = nil
 }
 
-func (f *DefaultFanController) Run(ctx context.Context) error {
+// Run controls the fan until ctx is done or an error occurs, and restores the fan settings when it stops.
+// A panic in Run or one of its goroutines is returned as an error, and also restores the fan settings
+// if fan2go may have written to the fan already.
+func (f *DefaultFanController) Run(ctx context.Context) (err error) {
+	f.restoreOnce = &sync.Once{}
+	// set once fan2go may write to the fan (initialization, set -> get PWM detection, control loop)
+	fanMayBeTouched := false
+	defer func() {
+		if r := recover(); r != nil {
+			err = f.panicToError("fan controller", r)
+			if fanMayBeTouched {
+				f.restoreControlModeOnce()
+			}
+		}
+	}()
+
 	// prepare the controller by initializing persistence and checking the fan
-	err := f.prepareController()
+	err = f.prepareController()
 	if err != nil {
 		return err
 	}
@@ -312,6 +334,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 		return err
 	}
 
+	fanMayBeTouched = true
 	fanPwmData, err := f.runInitializationIfNeeded(ctx)
 	if err != nil {
 		return err
@@ -331,7 +354,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	if err != nil {
 		if ctx.Err() != nil {
 			// cancelled during the automatic setPwm -> getPwm detection, which already wrote to the fan
-			f.restoreControlMode()
+			f.restoreControlModeOnce()
 		}
 		return err
 	}
@@ -369,7 +392,14 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 		// === rpm monitoring
 		pollingRate := configuration.CurrentConfig.RpmPollingRate
 
-		g.Add(func() error {
+		g.Add(func() (err error) {
+			// doesn't restore itself: the update loop may still be writing to the fan, it restores
+			// the fan settings once it has stopped (the returned error stops it)
+			defer func() {
+				if r := recover(); r != nil {
+					err = f.panicToError("RPM monitor", r)
+				}
+			}()
 			tick := f.getClock().NewTicker(pollingRate)
 			defer tick.Stop()
 			for {
@@ -390,19 +420,24 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	}
 
 	{
-		g.Add(func() error {
+		g.Add(func() (err error) {
+			// the update loop is the only goroutine that writes to the fan, so it can restore right away
+			defer func() {
+				if r := recover(); r != nil {
+					err = f.panicToError("update loop", r)
+					f.restoreControlModeOnce()
+				}
+			}()
 			if err := sleepWithContext(controllerCtx, f.getClock(), f.startupUpdateDelay); err != nil {
 				ui.Info("Fan %s: Stopping fan controller...", fan.GetId())
-				f.restoreControlMode()
+				f.restoreControlModeOnce()
 				return nil
 			}
 			tick := f.getClock().NewTicker(f.updateRate)
 			defer tick.Stop()
 
-			err = f.UpdateFanSpeed()
-			if err != nil {
-				ui.ErrorAndNotify("Fan Control Error", "Fan %s: %v", fan.GetId(), err)
-				f.restoreControlMode()
+			if err := f.UpdateFanSpeed(); err != nil {
+				f.stopAfterUpdateError(err)
 				return nil
 			}
 
@@ -410,13 +445,11 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 				select {
 				case <-controllerCtx.Done():
 					ui.Info("Fan %s: Stopping fan controller...", fan.GetId())
-					f.restoreControlMode()
+					f.restoreControlModeOnce()
 					return nil
 				case <-tick.C():
-					err = f.UpdateFanSpeed()
-					if err != nil {
-						ui.ErrorAndNotify("Fan Control Error", "Fan %s: %v", fan.GetId(), err)
-						f.restoreControlMode()
+					if err := f.UpdateFanSpeed(); err != nil {
+						f.stopAfterUpdateError(err)
 						return nil
 					}
 				}
@@ -430,6 +463,9 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 	}
 
 	err = g.Run()
+	// the update loop restores the fan settings when it stops; this is a no-op then, but makes sure
+	// they are restored on every exit path, now that no goroutine can write to the fan anymore
+	f.restoreControlModeOnce()
 	return err
 }
 
@@ -715,6 +751,44 @@ func trySetManualPwm(fan fans.Fan) error {
 		}
 	}
 	return err
+}
+
+// stopAfterUpdateError handles an error of UpdateFanSpeed, which stops the update loop:
+// it restores the fan settings first, and only then notifies the user, so a slow or hanging
+// notification can't delay the restore.
+func (f *DefaultFanController) stopAfterUpdateError(err error) {
+	f.restoreControlModeOnce()
+	notify := f.errorNotifier
+	if notify == nil {
+		notify = ui.ErrorAndNotify
+	}
+	notify("Fan Control Error", "Fan %s: %v", f.fan.GetId(), err)
+}
+
+// restoreControlModeOnce restores the fan settings (see restoreControlMode), unless the current Run
+// already did. Concurrent callers wait until the restore has finished.
+// A panic during the restore is logged, so it can't skip the restore of other fans.
+func (f *DefaultFanController) restoreControlModeOnce() {
+	once := f.restoreOnce
+	if once == nil {
+		// not called from Run
+		once = &sync.Once{}
+	}
+	once.Do(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				ui.Error("Fan %s: Panic while restoring the fan settings: %v\n%s", f.fan.GetId(), r, debug.Stack())
+			}
+		}()
+		f.restoreControlMode()
+	})
+}
+
+// panicToError logs a panic r recovered in Run or one of its goroutines (named by where)
+// together with the stack trace, and returns it as an error.
+func (f *DefaultFanController) panicToError(where string, r any) error {
+	ui.Error("Fan %s: Panic in %s: %v\n%s", f.fan.GetId(), where, r, debug.Stack())
+	return fmt.Errorf("panic in %s of fan %s: %v", where, f.fan.GetId(), r)
 }
 
 // restoreControlMode is the single place that resets the fan when the controller stops

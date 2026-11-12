@@ -246,8 +246,16 @@ func reloadConfiguration(pers persistence.Persistence) (*registry.Registry, map[
 func runSignalHandler(ctx context.Context, reloadChan chan<- struct{}) error {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
-	defer close(sig)
+	// Neither close sig (os/signal keeps sending to it, and sending on a closed channel panics),
+	// nor call signal.Stop: the signals would then terminate the process (their default action)
+	// during shutdown, before the fan controllers have restored the fan settings.
+	return handleSignals(ctx, sig, reloadChan)
+}
 
+// handleSignals forwards SIGHUP to the orchestrator as a reload request. It returns on
+// SIGTERM/SIGINT or when ctx is done, so the daemon shuts down. Signals that arrive after that
+// are logged and ignored until the process exits (see ignoreSignalsDuringShutdown).
+func handleSignals(ctx context.Context, sig <-chan os.Signal, reloadChan chan<- struct{}) error {
 	for {
 		select {
 		case s := <-sig:
@@ -260,11 +268,22 @@ func runSignalHandler(ctx context.Context, reloadChan chan<- struct{}) error {
 				}
 			} else {
 				ui.Info("Received SIGTERM/SIGINT signal, exiting...")
+				go ignoreSignalsDuringShutdown(sig)
 				return nil
 			}
 		case <-ctx.Done():
+			go ignoreSignalsDuringShutdown(sig)
 			return nil
 		}
+	}
+}
+
+// ignoreSignalsDuringShutdown keeps receiving signals while the daemon shuts down and tells the
+// user that another SIGTERM/SIGINT/SIGHUP (e.g. pressing Ctrl-C twice) doesn't stop the restore
+// of the fan settings. It only returns once sig is closed.
+func ignoreSignalsDuringShutdown(sig <-chan os.Signal) {
+	for s := range sig {
+		ui.Warning("Received %v signal while shutting down, waiting for the fan settings to be restored (send SIGKILL to force exit).", s)
 	}
 }
 

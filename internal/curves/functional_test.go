@@ -386,3 +386,20 @@ func TestFunctionCurveMaximum(t *testing.T) {
 	// THEN
 	assert.Equal(t, 255.0, result)
 }
+
+func TestFunctionCurveUnknownFunction_ReturnsError(t *testing.T) {
+	// GIVEN: a function curve with an unknown function type (rejected by config validation)
+	s1 := &MockSensor{ID: "cpu_sensor", Name: "sensor1", MovingAvg: 50000.0}
+	reg := NewMockRegistry()
+	reg.RegisterSensor(s1)
+	c1, _ := NewSpeedCurve(createLinearCurveConfig("case_fan_front1", s1.GetId(), 40, 80))
+	reg.RegisterCurve(c1)
+	functionCurve, _ := NewSpeedCurve(createFunctionCurveConfig("unknown_function_curve", "unknown", []string{c1.GetId()}))
+	reg.RegisterCurve(functionCurve)
+
+	// WHEN
+	_, err := functionCurve.Evaluate()
+
+	// THEN: an error is returned instead of exiting the process
+	assert.ErrorContains(t, err, "unknown curve function")
+}

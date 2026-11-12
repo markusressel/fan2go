@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"os/user"
@@ -78,8 +79,7 @@ var getDisplaySessions = func() []displaySession {
 
 	// If DISPLAY is set in environment, use it first
 	if display, exists := os.LookupEnv("DISPLAY"); exists && display != "" {
-		cmd := exec.Command("who")
-		output, err := cmd.Output()
+		output, err := runNotificationCommandOutput("who")
 		if err == nil {
 			lines := strings.Split(string(output), "\n")
 			for _, line := range lines {
@@ -98,8 +98,7 @@ var getDisplaySessions = func() []displaySession {
 	}
 
 	// Fallback/Systemd: scan who for any active display session
-	cmd := exec.Command("who")
-	output, err := cmd.Output()
+	output, err := runNotificationCommandOutput("who")
 	if err != nil {
 		return nil
 	}
@@ -127,6 +126,30 @@ var getDisplaySessions = func() []displaySession {
 	return sessions
 }
 
+// notificationCmdTimeout bounds each command run to send a notification (who, systemd-run, notify-send),
+// so a hanging D-Bus or systemd can't block the caller, e.g. a fan controller that stops after an error.
+const notificationCmdTimeout = 5 * time.Second
+
+// notificationCmdWaitDelay is how long a command run to send a notification may keep its output open
+// after it exited or was killed (e.g. through a process it started).
+const notificationCmdWaitDelay = 500 * time.Millisecond
+
+// notificationCommand returns a command that is killed after the given timeout.
+// Call cancel once the command has finished.
+func notificationCommand(timeout time.Duration, name string, args ...string) (cmd *exec.Cmd, cancel context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	cmd = exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = notificationCmdWaitDelay
+	return cmd, cancel
+}
+
+// runNotificationCommandOutput runs the given command with notificationCmdTimeout and returns its stdout.
+func runNotificationCommandOutput(name string, args ...string) ([]byte, error) {
+	cmd, cancel := notificationCommand(notificationCmdTimeout, name, args...)
+	defer cancel()
+	return cmd.Output()
+}
+
 var sendToSession = func(session displaySession, urgency, title, text, icon string) {
 	u, err := user.Lookup(session.user)
 	if err != nil {
@@ -137,8 +160,9 @@ var sendToSession = func(session displaySession, urgency, title, text, icon stri
 	dbusPath := "/run/user/" + u.Uid + "/bus"
 
 	var notifCmd *exec.Cmd
+	var cancel context.CancelFunc
 	if os.Getuid() == 0 {
-		notifCmd = exec.Command("systemd-run",
+		notifCmd, cancel = notificationCommand(notificationCmdTimeout, "systemd-run",
 			"--user",
 			"--machine="+session.user+"@.host",
 			"--setenv=DISPLAY="+session.display,
@@ -150,7 +174,7 @@ var sendToSession = func(session displaySession, urgency, title, text, icon stri
 			title, text,
 		)
 	} else {
-		notifCmd = exec.Command("notify-send",
+		notifCmd, cancel = notificationCommand(notificationCmdTimeout, "notify-send",
 			"-a", "fan2go",
 			"-u", urgency,
 			"-i", icon,
@@ -161,6 +185,7 @@ var sendToSession = func(session displaySession, urgency, title, text, icon stri
 			"DBUS_SESSION_BUS_ADDRESS=unix:path="+dbusPath,
 		)
 	}
+	defer cancel()
 
 	var stderr bytes.Buffer
 	notifCmd.Stderr = &stderr
