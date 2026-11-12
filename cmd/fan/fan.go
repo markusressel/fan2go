@@ -1,11 +1,13 @@
 package fan
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/hwmon"
+	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/spf13/cobra"
 )
 
@@ -57,4 +59,24 @@ func getFan(id string) (fans.Fan, error) {
 	}
 
 	return nil, fmt.Errorf("no fan with id found: %s, options: %s", id, availableFanIds)
+}
+
+// openPersistenceExclusively creates the database directory if needed and takes the process lock of the
+// database (see persistence.AcquireProcessLock), so the command doesn't run next to the daemon, which would
+// write to the same fans and keep using its old data. Call release when the command is done.
+func openPersistenceExclusively(dbPath string) (p persistence.Persistence, release func(), err error) {
+	p = persistence.NewPersistence(dbPath)
+	if err := p.Init(); err != nil {
+		return nil, nil, fmt.Errorf("unable to create the database directory: %w", err)
+	}
+	release, err = persistence.AcquireProcessLock(dbPath)
+	if err != nil {
+		var locked *persistence.ProcessLockedError
+		if errors.As(err, &locked) {
+			return nil, nil, fmt.Errorf("%w. Is the fan2go daemon running? Stop it first (e.g. 'sudo systemctl stop fan2go'), "+
+				"then run this command again", err)
+		}
+		return nil, nil, err
+	}
+	return p, release, nil
 }
