@@ -2,8 +2,10 @@ package configuration
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"slices"
 
@@ -23,6 +25,15 @@ func ValidateConfig(config *Configuration, path string) error {
 		return err
 	}
 	err = validateFans(config)
+	if err != nil {
+		return err
+	}
+	// runs on the loaded config, so the deprecated controllerAdjustmentTickRate
+	// (applied by applyDeprecations in LoadConfig) is covered too
+	err = validateGlobals(config)
+	if err != nil {
+		return err
+	}
 
 	if containsCmdSensors(config) || containsCmdFan(config) {
 		if _, err := util.CheckFilePermissionsForExecution(path); err != nil {
@@ -30,7 +41,64 @@ func ValidateConfig(config *Configuration, path string) error {
 		}
 	}
 
-	return err
+	return nil
+}
+
+// validateGlobals checks top-level timing and sampling settings. Zero or negative
+// rates make time.NewTicker panic, a window size of 0 turns the moving averages into NaN/Inf.
+func validateGlobals(config *Configuration) error {
+	positiveDurations := []struct {
+		key   string
+		value time.Duration
+	}{
+		{"tempSensorPollingRate", config.TempSensorPollingRate},
+		{"rpmPollingRate", config.RpmPollingRate},
+		{"fanController.adjustmentTickRate", config.FanController.AdjustmentTickRate},
+	}
+	for _, d := range positiveDurations {
+		if d.value <= 0 {
+			return fmt.Errorf("%s must be > 0, got %s", d.key, d.value)
+		}
+	}
+
+	nonNegativeDurations := []struct {
+		key   string
+		value time.Duration
+	}{
+		{"fanController.pwmSetDelay", config.FanController.PwmSetDelay},
+		{"analysis.sampleDelay", config.Analysis.SampleDelay},
+		{"analysis.settleTimeout", config.Analysis.SettleTimeout},
+	}
+	for _, d := range nonNegativeDurations {
+		if d.value < 0 {
+			return fmt.Errorf("%s must be >= 0, got %s", d.key, d.value)
+		}
+	}
+
+	if config.FanResponseDelay < 0 {
+		return fmt.Errorf("fanResponseDelay must be >= 0, got %v", config.FanResponseDelay)
+	}
+
+	minOne := []struct {
+		key   string
+		value int
+	}{
+		{"tempRollingWindowSize", config.TempRollingWindowSize},
+		{"rpmRollingWindowSize", config.RpmRollingWindowSize},
+		{"analysis.sampleCount", config.Analysis.SampleCount},
+	}
+	for _, v := range minOne {
+		if v.value < 1 {
+			return fmt.Errorf("%s must be >= 1, got %d", v.key, v.value)
+		}
+	}
+
+	// written as !(x >= 0) so NaN is rejected too
+	if !(config.MaxRpmDiffForSettledFan >= 0) {
+		return fmt.Errorf("maxRpmDiffForSettledFan must be >= 0, got %v", config.MaxRpmDiffForSettledFan)
+	}
+
+	return nil
 }
 
 func containsCmdFan(config *Configuration) bool {
@@ -222,6 +290,9 @@ func validateCurves(config *Configuration) error {
 			}
 
 			pidConfig := curveConfig.PID
+			if math.IsNaN(pidConfig.SetPoint) || math.IsInf(pidConfig.SetPoint, 0) {
+				return fmt.Errorf("curve %s: setPoint must be a finite number, got %v", curveConfig.ID, pidConfig.SetPoint)
+			}
 			if pidConfig.P == 0 && pidConfig.I == 0 && pidConfig.D == 0 {
 				return fmt.Errorf("curve %s: all PID constants are zero", curveConfig.ID)
 			}
@@ -313,6 +384,14 @@ func validateFans(config *Configuration) error {
 			return fmt.Errorf("fan %s: no curve definition with id '%s' found", fanConfig.ID, fanConfig.Curve)
 		}
 
+		if err := validateFanPwmLimits(fanConfig); err != nil {
+			return err
+		}
+
+		if fanConfig.PwmSetDelay != nil && *fanConfig.PwmSetDelay < 0 {
+			return fmt.Errorf("fan %s: pwmSetDelay must be >= 0, got %s", fanConfig.ID, *fanConfig.PwmSetDelay)
+		}
+
 		if fanConfig.ControlAlgorithm != nil {
 			if fanConfig.ControlAlgorithm.Direct != nil {
 				maxPwmChangePerCycle := fanConfig.ControlAlgorithm.Direct.MaxPwmChangePerCycle
@@ -348,9 +427,12 @@ func validateFans(config *Configuration) error {
 			if len(pts) == 0 {
 				return fmt.Errorf("fan '%s': %s requires at least one control point", fanConfig.ID, label)
 			}
-			for k := range pts {
+			for k, v := range pts {
 				if k < 0 || k > 255 {
 					return fmt.Errorf("fan '%s': %s key %d is out of range [0..255]", fanConfig.ID, label, k)
+				}
+				if v < 0 || v > 255 {
+					return fmt.Errorf("fan '%s': %s value %d (key %d) is out of range [0..255]", fanConfig.ID, label, v, k)
 				}
 			}
 
@@ -454,14 +536,14 @@ func validateFans(config *Configuration) error {
 					return fmt.Errorf("fan '%s': controlMode.onExit is set but no option is specified", fanConfig.ID)
 				}
 				if (hasRestore || hasNone) && (hasMode || hasSpeed) {
-					return fmt.Errorf("fan '%s': controlMode.onExit restore/none cannot be combined with controlMode/speed", fanConfig.ID)
+					return fmt.Errorf("fan '%s': controlMode.onExit restore/none cannot be combined with mode/speed", fanConfig.ID)
 				}
 				if hasRestore && hasNone {
 					return fmt.Errorf("fan '%s': controlMode.onExit restore and none cannot be combined", fanConfig.ID)
 				}
 
 				if hasMode {
-					if err := validateControlModeValue(fanConfig.ID, "controlMode.onExit.controlMode", string(*cm.OnExit.ControlMode)); err != nil {
+					if err := validateControlModeValue(fanConfig.ID, "controlMode.onExit.mode", string(*cm.OnExit.ControlMode)); err != nil {
 						return err
 					}
 				}
@@ -489,6 +571,40 @@ func validateFans(config *Configuration) error {
 				return fmt.Errorf("fan %s: setPwm executable is missing", fanConfig.ID)
 			}
 		}
+	}
+
+	return nil
+}
+
+// validateFanPwmLimits checks the configured minPwm, startPwm and maxPwm of a fan.
+// Unset values are detected during fan initialization and can't be checked here.
+func validateFanPwmLimits(fanConfig FanConfig) error {
+	limits := []struct {
+		key   string
+		value *int
+	}{
+		{"minPwm", fanConfig.MinPwm},
+		{"startPwm", fanConfig.StartPwm},
+		{"maxPwm", fanConfig.MaxPwm},
+	}
+	for _, l := range limits {
+		if l.value != nil && (*l.value < 0 || *l.value > 255) {
+			return fmt.Errorf("fan %s: %s must be in [0..255], got %d", fanConfig.ID, l.key, *l.value)
+		}
+	}
+
+	if fanConfig.MaxPwm != nil {
+		maxPwm := *fanConfig.MaxPwm
+		if fanConfig.MinPwm != nil && *fanConfig.MinPwm > maxPwm {
+			return fmt.Errorf("fan %s: minPwm (%d) must be <= maxPwm (%d)", fanConfig.ID, *fanConfig.MinPwm, maxPwm)
+		}
+		if fanConfig.StartPwm != nil && *fanConfig.StartPwm > maxPwm {
+			return fmt.Errorf("fan %s: startPwm (%d) must be <= maxPwm (%d)", fanConfig.ID, *fanConfig.StartPwm, maxPwm)
+		}
+	}
+
+	if fanConfig.MinPwm != nil && fanConfig.StartPwm != nil && *fanConfig.MinPwm > *fanConfig.StartPwm {
+		ui.Warning("fan %s: suspicious pwm config: minPwm (%d) > startPwm (%d)", fanConfig.ID, *fanConfig.MinPwm, *fanConfig.StartPwm)
 	}
 
 	return nil

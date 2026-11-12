@@ -1,10 +1,14 @@
 package configuration
 
 import (
+	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -364,6 +368,8 @@ func TestValidateCurve(t *testing.T) {
 		},
 	}
 
+	setValidGlobals(&config)
+
 	// WHEN
 	err := ValidateConfig(&config, "")
 
@@ -423,6 +429,7 @@ func TestValidateSensor(t *testing.T) {
 			},
 		},
 	}
+	setValidGlobals(&config)
 
 	// WHEN
 	err := ValidateConfig(&config, "")
@@ -617,9 +624,20 @@ func TestValidateFanPwmChannel(t *testing.T) {
 	assert.EqualError(t, err, "fan fan: invalid pwmChannel, must be >= 1")
 }
 
+// setValidGlobals sets the global settings to their defaults, so that
+// ValidateConfig accepts a config built as a struct literal.
+func setValidGlobals(config *Configuration) {
+	config.TempSensorPollingRate = 200 * time.Millisecond
+	config.TempRollingWindowSize = 10
+	config.RpmPollingRate = 1 * time.Second
+	config.RpmRollingWindowSize = 10
+	config.FanController.AdjustmentTickRate = 200 * time.Millisecond
+	config.Analysis.SampleCount = 3
+}
+
 // helper: minimal valid config with a file fan for PwmMap validation tests
 func minimalFanConfig(pwmMap *PwmMapConfig) Configuration {
-	return Configuration{
+	return withValidGlobals(Configuration{
 		Fans: []FanConfig{
 			{
 				ID:     "fan",
@@ -637,7 +655,12 @@ func minimalFanConfig(pwmMap *PwmMapConfig) Configuration {
 		Sensors: []SensorConfig{
 			{ID: "sensor", File: &FileSensorConfig{Path: ""}},
 		},
-	}
+	})
+}
+
+func withValidGlobals(config Configuration) Configuration {
+	setValidGlobals(&config)
+	return config
 }
 
 func TestValidatePwmMap_EmptyStruct(t *testing.T) {
@@ -722,7 +745,7 @@ func TestValidatePwmMap_Nil(t *testing.T) {
 
 // helper: minimal valid config with a file fan for SetPwmToGetPwmMap validation tests
 func minimalFanConfigWithSetPwm(setPwmToGetPwmMap *SetPwmToGetPwmMapConfig) Configuration {
-	return Configuration{
+	return withValidGlobals(Configuration{
 		Fans: []FanConfig{
 			{
 				ID:                "fan",
@@ -740,7 +763,7 @@ func minimalFanConfigWithSetPwm(setPwmToGetPwmMap *SetPwmToGetPwmMapConfig) Conf
 		Sensors: []SensorConfig{
 			{ID: "sensor", File: &FileSensorConfig{Path: ""}},
 		},
-	}
+	})
 }
 
 func TestValidateSetPwmToGetPwmMap_EmptyStruct(t *testing.T) {
@@ -830,7 +853,7 @@ func TestValidateSetPwmToGetPwmMap_Nil(t *testing.T) {
 
 // helper: build a minimal valid Configuration with a given ControlModeConfig
 func minimalFanConfigWithControlMode(cm *ControlModeConfig) Configuration {
-	return Configuration{
+	return withValidGlobals(Configuration{
 		Fans: []FanConfig{
 			{
 				ID:          "fan",
@@ -845,7 +868,7 @@ func minimalFanConfigWithControlMode(cm *ControlModeConfig) Configuration {
 		Sensors: []SensorConfig{
 			{ID: "sensor", File: &FileSensorConfig{Path: ""}},
 		},
-	}
+	})
 }
 
 func TestValidateControlMode_Nil(t *testing.T) {
@@ -937,7 +960,7 @@ func TestValidateControlMode_OnExit_RestoreAndSpeed(t *testing.T) {
 		OnExit: &OnExitConfig{Restore: &OnExitRestoreConfig{}, Speed: &speed},
 	})
 	err := ValidateConfig(&cfg, "")
-	assert.EqualError(t, err, "fan 'fan': controlMode.onExit restore/none cannot be combined with controlMode/speed")
+	assert.EqualError(t, err, "fan 'fan': controlMode.onExit restore/none cannot be combined with mode/speed")
 }
 
 func TestValidateControlMode_OnExit_NoneAndControlMode(t *testing.T) {
@@ -946,7 +969,7 @@ func TestValidateControlMode_OnExit_NoneAndControlMode(t *testing.T) {
 		OnExit: &OnExitConfig{None: &OnExitNoneConfig{}, ControlMode: &v},
 	})
 	err := ValidateConfig(&cfg, "")
-	assert.EqualError(t, err, "fan 'fan': controlMode.onExit restore/none cannot be combined with controlMode/speed")
+	assert.EqualError(t, err, "fan 'fan': controlMode.onExit restore/none cannot be combined with mode/speed")
 }
 
 func TestValidateControlMode_OnExit_RestoreAndNone(t *testing.T) {
@@ -963,7 +986,7 @@ func TestValidateControlMode_OnExit_InvalidControlMode(t *testing.T) {
 		OnExit: &OnExitConfig{ControlMode: &v},
 	})
 	err := ValidateConfig(&cfg, "")
-	assert.EqualError(t, err, `fan 'fan': invalid controlMode.onExit.controlMode "bogus" (valid: auto, pwm, disabled, or integer)`)
+	assert.EqualError(t, err, `fan 'fan': invalid controlMode.onExit.mode "bogus" (valid: auto, pwm, disabled, or integer)`)
 }
 
 func TestValidateControlMode_OnExit_SpeedBelowZero(t *testing.T) {
@@ -1005,6 +1028,7 @@ func TestValidateDiskSensor_Valid(t *testing.T) {
 			},
 		},
 	}
+	setValidGlobals(&config)
 
 	// WHEN
 	err := ValidateConfig(&config, "")
@@ -1049,4 +1073,123 @@ func TestFanConfig_PwmSetDelay_Absent(t *testing.T) {
 
 	// THEN
 	assert.Nil(t, fanConfig.PwmSetDelay)
+}
+
+// loadAndValidateYaml loads the given YAML like the daemon does on startup and on reload
+// (defaults, LoadConfig, ValidateConfig) and returns the first error.
+func loadAndValidateYaml(t *testing.T, yaml string) error {
+	t.Helper()
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	setDefaultValues()
+	viper.SetConfigType("yaml")
+	if err := viper.ReadConfig(strings.NewReader(yaml)); err != nil {
+		t.Fatalf("invalid test YAML: %v", err)
+	}
+	cfg, err := LoadConfig()
+	if err != nil {
+		return err
+	}
+	return ValidateConfig(&cfg, "")
+}
+
+// validationGapsYaml builds a minimal valid config. globals is inserted at the top level,
+// fanExtra into the fan entry and curves replaces the curve list.
+func validationGapsYaml(globals, fanExtra, curves string) string {
+	if curves == "" {
+		curves = `
+  - id: curve
+    linear:
+      sensor: sensor
+      steps:
+        - 40: 0
+        - 80: 255
+`
+	}
+	return fmt.Sprintf(`
+%s
+sensors:
+  - id: sensor
+    file:
+      path: /dev/null
+curves:
+%s
+fans:
+  - id: fan
+    curve: curve
+    file:
+      path: /dev/null
+%s
+`, globals, curves, fanExtra)
+}
+
+// TestValidateConfig_ValidationGaps covers values that used to load without error but
+// crash the daemon (ticker panics), produce NaN/Inf averages or invert the PWM scaling.
+func TestValidateConfig_ValidationGaps(t *testing.T) {
+	tests := []struct {
+		name     string
+		globals  string
+		fanExtra string
+		curves   string
+		// wantErr is a substring of the expected error, empty means no error
+		wantErr string
+		// wantWarning is a substring of an expected warning
+		wantWarning string
+	}{
+		{name: "valid base config"},
+		{name: "adjustmentTickRate zero", globals: "fanController:\n  adjustmentTickRate: 0s", wantErr: "fanController.adjustmentTickRate must be > 0, got 0s"},
+		{name: "adjustmentTickRate negative", globals: "fanController:\n  adjustmentTickRate: -1s", wantErr: "fanController.adjustmentTickRate must be > 0, got -1s"},
+		{name: "deprecated controllerAdjustmentTickRate is applied before validation", globals: "controllerAdjustmentTickRate: 500ms\nfanController:\n  adjustmentTickRate: 0s"},
+		{name: "rpmPollingRate zero", globals: "rpmPollingRate: 0s", wantErr: "rpmPollingRate must be > 0, got 0s"},
+		{name: "tempSensorPollingRate zero", globals: "tempSensorPollingRate: 0s", wantErr: "tempSensorPollingRate must be > 0, got 0s"},
+		{name: "tempRollingWindowSize zero", globals: "tempRollingWindowSize: 0", wantErr: "tempRollingWindowSize must be >= 1, got 0"},
+		{name: "rpmRollingWindowSize zero", globals: "rpmRollingWindowSize: 0", wantErr: "rpmRollingWindowSize must be >= 1, got 0"},
+		{name: "fanController.pwmSetDelay negative", globals: "fanController:\n  pwmSetDelay: -1ms", wantErr: "fanController.pwmSetDelay must be >= 0, got -1ms"},
+		{name: "fanController.pwmSetDelay zero is allowed", globals: "fanController:\n  pwmSetDelay: 0s"},
+		{name: "fan pwmSetDelay negative", fanExtra: "    pwmSetDelay: -1ms", wantErr: "fan fan: pwmSetDelay must be >= 0, got -1ms"},
+		{name: "fanResponseDelay negative", globals: "fanResponseDelay: -1", wantErr: "fanResponseDelay must be >= 0, got -1"},
+		{name: "analysis.sampleCount zero", globals: "analysis:\n  sampleCount: 0", wantErr: "analysis.sampleCount must be >= 1, got 0"},
+		{name: "analysis.sampleDelay negative", globals: "analysis:\n  sampleDelay: -1ms", wantErr: "analysis.sampleDelay must be >= 0, got -1ms"},
+		{name: "analysis.settleTimeout negative", globals: "analysis:\n  settleTimeout: -1s", wantErr: "analysis.settleTimeout must be >= 0, got -1s"},
+		{name: "maxRpmDiffForSettledFan negative", globals: "maxRpmDiffForSettledFan: -1", wantErr: "maxRpmDiffForSettledFan must be >= 0, got -1"},
+		{name: "minPwm out of range", fanExtra: "    minPwm: 256", wantErr: "fan fan: minPwm must be in [0..255], got 256"},
+		{name: "startPwm out of range", fanExtra: "    startPwm: 300", wantErr: "fan fan: startPwm must be in [0..255], got 300"},
+		{name: "maxPwm out of range", fanExtra: "    maxPwm: -1", wantErr: "fan fan: maxPwm must be in [0..255], got -1"},
+		{name: "minPwm, startPwm and maxPwm inconsistent", fanExtra: "    minPwm: 200\n    maxPwm: 100\n    startPwm: 300", wantErr: "fan fan: startPwm must be in [0..255], got 300"},
+		{name: "minPwm > maxPwm", fanExtra: "    minPwm: 200\n    maxPwm: 100", wantErr: "fan fan: minPwm (200) must be <= maxPwm (100)"},
+		{name: "startPwm > maxPwm", fanExtra: "    startPwm: 200\n    maxPwm: 100", wantErr: "fan fan: startPwm (200) must be <= maxPwm (100)"},
+		{name: "minPwm == startPwm == maxPwm is allowed", fanExtra: "    minPwm: 100\n    startPwm: 100\n    maxPwm: 100"},
+		{name: "minPwm > startPwm is only a warning", fanExtra: "    minPwm: 100\n    startPwm: 50", wantWarning: "fan fan: suspicious pwm config: minPwm (100) > startPwm (50)"},
+		{name: "pwmMap linear value out of range", fanExtra: "    pwmMap:\n      linear:\n        0: 0\n        128: 999", wantErr: "fan 'fan': pwmMap linear value 999 (key 128) is out of range [0..255]"},
+		{name: "pwmMap values value out of range", fanExtra: "    pwmMap:\n      values:\n        0: -1\n        255: 255", wantErr: "fan 'fan': pwmMap values value -1 (key 0) is out of range [0..255]"},
+		{name: "setPwmToGetPwmMap linear value out of range", fanExtra: "    setPwmToGetPwmMap:\n      linear:\n        0: 0\n        255: 256", wantErr: "fan 'fan': setPwmToGetPwmMap linear value 256 (key 255) is out of range [0..255]"},
+		{name: "linear curve step NaN", curves: "  - id: curve\n    linear:\n      sensor: sensor\n      steps:\n        - 40: NaN\n        - 80: 255", wantErr: "invalid curve step value 'NaN'"},
+		{name: "linear curve step nan%", curves: "  - id: curve\n    linear:\n      sensor: sensor\n      steps:\n        - 40: nan%\n        - 80: 255", wantErr: "invalid curve step value 'nan%'"},
+		{name: "linear curve step Inf", curves: "  - id: curve\n    linear:\n      sensor: sensor\n      steps:\n        - 40: 0\n        - 80: Inf", wantErr: "invalid curve step value 'Inf'"},
+		{name: "staircase curve step NaN", curves: "  - id: curve\n    staircase:\n      sensor: sensor\n      steps:\n        - 40: NaN\n        - 80: 255", wantErr: "invalid curve step value 'NaN'"},
+		{name: "pid curve setPoint NaN", curves: "  - id: curve\n    pid:\n      sensor: sensor\n      setPoint: .nan\n      p: -0.05\n      i: -0.005\n      d: -0.005", wantErr: "curve curve: setPoint must be a finite number, got NaN"},
+		{name: "pid curve setPoint Inf", curves: "  - id: curve\n    pid:\n      sensor: sensor\n      setPoint: .inf\n      p: -0.05\n      i: -0.005\n      d: -0.005", wantErr: "curve curve: setPoint must be a finite number, got +Inf"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var warnings bytes.Buffer
+			oldWarning := pterm.Warning
+			pterm.Warning = *pterm.Warning.WithWriter(&warnings)
+			t.Cleanup(func() { pterm.Warning = oldWarning })
+
+			err := loadAndValidateYaml(t, validationGapsYaml(tt.globals, tt.fanExtra, tt.curves))
+
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.ErrorContains(t, err, tt.wantErr)
+			}
+			if tt.wantWarning != "" {
+				assert.Contains(t, warnings.String(), tt.wantWarning)
+			} else {
+				assert.NotContains(t, warnings.String(), "suspicious pwm config")
+			}
+		})
+	}
 }

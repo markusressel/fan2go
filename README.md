@@ -333,6 +333,8 @@ fans:
     # an increased rotational speed compared to lower values.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
+    # Note: minPwm, startPwm and maxPwm must be in [0..255], and minPwm and startPwm
+    #       must not be greater than maxPwm. minPwm > startPwm only causes a warning.
     # (Optional) Override the global fanController.pwmSetDelay for this specific fan.
     # Useful when a fan requires more or less time to respond to PWM changes than the global default.
     # pwmSetDelay: 10ms
@@ -353,7 +355,7 @@ fans:
     # linear: linearly interpolate between user-specified control points.
     # Useful when you know the endpoints (or intermediate points) but want
     # smooth values in between.
-    # Note: values must be strictly monotonically increasing.
+    # Note: keys and values must be in [0..255], values must be strictly monotonically increasing.
     # pwmMap:
     #   linear:
     #     0: 0
@@ -362,7 +364,7 @@ fans:
     # values: step-interpolate user-specified control points.
     # Use for fans that only support a limited set of discrete PWM values
     # (e.g. off / low / medium / high).
-    # Note: values must be strictly monotonically increasing.
+    # Note: keys and values must be in [0..255], values must be strictly monotonically increasing.
     # pwmMap:
     #   values:
     #     0: 0
@@ -408,7 +410,7 @@ fans:
     #     onExit:
     #       mode: auto      # set a specific control mode on exit
     #       speed: 128      # set a fixed PWM speed on exit (0..255)
-    #     # controlMode and speed can be combined or used independently.
+    #     # mode and speed can be combined or used independently.
     controlMode:
       active: pwm
       onExit: restore
@@ -925,6 +927,10 @@ by setting `fanResponseDelay` in the config. The default value is 2 seconds.
 Temperature and RPM sensors are polled continuously at the rate specified by the `tempSensorPollingRate` config option.
 `tempRollingWindowSize`/`rpmRollingWindowSize` amount of measurements are always averaged and stored as the average
 sensor value.
+
+fan2go rejects a config at startup (and keeps the current config on reload) if a polling rate
+(`tempSensorPollingRate`, `rpmPollingRate`) or `fanController.adjustmentTickRate` is not greater than 0, or if a
+rolling window size is smaller than 1.
 
 ## Fan Controllers
 

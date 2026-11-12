@@ -3,6 +3,7 @@ package configuration
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -228,6 +229,10 @@ func transformCurveSteps(ID *string, Steps *map[int]float64, InSteps *map[int]st
 			str = str[:l-1] // cut off '%' because ParseFloat() wouldn't like it
 		}
 		speed, err := strconv.ParseFloat(str, 64)
+		// ParseFloat accepts "NaN" and "Inf", which the range checks below don't catch (NaN compares false)
+		if err == nil && (math.IsNaN(speed) || math.IsInf(speed, 0)) {
+			err = fmt.Errorf("not a finite number")
+		}
 		if err != nil {
 			return fmt.Errorf("invalid curve step value '%s' in %s - must be either just a number or a number followed by '%%'", origstr, *ID)
 		}
@@ -285,7 +290,7 @@ func (c *OnExitConfig) UnmarshalText(text []byte) error {
 	case "none":
 		*c = OnExitConfig{None: &OnExitNoneConfig{}}
 	default:
-		return fmt.Errorf("unknown onExit value %q (expected: restore, none, or a map with controlMode/speed keys)", string(text))
+		return fmt.Errorf("unknown onExit value %q (expected: restore, none, or a map with mode/speed keys)", string(text))
 	}
 	return nil
 }

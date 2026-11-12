@@ -13,14 +13,14 @@ maxRpmDiffForSettledFan: 20
 #       and has no effect during normal operation
 fanResponseDelay: 2
 
-# The rate to poll temperature sensors at
+# The rate to poll temperature sensors at (must be > 0)
 tempSensorPollingRate: 200ms
-# The number of temp sensor values to keep in a rolling window array
+# The number of temp sensor values to keep in a rolling window array (must be >= 1)
 tempRollingWindowSize: 10
 
-# The rate to poll fan RPM input sensors at
+# The rate to poll fan RPM input sensors at (must be > 0)
 rpmPollingRate: 1s
-# The number of rpm sensor values to keep in a rolling window array
+# The number of rpm sensor values to keep in a rolling window array (must be >= 1)
 rpmRollingWindowSize: 10
 
 # Configuration options for the initial analysis of fan rpm curves.
@@ -43,7 +43,7 @@ analysis:
 
 # Configuration options for each fan controller responsible for an individual fan.
 fanController:
-  # The rate to update fan speed targets at (length of one "cycle")
+  # The rate to update fan speed targets at (length of one "cycle", must be > 0)
   adjustmentTickRate: 200ms
   # Time to wait for a fan to respond to a control change
   pwmSetDelay: 5ms
@@ -88,6 +88,8 @@ fans:
     # an increased rotational speed compared to lower values.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
+    # Note: minPwm, startPwm and maxPwm must be in [0..255], and minPwm and startPwm
+    #       must not be greater than maxPwm.
     # (Optional) Configure how fan2go maps the internal [0..255] PWM range to
     # hardware-specific PWM values. If omitted, fan2go auto-detects this during
     # fan initialization.
