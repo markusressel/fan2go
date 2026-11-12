@@ -1331,6 +1331,9 @@ func TestValidateConfig_CurveAndControlAlgorithmGaps(t *testing.T) {
 		{name: "pid control algorithm with a large i overshoots", fanExtra: pidAlgorithm("        p: 0.05\n        i: 4"), wantWarning: "fan fan: controlAlgorithm.pid (p: 0.05, i: 4, d: 0) overshoots"},
 		{name: "controlLoop is unstable", globals: "fanController:\n  adjustmentTickRate: 3s", fanExtra: "    controlLoop:\n      p: 0.05\n      i: 0.4", wantErr: "fan fan: controlLoop (p: 0.05, i: 0.4, d: 0) is unstable"},
 		{name: "deprecated controllerAdjustmentTickRate is used for the stability check", globals: "controllerAdjustmentTickRate: 3s", wantErr: "is unstable with fanController.adjustmentTickRate 3s"},
+		// a slow fan runs the loop at a step of max(1s, adjustmentTickRate)
+		{name: "pid control algorithm unstable at the gap time step", fanExtra: pidAlgorithm("        p: 0.05\n        i: 1.25"), wantWarning: "fan fan: controlAlgorithm.pid (p: 0.05, i: 1.25, d: 0) is unstable at a time step of 1s"},
+		{name: "default pid control algorithm is stable at the gap time step", globals: "fanController:\n  adjustmentTickRate: 200ms"},
 		{name: "direct control algorithm isn't checked for stability", globals: "fanController:\n  adjustmentTickRate: 3s", fanExtra: "    controlAlgorithm: direct"},
 	}
 

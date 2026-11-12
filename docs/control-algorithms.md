@@ -180,8 +180,11 @@ poles outside the unit circle). Overshoot above 1 % starts just above `800ms`.
 loaded, not from the fan noise.
 
 **Trade-offs**: The model ignores the clamping to `[0..255]` and the anti-windup, which only matter once the
-output hits a limit, and assumes that a cycle takes exactly `adjustmentTickRate` (a slow cmd fan can stretch `dt`).
-Configs that worked "well enough" with an oscillating fan are now rejected. The overshoot threshold of 1 % is a
+output hits a limit, and assumes that a cycle takes exactly `adjustmentTickRate`. A fan whose every update takes
+longer than the gap threshold (e.g. a slow `cmd` fan) runs the loop at `max(1s, adjustmentTickRate)` instead (see
+"The PID algorithm doesn't integrate over a gap"). Validation therefore also checks that step
+(`control_loop.GapDt`), but only warns if the values are unstable there, because it only affects slow fans: for
+example, `p: 0.05, i: 1.25` is stable at `200ms` and unstable at `1s`. Configs that worked "well enough" with an oscillating fan are now rejected. The overshoot threshold of 1 % is a
 judgement call (about 2.5 PWM for a full-range step).
 
 **Alternatives considered**: A rule of thumb like `i * adjustmentTickRate < 1`. It ignores `p` and `d`, and misses
@@ -276,7 +279,7 @@ max write failed during the failure, the loop still starts at max, which errs on
 
 **Decision**: If more than `max(2s, 5 x adjustmentTickRate)` passed since the last cycle, `PidControlLoop` counts the
 gap as `max(1s, adjustmentTickRate)`: it uses that as `dt` of the cycle (`PidLoop.ResumeAt`) and keeps its state.
-Both are computed from the tick rate passed to `NewPidControlLoop` (`maxCycleGap`, `gapDt`). `direct` needs no such
+Both are computed from the tick rate passed to `NewPidControlLoop` (`maxCycleGap`, `GapDt`). `direct` needs no such
 rule, it doesn't use time.
 
 **Why**: `PidLoop.LoopAt` integrates `err * dt` with no upper bound on `dt`. After a pause (a curve failure, a
@@ -302,7 +305,8 @@ Why 1 s: simulated with the default values and updates every 3 s, a step reaches
 
 1 s is well below the cycle time at which the default values start to oscillate (about 2.64 s). With a tick of
 1 s or more, a gap counts as one tick. A slow fan thus runs the loop at a step of `max(1s, adjustmentTickRate)`, so
-the `pid` values must also be stable at that step, not only at `adjustmentTickRate`.
+the `pid` values must also be stable at that step, not only at `adjustmentTickRate`. Validation warns if they aren't
+(see "Validation computes the stability of the PID algorithm").
 
 **Who benefits**: Everyone on the default algorithm. Normal operation is unchanged: evaluator cycles that are
 coalesced or slightly delayed stay far below the threshold as long as one update of the fan takes well under 2 s.
@@ -313,7 +317,8 @@ coalesced or slightly delayed stay far below the threshold as long as one update
   example above), which is a much smaller effect.
 - A fan whose every update takes longer than the threshold moves 1 s worth per update: it gets within 10% of a new
   curve value after about 4 updates, and may overshoot a step down by about 8%.
-- The 1 s fits the default values. With a larger `i`, it can overshoot more (bounded by the `[0..255]` clamp).
+- The 1 s fits the default values. With a larger `i`, a slow fan can overshoot more, or oscillate between `0` and
+  `255` without end if the values are unstable at 1 s (e.g. `p: 0.05, i: 1.25`); validation warns about the latter.
 
 ### PID is the default
 

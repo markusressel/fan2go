@@ -175,46 +175,56 @@ func pidControlAlgorithmGains(fanConfig FanConfig) (p, i, d float64, key string,
 }
 
 // validatePidControlAlgorithms checks that the pid control algorithm of each fan is stable with the
-// configured fanController.adjustmentTickRate (error), and warns if it overshoots. The warning is logged
-// once per distinct algorithm (e.g. once for all fans with the default one), with the ids of its fans.
+// configured fanController.adjustmentTickRate (error), and warns if it overshoots. It also warns if the
+// algorithm is unstable at the time step a gap between two cycles counts as (control_loop.GapDt): a fan whose
+// every update takes longer than the gap threshold (e.g. a slow cmd fan) runs the loop at that step.
+// Each warning is logged once per distinct algorithm (e.g. once for all fans with the default one), with the
+// ids of its fans.
 func validatePidControlAlgorithms(config *Configuration) error {
 	type algorithm struct {
 		key     string
 		p, i, d float64
 	}
 	tickRate := config.FanController.AdjustmentTickRate
-	var overshooting []algorithm
-	overshoot := map[algorithm]float64{}
+	gapDt := control_loop.GapDt(tickRate)
+	// the algorithms in the order of their first fan, and the ids of their fans
+	var algorithms []algorithm
 	fanIds := map[algorithm][]string{}
 	for _, fanConfig := range config.Fans {
 		p, i, d, key, ok := pidControlAlgorithmGains(fanConfig)
 		if !ok {
 			continue
 		}
-		result := control_loop.AnalyzePidStability(p, i, d, tickRate)
-		if !result.Stable {
-			return fmt.Errorf("fan %s: %s (p: %v, i: %v, d: %v) is unstable with fanController.adjustmentTickRate %s, "+
-				"its output would oscillate between 0 and 255. Lower i (for a slow adjustmentTickRate) or d (for a fast one), "+
-				"change the adjustmentTickRate, or use controlAlgorithm: direct",
-				fanConfig.ID, key, p, i, d, tickRate)
-		}
-		if result.Overshoots() {
-			a := algorithm{key: key, p: p, i: i, d: d}
-			if _, seen := fanIds[a]; !seen {
-				overshooting = append(overshooting, a)
-				overshoot[a] = result.Overshoot
+		a := algorithm{key: key, p: p, i: i, d: d}
+		if _, seen := fanIds[a]; !seen {
+			if !control_loop.AnalyzePidStability(p, i, d, tickRate).Stable {
+				return fmt.Errorf("fan %s: %s (p: %v, i: %v, d: %v) is unstable with fanController.adjustmentTickRate %s, "+
+					"its output would oscillate between 0 and 255. Lower i (for a slow adjustmentTickRate) or d (for a fast one), "+
+					"change the adjustmentTickRate, or use controlAlgorithm: direct",
+					fanConfig.ID, key, p, i, d, tickRate)
 			}
-			fanIds[a] = append(fanIds[a], fanConfig.ID)
+			algorithms = append(algorithms, a)
 		}
+		fanIds[a] = append(fanIds[a], fanConfig.ID)
 	}
-	for _, a := range overshooting {
+
+	for _, a := range algorithms {
 		label := "fan"
 		if len(fanIds[a]) > 1 {
 			label = "fans"
 		}
-		ui.Warning("%s %s: %s (p: %v, i: %v, d: %v) overshoots a change of the curve value by about %.0f%% with fanController.adjustmentTickRate %s. "+
-			"Lower i or d, or the adjustmentTickRate, to avoid this",
-			label, strings.Join(fanIds[a], ", "), a.key, a.p, a.i, a.d, overshoot[a]*100, tickRate)
+		fans := strings.Join(fanIds[a], ", ")
+		if result := control_loop.AnalyzePidStability(a.p, a.i, a.d, tickRate); result.Overshoots() {
+			ui.Warning("%s %s: %s (p: %v, i: %v, d: %v) overshoots a change of the curve value by about %.0f%% with fanController.adjustmentTickRate %s. "+
+				"Lower i or d, or the adjustmentTickRate, to avoid this",
+				label, fans, a.key, a.p, a.i, a.d, result.Overshoot*100, tickRate)
+		}
+		if gapDt != tickRate && !control_loop.AnalyzePidStability(a.p, a.i, a.d, gapDt).Stable {
+			ui.Warning("%s %s: %s (p: %v, i: %v, d: %v) is unstable at a time step of %s. A fan whose updates take longer than "+
+				"the gap threshold (e.g. a slow cmd fan) runs the loop at this step, so its output would oscillate between 0 and 255. "+
+				"Lower i if this applies to your fan",
+				label, fans, a.key, a.p, a.i, a.d, gapDt)
+		}
 	}
 	return nil
 }

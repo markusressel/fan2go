@@ -1240,6 +1240,9 @@ with its own previous output, it is a linear system of its own, so its stability
   and `255`. With the default values, this is the case for a cycle rate of about `2.64s` or slower (`i` too large for
   the time step) and of about `21ms` or faster (`d` too large for the time step).
 - fan2go warns if the output overshoots a change of the curve value by more than 1 %.
+- fan2go also warns if the values are unstable at a cycle rate of `1s` (if `adjustmentTickRate` is shorter): a fan
+  whose every update takes longer than `max(2s, 5 x adjustmentTickRate)` (e.g. a slow `cmd` fan) runs the loop at
+  that rate.
 
 This also applies to fans without a `controlAlgorithm` (they use the default values) and to the deprecated
 `controlLoop` setting. Only one of `direct` and `pid` may be set, and `controlLoop` can't be combined with
