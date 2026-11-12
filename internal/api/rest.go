@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 
 	"github.com/markusressel/fan2go/internal/registry"
 )
@@ -36,12 +36,12 @@ func CreateRestService(reg *registry.Registry) *echo.Echo {
 }
 
 // returns an empty "ok" answer
-func isAlive(c echo.Context) error {
+func isAlive(c *echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
 // return a "not found" message
-func returnNotFound(c echo.Context, id string) (err error) {
+func returnNotFound(c *echo.Context, id string) (err error) {
 	return c.JSONPretty(http.StatusNotFound, &Result{
 		Name:    "Not found",
 		Message: "No item with id '" + id + "' found",
@@ -49,7 +49,7 @@ func returnNotFound(c echo.Context, id string) (err error) {
 }
 
 // return the error message of an error
-func returnError(c echo.Context, e error) (err error) {
+func returnError(c *echo.Context, e error) (err error) {
 	return c.JSONPretty(http.StatusInternalServerError, &Result{
 		Name:    "Unknown Error",
 		Message: e.Error(),

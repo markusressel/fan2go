@@ -1,13 +1,12 @@
 package api
 
 import (
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 )
 
 func CreateWebserver() *echo.Echo {
 	webserver := echo.New()
-	webserver.HideBanner = true
 
 	// Root level middleware
 	webserver.Pre(middleware.AddTrailingSlash())
