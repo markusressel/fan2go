@@ -51,7 +51,8 @@ Main types and data:
 ### The RPM curve measurement
 
 `RunInitializationSequence` skips the measurement for fans without an RPM sensor and returns no curve data. Otherwise
-it switches the fan to manual mode and runs four phases over the distinct target values:
+it switches the fan to manual mode (`takeManualControl`; if that fails, the analysis fails, see
+[fan-controller.md](fan-controller.md)) and runs four phases over the distinct target values:
 
 1. **Start boundary** (`detectStartBoundary`): binary search for the lowest target value at which the fan spins.
    "Spinning" means at least 50 RPM (`rpmNoiseThreshold`, `fans.IsRpmLikelySpinning`). Each step waits for the fan to

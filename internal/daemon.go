@@ -43,7 +43,9 @@ func RunDaemon() error {
 
 	fanControllers, evaluator, err := initializeFanControllers(pers, fanMap, reg)
 	if err != nil {
-		return configuration.NewConfigError(fmt.Errorf("error initializing fan controllers: %w", err))
+		// errors caused by the config (the curve evaluator) are ConfigErrors already, others (e.g. the
+		// statistics collectors can't be registered) are not
+		return fmt.Errorf("error initializing fan controllers: %w", err)
 	}
 
 	forgetOriginalStatesOfUnconfiguredFans(pers, configuration.CurrentConfig.Fans)

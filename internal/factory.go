@@ -42,6 +42,8 @@ func InitializeObjects() (fanMap map[configuration.FanConfig]fans.Fan, reg *regi
 
 // initializeFanControllers creates the curve evaluator for all curves of reg, and a fan controller
 // for each fan, which is driven by the cycles of the evaluator.
+// Errors of the curve evaluator are configuration.ConfigErrors; an error registering the statistics
+// collectors is not.
 func initializeFanControllers(
 	pers persistence.Persistence,
 	fanMap map[configuration.FanConfig]fans.Fan,
@@ -99,7 +101,8 @@ func createCollectors(reg *registry.Registry, fanControllers map[fans.Fan]contro
 }
 
 // newCurveEvaluator returns the curve evaluator for all curves of reg, which evaluates them
-// every tickRate (fanController.adjustmentTickRate).
+// every tickRate (fanController.adjustmentTickRate). Its errors (invalid tick rate, duplicate curve ids,
+// curve dependency cycle) are caused by the config, so they are configuration.ConfigErrors.
 func newCurveEvaluator(reg *registry.Registry, tickRate time.Duration) (*curves.CurveEvaluator, error) {
 	var curveList []curves.SpeedCurve
 	for _, curve := range reg.SnapshotCurves() {
@@ -107,7 +110,7 @@ func newCurveEvaluator(reg *registry.Registry, tickRate time.Duration) (*curves.
 	}
 	evaluator, err := curves.NewCurveEvaluator(curveList, tickRate)
 	if err != nil {
-		return nil, fmt.Errorf("error initializing curve evaluator: %w", err)
+		return nil, configuration.NewConfigError(fmt.Errorf("error initializing curve evaluator: %w", err))
 	}
 	return evaluator, nil
 }

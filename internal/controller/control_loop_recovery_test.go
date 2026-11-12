@@ -153,7 +153,7 @@ func TestFanController_CalculateTargetSpeed_PresetsTheControlLoopOnRecovery(t *t
 }
 
 // manualModeFailingFan is a MockFan whose control mode writes fail, except for automatic, during the next
-// failManualModeWrites attempts to take manual control (each one writes pwm, then disabled as a fallback)
+// failManualModeWrites attempts to take manual control (each one writes the manual mode once)
 type manualModeFailingFan struct {
 	*MockFan
 
@@ -164,8 +164,7 @@ type manualModeFailingFan struct {
 func (fan *manualModeFailingFan) SetControlMode(mode fans.ControlMode) error {
 	fan.failMu.Lock()
 	fail := mode != fans.ControlModeAutomatic && fan.failManualModeWrites > 0
-	if fail && mode == fans.ControlModeDisabled {
-		// the fallback of trySetManualPwm, the last write of this attempt
+	if fail {
 		fan.failManualModeWrites--
 	}
 	fan.failMu.Unlock()

@@ -90,6 +90,8 @@ func TestInitializeFanControllers_ReplacesCollectorsOnlyOnSuccess(t *testing.T) 
 	}
 	_, _, err = initializeFanControllers(nil, newFans, newReg)
 	require.Error(t, err)
+	// caused by the config: exit code 78 at startup
+	assert.True(t, configuration.IsConfigError(err))
 
 	// THEN: the statistics still export the old objects
 	assert.Equal(t, []string{"old"}, exportedIds(t, "fan2go_sensor_read_failures_total"))
@@ -101,6 +103,27 @@ func TestInitializeFanControllers_ReplacesCollectorsOnlyOnSuccess(t *testing.T) 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"new"}, exportedIds(t, "fan2go_sensor_read_failures_total"))
 	assert.Equal(t, []string{"new"}, exportedIds(t, "fan2go_controller_minPwm_offset"))
+}
+
+// A collector registration error isn't caused by the config, so it must not exit with the config error code.
+func TestInitializeFanControllers_CollectorRegistrationError_IsNoConfigError(t *testing.T) {
+	setUpSensorFailureTestConfig(t)
+	configuration.CurrentConfig.FanController.AdjustmentTickRate = time.Second
+	t.Cleanup(statistics.UnregisterAll)
+
+	// GIVEN: a collector, registered outside of statistics.ReplaceAll, that exports the same metrics
+	conflicting := statistics.NewSensorCollector(nil)
+	require.NoError(t, prometheus.Register(conflicting))
+	t.Cleanup(func() { prometheus.Unregister(conflicting) })
+	reg, fanMap := newFactoryTestRegistry(t, "fan")
+
+	// WHEN
+	_, _, err := initializeFanControllers(nil, fanMap, reg)
+
+	// THEN
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error registering the statistics collectors")
+	assert.False(t, configuration.IsConfigError(err))
 }
 
 func TestInitializeSensors_HwmonSensorHasTheDetectedLabelChannelMinAndMax(t *testing.T) {

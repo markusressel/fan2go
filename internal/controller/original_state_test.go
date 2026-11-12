@@ -64,6 +64,8 @@ func startOriginalStateRunWithoutStartup(t *testing.T, fan fans.Fan, p persisten
 		test.fan = pf
 	} else if ff, ok := fan.(*failingModeFan); ok {
 		test.fan = ff.panickingFan
+	} else if rf, ok := fan.(*pwmModeRejectingFan); ok {
+		test.fan = rf.panickingFan
 	}
 	test.fan.onSensorFailure = onSensorFailure
 	test.curve = &switchableCurve{value: 50}
