@@ -80,6 +80,21 @@ func TestParseAtaSmartAttributes_TruncatedData(t *testing.T) {
 	assert.Contains(t, err.Error(), "no temperature attribute")
 }
 
+// --- Pure function tests: newSmartReadDataCmd ---
+
+func TestNewSmartReadDataCmd_Layout(t *testing.T) {
+	buf := newSmartReadDataCmd()
+
+	// 4-byte header + one 512-byte sector for the returned data
+	require.Len(t, buf, 4+512)
+	assert.Equal(t, byte(0xb0), buf[0], "ATA command: SMART")
+	assert.Equal(t, byte(0), buf[1], "sector number: unused for SMART READ DATA")
+	assert.Equal(t, byte(0xd0), buf[2], "feature: SMART READ DATA")
+	// the kernel (ata_cmd_ioctl) only transfers data if the sector count is non-zero
+	assert.Equal(t, byte(1), buf[3], "sector count: one sector")
+	assert.Equal(t, make([]byte, 512), buf[4:], "data area starts zeroed")
+}
+
 // --- DiskSensor metadata tests ---
 
 func newDiskSensor(device string) *DiskSensor {

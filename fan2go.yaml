@@ -241,6 +241,8 @@ curves:
 statistics:
   # Whether to enable the prometheus exporter or not
   enabled: false
+  # The host to listen for connections, use 0.0.0.0 to allow remote scrapes
+  host: 127.0.0.1
   # The port to expose the exporter on
   port: 9000
 

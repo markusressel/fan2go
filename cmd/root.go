@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/pterm/pterm/putils"
@@ -25,7 +27,12 @@ var rootCmd = &cobra.Command{
 	Long: `fan2go is a simple daemon that controls the fans
 on your computer based on temperature sensors.`,
 	// this is the default command to run when no subcommand is specified
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// errors returned from here on are no usage errors, and they are logged here already,
+		// so neither cobra nor Execute print them again. They still make fan2go exit with code 1.
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+
 		printHeader()
 
 		configPath := configuration.DetectAndReadConfigFile()
@@ -33,17 +40,30 @@ on your computer based on temperature sensors.`,
 		var err error
 		configuration.CurrentConfig, err = configuration.LoadConfig()
 		if err != nil {
-			ui.ErrorAndNotify("Config Loading Error", "%v", err)
-			return
+			errorAndNotify("Config Loading Error", "%v", err)
+			return loggedError{err}
 		}
 		err = configuration.ValidateConfig(&configuration.CurrentConfig, configPath)
 		if err != nil {
-			ui.ErrorAndNotify("Config Validation Error: %v", "%v", err)
-			return
+			errorAndNotify("Config Validation Error", "%v", err)
+			return loggedError{err}
 		}
 
 		internal.RunDaemon()
+		return nil
 	},
+}
+
+// errorAndNotify logs an error and sends a desktop notification about it, replaceable in tests
+var errorAndNotify = ui.ErrorAndNotify
+
+// loggedError marks an error that has already been logged, so Execute only sets the exit code for it
+type loggedError struct {
+	error
+}
+
+func (e loggedError) Unwrap() error {
+	return e.error
 }
 
 func init() {
@@ -97,7 +117,15 @@ func Execute() {
 	})
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		printUnloggedError(os.Stderr, err)
 		os.Exit(1)
+	}
+}
+
+// printUnloggedError prints the given error, unless it has been logged already (see loggedError)
+func printUnloggedError(w io.Writer, err error) {
+	var logged loggedError
+	if !errors.As(err, &logged) {
+		_, _ = fmt.Fprintln(w, err)
 	}
 }

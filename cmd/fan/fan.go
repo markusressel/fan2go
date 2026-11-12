@@ -49,7 +49,10 @@ func getFan(id string) (fans.Fan, error) {
 		availableFanIds = append(availableFanIds, config.ID)
 		if config.ID == id {
 			if config.HwMon != nil {
-				_ = hwmon.UpdateFanConfigFromHwMonControllers(controllers, &config)
+				err = hwmon.UpdateFanConfigFromHwMonControllers(controllers, &config)
+				if err != nil {
+					return nil, fmt.Errorf("fan %s: couldn't find the hwmon fan: %w", config.ID, err)
+				}
 			}
 
 			fan, err := fans.NewFan(config)

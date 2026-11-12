@@ -24,7 +24,7 @@ var speedCmd = &cobra.Command{
 
 		if len(args) > 0 {
 			var pwmValue int
-			pwmValue, err = strconv.Atoi(args[0])
+			pwmValue, err = parsePwmValue(args[0])
 			if err != nil {
 				return err
 			}
@@ -43,6 +43,18 @@ var speedCmd = &cobra.Command{
 
 		return err
 	},
+}
+
+// parsePwmValue parses a PWM value given on the command line, which must be an integer in [0..255]
+func parsePwmValue(arg string) (int, error) {
+	pwmValue, err := strconv.Atoi(arg)
+	if err != nil {
+		return 0, fmt.Errorf("invalid PWM value '%s', must be an integer in [%d..%d]", arg, fans.MinPwmValue, fans.MaxPwmValue)
+	}
+	if pwmValue < fans.MinPwmValue || pwmValue > fans.MaxPwmValue {
+		return 0, fmt.Errorf("invalid PWM value %d, must be in [%d..%d]", pwmValue, fans.MinPwmValue, fans.MaxPwmValue)
+	}
+	return pwmValue, nil
 }
 
 func init() {

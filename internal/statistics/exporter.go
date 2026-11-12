@@ -3,9 +3,7 @@ package statistics
 import (
 	"sync"
 
-	"github.com/labstack/echo-contrib/v5/echoprometheus"
 	"github.com/labstack/echo/v5"
-	"github.com/markusressel/fan2go/internal/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -17,10 +15,6 @@ const (
 var (
 	mu               sync.Mutex
 	activeCollectors []prometheus.Collector
-
-	// Singleton variables for Echo HTTP metrics
-	httpMetricsOnce       sync.Once
-	httpMetricsMiddleware echo.MiddlewareFunc
 )
 
 // Register adds the collector to Prometheus and tracks it for future cleanup.
@@ -49,22 +43,9 @@ func UnregisterAll() {
 	activeCollectors = nil
 }
 
+// CreateStatisticsService creates the webserver that serves the Prometheus metrics at /metrics
 func CreateStatisticsService() *echo.Echo {
-	parentServer := api.CreateWebserver()
-
-	// Create Prometheus server
 	echoPrometheus := echo.New()
-
-	// Initialize the Prometheus HTTP middleware exactly ONCE for the daemon's lifecycle
-	httpMetricsOnce.Do(func() {
-		httpMetricsMiddleware = echoprometheus.NewMiddleware("echo")
-	})
-
-	// Scrape metrics from Main Server using the singleton middleware
-	parentServer.Use(httpMetricsMiddleware)
-
-	// Setup metrics endpoint at the dedicated statistics server
 	echoPrometheus.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
-
 	return echoPrometheus
 }

@@ -153,11 +153,7 @@ func readAtaSmartTemp(device string) (float64, error) {
 		}
 	}(f)
 
-	buf := make([]byte, 4+512)
-	buf[0] = ataOpSmart    // ATA command: SMART
-	buf[1] = 1             // one sector of data to return
-	buf[2] = smartReadData // SMART subcommand: READ DATA
-	buf[3] = 0             // sector number (unused for SMART)
+	buf := newSmartReadDataCmd()
 
 	_, _, errno := syscall.Syscall(
 		syscall.SYS_IOCTL,
@@ -170,6 +166,24 @@ func readAtaSmartTemp(device string) (float64, error) {
 	}
 
 	return parseAtaSmartAttributes(buf[4:], device)
+}
+
+// newSmartReadDataCmd builds the HDIO_DRIVE_CMD argument buffer for SMART READ DATA:
+// a 4-byte header followed by room for the returned 512-byte sector.
+//
+// Header layout (see ata_cmd_ioctl in the kernel's drivers/ata/libata-scsi.c, and smartmontools'
+// os_linux.cpp, which uses the same layout for READ VALUES):
+//   - [0] ATA command (SMART)
+//   - [1] sector number, i.e. LBA low (0 for SMART READ DATA)
+//   - [2] feature, i.e. the SMART subcommand (READ DATA)
+//   - [3] sector count: the kernel only transfers data if this is non-zero (here: one 512-byte sector)
+func newSmartReadDataCmd() []byte {
+	buf := make([]byte, 4+512)
+	buf[0] = ataOpSmart    // ATA command: SMART
+	buf[1] = 0             // sector number (unused for SMART READ DATA)
+	buf[2] = smartReadData // SMART subcommand: READ DATA
+	buf[3] = 1             // sector count: one sector of data to return
+	return buf
 }
 
 // parseAtaSmartAttributes parses the SMART READ DATA attribute table and

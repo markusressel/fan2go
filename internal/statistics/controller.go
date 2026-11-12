@@ -36,6 +36,7 @@ func NewControllerCollector(controllers []controller.FanController) *ControllerC
 func (collector *ControllerCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- collector.unexpectedPwmValueCount
 	ch <- collector.increasedMinPwmCount
+	ch <- collector.minPwmOffset
 }
 
 // Collect implements required collect function for all prometheus collectors
