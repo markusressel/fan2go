@@ -3,6 +3,7 @@ package configuration
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -121,7 +122,7 @@ func TestValidateCurveSubConfigSensorIdIsMissing(t *testing.T) {
 	err := ValidateConfig(&config, "")
 
 	// THEN
-	assert.EqualError(t, err, "curve curve: sub-configuration for curve is missing, use one of: linear | pid | function")
+	assert.EqualError(t, err, "curve curve: sub-configuration for curve is missing, use one of: linear | staircase | pid | function")
 }
 
 func TestValidateCurveSensorIdIsMissing(t *testing.T) {
@@ -1260,4 +1261,164 @@ func TestValidateConfig_NvidiaDeviceIsEmpty(t *testing.T) {
 
 		assert.EqualError(t, err, "sensor gpu_temp: nvidia.device must not be empty, use the identifier shown by 'fan2go detect', e.g. nvidia-10DE2489-0800")
 	})
+}
+
+// TestValidateConfig_CurveAndControlAlgorithmGaps covers curve and control algorithm configs that used to load
+// without error, but make fan2go control the fans wrongly.
+func TestValidateConfig_CurveAndControlAlgorithmGaps(t *testing.T) {
+	linearCurve := func(body string) string {
+		return "  - id: curve\n    linear:\n      sensor: sensor\n" + body
+	}
+	pidCurve := func(gains string) string {
+		return "  - id: curve\n    pid:\n      sensor: sensor\n      setPoint: 60\n" + gains
+	}
+	pidAlgorithm := func(gains string) string {
+		return "    controlAlgorithm:\n      pid:\n" + gains
+	}
+	tests := []struct {
+		name     string
+		globals  string
+		fanExtra string
+		curves   string
+		// wantErr is a substring of the expected error, empty means no error
+		wantErr string
+		// wantWarning is a substring of an expected warning, empty means no warning is expected
+		// (except for unrelated ones, see unrelatedWarnings)
+		wantWarning string
+	}{
+		{name: "valid base config"},
+
+		// linear curves
+		{name: "linear curve with min/max", curves: linearCurve("      min: 40\n      max: 80")},
+		{name: "linear curve with negative min", curves: linearCurve("      min: -10\n      max: 0")},
+		{name: "linear curve without steps and min/max", curves: linearCurve(""), wantErr: "curve curve: linear curve needs either steps or min and max"},
+		{name: "linear curve with only min", curves: linearCurve("      min: 40"), wantErr: "curve curve: min (40) must be < max (0)"},
+		{name: "linear curve with min == max", curves: linearCurve("      min: 60\n      max: 60"), wantErr: "curve curve: min (60) must be < max (60)"},
+		{name: "linear curve with min > max", curves: linearCurve("      min: 80\n      max: 40"), wantErr: "curve curve: min (80) must be < max (40)"},
+		{name: "linear curve with empty steps", curves: linearCurve("      steps: {}"), wantErr: "curve curve: linear curve needs either steps or min and max"},
+		{name: "linear curve with steps and min/max", curves: linearCurve("      min: 40\n      max: 80\n      steps:\n        - 40: 0\n        - 80: 255"), wantWarning: "curve curve: both steps and min/max are set, min/max are ignored"},
+
+		// pid curves
+		{name: "pid curve with negative gains", curves: pidCurve("      p: -0.05\n      i: -0.005\n      d: -0.005")},
+		{name: "pid curve with mixed gains", curves: pidCurve("      p: -0.05\n      i: 0.005")},
+		{name: "pid curve with positive gains", curves: pidCurve("      p: 0.05\n      i: 0.005\n      d: 0.005"), wantWarning: "curve curve: all PID constants are positive"},
+		{name: "pid curve with only a positive p", curves: pidCurve("      p: 0.05"), wantWarning: "curve curve: all PID constants are positive"},
+
+		// pid control algorithm
+		{name: "pid control algorithm with defaults", fanExtra: "    controlAlgorithm: pid"},
+		{name: "pid control algorithm with custom gains", fanExtra: pidAlgorithm("        p: 0.1\n        i: 0.3\n        d: 0")},
+		{name: "pid control algorithm with i: 0", fanExtra: pidAlgorithm("        p: 0.1\n        i: 0\n        d: 0.01"), wantErr: "fan fan: controlAlgorithm.pid.i must be > 0, got 0 (omitted values are 0, the defaults are p: 0.05, i: 0.4, d: 0.01)"},
+		{name: "pid control algorithm with omitted i", fanExtra: pidAlgorithm("        p: 0.1"), wantErr: "fan fan: controlAlgorithm.pid.i must be > 0, got 0"},
+		{name: "pid control algorithm with negative i", fanExtra: pidAlgorithm("        p: 0.1\n        i: -0.4"), wantErr: "fan fan: controlAlgorithm.pid.i must be > 0, got -0.4"},
+		{name: "pid control algorithm with NaN i", fanExtra: pidAlgorithm("        p: 0.1\n        i: .nan"), wantErr: "fan fan: controlAlgorithm.pid.i must be a finite number, got NaN"},
+		{name: "pid control algorithm with NaN p", fanExtra: pidAlgorithm("        p: .nan\n        i: 0.4"), wantErr: "fan fan: controlAlgorithm.pid.p must be a finite number, got NaN"},
+		{name: "pid control algorithm with Inf d", fanExtra: pidAlgorithm("        i: 0.4\n        d: .inf"), wantErr: "fan fan: controlAlgorithm.pid.d must be a finite number, got +Inf"},
+		{name: "pid control algorithm with all gains 0", fanExtra: pidAlgorithm("        p: 0"), wantErr: "fan fan: all PID constants are zero"},
+		{name: "direct control algorithm", fanExtra: "    controlAlgorithm: direct"},
+		{name: "direct and pid control algorithm", fanExtra: "    controlAlgorithm:\n      direct:\n        maxPwmChangePerCycle: 10\n      pid:\n        p: 0.05\n        i: 0.4", wantErr: "fan fan: controlAlgorithm can only be one of: direct | pid"},
+
+		// deprecated controlLoop
+		{name: "controlLoop", fanExtra: "    controlLoop:\n      p: 0.05\n      i: 0.4\n      d: 0.01", wantWarning: "fan fan: controlLoop is deprecated, use controlAlgorithm.pid instead"},
+		{name: "controlLoop with i: 0", fanExtra: "    controlLoop:\n      p: 0.1\n      i: 0", wantErr: "fan fan: controlLoop.i must be > 0, got 0"},
+		{name: "controlLoop and controlAlgorithm", fanExtra: "    controlLoop:\n      p: 0.05\n      i: 0.4\n    controlAlgorithm: direct", wantErr: "fan fan: controlLoop and controlAlgorithm can't be used together, remove the deprecated controlLoop"},
+
+		// stability of the pid control algorithm
+		{name: "default pid control algorithm overshoots at 1s", globals: "fanController:\n  adjustmentTickRate: 1s", wantWarning: "fan fan: the default pid control algorithm (p: 0.05, i: 0.4, d: 0.01) overshoots a change of the curve value by about 8% with fanController.adjustmentTickRate 1s"},
+		{name: "default pid control algorithm is unstable at 3s", globals: "fanController:\n  adjustmentTickRate: 3s", wantErr: "fan fan: the default pid control algorithm (p: 0.05, i: 0.4, d: 0.01) is unstable with fanController.adjustmentTickRate 3s"},
+		{name: "default pid control algorithm is unstable at 10ms", globals: "fanController:\n  adjustmentTickRate: 10ms", wantErr: "fan fan: the default pid control algorithm (p: 0.05, i: 0.4, d: 0.01) is unstable with fanController.adjustmentTickRate 10ms"},
+		{name: "explicit pid control algorithm is unstable", globals: "fanController:\n  adjustmentTickRate: 3s", fanExtra: "    controlAlgorithm: pid", wantErr: "fan fan: controlAlgorithm.pid (p: 0.05, i: 0.4, d: 0.01) is unstable"},
+		{name: "pid control algorithm with lower i is stable at 3s", globals: "fanController:\n  adjustmentTickRate: 3s", fanExtra: pidAlgorithm("        p: 0.05\n        i: 0.05\n        d: 0.01")},
+		{name: "pid control algorithm with a large i overshoots", fanExtra: pidAlgorithm("        p: 0.05\n        i: 4"), wantWarning: "fan fan: controlAlgorithm.pid (p: 0.05, i: 4, d: 0) overshoots"},
+		{name: "controlLoop is unstable", globals: "fanController:\n  adjustmentTickRate: 3s", fanExtra: "    controlLoop:\n      p: 0.05\n      i: 0.4", wantErr: "fan fan: controlLoop (p: 0.05, i: 0.4, d: 0) is unstable"},
+		{name: "deprecated controllerAdjustmentTickRate is used for the stability check", globals: "controllerAdjustmentTickRate: 3s", wantErr: "is unstable with fanController.adjustmentTickRate 3s"},
+		{name: "direct control algorithm isn't checked for stability", globals: "fanController:\n  adjustmentTickRate: 3s", fanExtra: "    controlAlgorithm: direct"},
+	}
+
+	// warnings that the configs above may log, unrelated to the tested checks
+	unrelatedWarnings := []string{"Unused", "controllerAdjustmentTickRate is deprecated", "controlLoop is deprecated"}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var warnings bytes.Buffer
+			oldWarning := pterm.Warning
+			pterm.Warning = *pterm.Warning.WithWriter(&warnings)
+			t.Cleanup(func() { pterm.Warning = oldWarning })
+
+			err := loadAndValidateYaml(t, validationGapsYaml(tt.globals, tt.fanExtra, tt.curves))
+
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.ErrorContains(t, err, tt.wantErr)
+			}
+			if tt.wantWarning != "" {
+				assert.Contains(t, warnings.String(), tt.wantWarning)
+			} else {
+				for _, line := range strings.Split(strings.TrimSpace(warnings.String()), "\n") {
+					if line == "" || slices.ContainsFunc(unrelatedWarnings, func(w string) bool { return strings.Contains(line, w) }) {
+						continue
+					}
+					t.Errorf("unexpected warning: %s", line)
+				}
+			}
+		})
+	}
+}
+
+func TestWarnAboutCmdSensorTimeouts(t *testing.T) {
+	staleTimeout := 10 * time.Second
+	tests := []struct {
+		name        string
+		timeout     time.Duration
+		wantWarning bool
+	}{
+		{name: "default timeout", timeout: 0},
+		{name: "shorter than sensorStaleTimeout", timeout: 9 * time.Second},
+		{name: "equal to sensorStaleTimeout", timeout: 10 * time.Second, wantWarning: true},
+		{name: "longer than sensorStaleTimeout", timeout: 30 * time.Second, wantWarning: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var warnings bytes.Buffer
+			oldWarning := pterm.Warning
+			pterm.Warning = *pterm.Warning.WithWriter(&warnings)
+			t.Cleanup(func() { pterm.Warning = oldWarning })
+			config := Configuration{
+				SensorStaleTimeout: &staleTimeout,
+				Sensors: []SensorConfig{
+					{ID: "cmd_sensor", Cmd: &CmdSensorConfig{Exec: "/bin/true", Timeout: tt.timeout}},
+					{ID: "file_sensor", File: &FileSensorConfig{Path: "/dev/null"}},
+				},
+			}
+
+			warnAboutCmdSensorTimeouts(&config)
+
+			if tt.wantWarning {
+				assert.Contains(t, warnings.String(), fmt.Sprintf("sensor cmd_sensor: cmd.timeout (%s) is not shorter than sensorStaleTimeout (10s)", tt.timeout))
+			} else {
+				assert.Empty(t, warnings.String())
+			}
+		})
+	}
+}
+
+func TestWarnAboutCmdSensorTimeouts_UsesTheDefaultSensorStaleTimeout(t *testing.T) {
+	var warnings bytes.Buffer
+	oldWarning := pterm.Warning
+	pterm.Warning = *pterm.Warning.WithWriter(&warnings)
+	t.Cleanup(func() { pterm.Warning = oldWarning })
+	// default sensorStaleTimeout: 10 x tempSensorPollingRate = 20s
+	config := Configuration{
+		TempSensorPollingRate: 2 * time.Second,
+		Sensors: []SensorConfig{
+			{ID: "cmd_sensor", Cmd: &CmdSensorConfig{Exec: "/bin/true", Timeout: 15 * time.Second}},
+		},
+	}
+
+	warnAboutCmdSensorTimeouts(&config)
+	assert.Empty(t, warnings.String())
+
+	config.Sensors[0].Cmd.Timeout = 20 * time.Second
+	warnAboutCmdSensorTimeouts(&config)
+	assert.Contains(t, warnings.String(), "sensor cmd_sensor: cmd.timeout (20s) is not shorter than sensorStaleTimeout (20s)")
 }

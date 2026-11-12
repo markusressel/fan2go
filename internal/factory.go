@@ -91,9 +91,8 @@ func newCurveEvaluator(reg *registry.Registry, tickRate time.Duration) (*curves.
 }
 
 func createControlLoop(config configuration.FanConfig) control_loop.ControlLoop {
-	// 1. Check deprecated config first
+	// 1. Check deprecated config first (validation warns about it and rejects it together with controlAlgorithm)
 	if config.ControlLoop != nil { //nolint:all
-		ui.Warning("Using deprecated control loop configuration for fan %s...", config.ID)
 		return control_loop.NewPidControlLoop(
 			config.ControlLoop.P, //nolint:all
 			config.ControlLoop.I, //nolint:all
