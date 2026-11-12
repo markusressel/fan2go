@@ -57,7 +57,7 @@ func updateSensor(s sensors.Sensor) (err error) {
 
 	var n = configuration.CurrentConfig.TempRollingWindowSize
 	lastAvg := s.GetMovingAvg()
-	newAvg := util.UpdateSimpleMovingAvg(lastAvg, n, value)
+	newAvg := util.UpdateExponentialMovingAvg(lastAvg, n, value)
 	s.SetMovingAvg(newAvg)
 
 	return nil

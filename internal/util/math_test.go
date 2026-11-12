@@ -118,17 +118,78 @@ func TestCoerce(t *testing.T) {
 	assert.Equal(t, max, resultMax)
 }
 
-func TestUpdateSimpleMovingAvg(t *testing.T) {
+func TestUpdateExponentialMovingAvg(t *testing.T) {
 	// GIVEN
 	avg := 0.0
 	n := 2
 	newValue := 10.0
 
 	// WHEN
-	result := UpdateSimpleMovingAvg(avg, n, newValue)
+	result := UpdateExponentialMovingAvg(avg, n, newValue)
 
 	// THEN
 	assert.Equal(t, 5.0, result)
+}
+
+// samplesUntilEqual feeds target into the average until it equals target exactly
+// and returns the number of samples needed, or -1 if it didn't within maxSamples.
+func samplesUntilEqual(avg float64, n int, target float64, maxSamples int) int {
+	for i := 1; i <= maxSamples; i++ {
+		avg = UpdateExponentialMovingAvg(avg, n, target)
+		if avg == target {
+			return i
+		}
+	}
+	return -1
+}
+
+func TestUpdateExponentialMovingAvg_ReachesTargetExactly(t *testing.T) {
+	tests := []struct {
+		name     string
+		start    float64
+		target   float64
+		expected int
+	}{
+		{"rising", 59000, 60000, 73},
+		{"rising, large step", 40000, 75000, 106},
+		{"falling", 1000, 0, 73},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, samplesUntilEqual(tt.start, 10, tt.target, 100_000))
+		})
+	}
+}
+
+func TestUpdateExponentialMovingAvg_UnchangedWhileDiffIsAtLeastHalf(t *testing.T) {
+	tests := []struct {
+		oldAvg   float64
+		newValue float64
+		expected float64
+	}{
+		{0, 1000, 100},
+		{1000, 0, 900},
+		{59994, 60000, 59994.6}, // remaining diff 5.4
+		{5, 0, 4.5},             // remaining diff 4.5
+		{-5, 0, -4.5},           // remaining diff 4.5
+		{0.6, 0, 0.54},          // remaining diff 0.54
+	}
+	for _, tt := range tests {
+		assert.InDelta(t, tt.expected, UpdateExponentialMovingAvg(tt.oldAvg, 10, tt.newValue), 1e-9)
+		assert.NotEqual(t, tt.newValue, UpdateExponentialMovingAvg(tt.oldAvg, 10, tt.newValue))
+	}
+
+	// a remaining diff of exactly 0.5 isn't snapped
+	assert.Equal(t, 0.5, UpdateExponentialMovingAvg(1, 2, 0))
+}
+
+func TestUpdateExponentialMovingAvg_SnapsToTargetBelowHalf(t *testing.T) {
+	// remaining diff 0.45 -> snapped
+	assert.Equal(t, 0.0, UpdateExponentialMovingAvg(0.5, 10, 0))
+	// remaining diff 0.45 -> snapped
+	assert.Equal(t, 60000.0, UpdateExponentialMovingAvg(59999.5, 10, 60000))
+	// remaining diff 0.45 -> snapped
+	assert.Equal(t, -10.0, UpdateExponentialMovingAvg(-10.5, 10, -10))
 }
 
 func TestInterpolateLinearly(t *testing.T) {

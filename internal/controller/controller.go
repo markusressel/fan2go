@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/markusressel/fan2go/internal/control_loop"
@@ -143,6 +144,14 @@ type DefaultFanController struct {
 
 	// offset applied to the actual minPwm of the fan to ensure "neverStops" constraint
 	minPwmOffset int
+	// pwmFloorSetAt is the time of the first update of a fan that should never stop (which may have
+	// to spin up from standstill), or of the last minPwmOffset increase because the fan stalled.
+	// Stall detection gives the fan some time after that to react.
+	// Like minPwmOffset, it is only used by the update loop.
+	pwmFloorSetAt time.Time
+	// rpmAvgSeeded is set by the RPM monitor once the RPM average of the fan has been seeded
+	// with a successful reading. Until then the average is meaningless and stall detection is skipped.
+	rpmAvgSeeded atomic.Bool
 
 	// lastFanModeCheckTime is the last time we checked if some third party changed the fan control mode
 	lastFanModeCheckTime time.Time
@@ -160,6 +169,10 @@ type DefaultFanController struct {
 const (
 	defaultStartupSensorWarmup = 2 * time.Second
 	defaultStartupUpdateDelay  = 1 * time.Second
+	// minPwmIncreaseRpmPollingPeriods is the number of RPM polling periods a fan that should never stop
+	// gets to react to an increased PWM value, before the stall detection increases it again
+	// (or stops controlling the fan at maxPwm).
+	minPwmIncreaseRpmPollingPeriods = 3
 )
 
 func (f *DefaultFanController) UpdateCurve(curve curves.SpeedCurve) {
@@ -572,6 +585,10 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 	if fan.Supports(fans.FeatureRpmSensor) {
 		// make sure fans never stop by validating the current RPM
 		// and adjusting the target PWM value upwards if necessary
+		if shouldNeverStop && f.pwmFloorSetAt.IsZero() {
+			// the fan may be at standstill before the first update, give it time to spin up
+			f.pwmFloorSetAt = f.getClock().Now()
+		}
 		if f.lastTarget != nil {
 			lastTarget := *f.lastTarget
 			// TODO: check this logic
@@ -580,22 +597,23 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 				ui.Warning("Error reading last set PWM value of fan %s: %v", fan.GetId(), err)
 			}
 			lastSetTargetEqualsNewTarget := lastTarget == speedTarget
-			if shouldNeverStop && lastSetTargetEqualsNewTarget {
+			// skip until the RPM monitor seeded the average, which is meaningless before that
+			if shouldNeverStop && lastSetTargetEqualsNewTarget && f.rpmAvgSeeded.Load() {
 				avgRpm := fan.GetRpmAvg()
-				if avgRpm <= 0 {
+				now := f.getClock().Now()
+				// give the fan time to react to its first PWM value or the last increase before reacting (again)
+				if !fans.IsRpmLikelySpinning(avgRpm) && f.hadTimeToReactToPwmFloor(now) {
 					if speedTarget >= maxPwm {
 						ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), int(avgRpm), lastSetPwm)
+						ui.Warning("Fan %s: its RPM sensor reports (almost) 0 RPM. If the fan is actually spinning, "+
+							"check its tach signal (wiring, sensor) or disable neverStop for this fan.", fan.GetId())
 						return ErrFanStalledAtMaxPwm
 					}
-					oldMinPwm := minPwm
 					ui.Warning("Increasing minPWM of %s from %d to %d, which is supposed to never stop, but RPM is %d at PWM %d",
-						fan.GetId(), oldMinPwm, oldMinPwm+1, int(avgRpm), lastSetPwm)
+						fan.GetId(), minPwm+f.minPwmOffset, minPwm+f.minPwmOffset+1, int(avgRpm), lastSetPwm)
 					f.increaseMinPwmOffset()
+					f.pwmFloorSetAt = now
 					speedTarget++
-
-					// set the moving avg to a value > 0 to prevent
-					// this increase from happening too fast
-					fan.SetRpmAvg(1)
 				}
 			}
 		}
@@ -611,14 +629,30 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 	return nil
 }
 
-// read the current value of a fan RPM sensor and append it to the moving window
+// hadTimeToReactToPwmFloor returns true if the fan had minPwmIncreaseRpmPollingPeriods RPM polling periods
+// to react to the first PWM value set by the controller, or to the last minPwm increase.
+func (f *DefaultFanController) hadTimeToReactToPwmFloor(now time.Time) bool {
+	interval := minPwmIncreaseRpmPollingPeriods * configuration.CurrentConfig.RpmPollingRate
+	return now.Sub(f.pwmFloorSetAt) >= interval
+}
+
+// read the current value of a fan RPM sensor and update its moving average with it.
+// The first successful reading replaces the average, a failed reading leaves it unchanged.
 func (f *DefaultFanController) measureRpm(fan fans.Fan) {
 	rpm, err := fan.GetRpm()
 	if err != nil {
 		ui.Warning("Error reading RPM value of fan %s: %v", fan.GetId(), err)
+		return
 	}
 
-	updatedRpmAvg := util.UpdateSimpleMovingAvg(fan.GetRpmAvg(), configuration.CurrentConfig.RpmRollingWindowSize, float64(rpm))
+	if !f.rpmAvgSeeded.Load() {
+		// the RPM monitor is the only writer of the average, so this can't race with another update
+		fan.SetRpmAvg(float64(rpm))
+		f.rpmAvgSeeded.Store(true)
+		return
+	}
+
+	updatedRpmAvg := util.UpdateExponentialMovingAvg(fan.GetRpmAvg(), configuration.CurrentConfig.RpmRollingWindowSize, float64(rpm))
 	fan.SetRpmAvg(updatedRpmAvg)
 }
 

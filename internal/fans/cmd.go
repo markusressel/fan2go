@@ -18,6 +18,8 @@ type CmdFan struct {
 
 	Rpm int `json:"rpm"`
 	Pwm int `json:"pwm"`
+	// RpmMovingAvg is the moving average of Rpm, kept by the fan controller
+	RpmMovingAvg float64 `json:"rpmMovingAvg"`
 
 	// mu protects all fields above, since the fan is accessed from different goroutines.
 	// It is a leaf lock: no command execution and no calls to other fan methods while holding it.
@@ -29,18 +31,20 @@ type cmdFanJson struct {
 	Config    configuration.FanConfig `json:"config"`
 	MovingAvg float64                 `json:"movingAvg"`
 
-	Rpm int `json:"rpm"`
-	Pwm int `json:"pwm"`
+	Rpm          int     `json:"rpm"`
+	Pwm          int     `json:"pwm"`
+	RpmMovingAvg float64 `json:"rpmMovingAvg"`
 }
 
 // MarshalJSON serializes a snapshot of the fan that is taken under its lock.
 func (fan *CmdFan) MarshalJSON() ([]byte, error) {
 	fan.mu.RLock()
 	snapshot := cmdFanJson{
-		Config:    fan.Config,
-		MovingAvg: fan.MovingAvg,
-		Rpm:       fan.Rpm,
-		Pwm:       fan.Pwm,
+		Config:       fan.Config,
+		MovingAvg:    fan.MovingAvg,
+		Rpm:          fan.Rpm,
+		Pwm:          fan.Pwm,
+		RpmMovingAvg: fan.RpmMovingAvg,
 	}
 	fan.mu.RUnlock()
 	return json.Marshal(snapshot)
@@ -121,13 +125,13 @@ func (fan *CmdFan) GetRpm() (int, error) {
 func (fan *CmdFan) GetRpmAvg() float64 {
 	fan.mu.RLock()
 	defer fan.mu.RUnlock()
-	return float64(fan.Rpm)
+	return fan.RpmMovingAvg
 }
 
 func (fan *CmdFan) SetRpmAvg(rpm float64) {
 	fan.mu.Lock()
 	defer fan.mu.Unlock()
-	fan.Rpm = int(rpm)
+	fan.RpmMovingAvg = rpm
 }
 
 func (fan *CmdFan) GetPwm() (result int, err error) {

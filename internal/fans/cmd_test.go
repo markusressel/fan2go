@@ -267,14 +267,17 @@ func TestCmdFan_GetRpmAvg(t *testing.T) {
 		},
 	}
 	fan, _ := NewFan(config)
-	_, err := fan.GetRpm()
-	assert.NoError(t, err)
+	fan.SetRpmAvg(1234.5)
 
 	// WHEN
+	rpm, err := fan.GetRpm()
 	result := fan.GetRpmAvg()
 
 	// THEN
-	assert.Equal(t, 1000.0, result)
+	// reading the raw RPM value doesn't change the average, which is kept by the fan controller
+	assert.NoError(t, err)
+	assert.Equal(t, 1000, rpm)
+	assert.Equal(t, 1234.5, result)
 }
 
 func TestCmdFan_SetRpmAvg(t *testing.T) {
@@ -285,11 +288,11 @@ func TestCmdFan_SetRpmAvg(t *testing.T) {
 	fan, _ := NewFan(config)
 
 	// WHEN
-	fan.SetRpmAvg(1000)
+	fan.SetRpmAvg(1000.5)
 
 	// THEN
 	result := fan.GetRpmAvg()
-	assert.Equal(t, 1000.0, result)
+	assert.Equal(t, 1000.5, result)
 }
 
 func TestCmdFan_GetPwm(t *testing.T) {
