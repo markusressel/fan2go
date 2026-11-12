@@ -1,7 +1,11 @@
 package fans
 
 import (
+	"bytes"
+	"strings"
 	"testing"
+
+	"github.com/pterm/pterm"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/stretchr/testify/assert"
@@ -90,4 +94,91 @@ func TestComputePwmBoundaries_IgnoresComputedStartPwm(t *testing.T) {
 	// THEN
 	assert.Equal(t, 100, startPwm)
 	assert.Equal(t, MaxPwmValue, maxPwm)
+}
+
+func TestHwMonFan_AttachFanRpmCurveData_ClampsDerivedPwmBoundaries(t *testing.T) {
+	intPtr := func(v int) *int { return &v }
+	tests := []struct {
+		name                        string
+		minPwm, startPwm, maxPwm    *int
+		curveData                   map[int]float64
+		wantMin, wantStart, wantMax int
+		// wantWarnings are substrings of the expected warnings, none means no warning
+		wantWarnings []string
+	}{
+		{
+			name:      "no conflict",
+			curveData: curveStartingAt(50),
+			wantMin:   50, wantStart: 50, wantMax: 255,
+		},
+		{
+			// the scaling of curve values to [minPwm..maxPwm] would be inverted
+			name:      "measured start above the configured maxPwm",
+			maxPwm:    intPtr(100),
+			curveData: curveStartingAt(120),
+			wantMin:   100, wantStart: 100, wantMax: 100,
+			wantWarnings: []string{
+				"Fan fan: the derived minPwm (120) is above maxPwm (100), using minPwm 100",
+				"Fan fan: the derived startPwm (120) is above maxPwm (100), using startPwm 100",
+			},
+		},
+		{
+			name:      "configured minPwm and maxPwm, measured start above maxPwm",
+			minPwm:    intPtr(80),
+			maxPwm:    intPtr(100),
+			curveData: curveStartingAt(120),
+			wantMin:   80, wantStart: 100, wantMax: 100,
+			wantWarnings: []string{"Fan fan: the derived startPwm (120) is above maxPwm (100), using startPwm 100"},
+		},
+		{
+			name:      "configured minPwm above the measured maxPwm",
+			minPwm:    intPtr(150),
+			curveData: map[int]float64{0: 0, 50: 1000, 120: 2000},
+			wantMin:   150, wantStart: 50, wantMax: 150,
+			wantWarnings: []string{"Fan fan: the derived maxPwm is below minPwm (150) or startPwm (50), using maxPwm 150"},
+		},
+		{
+			name:      "configured startPwm above the measured maxPwm",
+			startPwm:  intPtr(150),
+			curveData: map[int]float64{0: 0, 50: 1000, 120: 2000},
+			wantMin:   150, wantStart: 150, wantMax: 150,
+			wantWarnings: []string{"Fan fan: the derived maxPwm is below minPwm (150) or startPwm (150), using maxPwm 150"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// GIVEN
+			warnings := captureWarnings(t)
+			fan := &HwMonFan{
+				Config: configuration.FanConfig{
+					ID: "fan", HwMon: &configuration.HwMonFanConfig{},
+					MinPwm: tt.minPwm, StartPwm: tt.startPwm, MaxPwm: tt.maxPwm,
+				},
+				MinPwm: tt.minPwm, StartPwm: tt.startPwm, MaxPwm: tt.maxPwm,
+			}
+
+			// WHEN
+			err := fan.AttachFanRpmCurveData(&tt.curveData)
+
+			// THEN
+			assert.NoError(t, err)
+			assert.Equal(t, tt.wantMin, fan.GetMinPwm(), "minPwm")
+			assert.Equal(t, tt.wantStart, fan.GetStartPwm(), "startPwm")
+			assert.Equal(t, tt.wantMax, fan.GetMaxPwm(), "maxPwm")
+			for _, w := range tt.wantWarnings {
+				assert.Contains(t, warnings.String(), w)
+			}
+			assert.Equal(t, len(tt.wantWarnings), strings.Count(warnings.String(), "WARNING"), warnings.String())
+		})
+	}
+}
+
+// captureWarnings redirects warnings logged via ui.Warning into the returned buffer for the duration of the test
+func captureWarnings(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var warnings bytes.Buffer
+	oldWarning := pterm.Warning
+	pterm.Warning = *pterm.Warning.WithWriter(&warnings)
+	t.Cleanup(func() { pterm.Warning = oldWarning })
+	return &warnings
 }
