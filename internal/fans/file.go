@@ -227,6 +227,12 @@ func (fan *FileFan) SetConfig(config configuration.FanConfig) {
 	fan.Config = config
 }
 
+func (fan *FileFan) DisableSanityCheck(check SanityCheck) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
+	disableSanityCheck(&fan.Config, check)
+}
+
 func (fan *FileFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureControlModeWrite:

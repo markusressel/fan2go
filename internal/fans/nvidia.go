@@ -367,6 +367,12 @@ func (fan *NvidiaFan) SetConfig(config configuration.FanConfig) {
 	fan.Config = config
 }
 
+func (fan *NvidiaFan) DisableSanityCheck(check SanityCheck) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
+	disableSanityCheck(&fan.Config, check)
+}
+
 // Supports reads the Can* flags without the lock: they are only written by Init, before the fan is shared.
 func (fan *NvidiaFan) Supports(feature FeatureFlag) bool {
 	switch feature {

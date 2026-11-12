@@ -182,13 +182,13 @@ func (fan *mockFanWithoutReadback) Supports(feature fans.FeatureFlag) bool {
 }
 
 func (fan *mockFanWithoutReadback) SetConfig(config configuration.FanConfig) {
-	panic("the controller must not change the fan config")
+	panic("the controller must not replace the fan config")
 }
 
 // When a fan can't read back its PWM value or control mode, the controller disables the
-// corresponding sanity checks for itself, without changing the fan config (which other
-// goroutines read concurrently).
-func TestFanController_SanityChecksDisabledAtRuntime_DoNotChangeFanConfig(t *testing.T) {
+// corresponding sanity checks at runtime. The fan config shows them as runtime overrides
+// (e.g. in the REST API), and they aren't evaluated again.
+func TestFanController_SanityChecksDisabledAtRuntime(t *testing.T) {
 	// GIVEN
 	fan := &mockFanWithoutReadback{MockFan: MockFan{
 		ID: "fan",
@@ -197,7 +197,6 @@ func TestFanController_SanityChecksDisabledAtRuntime_DoNotChangeFanConfig(t *tes
 	controller := newIdentityMappedController(fan, 100)
 	lastTarget := 100
 	controller.lastTarget = &lastTarget
-	configBefore := fan.GetConfig()
 
 	// WHEN
 	for i := 0; i < 3; i++ {
@@ -205,9 +204,11 @@ func TestFanController_SanityChecksDisabledAtRuntime_DoNotChangeFanConfig(t *tes
 	}
 
 	// THEN
-	assert.Equal(t, configBefore, fan.GetConfig())
-	assert.True(t, controller.pwmThirdPartyCheckDisabled)
-	assert.True(t, controller.fanModeCheckDisabled)
-	// the fan mode check was disabled during the first update and isn't evaluated again
+	disabled := configuration.Optional[bool]{Value: false, Present: true, RuntimeOverride: true}
+	sanityCheck := fan.GetConfig().SanityCheck
+	assert.Equal(t, disabled, sanityCheck.PwmValueChangedByThirdParty.Enabled.Optional)
+	assert.Equal(t, disabled, sanityCheck.FanModeChangedByThirdParty.Enabled.Optional)
+	// each check was disabled once, during the first update, and isn't evaluated again
+	assert.Equal(t, []fans.SanityCheck{fans.SanityCheckPwmValueChangedByThirdParty, fans.SanityCheckFanModeChangedByThirdParty}, fan.disabledSanityChecks)
 	assert.Equal(t, 1, fan.controlModeReadQueries)
 }

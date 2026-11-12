@@ -147,13 +147,6 @@ type DefaultFanController struct {
 	// lastFanModeCheckTime is the last time we checked if some third party changed the fan control mode
 	lastFanModeCheckTime time.Time
 
-	// pwmThirdPartyCheckDisabled is set when the 'PwmValueChangedByThirdParty' sanity check was
-	// disabled at runtime, because the fan doesn't support reading its PWM value
-	pwmThirdPartyCheckDisabled bool
-	// fanModeCheckDisabled is set when the 'FanModeChangedByThirdParty' sanity check was
-	// disabled at runtime, because the fan doesn't support reading its control mode
-	fanModeCheckDisabled bool
-
 	// clock is the time source for all waits, tickers and timestamps of the controller
 	// (nil means util.RealClock), replaceable in tests via SetClock
 	clock util.Clock
@@ -884,7 +877,7 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 	fanConfig := f.fan.GetConfig()
 	sanityCheckConfig := fanConfig.SanityCheck
 	pwmValuwChngedByThirdPartyCheckConfig := sanityCheckConfig.PwmValueChangedByThirdParty
-	if f.pwmThirdPartyCheckDisabled || !pwmValuwChngedByThirdPartyCheckConfig.Enabled.Get() {
+	if !pwmValuwChngedByThirdPartyCheckConfig.Enabled.Get() {
 		// sanity checks are disabled, so we don't check for third party changes
 		return
 	}
@@ -892,7 +885,7 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 	if !f.fan.Supports(fans.FeaturePwmSensor) {
 		// we cannot read the PWM value, so we also cannot check if third party changed the PWM value
 		ui.Warning("Fan %s does not support PWM sensor reading, disabling 'PwmValueChangedByThirdParty' sanity check", f.fan.GetId())
-		f.pwmThirdPartyCheckDisabled = true
+		f.fan.DisableSanityCheck(fans.SanityCheckPwmValueChangedByThirdParty)
 		return
 	}
 
@@ -946,14 +939,14 @@ func (f *DefaultFanController) setTargetPwm(target int) (err error) {
 func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
 	sanityCheckConfig := f.fan.GetConfig().SanityCheck.FanModeChangedByThirdParty
 
-	if f.fanModeCheckDisabled || !sanityCheckConfig.Enabled.Get() {
+	if !sanityCheckConfig.Enabled.Get() {
 		// sanity check is disabled
 		return
 	}
 
 	if !f.fan.Supports(fans.FeatureControlModeRead) {
 		ui.Warning("Fan %s does not support control mode reading, disabling 'FanModeChangedByThirdParty' sanity check", f.fan.GetId())
-		f.fanModeCheckDisabled = true
+		f.fan.DisableSanityCheck(fans.SanityCheckFanModeChangedByThirdParty)
 		return
 	}
 

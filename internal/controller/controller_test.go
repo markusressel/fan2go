@@ -88,6 +88,8 @@ type MockFan struct {
 	ControlModeConfig                            *configuration.ControlModeConfig
 	PwmSetDelay                                  *time.Duration
 	setPwmAlwaysFails                            bool
+	// sanity checks disabled at runtime via DisableSanityCheck
+	disabledSanityChecks []fans.SanityCheck
 
 	mu sync.Mutex
 }
@@ -241,7 +243,7 @@ func (fan *MockFan) GetConfig() configuration.FanConfig {
 	startPwm := 0
 	minPwm := fan.MinPWM
 	maxPwm := fan.getMaxPwm()
-	return configuration.FanConfig{
+	config := configuration.FanConfig{
 		ID:                     fan.ID,
 		Curve:                  fan.curveId,
 		NeverStop:              fan.shouldNeverStop,
@@ -275,10 +277,25 @@ func (fan *MockFan) GetConfig() configuration.FanConfig {
 			},
 		},
 	}
+	for _, check := range fan.disabledSanityChecks {
+		switch check {
+		case fans.SanityCheckPwmValueChangedByThirdParty:
+			config.SanityCheck.PwmValueChangedByThirdParty.Enabled.SetOverride(false)
+		case fans.SanityCheckFanModeChangedByThirdParty:
+			config.SanityCheck.FanModeChangedByThirdParty.Enabled.SetOverride(false)
+		}
+	}
+	return config
 }
 
 func (fan *MockFan) SetConfig(config configuration.FanConfig) {
 	// Not needed for this mock
+}
+
+func (fan *MockFan) DisableSanityCheck(check fans.SanityCheck) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
+	fan.disabledSanityChecks = append(fan.disabledSanityChecks, check)
 }
 
 func (fan *MockFan) Supports(feature fans.FeatureFlag) bool {
@@ -1613,6 +1630,10 @@ func (fan MockFanWithOffsetPwm) GetConfig() configuration.FanConfig {
 }
 
 func (fan MockFanWithOffsetPwm) SetConfig(config configuration.FanConfig) {
+	// Not needed for this mock
+}
+
+func (fan *MockFanWithOffsetPwm) DisableSanityCheck(check fans.SanityCheck) {
 	// Not needed for this mock
 }
 

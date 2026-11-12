@@ -393,6 +393,12 @@ func (fan *HwMonFan) SetConfig(config configuration.FanConfig) {
 	fan.Config = config
 }
 
+func (fan *HwMonFan) DisableSanityCheck(check SanityCheck) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
+	disableSanityCheck(&fan.Config, check)
+}
+
 func (fan *HwMonFan) Supports(feature FeatureFlag) bool {
 	config := fan.hwMonConfig()
 	switch feature {

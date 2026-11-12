@@ -232,3 +232,63 @@ func TestHwMonFan_GetFanRpmCurveData_ReturnsCopy(t *testing.T) {
 	// THEN
 	assert.Equal(t, &map[int]float64{0: 0, 255: 2000}, fan.GetFanRpmCurveData())
 }
+
+// The update loop disables sanity checks at runtime while the RPM monitor, the statistics
+// collector and the REST API read the fan config.
+func TestFans_ConcurrentDisableSanityCheck(t *testing.T) {
+	for _, config := range []configuration.FanConfig{
+		{ID: "hwmon", HwMon: &configuration.HwMonFanConfig{RpmInputPath: "/nonexistent/fan1_input"}},
+		{ID: "file", File: &configuration.FileFanConfig{Path: "/nonexistent/pwm"}},
+		{ID: "cmd", Cmd: &configuration.CmdFanConfig{}},
+	} {
+		t.Run(config.ID, func(t *testing.T) {
+			// GIVEN
+			fan, err := NewFan(config)
+			require.NoError(t, err)
+
+			// WHEN
+			var wg sync.WaitGroup
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				for i := 0; i < concurrencyIterations; i++ {
+					fan.DisableSanityCheck(SanityCheckPwmValueChangedByThirdParty)
+					fan.DisableSanityCheck(SanityCheckFanModeChangedByThirdParty)
+				}
+			}()
+			go func() {
+				defer wg.Done()
+				for i := 0; i < concurrencyIterations; i++ {
+					_ = fan.GetConfig()
+					_, _ = fan.GetRpm()
+					_, err := json.Marshal(fan)
+					assert.NoError(t, err)
+				}
+			}()
+			wg.Wait()
+
+			// THEN
+			disabled := configuration.Optional[bool]{Value: false, RuntimeOverride: true}
+			sanityCheck := fan.GetConfig().SanityCheck
+			assert.Equal(t, disabled, sanityCheck.PwmValueChangedByThirdParty.Enabled.Optional)
+			assert.Equal(t, disabled, sanityCheck.FanModeChangedByThirdParty.Enabled.Optional)
+		})
+	}
+}
+
+// Copies of the config handed out before are not changed by DisableSanityCheck.
+func TestHwMonFan_DisableSanityCheck_DoesNotChangeEarlierConfigCopies(t *testing.T) {
+	// GIVEN
+	fan, err := NewFan(configuration.FanConfig{ID: "hwmon", HwMon: &configuration.HwMonFanConfig{}})
+	require.NoError(t, err)
+	before := fan.GetConfig()
+
+	// WHEN
+	fan.DisableSanityCheck(SanityCheckPwmValueChangedByThirdParty)
+
+	// THEN
+	after := fan.GetConfig()
+	assert.True(t, before.SanityCheck.PwmValueChangedByThirdParty.Enabled.Get())
+	assert.False(t, after.SanityCheck.PwmValueChangedByThirdParty.Enabled.Get())
+	assert.True(t, after.SanityCheck.FanModeChangedByThirdParty.Enabled.Get())
+}
