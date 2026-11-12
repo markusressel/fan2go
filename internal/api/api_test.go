@@ -9,8 +9,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/controller/status"
 	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/registry"
@@ -95,10 +97,15 @@ func createTestRegistry(t *testing.T) *registry.Registry {
 		Config:    configuration.SensorConfig{ID: "hwmon_sensor", HwMon: &configuration.HwMonSensorConfig{Platform: "coretemp", Index: 1, Channel: 1, TempInput: "/sys/class/hwmon/hwmon2/temp1_input"}},
 		MovingAvg: 45250.5,
 	})
-	reg.RegisterSensor(&sensors.FileSensor{
+	fileSensor := &sensors.FileSensor{
 		Config:    configuration.SensorConfig{ID: "file_sensor", File: &configuration.FileSensorConfig{Path: "/tmp/file_sensor"}},
 		MovingAvg: 40000,
-	})
+	}
+	// a reading long ago (so it is stale at any time the test runs), followed by failed readings
+	fileSensor.RecordReading(sensors.Reading{Value: 40000, Time: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)})
+	fileSensor.RecordFailure()
+	fileSensor.RecordFailure()
+	reg.RegisterSensor(fileSensor)
 	reg.RegisterSensor(&sensors.CmdSensor{
 		Name:      "cmd",
 		Config:    configuration.SensorConfig{ID: "cmd_sensor", Cmd: &configuration.CmdSensorConfig{Exec: "/usr/bin/temp", Args: []string{"--json"}}},
@@ -122,8 +129,25 @@ func createTestRegistry(t *testing.T) *registry.Registry {
 		reg.RegisterCurve(curve)
 	}
 
+	reg.RegisterFanController(&fakeFanController{status: status.Status{
+		FanId: "hwmon_fan", State: status.StateRunning, Since: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC),
+	}})
+	reg.RegisterFanController(&fakeFanController{status: status.Status{
+		FanId: "file_fan", State: status.StateSensorFailureMax, Since: time.Date(2024, 1, 2, 3, 4, 6, 0, time.UTC),
+		Error: "curve pid_curve: sensor cmd_sensor: sensor value is stale: no successful reading yet",
+	}})
+	reg.RegisterFanController(&fakeFanController{status: status.Status{FanId: "cmd_fan", State: status.StateStopped}})
+
 	return reg
 }
+
+// fakeFanController returns a fixed status
+type fakeFanController struct {
+	status status.Status
+}
+
+func (c *fakeFanController) GetFanId() string         { return c.status.FanId }
+func (c *fakeFanController) GetStatus() status.Status { return c.status }
 
 func get(t *testing.T, handler http.Handler, path string) (int, string) {
 	t.Helper()
@@ -133,8 +157,8 @@ func get(t *testing.T, handler http.Handler, path string) (int, string) {
 	return rec.Code, rec.Body.String()
 }
 
-// The REST API is consumed by external tools, so its JSON output must not change shape.
-// The golden files were generated before the API switched to serializing locked snapshots.
+// The REST API is consumed by external tools, so its JSON output must not change shape unintentionally.
+// Update the golden files with -update, and review the diff.
 func TestRestApi_JsonOutputMatchesGoldenFiles(t *testing.T) {
 	rest := CreateRestService(createTestRegistry(t))
 
@@ -142,7 +166,8 @@ func TestRestApi_JsonOutputMatchesGoldenFiles(t *testing.T) {
 		"/fan/", "/fan/hwmon_fan/", "/fan/file_fan/", "/fan/cmd_fan/",
 		"/sensor/", "/sensor/hwmon_sensor/", "/sensor/file_sensor/", "/sensor/cmd_sensor/", "/sensor/disk_sensor/",
 		"/curve/", "/curve/linear_curve/", "/curve/staircase_curve/", "/curve/pid_curve/", "/curve/function_curve/",
-		"/fan/unknown/",
+		"/controller/", "/controller/hwmon_fan/", "/controller/file_fan/", "/controller/cmd_fan/",
+		"/fan/unknown/", "/controller/unknown/",
 	} {
 		t.Run(path, func(t *testing.T) {
 			code, body := get(t, rest, path)
@@ -156,7 +181,7 @@ func TestRestApi_JsonOutputMatchesGoldenFiles(t *testing.T) {
 			expected, err := os.ReadFile(golden)
 			require.NoError(t, err)
 
-			if path == "/fan/unknown/" {
+			if strings.HasSuffix(path, "/unknown/") {
 				assert.Equal(t, http.StatusNotFound, code)
 			} else {
 				assert.Equal(t, http.StatusOK, code)

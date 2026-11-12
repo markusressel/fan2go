@@ -31,14 +31,17 @@ type Sensor interface {
 	GetLastReading() (Reading, bool)
 	// GetConsecutiveFailures returns the number of failed readings since the last successful one.
 	GetConsecutiveFailures() int
+	// GetReadingStatus returns a consistent snapshot of the recorded readings and failures.
+	GetReadingStatus() ReadingStatus
 }
 
 func NewSensor(config configuration.SensorConfig) (Sensor, error) {
 	if config.HwMon != nil {
 		return &HwmonSensor{
-			Index:  config.HwMon.Index,
-			Input:  config.HwMon.TempInput,
-			Config: config,
+			Index:   config.HwMon.Index,
+			Channel: config.HwMon.Channel,
+			Input:   config.HwMon.TempInput,
+			Config:  config,
 
 			mu: sync.Mutex{},
 		}, nil

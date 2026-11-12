@@ -1,0 +1,17 @@
+{
+  "cmd_fan": {
+    "fanId": "cmd_fan",
+    "state": "stopped"
+  },
+  "file_fan": {
+    "fanId": "file_fan",
+    "state": "sensor_failure_max",
+    "since": "2024-01-02T03:04:06Z",
+    "error": "curve pid_curve: sensor cmd_sensor: sensor value is stale: no successful reading yet"
+  },
+  "hwmon_fan": {
+    "fanId": "hwmon_fan",
+    "state": "running",
+    "since": "2024-01-02T03:04:05Z"
+  }
+}

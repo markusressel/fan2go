@@ -33,8 +33,9 @@ Details of the individual subsystems are in their own documents:
    - Fans: like sensors, a fan that can't be resolved or created is skipped with a warning and a notification.
    - NVIDIA devices are resolved the same way, through NVML (only in builds with NVML support).
 5. **Create the fan controllers and the curve evaluator** (`initializeFanControllers`). The evaluator gets all curves.
-   Each fan gets a `controller.DefaultFanController` that subscribes to the evaluator's cycles. The Prometheus
-   collectors are registered here and in step 4.
+   Each fan gets a `controller.DefaultFanController` that subscribes to the evaluator's cycles. The fan controllers
+   are added to the registry (for the REST API), and only then the Prometheus collectors of all new objects replace
+   the previous ones (`statistics.ReplaceAll`).
 6. **Start the actors** (`RunDaemon`, an `oklog/run` group): the orchestrator, the signal handler, the config file
    watcher and, if enabled, the profiling webserver.
 7. If no fan is left after step 4, the orchestrator exits with code 1 ("No valid fan configurations, exiting.").
@@ -67,7 +68,7 @@ RunDaemon (run.Group)
 Data flows one way: sensor monitors write readings and moving averages into the sensors, the evaluator reads them and
 stores one result per curve, and each fan controller reads its curve's result after every cycle. The API and the
 statistics read the same stored values. Shared objects live in the `registry.Registry` (concurrent maps of fans,
-sensors and curves).
+sensors, curves and, for the REST API, the fan controllers).
 
 ### Config reload
 
@@ -257,16 +258,29 @@ constants. Not every component takes a clock yet (e.g. the evaluator restart del
 
 | Metric | Meaning |
 |---|---|
-| `fan2go_sensor_value{id}` | Moving average of the sensor, as used by the curves |
-| `fan2go_curve_value{id}` | Value of the curve's last evaluation (the last good value if the latest one failed) |
+| `fan2go_sensor_value{id}` | Moving average of the sensor, as used by the curves; missing until the first successful reading |
+| `fan2go_sensor_stale{id}` | 1 while the curves reject the sensor value (no reading yet, or older than `sensorStaleTimeout`) |
+| `fan2go_sensor_last_reading_timestamp_seconds{id}` | Unix time of the last successful reading; missing until there is one |
+| `fan2go_sensor_read_failures_total{id}` | Failed readings since the sensor was created (start or reload) |
+| `fan2go_curve_value{id}` | Value of the curve's last evaluation; missing while it failed and before the first one |
+| `fan2go_curve_error{id}` | 1 if the curve's last evaluation failed, 0 if it succeeded; missing before the first one |
 | `fan2go_fan_pwm{id}` | Raw PWM value (after the `pwmMap`) the controller last set; missing until it set one |
 | `fan2go_fan_rpm{id}` | RPM moving average; missing until the RPM monitor seeded it |
 | `fan2go_controller_unexpected_pwm_value_count{id}` | Times the fan's PWM didn't match what fan2go set |
 | `fan2go_controller_increased_minPwm_count{id}` | Automatic minPwm increases because the fan stalled |
 | `fan2go_controller_minPwm_offset{id}` | Current offset added to the fan's minPwm because of stalls |
+| `fan2go_controller_state{id,state}` | 1 for the controller's current state, 0 for the others (see [fan-controller.md](fan-controller.md#controller-state)) |
 
-The default Go and process collectors of `client_golang` are exported as well. On reload, all fan2go collectors are
-unregistered and created again (`statistics.UnregisterAll`).
+The default Go and process collectors of `client_golang` are exported as well. The fan2go collectors are created
+for the objects of a config after all of them exist, and then replace the previous collectors in one step
+(`statistics.ReplaceAll`). A reload that fails before that keeps the collectors of the old objects, which are
+restarted.
+
+A sensor keeps exporting its last value while it is stale: it is a real past measurement, and `fan2go_sensor_stale`
+says it is old. A failed curve exports no value: its last good value no longer controls the fans (they are at max
+or handed back), so a dashboard would look normal while it isn't. The controller state is one enum-style metric
+(the usual Prometheus pattern for a state set), so `fan2go_controller_state{state=~"stopped_.+"} == 1` alerts on
+every controller that stopped because of an error.
 
 **Why:** The exporter used to listen on all interfaces and read every sensor and fan on every scrape: anyone who
 could reach the port could run `cmd` scripts, SMART ioctls and NVML calls (#550).
@@ -276,14 +290,19 @@ could reach the port could run `cmd` scripts, SMART ioctls and NVML calls (#550)
 **Alternatives considered:** Binding to all interfaces by default was rejected for the reason above.
 
 **Trade-offs:** This is a breaking change for remote scrapes: set `statistics.host: 0.0.0.0` (and override the systemd
-network restrictions). Values lag slightly behind the hardware. There is no metric for stale sensors, failed curves or
-an active `onSensorFailure` action.
+network restrictions). Values lag slightly behind the hardware. Missing samples (`fan2go_sensor_value` before the
+first reading, `fan2go_curve_value` while the curve fails) need `absent()` or the matching status metric in alerts.
+There are no metrics for failed fan RPM reads or PWM writes yet.
 
 ### REST API: read-only, local, off by default
 
 **Decision:** The REST API (`api.enabled`, default `127.0.0.1:9001`) serves `GET /alive`, `/fan`, `/fan/<id>`,
-`/sensor`, `/sensor/<id>`, `/curve` and `/curve/<id>`. `POST /fan` and `DELETE /fan/<id>` exist but return an error
-("not yet supported"). There is no authentication.
+`/sensor`, `/sensor/<id>`, `/curve`, `/curve/<id>`, `/controller` and `/controller/<fan id>`. `POST /fan` and
+`DELETE /fan/<id>` exist but return an error ("not yet supported"). There is no authentication.
+
+Besides their state, sensors show their reading status (`lastReadingTime`, `consecutiveFailures`, `readFailures`,
+`stale`), curves the result of their last evaluation (`error`, `evaluatedAt`), and `/controller` the state of each
+fan controller (`fanId`, `state`, `since`, `error`, see [fan-controller.md](fan-controller.md#controller-state)).
 
 **Why:** It lets UI clients show the daemon's state. Without authentication, binding to localhost is the safe default.
 
@@ -381,7 +400,6 @@ described in the subsystem documents.
   `RunDaemon` ends with `os.Exit`, so the NVML cleanup deferred in `main` doesn't run.
 - **`CurrentConfig` is global mutable state.** Passing the config into the components is not done yet (out of scope
   of #542).
-- **No observability for failure states** in the metrics (stale sensors, failed curves, active `onSensorFailure`).
 - **`-c` help text** says the default is `$HOME/.fan2go.yaml`; the actual search is `fan2go.yaml` (or `.yml`, etc.) in
   `.`, `$HOME` and `/etc/fan2go/`.
 - **Open question:** whether `Restart=always` with a 10 s delay is the right policy for permanent config errors, or

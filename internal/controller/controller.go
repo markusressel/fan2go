@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/markusressel/fan2go/internal/control_loop"
+	"github.com/markusressel/fan2go/internal/controller/status"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/curves"
@@ -66,6 +67,9 @@ type FanController interface {
 	// has seeded it. Safe to call while the controller is running.
 	GetRpmAvg() (float64, bool)
 
+	// GetStatus returns the current state of the controller. Safe to call while the controller is running.
+	GetStatus() status.Status
+
 	UpdateFanSpeed() error
 
 	// UpdateCurve dynamically updates the curve reference
@@ -100,6 +104,11 @@ type DefaultFanController struct {
 	// the raw pwm value (after applying the pwmMap) that setTargetPwm last applied successfully,
 	// nil until then. Protected by statsMutex, read by the statistics collector.
 	lastSetPwm *int
+	// state of the controller ("" means StateStopped), the time it was entered and the error that caused it
+	// (see setState and GetStatus). Protected by statsMutex, read by the statistics collector and the REST API.
+	state      status.State
+	stateSince time.Time
+	stateError string
 	// persistence where fan data is stored
 	persistence persistence.Persistence
 	// the fan to control
@@ -218,6 +227,8 @@ type DefaultFanController struct {
 	// thirdPartyPwmChanges tracks consecutive updates where the PWM value of the fan didn't match the
 	// value fan2go set last (only used by the update loop)
 	thirdPartyPwmChanges consecutiveFailures
+	// rpmReadFailures tracks consecutive failures to read the RPM value of the fan (only used by the RPM monitor)
+	rpmReadFailures consecutiveFailures
 	// set once a missing setPwmToGetPwmMap (entry) has been logged, so it is logged only once per controller
 	missingSetPwmToGetPwmMapLogged      atomic.Bool
 	missingSetPwmToGetPwmMapEntryLogged atomic.Bool
@@ -434,6 +445,7 @@ func (f *DefaultFanController) clearInitialFanState() {
 func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 	f.restoreOnce = &sync.Once{}
 	f.mayHaveWrittenToFan = false
+	f.setState(status.StateInitializing, nil)
 	// set once fan2go may write to the fan (initialization, set -> get PWM detection, control loop)
 	fanMayBeTouched := false
 	defer func() {
@@ -448,6 +460,7 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 			// A no-op if the fan settings have been restored already.
 			f.restoreControlModeOnce()
 		}
+		f.setStoppedState(err)
 	}()
 
 	// prepare the controller by initializing persistence and checking the fan
@@ -508,6 +521,7 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 		// FanController can't do anything if manual fan control doesn't work
 		return err
 	}
+	f.setState(status.StateRunning, nil)
 
 	var g run.Group
 	controllerCtx, cancelController := context.WithCancel(ctx)
@@ -527,6 +541,7 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 			}()
 			tick := f.getClock().NewTicker(pollingRate)
 			defer tick.Stop()
+			f.rpmReadFailures.succeed()
 			for {
 				select {
 				case <-controllerCtx.Done():
@@ -930,11 +945,17 @@ func (f *DefaultFanController) hadTimeToReactToPwmFloor(now time.Time) bool {
 
 // read the current value of a fan RPM sensor and update its moving average with it.
 // The first successful reading replaces the average, a failed reading leaves it unchanged.
+// Of a series of failed readings, only the first one is logged, and the recovery.
 func (f *DefaultFanController) measureRpm(fan fans.Fan) {
 	rpm, err := fan.GetRpm()
 	if err != nil {
-		ui.Warning("Error reading RPM value of fan %s: %v", fan.GetId(), err)
+		if count, _, _ := f.rpmReadFailures.fail(f.getClock().Now()); count == 1 {
+			ui.Warning("Error reading RPM value of fan %s (further errors are not logged until it recovers): %v", fan.GetId(), err)
+		}
 		return
+	}
+	if failures := f.rpmReadFailures.succeed(); failures > 0 {
+		ui.Info("Fan %s: reading the RPM value succeeded again after %d failed readings", fan.GetId(), failures)
 	}
 
 	if !f.rpmAvgSeeded.Load() {
@@ -1034,6 +1055,7 @@ func trySetManualPwm(fan fans.Fan) error {
 // notification can't delay the restore.
 func (f *DefaultFanController) stopAfterUpdateError(err error) {
 	f.restoreControlModeOnce()
+	f.setState(stoppedStateForError(err), err)
 	notify := f.errorNotifier
 	if notify == nil {
 		notify = ui.ErrorAndNotify
@@ -1052,10 +1074,13 @@ func (f *DefaultFanController) handleCurveFailure(err error) {
 	if f.sensorFailureAction == configuration.OnSensorFailureMax {
 		// keep the fan at max while the failure lasts (e.g. if a third party changed it)
 		f.setMaxPwmForSensorFailure()
+		// keeps the state accurate, also if Run started again in the failure state
+		f.setState(status.StateSensorFailureMax, err)
 		return
 	}
 	if f.sensorFailureAction != "" {
 		// already restored, leave the fan alone until the curve can be evaluated again
+		f.setState(status.StateSensorFailureRestored, err)
 		return
 	}
 
@@ -1080,6 +1105,12 @@ func (f *DefaultFanController) handleCurveFailure(err error) {
 		f.sensorFailureAction = configuration.OnSensorFailureMax
 		f.setMaxPwmForSensorFailure()
 		description = "set it to its max PWM (onSensorFailure: max)"
+	}
+
+	if f.sensorFailureAction == configuration.OnSensorFailureRestore {
+		f.setState(status.StateSensorFailureRestored, err)
+	} else {
+		f.setState(status.StateSensorFailureMax, err)
 	}
 
 	notify := f.errorNotifier
@@ -1110,6 +1141,7 @@ func (f *DefaultFanController) recoverFromCurveFailure() bool {
 	case configuration.OnSensorFailureRestore:
 		if err := takeManualControl(f.fan); err != nil {
 			ui.Debug("Fan %s: Can't take manual control again: %v", f.fan.GetId(), err)
+			f.setState(status.StateSensorFailureRestored, fmt.Errorf("the curve can be evaluated again, but manual control can't be taken again: %w", err))
 			return false
 		}
 		// fan2go controls the fan again, so it must be restored when the controller stops
@@ -1119,6 +1151,7 @@ func (f *DefaultFanController) recoverFromCurveFailure() bool {
 	f.sensorFailureMaxWriteFailed = false
 	// PWM write failures before the failure state don't count towards pwmWriteFailureTimeout anymore
 	f.pwmWriteFailures.succeed()
+	f.setState(status.StateRunning, nil)
 	ui.Info("Fan %s: Curve can be evaluated again, resuming normal control", f.fan.GetId())
 	return true
 }
