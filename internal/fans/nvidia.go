@@ -258,6 +258,8 @@ func (fan *NvidiaFan) SetControlMode(value ControlMode) (err error) {
 		fallthrough // auto is a safe default
 	case ControlModeAutomatic:
 		ret = nvml.DeviceSetDefaultFanSpeed_v2(device, fanIdx)
+	default:
+		return fmt.Errorf("fan %s: control mode %d is not supported by nvidia fans", fan.GetId(), value)
 	}
 	return nvError(ret)
 }

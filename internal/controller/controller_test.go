@@ -1953,8 +1953,8 @@ func TestRestoreControlMode_Default_RestoresOriginal(t *testing.T) {
 	controller := DefaultFanController{
 		fan: fan,
 		originalFanState: &FanStateSnapshot{
-			PwmValue:    100,
-			ControlMode: fans.ControlModeAutomatic,
+			PwmValue:    ptrTo(100),
+			ControlMode: ptrTo(fans.ControlModeAutomatic),
 		},
 	}
 
@@ -1978,8 +1978,8 @@ func TestRestoreControlMode_None_SkipsRestore(t *testing.T) {
 	controller := DefaultFanController{
 		fan: fan,
 		originalFanState: &FanStateSnapshot{
-			PwmValue:    100,
-			ControlMode: fans.ControlModeAutomatic,
+			PwmValue:    ptrTo(100),
+			ControlMode: ptrTo(fans.ControlModeAutomatic),
 		},
 	}
 
@@ -2005,8 +2005,8 @@ func TestRestoreControlMode_ExplicitControlMode(t *testing.T) {
 	controller := DefaultFanController{
 		fan: fan,
 		originalFanState: &FanStateSnapshot{
-			PwmValue:    100,
-			ControlMode: fans.ControlModePWM,
+			PwmValue:    ptrTo(100),
+			ControlMode: ptrTo(fans.ControlModePWM),
 		},
 	}
 
@@ -2032,8 +2032,8 @@ func TestRestoreControlMode_ExplicitSpeed(t *testing.T) {
 	controller := DefaultFanController{
 		fan: fan,
 		originalFanState: &FanStateSnapshot{
-			PwmValue:    100,
-			ControlMode: fans.ControlModePWM,
+			PwmValue:    ptrTo(100),
+			ControlMode: ptrTo(fans.ControlModePWM),
 		},
 	}
 
@@ -2060,8 +2060,8 @@ func TestRestoreControlMode_ExplicitControlModeAndSpeed(t *testing.T) {
 	controller := DefaultFanController{
 		fan: fan,
 		originalFanState: &FanStateSnapshot{
-			PwmValue:    100,
-			ControlMode: fans.ControlModePWM,
+			PwmValue:    ptrTo(100),
+			ControlMode: ptrTo(fans.ControlModePWM),
 		},
 	}
 
@@ -2086,8 +2086,8 @@ func TestRestoreControlMode_Restore_Explicit(t *testing.T) {
 	controller := DefaultFanController{
 		fan: fan,
 		originalFanState: &FanStateSnapshot{
-			PwmValue:    75,
-			ControlMode: fans.ControlModeAutomatic,
+			PwmValue:    ptrTo(75),
+			ControlMode: ptrTo(fans.ControlModeAutomatic),
 		},
 	}
 
@@ -2409,7 +2409,7 @@ func TestStoreInitialFanState_OnlyCapturesOnce(t *testing.T) {
 	err := controller.storeInitialFanState()
 	assert.NoError(t, err)
 	assert.NotNil(t, controller.originalFanState)
-	assert.Equal(t, 100, controller.originalFanState.PwmValue)
+	assert.Equal(t, ptrTo(100), controller.originalFanState.PwmValue)
 
 	// Change fan PWM to 200
 	fan.PWM = 200
@@ -2417,7 +2417,7 @@ func TestStoreInitialFanState_OnlyCapturesOnce(t *testing.T) {
 	// Subsequent storeInitialFanState call should not overwrite existing snapshot
 	err = controller.storeInitialFanState()
 	assert.NoError(t, err)
-	assert.Equal(t, 100, controller.originalFanState.PwmValue)
+	assert.Equal(t, ptrTo(100), controller.originalFanState.PwmValue)
 }
 
 func TestStoreCurrentFanState_OverwritesSnapshot(t *testing.T) {
@@ -2435,7 +2435,7 @@ func TestStoreCurrentFanState_OverwritesSnapshot(t *testing.T) {
 
 	err := controller.storeInitialFanState()
 	assert.NoError(t, err)
-	assert.Equal(t, 100, controller.originalFanState.PwmValue)
+	assert.Equal(t, ptrTo(100), controller.originalFanState.PwmValue)
 
 	// Change fan PWM to 200
 	fan.PWM = 200
@@ -2443,17 +2443,21 @@ func TestStoreCurrentFanState_OverwritesSnapshot(t *testing.T) {
 	// storeCurrentFanState should overwrite snapshot with new value
 	err = controller.storeCurrentFanState()
 	assert.NoError(t, err)
-	assert.Equal(t, 200, controller.originalFanState.PwmValue)
+	assert.Equal(t, ptrTo(200), controller.originalFanState.PwmValue)
 }
 
 func TestClearInitialFanState_ResetsSnapshot(t *testing.T) {
 	controller := DefaultFanController{
 		originalFanState: &FanStateSnapshot{
-			PwmValue:    100,
-			ControlMode: fans.ControlModePWM,
+			PwmValue:    ptrTo(100),
+			ControlMode: ptrTo(fans.ControlModePWM),
 		},
 	}
 
 	controller.clearInitialFanState()
 	assert.Nil(t, controller.originalFanState)
+}
+
+func ptrTo[T any](v T) *T {
+	return &v
 }

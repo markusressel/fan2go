@@ -113,12 +113,13 @@ fans:
     #   active: pwm
     #   # (Optional) What to do when fan2go exits. Default: restore original control mode.
     #   # String shorthands:
-    #   #   onExit: restore   # restore original control mode (default behavior)
+    #   #   onExit: restore   # restore original control mode and PWM value (default behavior);
+    #   #                     # values that could not be read on startup are not restored
     #   #   onExit: none      # do nothing — leave fan at last speed set by fan2go
     #   # Map form (set explicit values on exit):
     #   onExit:
     #     mode: auto     # set control mode on exit (accepts same values as active)
-    #     speed: 128     # set fixed PWM speed on exit (0..255)
+    #     speed: 128     # set fixed speed on exit (0..255), mapped through the pwmMap
     # (Optional) Override the global fanController.pwmSetDelay for this specific fan.
     # pwmSetDelay: 10ms
     # (Optional) By default (useUnscaledCurveValues: false) speed values from the curve are scaled

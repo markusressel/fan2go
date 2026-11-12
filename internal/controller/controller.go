@@ -52,11 +52,13 @@ type FanController interface {
 }
 
 type FanStateSnapshot struct {
-	// the ControlMode the fan was in before the controller started
-	ControlMode fans.ControlMode
-	// the raw pwm value read from the fan before the controller started
+	// the ControlMode the fan was in before the controller started,
+	// nil if it is unknown (not readable, or reading it failed)
+	ControlMode *fans.ControlMode
+	// the raw pwm value read from the fan before the controller started,
+	// nil if it is unknown (not readable, or reading it failed)
 	// Note: this is the raw value, no pwmMap is applied to it
-	PwmValue int
+	PwmValue *int
 }
 
 type DefaultFanController struct {
@@ -125,6 +127,9 @@ type DefaultFanController struct {
 	//
 	// It's actually implemented as an array, where the "key" is the index
 	pwmMapping [256]int
+	// pwmMapComputed is true once pwmMapping has been computed (see computeFanSpecificMappings).
+	// Before that, pwmMapping only contains zeros and must not be applied on restore.
+	pwmMapComputed bool
 
 	// don't get and set PWMs in computeSetPwmToGetPwmMapAutomatically(), assume 1:1 mapping instead
 	// (enabled by `fan2go fan --id <id> init --assume-pwm-map-identity`)
@@ -225,22 +230,26 @@ func (f *DefaultFanController) prepareController() (err error) {
 // overwriting any previously saved snapshot in originalFanState.
 func (f *DefaultFanController) storeCurrentFanState() error {
 	fan := f.fan
-	// store original pwm value
+	snapshot := FanStateSnapshot{}
+
+	// store original pwm value, only if it is actually known
 	pwm, err := f.getPwm()
 	if err != nil {
-		ui.Warning("Cannot read pwm value of %s", fan.GetId())
-	}
-	snapshot := FanStateSnapshot{
-		PwmValue: pwm,
+		ui.Warning("Cannot read pwm value of %s, it will not be restored on exit: %v", fan.GetId(), err)
+	} else {
+		snapshot.PwmValue = &pwm
 	}
 
-	// store original pwm_enable value
+	// store original pwm_enable value, only if it is actually known
 	if f.fan.Supports(fans.FeatureControlModeRead) {
 		controlMode, err := fan.GetControlMode()
 		if err != nil {
-			ui.Warning("Cannot read pwm_enable value of %s", fan.GetId())
+			ui.Warning("Cannot read pwm_enable value of %s, it will not be restored on exit: %v", fan.GetId(), err)
+		} else if controlMode < 0 {
+			ui.Warning("Control mode of %s is unknown, it will not be restored on exit", fan.GetId())
+		} else {
+			snapshot.ControlMode = &controlMode
 		}
-		snapshot.ControlMode = controlMode
 	}
 	f.originalFanState = &snapshot
 	return nil
@@ -608,8 +617,8 @@ func (f *DefaultFanController) measureRpm(fan fans.Fan) {
 
 // getPwm returns the current raw PWM value of the fan.
 // If the fan does not support PWM sensor reading,
-// it returns the last set PWM value.
-// If no last set PWM value is available, it returns the min PWM value.
+// it returns the raw value of the last target set by fan2go.
+// If no target has been set yet, the PWM value is unknown and an error is returned.
 func (f *DefaultFanController) getPwm() (int, error) {
 	if f.fan.Supports(fans.FeaturePwmSensor) {
 		return f.fan.GetPwm()
@@ -617,7 +626,7 @@ func (f *DefaultFanController) getPwm() (int, error) {
 		return f.applyPwmMapToTarget(*f.lastTarget), nil
 	}
 
-	return f.fan.GetMinPwm(), nil
+	return 0, fmt.Errorf("fan %s: PWM value is unknown, the fan can't report it and fan2go hasn't set one yet", f.fan.GetId())
 }
 
 func parseControlModeValue(value configuration.ControlModeValue) (fans.ControlMode, error) {
@@ -667,6 +676,15 @@ func trySetManualPwm(fan fans.Fan) error {
 	return err
 }
 
+// restoreControlMode is the single place that resets the fan when the controller stops
+// (exit, config reload, or an error). What it does depends on controlMode.onExit:
+//   - none: nothing.
+//   - restore (default): restore the original control mode and PWM value.
+//   - mode and/or speed: set the given control mode and/or speed (pre-pwmMap).
+//
+// Only values that are actually known are written: if the original control mode or PWM value
+// could not be read when the controller started, it is not written, and the fan stays at
+// the last speed fan2go set.
 func (f *DefaultFanController) restoreControlMode() {
 	if f.originalFanState == nil {
 		ui.Warning("Skipping fan settings restore for %s, original state was never captured", f.fan.GetId())
@@ -695,7 +713,7 @@ func (f *DefaultFanController) restoreControlMode() {
 	if onExit != nil {
 		// determine control mode to set on exit, if any
 		if onExit.Restore != nil {
-			controlModeToSet = &originalControlMode
+			controlModeToSet = originalControlMode
 		} else if onExit.ControlMode != nil {
 			parsedControlMode, err := parseControlModeValue(*onExit.ControlMode)
 			if err != nil {
@@ -704,26 +722,31 @@ func (f *DefaultFanController) restoreControlMode() {
 				controlModeToSet = &parsedControlMode
 			}
 		} else {
-			// if no explicit control mode to set is provided, but the fan supports writing the control mode and the original mode was not automatic, restore the original mode
-			if originalControlMode != fans.ControlModeAutomatic {
-				controlModeToSet = &originalControlMode
+			// if no explicit control mode to set is provided, but the original mode is known and was not automatic, restore the original mode
+			if originalControlMode != nil && *originalControlMode != fans.ControlModeAutomatic {
+				controlModeToSet = originalControlMode
 			}
 		}
 
 		// determine PWM value to set on exit, if any
 		if onExit.Speed != nil {
-			pwmToSet = onExit.Speed
+			// speed is a target value (pre-pwmMap), like the values fan2go sets while running
+			raw := f.applyPwmMapForRestore(*onExit.Speed)
+			pwmToSet = &raw
 		}
 	} else {
 		// default restore behavior
-		controlModeToSet = &originalControlMode
+		controlModeToSet = originalControlMode
 	}
 
 	if pwmToSet == nil {
-		// if the original control mode was manual, restore it to manual and set the original PWM value
-		if controlModeToSet != nil && *controlModeToSet != fans.ControlModeAutomatic {
-			// if control mode is set to manual but no speed is provided, set the original value
-			pwmToSet = &originalPwmValue
+		// unless the fan is handed back to automatic control, restore the original PWM value (if known)
+		if controlModeToSet == nil || *controlModeToSet != fans.ControlModeAutomatic {
+			if originalPwmValue != nil {
+				pwmToSet = originalPwmValue
+			} else {
+				ui.Info("Original PWM value of fan %s is unknown, leaving it at the last speed set by fan2go", f.fan.GetId())
+			}
 		}
 	}
 
@@ -731,7 +754,8 @@ func (f *DefaultFanController) restoreControlMode() {
 		if f.fan.Supports(fans.FeatureControlModeWrite) {
 			if err := f.fan.SetControlMode(*controlModeToSet); err != nil {
 				// if this fails, try to set it to max speed instead
-				if err := f.fan.SetPwm(fans.MaxPwmValue); err != nil {
+				ui.Warning("Fan %s: Error restoring control mode %d, setting max speed instead: %v", f.fan.GetId(), *controlModeToSet, err)
+				if err := f.fan.SetPwm(f.applyPwmMapForRestore(fans.MaxPwmValue)); err != nil {
 					ui.Warning("Unable to restore fan %s, make sure it is running!", f.fan.GetId())
 				}
 				return
@@ -746,6 +770,17 @@ func (f *DefaultFanController) restoreControlMode() {
 			ui.Warning("Fan %s: Error restoring original PWM value: %v", f.fan.GetId(), err)
 		}
 	}
+}
+
+// applyPwmMapForRestore maps a target value (pre-pwmMap) to the raw value to write on restore.
+// If the pwmMap hasn't been computed yet (e.g. when the controller stops during initialization),
+// the target is written as is.
+func (f *DefaultFanController) applyPwmMapForRestore(target int) int {
+	if !f.pwmMapComputed {
+		ui.Warning("Fan %s: pwmMap is not known yet, writing %d without mapping it", f.fan.GetId(), target)
+		return util.Coerce(target, fans.MinPwmValue, fans.MaxPwmValue)
+	}
+	return f.applyPwmMapToTarget(target)
 }
 
 // Calculates the next speed for the fan of this controller by
@@ -1165,6 +1200,7 @@ func (f *DefaultFanController) computeFanSpecificMappings(ctx context.Context) (
 		ui.Warning("Error computing PWM map: %v", err)
 		return err
 	}
+	f.pwmMapComputed = true
 
 	f.updateDistinctPwmValues()
 
