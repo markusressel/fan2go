@@ -21,7 +21,7 @@ polling and staleness in [sensors.md](sensors.md), and curves and the curve eval
   prepareController, storeInitialFanState                           UpdateFanSpeed():
   wait startupSensorWarmup (2s) + tempSensorPollingRate               curve.CurrentResult()
   runInitializationIfNeeded / load curve data / pwmMap                  error -> onSensorFailure (max | restore)
-  takeManualControl (controlMode.active)                              controlLoop.Cycle(value)
+  takeManualControl (controlMode.active)                              controlLoop.Cycle(now, value)
   run.Group:                                                          clamp, scale to [minPwm..maxPwm]
     RPM monitor goroutine (every rpmPollingRate)                      neverStop floor + stall detection
       measureRpm -> exponential moving average                        setTargetPwm -> pwmMap -> fan.SetPwm
@@ -261,6 +261,9 @@ next cycle tries again.
   only `onExit.speed`, original mode manual, mode unknown or not writable), the fan is set to `maxPwm` like `max`.
 - Recovery (`recoverFromCurveFailure`): after `restore`, take manual control again (like at startup) and arm a new
   `restoreOnce`. If that fails, the fan stays handed back and fan2go tries again on the next cycle.
+  Before that, `calculateTargetSpeed` makes the control loop continue from the fan's speed: `Preset` at the curve
+  value of `maxPwm` after `max`, `Reset` (start at the target) after `restore`. So the fan ramps down from max
+  instead of jumping (see [control-algorithms.md](control-algorithms.md)).
 - Entering the failure state is logged and notified once, after the fan is in a safe state. Recovery is logged
   once. The stall detection is paused while the curve fails, because `UpdateFanSpeed` returns before it.
 

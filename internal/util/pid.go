@@ -66,7 +66,12 @@ func (p *PidLoop) Reset() {
 // yields output (if the I gain is not 0). The time of the clock (see SetClock) is used as the time
 // of the last loop.
 func (p *PidLoop) Preset(output float64, measured float64) {
-	p.lastTime = p.now()
+	p.PresetAt(p.now(), output, measured)
+}
+
+// PresetAt is Preset with an explicit time of the last loop.
+func (p *PidLoop) PresetAt(loopTime time.Time, output float64, measured float64) {
+	p.lastTime = loopTime
 	p.lastMeasured = measured
 	p.lastOutput = output
 	p.integral = 0
