@@ -40,22 +40,23 @@ For a breaking change:
    ```
 
    pacman shows these lines when a user upgrades across that version (both `fan2go` and `fan2go-git`). Keep each
-   entry short and actionable; link to the release notes for details. Merge this change before tagging.
+   entry short and actionable; link to the release notes for details. Merge this change before publishing the release.
 
 3. **Update the Makefile default version** (`VERSION ?=` in the [`Makefile`](Makefile)) to the new version, so local
    builds from the tag report it. CI and the Arch packages pass the version explicitly, so release artifacts are
    correct either way.
 
-4. **Tag and push** from an up-to-date `master`:
+4. **Publish the GitHub release; this creates the tag.** Open the draft release that Release Drafter keeps up to date
+   (Releases page, or `gh release list`). Then:
+   - fill the "Upgrade notes" section from step 1, or remove it if there are no breaking changes,
+   - check the proposed version; correct it if needed (e.g. a release without breaking changes or features is a patch
+     release),
+   - set the tag to the version (e.g. `0.16.0`), targeting `master`, with the same release title, and publish.
 
-   ```shell
-   git tag 0.16.0
-   git push origin 0.16.0
-   ```
-
-   This triggers:
+   Publishing creates the tag. Don't push the tag yourself: the Go workflow would then create a second release instead
+   of attaching the binaries to this one. The tag push triggers:
    - the [Go workflow](.github/workflows/go.yml): builds the binaries (with the version from the tag) and attaches
-     them to the GitHub release, and
+     them to the published release (a few minutes later), and
    - the [AUR Packages workflow](.github/workflows/aur-packages.yml): test-builds the `fan2go` (from the tag's source
      tarball) and `fan2go-git` packages from [`packaging/aur`](packaging/aur). It doesn't publish anything.
 
@@ -70,9 +71,6 @@ For a breaking change:
    missing clones are created), sets `pkgver` and the checksum of the stable package, test-builds both packages in a
    temporary directory, shows the diff and pushes after you confirm. Answering "no" restores the clones. See
    `packaging/aur/publish.sh --help` for options (e.g. `--pkgrel 2` for a packaging-only fix of the same version).
-
-6. **Publish the release notes.** Open the draft release created by Release Drafter, fill the "Upgrade notes"
-   section from step 1 (or remove it if there are no breaking changes), check the version, and publish it.
 
 ## AUR packages
 
