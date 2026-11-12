@@ -78,16 +78,16 @@ func TestAnalyzePidStability_MatchesPidControlLoop(t *testing.T) {
 			result := AnalyzePidStability(tt.p, tt.i, tt.d, tt.dt)
 
 			clock := &fakeNow{now: time.Unix(1000, 0)}
-			loop := NewPidControlLoopWithClock(tt.p, tt.i, tt.d, clock.Now)
+			loop := NewPidControlLoop(tt.p, tt.i, tt.d, tt.dt)
 			// settle at 100, then step the target to 120
 			const start, target = 100.0, 120.0
-			loop.Cycle(start)
+			loop.Cycle(clock.Now(), start)
 			peak := start
 			hitLimits := false
 			last := start
 			for k := 0; k < 2000; k++ {
 				clock.Advance(tt.dt)
-				out := loop.Cycle(target)
+				out := loop.Cycle(clock.Now(), target)
 				peak = max(peak, out)
 				hitLimits = hitLimits || out <= 0 || out >= 255
 				last = out

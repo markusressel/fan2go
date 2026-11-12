@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -71,7 +70,8 @@ func (c *Configuration) GetSensorStaleTimeout() time.Duration {
 }
 
 // InitConfig reads in config file and ENV variables if set.
-func InitConfig(cfgFile string) {
+// InitConfig sets up viper to find the config file. The returned error is a ConfigError.
+func InitConfig(cfgFile string) error {
 	viper.SetConfigName("fan2go")
 
 	if cfgFile != "" {
@@ -81,8 +81,7 @@ func InitConfig(cfgFile string) {
 		// Find home directory.
 		home, err := homedir.Dir()
 		if err != nil {
-			ui.ErrorAndNotify("Path Error", "Couldn't detect home directory: %v", err)
-			os.Exit(1)
+			return NewConfigError(fmt.Errorf("couldn't detect home directory: %w", err))
 		}
 
 		viper.AddConfigPath(".")
@@ -93,6 +92,7 @@ func InitConfig(cfgFile string) {
 	viper.AutomaticEnv() // read in environment variables that match
 
 	setDefaultValues()
+	return nil
 }
 
 func setDefaultValues() {
@@ -149,18 +149,38 @@ func setDefaultValues() {
 	viper.SetDefault("fans", []FanConfig{})
 }
 
-// DetectAndReadConfigFile detects the path of the first existing config file
-func DetectAndReadConfigFile() string {
+// DetectAndReadConfigFile detects the path of the first existing config file and reads it.
+// The returned error is a ConfigError.
+func DetectAndReadConfigFile() (string, error) {
 	err := ReadInConfig()
 	if err != nil {
-		ui.FatalWithoutStacktrace("Error reading config file, %s", err)
+		return "", fmt.Errorf("error reading config file: %w", err)
 	}
-	return GetFilePath()
+	return GetFilePath(), nil
 }
 
-// ReadInConfig reads and parses the config file
+// LoadAndValidateConfigFile detects, reads, decodes and validates the config file, and sets CurrentConfig to it.
+// It returns the path of the config file. The returned error is a ConfigError.
+func LoadAndValidateConfigFile() (string, error) {
+	configPath, err := DetectAndReadConfigFile()
+	if err != nil {
+		return "", err
+	}
+	ui.Info("Using configuration file at: %s", configPath)
+	CurrentConfig, err = LoadConfig()
+	if err != nil {
+		return configPath, fmt.Errorf("configuration parsing failed: %w", err)
+	}
+	err = ValidateConfig(&CurrentConfig, configPath)
+	if err != nil {
+		return configPath, fmt.Errorf("configuration validation failed: %w", err)
+	}
+	return configPath, nil
+}
+
+// ReadInConfig reads and parses the config file. The returned error is a ConfigError.
 func ReadInConfig() error {
-	return viper.ReadInConfig()
+	return NewConfigError(viper.ReadInConfig())
 }
 
 // GetFilePath this is only populated _after_ ReadInConfig()
@@ -168,7 +188,14 @@ func GetFilePath() string {
 	return viper.ConfigFileUsed()
 }
 
+// LoadConfig decodes the config file read by ReadInConfig, with the default values applied.
+// The returned error is a ConfigError.
 func LoadConfig() (Configuration, error) {
+	cfg, err := loadConfig()
+	return cfg, NewConfigError(err)
+}
+
+func loadConfig() (Configuration, error) {
 	// load default configuration values
 	cfg := Configuration{}
 	if err := defaults.Set(&cfg); err != nil {

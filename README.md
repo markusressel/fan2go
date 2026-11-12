@@ -826,6 +826,44 @@ journalctl -u fan2go -f
 > NOTE: If you want to use a config path that differs from the default one, make sure to edit the
 > unit file and point the `-c` flag to the correct path.
 
+The unit restarts fan2go 10 seconds after it exited, unless it exited because of a config error (exit code 78, see
+[Exit codes](#exit-codes)). After fixing the config, start it again with `sudo systemctl restart fan2go`.
+
+The unit restricts what fan2go can access. Two restrictions can affect your config:
+
+- **Network:** only connections from and to localhost are allowed (`IPAddressDeny=any`, `IPAddressAllow=localhost`).
+  Setting `statistics.host` or `api.host` to `0.0.0.0` is not enough to reach them from another machine; packets from
+  other addresses are dropped silently.
+- **Filesystem:** the system is read-only for fan2go (`ProtectSystem=strict`), except for `/sys/class/hwmon`,
+  `/sys/class/thermal`, `/sys/devices` and the directories `/var/lib/fan2go`, `/var/log/fan2go` and `/run/fan2go`.
+  A `dbPath` outside `/var/lib/fan2go` can't be written, so fan2go can't save the results of the fan initialization.
+
+To lift one of them, add a drop-in with `sudo systemctl edit fan2go`, for example:
+
+```ini
+[Service]
+# allow remote Prometheus scrapes and API clients from the local network
+# (statistics.host / api.host must be set to 0.0.0.0 or that interface's address, too)
+IPAddressAllow=192.168.1.0/24
+# make a custom dbPath writable
+ReadWritePaths=/srv/fan2go
+```
+
+Then restart fan2go with `sudo systemctl restart fan2go`.
+
+### Exit codes
+
+| Code | Meaning                                                                                                    |
+|------|------------------------------------------------------------------------------------------------------------|
+| 0    | fan2go stopped normally (e.g. after `SIGINT` or `SIGTERM`), or the command succeeded                       |
+| 1    | Any other error, e.g. no configured fan could be found, or an invalid command line                         |
+| 78   | Config error: the config file can't be found, read, parsed or validated, or its curves can't be set up (e.g. a curve dependency cycle) |
+
+The codes are the same for the daemon and for the other commands, e.g. `fan2go config validate` exits with 78 for an
+invalid config. fan2go isn't restarted by systemd after a config error, since a restart can't fix it. "No fan could be
+found" is not a config error: the hardware may just not be available yet (e.g. a driver that is loaded late), so
+systemd restarts fan2go after it.
+
 ## CLI Commands
 
 Although fan2go is a fan controller daemon at heart, it also provides some handy cli commands to interact with the
@@ -920,6 +958,8 @@ running.
 > [!NOTE]
 > Before fan2go 1.0.0, the exporter listened on all interfaces by default. If a Prometheus server on another machine
 > scrapes fan2go, set `host: 0.0.0.0` (or the address of a specific interface).
+> When fan2go runs with the provided systemd unit, remote scrapes also need a drop-in that allows them, see
+> [As a Service](#systemd).
 
 The exported values are the ones fan2go maintains anyway, so a scrape doesn't read any sensor or fan:
 
@@ -944,6 +984,9 @@ api:
   # The port to listen for connections
   port: 9001
 ```
+
+When fan2go runs with the provided systemd unit, clients on other machines also need a drop-in that allows them, see
+[As a Service](#systemd).
 
 ### Endpoints
 
@@ -1063,7 +1106,9 @@ In both cases, fan2go keeps trying to evaluate the curve on every cycle, and res
 control again for `restore`) as soon as it can. Entering this state is logged and notified once, and so is the
 recovery. The fan controller only stops for good if a fan with `neverStop: true` doesn't spin even at its `maxPwm`
 (see above); this check is paused while the fan is in the failure state. A PID curve starts over when its sensor
-recovers from a stale value.
+recovers from a stale value. After `max`, the control algorithm continues from the fan's maximum speed, so the fan
+comes down gradually (with the `pid` control algorithm, or `direct` with `maxPwmChangePerCycle`) instead of
+jumping to the curve value. After `restore`, it starts at the curve value, like on startup.
 
 ```yaml
 # (Optional) default: 10 x tempSensorPollingRate, but at least 10s
@@ -1202,7 +1247,9 @@ This also applies to fans without a `controlAlgorithm` (they use the default val
 
 The first cycle after fan2go starts (or reloads its config) applies the curve value directly, like the direct control
 algorithm. The PID loop is initialized as if it had already settled at that value, so it only smooths later changes
-of the curve value instead of ramping the fan up from (almost) zero.
+of the curve value instead of ramping the fan up from (almost) zero. If the loop hasn't run for a while (more than
+`2s` or 5 times `adjustmentTickRate`, whichever is longer, e.g. while a sensor failed), it treats the pause like
+`1s` (or one `adjustmentTickRate`, if that is longer), instead of making up for the whole pause at once.
 
 See [PID controller on Wikipedia](https://en.wikipedia.org/wiki/Proportional%E2%80%93integral%E2%80%93derivative_controller)
 for more information on what a PID controller is.

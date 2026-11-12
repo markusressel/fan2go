@@ -20,24 +20,28 @@ Details of the individual subsystems are in their own documents:
 ### Startup sequence
 
 1. **Read the config file** (`configuration.DetectAndReadConfigFile`). The path comes from `-c`, otherwise viper
-   searches `fan2go.yaml` in `.`, `$HOME` and `/etc/fan2go/`. A missing file or a YAML syntax error exits with code 1.
+   searches `fan2go.yaml` in `.`, `$HOME` and `/etc/fan2go/`. A missing file or a YAML syntax error exits with code 78.
 2. **Load and validate** (`configuration.LoadConfig`, `configuration.ValidateConfig`). Errors are logged once, sent as
-   a desktop notification and make the process exit with code 1 (`loggedError` in `cmd/root.go`).
+   a desktop notification and make the process exit with code 78 (`loggedError` in `cmd/root.go`, see "Exit codes").
 3. **Check the process owner** (`checkProcessOwner`). Running as non-root only logs a hint.
 4. **Create the objects** (`InitializeObjects`):
    - `hwmon.GetChips()` scans the hwmon chips once.
    - Sensors: hwmon sensors are resolved against the scanned chips. A sensor that can't be resolved or created is
      skipped with a warning and a notification. Every created sensor gets a first reading to seed its moving average;
      if that fails, the sensor stays stale until the sensor monitor reads it.
-   - Curves: an error here aborts the startup.
+   - Curves: an error here aborts the startup with exit code 78, like errors of step 5.
    - Fans: like sensors, a fan that can't be resolved or created is skipped with a warning and a notification.
    - NVIDIA devices are resolved the same way, through NVML (only in builds with NVML support).
 5. **Create the fan controllers and the curve evaluator** (`initializeFanControllers`). The evaluator gets all curves.
    Each fan gets a `controller.DefaultFanController` that subscribes to the evaluator's cycles. The Prometheus
    collectors are registered here and in step 4.
-6. **Start the actors** (`RunDaemon`, an `oklog/run` group): the orchestrator, the signal handler, the config file
+6. **Subscribe to the signals** (`subscribeSignals`), before any fan controller starts. From here on, `SIGINT`/`SIGTERM`
+   never kill the process with their default action.
+7. **Start the actors** (`RunDaemon`, an `oklog/run` group): the orchestrator, the signal handler, the config file
    watcher and, if enabled, the profiling webserver.
-7. If no fan is left after step 4, the orchestrator exits with code 1 ("No valid fan configurations, exiting.").
+8. If no fan is left after step 4, the orchestrator returns an error and fan2go exits with code 1 ("no valid fan
+   configurations, exiting"). This is not a config error: the fans may have been skipped because their hardware isn't
+   available yet, so systemd restarts fan2go.
 
 Each fan controller first creates the database directory (`Persistence.Init`). Then it waits before it touches its
 fan: `startupSensorWarmup` (2 s) plus one `tempSensorPollingRate`, so the sensor monitors have fresh readings. It then
@@ -87,7 +91,8 @@ new controller after the startup delays.
 
 `SIGINT` or `SIGTERM` makes the signal handler return, which cancels the shared context. Every fan controller stops
 its update loop and RPM monitor and restores its fan (`restoreControlModeOnce`, see
-[fan-controller.md](fan-controller.md)). The orchestrator waits for all of them, then `RunDaemon` exits with code 0.
+[fan-controller.md](fan-controller.md)). The orchestrator waits for all of them, and the profiling webserver shuts
+down. `RunDaemon` returns, `main` shuts NVML down (`nvidia_base.CleanupAtExit`) and exits with code 0.
 
 ## Design decisions
 
@@ -96,13 +101,14 @@ its update loop and RPM monitor and restores its fan (`restoreControlModeOnce`, 
 **Decision:** The config is checked in two stages. `ValidateConfig` checks everything that can be checked without
 hardware: references between sensors, curves and fans, curve dependency cycles, value ranges, durations, the file
 permissions of the config if it contains `cmd` fans or sensors, and the `nvidia.device` regex. Any error stops the
-daemon before it touches a fan, with exit code 1. Hardware lookups happen afterwards; a fan or sensor whose hardware
+daemon before it touches a fan, with exit code 78. Hardware lookups happen afterwards; a fan or sensor whose hardware
 can't be found is skipped with a warning and a desktop notification, and the rest keeps running. The same validation
 is available as `fan2go config validate`.
 
 **Why:** An invalid value used to crash the daemon after it had taken manual control (a `time.NewTicker` panic on a
 zero polling rate, NaN moving averages); #540 closed those gaps. Exiting with code 0 on config errors hid the failure
-from systemd; #550 changed that to code 1. Missing hardware is different: a single wrong `platform` or a removed fan
+from systemd; #550 changed that to code 1, and a dedicated code (78) then stopped the systemd restart loop (see "Exit
+codes"). Missing hardware is different: a single wrong `platform` or a removed fan
 made the whole daemon refuse to start, leaving every fan uncontrolled (#70, #415).
 
 **Who benefits:** Users editing their config get the error at load time, from the CLI or in `systemctl status`, not
@@ -115,6 +121,40 @@ setting is a safety problem. Failing on missing hardware was the old behaviour a
 `onSensorFailure` action. A device that appears late during boot (#510) stays skipped until the next reload or restart.
 Unknown config keys only produce a warning (`WarnUnknownKeys`), so typos in optional keys load silently with defaults
 apart from that warning.
+
+### Exit codes: 78 for config errors, returned errors instead of `os.Exit`
+
+**Decision:** fan2go exits with one of three codes, defined in `cmd/exitcodes.go`:
+
+| Code | Meaning |
+|---|---|
+| 0 | Stopped normally (`SIGINT`/`SIGTERM`), or the command succeeded |
+| 1 | Any other error: no fan left after skipping missing hardware, a failing file watcher, an invalid command line, errors of other commands |
+| 78 | Config error (`EX_CONFIG` from `sysexits.h`): the config file can't be found, read, decoded or validated, or the daemon can't create its curves or the curve evaluator from it |
+
+Errors caused by the config are marked as `configuration.ConfigError` (`InitConfig`, `ReadInConfig`, `LoadConfig`,
+`ValidateConfig` and the object creation in `RunDaemon`; sensors and fans that can't be created are skipped there,
+so only curve and evaluator errors remain). The other commands create single objects for display (e.g.
+`fan2go fan curve`); an error there exits with 1. Every command returns its errors to cobra (`RunE`); `cmd.Execute` prints
+errors that weren't logged yet and maps them to the exit code (`exitCode`); `main` shuts NVML down and calls `os.Exit`.
+No other code calls `os.Exit` or a panicking log function. The codes are the same for all commands, e.g.
+`fan2go config validate` exits with 78 for an invalid config.
+
+**Why:** Object creation errors went through pterm's `Fatal` printer, which panics: exit code 2 with a Go stack trace
+for a config mistake. `os.Exit` in `RunDaemon` skipped the NVML shutdown deferred in `main`. With one code for all
+errors, systemd restarted fan2go every 10 s forever on an invalid config, with a desktop notification each time; a
+dedicated code lets the unit stop that (`RestartPreventExitStatus=78`).
+
+**Who benefits:** Users running fan2go as a service: an invalid config shows up once as a failed unit instead of a
+notification every 10 s. Scripts and packagers can tell config errors from other failures.
+
+**Alternatives considered:** A start limit (`StartLimitBurst`) would also stop the loop on config errors, but also
+after real crashes, and only after several notifications. Code 78 for "no fan found" was rejected: the hardware may
+appear later (#510), so a restart can help.
+
+**Trade-offs:** After fixing the config, the user has to restart the unit; it isn't retried and the file watcher isn't
+running. Exit code 1 for config errors (#550) was never released, so 78 is the first change since 0.16.0 (exit code 0
+for config errors of the daemon, 1 for the other commands).
 
 ### The actor model: one orchestrator, independent workers
 
@@ -156,8 +196,9 @@ changes need a restart.
 
 ### Signals: restore before exit, ignore repeated signals
 
-**Decision:** The signal handler subscribes to `SIGINT`, `SIGTERM` and `SIGHUP` and never unsubscribes or closes its
-channel. After the first `SIGINT`/`SIGTERM`, further signals are logged ("waiting for the fan settings to be restored
+**Decision:** `RunDaemon` subscribes to `SIGINT`, `SIGTERM` and `SIGHUP` (`subscribeSignals`) before the actors start,
+so a signal that arrives while the fan controllers start is queued for the signal handler. The subscription is never
+stopped and the channel never closed. After the first `SIGINT`/`SIGTERM`, further signals are logged ("waiting for the fan settings to be restored
 (send SIGKILL to force exit)") and ignored until the process exits. A `SIGHUP` while a reload is pending is dropped
 (the reload channel has a buffer of one).
 
@@ -193,20 +234,23 @@ the next reload or restart. The user gets a "Fan Controller: <id>" notification.
 
 ### systemd: hardened unit, restart on any exit
 
-**Decision:** `fan2go.service` runs as root with `Restart=always` and `RestartSec=10`, passes the config with `-c`
+**Decision:** `fan2go.service` runs as root with `Restart=always`, `RestartSec=10` and `RestartPreventExitStatus=78`
+(no restart after a config error, see "Exit codes"), passes the config with `-c`
 and `--no-style`, and restricts the process: `ProtectSystem=strict` with write access to `/sys/class/hwmon`,
 `/sys/class/thermal`, `/sys/devices` and the state directory `/var/lib/fan2go`, device access for hwmon, i2c and
 NVIDIA devices, network limited to localhost, a system call filter, `MemoryMax=256M`, `TasksMax=50`.
 
 **Why:** fan2go needs root for sysfs writes, but nothing else of root's power. `Restart=always` brings fan control
-back after a crash. With exit code 1 on config errors (#550), `systemctl status` shows the failure.
+back after a crash. A config error can't be fixed by a restart, so it ends the restarts; `systemctl status` shows the
+failed unit and the error.
 
 **Who benefits:** Packagers and users running fan2go headless.
 
-**Trade-offs:** With an invalid config, systemd restarts fan2go every 10 s forever; each attempt logs the error and
-sends a notification. The unit's `IPAddressAllow=localhost` blocks remote Prometheus scrapes and API clients even
-when `statistics.host` or `api.host` is `0.0.0.0`; users need a drop-in override. A `dbPath` outside
-`/var/lib/fan2go` is read-only under `ProtectSystem=strict`. NVIDIA access needed manual overrides in the past
+**Trade-offs:** After a config error, the user has to restart the unit once the config is fixed. Other errors (e.g. no
+fan found) are still retried every 10 s forever. The unit's `IPAddressAllow=localhost` blocks remote Prometheus
+scrapes and API clients even when `statistics.host` or `api.host` is `0.0.0.0`; users need a drop-in override with
+`IPAddressAllow=`. A `dbPath` outside `/var/lib/fan2go` is read-only under `ProtectSystem=strict` and needs
+`ReadWritePaths=`. Both are documented in the README ("As a Service"). NVIDIA access needed manual overrides in the past
 (#472, #510).
 
 ### Concurrency: leaf locks, one writer per fan, `-race` in CI
@@ -237,8 +281,9 @@ enforced by the type system. NVML code is excluded from the race-checked test ru
 
 **Decision:** Code that waits or measures time uses `util.Clock` (`Now`, `After`, `NewTicker`). Production uses
 `util.RealClock`; tests use `util.FakeClock`, which only moves on `Advance`. The fan controller, the sensor monitor,
-the curve evaluator, the control loops and the fan analysis take a clock. All waits in the controller are
-context-aware (`sleepWithContext`), so a shutdown during a startup delay or a PWM sweep returns right away (#542).
+the curve evaluator and the fan analysis take a clock; the control loops get the controller's time (`now`) on every
+`Cycle`. All waits in the controller are context-aware (`sleepWithContext`), so a shutdown during a startup delay
+or a PWM sweep returns right away (#542).
 User-facing delays are config keys: `fanResponseDelay` (number of seconds or a duration), `fanController.pwmSetDelay`
 (global and per fan), the `analysis.*` delays and the `timeout` of `cmd` fans and sensors.
 
@@ -248,7 +293,8 @@ sleeps or not at all. Hard-coded timeouts didn't fit slow `cmd` scripts.
 **Who benefits:** Maintainers: deterministic, fast tests. Users with slow fans or scripts: tunable delays.
 
 **Trade-offs:** The startup delays (2 s warm-up, 1 s update delay) and the PWM write failure timeout (10 s) are
-constants. Not every component takes a clock yet (e.g. the evaluator restart delay, the notification worker).
+constants. Not every component takes a clock yet (e.g. the evaluator restart delay). The notification worker can't
+use `util.Clock` (`util` imports `ui`); its wait is a replaceable function (`workerWait`) instead.
 
 ### Statistics: local only, no hardware reads on scrape
 
@@ -297,8 +343,9 @@ the code default is `127.0.0.1`.
 webservers that can't start, fatal errors) are logged and sent as desktop notifications via `notify-send`
 (`internal/ui/notification.go`). fan2go finds graphical sessions with `who` (preferring the `DISPLAY` from its
 environment; the unit sets `DISPLAY=:0`). As root, it uses `systemd-run --user --machine=<user>@.host` to reach the
-user's session bus. If no session exists yet, notifications are queued and a background worker retries every second.
-Every external command has a 5 s timeout.
+user's session bus. If no session exists yet, notifications are queued (at most 100, the oldest are dropped) and a
+background worker retries every second. Every external command has a 5 s timeout. The queue lock is never held while
+a command runs, so queueing a notification doesn't wait for the worker.
 
 **Why:** A daemon's log is easy to miss; a failing fan controller is a hardware risk (#79). The timeouts were added
 because a hanging D-Bus could block a fan controller that was stopping after an error; the fan is now restored before
@@ -307,7 +354,8 @@ the user is notified (#548).
 **Who benefits:** Desktop users. Headless systems lose nothing but a few `who` calls.
 
 **Trade-offs:** Notifications depend on `who`, `systemd-run` and `notify-send` being present and permitted by the
-unit's sandbox. Queued notifications are kept until a session appears, without a limit.
+unit's sandbox. Queued notifications are kept until a session appears; beyond 100, the oldest are lost (they are in
+the log).
 
 ### Build variants: `disable_nvml`
 
@@ -376,13 +424,9 @@ described in the subsystem documents.
 - **Skipped hardware is never retried** (#510). A device that appears after startup needs a reload or restart.
 - **Restore state is in memory only.** After `SIGKILL` or an OOM kill, fans stay in manual mode. The restarted daemon
   then captures that manual state as the "original" state and restores to it on its next exit.
-- **Exit codes are not fully consistent.** Config errors exit with 1, but an error while creating the objects at
-  startup goes through `ui.Fatal`, which panics via pterm's `Fatal` printer (exit code 2 with a stack trace).
-  `RunDaemon` ends with `os.Exit`, so the NVML cleanup deferred in `main` doesn't run.
 - **`CurrentConfig` is global mutable state.** Passing the config into the components is not done yet (out of scope
   of #542).
 - **No observability for failure states** in the metrics (stale sensors, failed curves, active `onSensorFailure`).
 - **`-c` help text** says the default is `$HOME/.fan2go.yaml`; the actual search is `fan2go.yaml` (or `.yml`, etc.) in
   `.`, `$HOME` and `/etc/fan2go/`.
-- **Open question:** whether `Restart=always` with a 10 s delay is the right policy for permanent config errors, or
-  whether a start limit should stop the retries and notifications.
+- **Non-config errors are retried forever** by the systemd unit (every 10 s), e.g. when no configured fan is found.

@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,7 +20,9 @@ import (
 
 const webserverShutdownTimeout = 5 * time.Second
 
-func startProfilingWebserver(ctx context.Context) error {
+// runProfilingWebserver serves the pprof endpoints on address until ctx is done, then shuts the server down.
+// An error while starting the server is logged and doesn't stop the daemon, so it always returns nil.
+func runProfilingWebserver(ctx context.Context, address string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -27,15 +30,40 @@ func startProfilingWebserver(ctx context.Context) error {
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
-	go func() {
-		ui.Info("Starting profiling webserver...")
-		profilingConfig := configuration.CurrentConfig.Profiling
-		address := fmt.Sprintf("%s:%d", profilingConfig.Host, profilingConfig.Port)
-		ui.Error("Error running profiling webserver: %v", http.ListenAndServe(address, mux))
-	}()
+	ui.Info("Starting profiling webserver...")
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		ui.Error("Error running profiling webserver: %v", err)
+		<-ctx.Done()
+		return nil
+	}
+	ui.Info("Profiling webserver listening on %s", listener.Addr().String())
 
-	<-ctx.Done()
+	server := &http.Server{Handler: mux}
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.Serve(listener) }()
+
+	select {
+	case err = <-serveErr:
+		ui.Error("Error running profiling webserver: %v", err)
+		<-ctx.Done()
+		return nil
+	case <-ctx.Done():
+	}
+
 	ui.Info("Stopping profiling webserver...")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), webserverShutdownTimeout)
+	defer cancel()
+	err = server.Shutdown(shutdownCtx)
+	if err != nil {
+		ui.Warning("Error stopping profiling webserver: %v", err)
+		_ = server.Close()
+	}
+	// Serve returns http.ErrServerClosed after Shutdown or Close
+	if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		ui.Warning("Profiling webserver stopped with an error: %v", err)
+	}
+	ui.Debug("Profiling webserver stopped.")
 	return nil
 }
 

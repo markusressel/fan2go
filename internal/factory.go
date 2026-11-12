@@ -56,7 +56,7 @@ func initializeFanControllers(
 
 	result = map[fans.Fan]controller.FanController{}
 	for config, fan := range fanMap {
-		controlLoop := createControlLoop(config)
+		controlLoop := createControlLoop(config, updateRate)
 		curve, _ := reg.GetCurve(fan.GetCurveId())
 		fanController := controller.NewFanController(pers, fan, curve, controlLoop, updateRate, false)
 		fanController.SetCurveCycles(evaluator.Subscribe())
@@ -90,13 +90,16 @@ func newCurveEvaluator(reg *registry.Registry, tickRate time.Duration) (*curves.
 	return evaluator, nil
 }
 
-func createControlLoop(config configuration.FanConfig) control_loop.ControlLoop {
+// createControlLoop creates the control loop of a fan. tickRate is the time between two cycles of the loop
+// (fanController.adjustmentTickRate).
+func createControlLoop(config configuration.FanConfig, tickRate time.Duration) control_loop.ControlLoop {
 	// 1. Check deprecated config first (validation warns about it and rejects it together with controlAlgorithm)
 	if config.ControlLoop != nil { //nolint:all
 		return control_loop.NewPidControlLoop(
 			config.ControlLoop.P, //nolint:all
 			config.ControlLoop.I, //nolint:all
 			config.ControlLoop.D, //nolint:all
+			tickRate,
 		)
 	}
 
@@ -107,6 +110,7 @@ func createControlLoop(config configuration.FanConfig) control_loop.ControlLoop 
 				config.ControlAlgorithm.Pid.P,
 				config.ControlAlgorithm.Pid.I,
 				config.ControlAlgorithm.Pid.D,
+				tickRate,
 			)
 		}
 		if config.ControlAlgorithm.Direct != nil {
@@ -117,7 +121,7 @@ func createControlLoop(config configuration.FanConfig) control_loop.ControlLoop 
 	}
 
 	// 3. Fallback
-	return control_loop.NewPidControlLoop(control_loop.DefaultPidConfig.P, control_loop.DefaultPidConfig.I, control_loop.DefaultPidConfig.D)
+	return control_loop.NewPidControlLoop(control_loop.DefaultPidConfig.P, control_loop.DefaultPidConfig.I, control_loop.DefaultPidConfig.D, tickRate)
 }
 
 func initializeSensors(

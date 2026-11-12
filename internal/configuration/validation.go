@@ -17,7 +17,12 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 )
 
+// ValidateConfig checks the given config, read from the file at path. The returned error is a ConfigError.
 func ValidateConfig(config *Configuration, path string) error {
+	return NewConfigError(validateConfig(config, path))
+}
+
+func validateConfig(config *Configuration, path string) error {
 	err := validateSensors(config)
 	if err != nil {
 		return err

@@ -24,19 +24,22 @@ import (
 	"github.com/oklog/run"
 )
 
-func RunDaemon() {
+// RunDaemon runs the daemon until it is stopped by SIGINT/SIGTERM (nil) or fails (an error).
+// Errors caused by the config are configuration.ConfigErrors.
+func RunDaemon() error {
 	checkProcessOwner()
 
 	pers := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
 
 	fanMap, reg, err := InitializeObjects()
 	if err != nil {
-		ui.Fatal("Error initializing objects: %v", err)
+		// all errors returned here are caused by the config, missing hardware is skipped
+		return configuration.NewConfigError(fmt.Errorf("error initializing objects: %w", err))
 	}
 
 	fanControllers, evaluator, err := initializeFanControllers(pers, fanMap, reg)
 	if err != nil {
-		ui.Fatal("Error initializing fan controllers: %v", err)
+		return configuration.NewConfigError(fmt.Errorf("error initializing fan controllers: %w", err))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -44,18 +47,18 @@ func RunDaemon() {
 
 	reloadChan := make(chan struct{}, 1)
 
+	// subscribe to the signals before any fan controller is started, so a SIGTERM never kills
+	// the process with its default action after a fan has been taken over
+	sig := subscribeSignals()
+
 	var g run.Group
 
 	if configuration.CurrentConfig.Profiling.Enabled {
+		profilingConfig := configuration.CurrentConfig.Profiling
+		profilingAddress := webserverAddress(profilingConfig.Host, profilingConfig.Port)
 		g.Add(
-			func() error { return startProfilingWebserver(ctx) },
-			func(err error) {
-				if err != nil {
-					ui.Warning("Error stopping profiling webserver: %v", err)
-				} else {
-					ui.Debug("Profiling webserver stopped.")
-				}
-			},
+			func() error { return runProfilingWebserver(ctx, profilingAddress) },
+			func(err error) { /* handled by context cancellation */ },
 		)
 	}
 
@@ -67,7 +70,7 @@ func RunDaemon() {
 
 	// === ACTOR 2: Signal Handler ===
 	g.Add(
-		func() error { return runSignalHandler(ctx, reloadChan) },
+		func() error { return handleSignals(ctx, sig, reloadChan) },
 		func(err error) { cancel() },
 	)
 
@@ -81,12 +84,11 @@ func RunDaemon() {
 
 	cancel()
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
 
 	ui.Info("Done.")
-	os.Exit(0)
+	return nil
 }
 
 func runFileWatcher(ctx context.Context, configPath string, reloadChan chan<- struct{}) error {
@@ -163,7 +165,8 @@ func checkProcessOwner() {
 
 func runOrchestrator(ctx context.Context, reloadChan <-chan struct{}, pers persistence.Persistence, reg *registry.Registry, fanControllers map[fans.Fan]controller.FanController, evaluator *curves.CurveEvaluator) error {
 	if len(reg.SnapshotFans()) == 0 {
-		ui.FatalWithoutStacktrace("No valid fan configurations, exiting.")
+		// not a config error: the fans may have been skipped because their hardware is missing (yet)
+		return errors.New("no valid fan configurations, exiting")
 	}
 
 	for {
@@ -256,13 +259,14 @@ func reloadConfiguration(pers persistence.Persistence) (*registry.Registry, map[
 	return newReg, newControllers, newEvaluator, nil
 }
 
-func runSignalHandler(ctx context.Context, reloadChan chan<- struct{}) error {
+// subscribeSignals returns a channel that receives SIGINT, SIGTERM and SIGHUP from now on, for handleSignals.
+func subscribeSignals() <-chan os.Signal {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	// Neither close sig (os/signal keeps sending to it, and sending on a closed channel panics),
 	// nor call signal.Stop: the signals would then terminate the process (their default action)
 	// during shutdown, before the fan controllers have restored the fan settings.
-	return handleSignals(ctx, sig, reloadChan)
+	return sig
 }
 
 // handleSignals forwards SIGHUP to the orchestrator as a reload request. It returns on
