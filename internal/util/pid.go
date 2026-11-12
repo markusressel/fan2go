@@ -80,6 +80,17 @@ func (p *PidLoop) PresetAt(loopTime time.Time, output float64, measured float64)
 	}
 }
 
+// ResumeAt makes the next LoopAt call measure the time since loopTime instead of since the last loop,
+// as if the last loop had run at loopTime. The rest of the state (integral, last output) is kept.
+// Use it to bridge a pause between two loops without integrating over the whole pause.
+func (p *PidLoop) ResumeAt(loopTime time.Time) {
+	if p.lastTime.IsZero() {
+		// not initialized: the next loop initializes the loop anyway
+		return
+	}
+	p.lastTime = loopTime
+}
+
 // Loop advances the pid loop, using the current time of its clock (see SetClock) as the time of the measurement
 func (p *PidLoop) Loop(target float64, measured float64) float64 {
 	return p.LoopAt(p.now(), target, measured)

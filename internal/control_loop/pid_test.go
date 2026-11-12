@@ -157,13 +157,6 @@ func TestPidControlLoop_NoTimePassed_ReturnsLastOutput(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, last, sameTime)
-
-	// WHEN: dt < 0 (clock went backwards)
-	clock.Advance(-time.Second)
-	backwards := loop.Cycle(clock.Now(), 100)
-
-	// THEN
-	assert.Equal(t, last, backwards)
 }
 
 // convergedPidLoop returns a loop with the default gains and the given tick rate, which has been running at value.
@@ -214,8 +207,9 @@ func TestPidControlLoop_GapDoesNotSaturateTheOutput(t *testing.T) {
 			}
 
 			// THEN: the loop continues from 100 and approaches the new target monotonically,
-			// instead of jumping to 0 or 255 because it integrated the error over the gap
-			assert.Equal(t, 100.0, outputs[0])
+			// instead of jumping to 0 or 255 because it integrated the error over the gap.
+			// The first cycle after the gap is a normal step: P 0.05*(target-100), I 100, D 0
+			assert.InDelta(t, 100+0.05*(tt.target-100), outputs[0], 1e-9)
 			low, high := min(100, tt.target), max(100, tt.target)
 			prev := 100.0
 			for i, out := range outputs {
@@ -235,15 +229,16 @@ func TestPidControlLoop_GapDoesNotSaturateTheOutput(t *testing.T) {
 
 func TestPidControlLoop_GapThreshold(t *testing.T) {
 	tests := []struct {
-		name     string
-		tick     time.Duration
-		gap      time.Duration
-		reseeded bool
+		name string
+		tick time.Duration
+		gap  time.Duration
+		// true if the gap counts as one tick
+		countsAsOneTick bool
 	}{
-		{name: "200ms tick, gap of 2s is integrated", tick: pidTestTick, gap: 2 * time.Second, reseeded: false},
-		{name: "200ms tick, gap above 2s re-seeds", tick: pidTestTick, gap: 2*time.Second + time.Millisecond, reseeded: true},
-		{name: "1s tick, gap of 5s is integrated", tick: time.Second, gap: 5 * time.Second, reseeded: false},
-		{name: "1s tick, gap above 5s re-seeds", tick: time.Second, gap: 5*time.Second + time.Millisecond, reseeded: true},
+		{name: "200ms tick, gap of 2s is integrated", tick: pidTestTick, gap: 2 * time.Second, countsAsOneTick: false},
+		{name: "200ms tick, gap above 2s counts as one tick", tick: pidTestTick, gap: 2*time.Second + time.Millisecond, countsAsOneTick: true},
+		{name: "1s tick, gap of 5s is integrated", tick: time.Second, gap: 5 * time.Second, countsAsOneTick: false},
+		{name: "1s tick, gap above 5s counts as one tick", tick: time.Second, gap: 5*time.Second + time.Millisecond, countsAsOneTick: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -252,15 +247,20 @@ func TestPidControlLoop_GapThreshold(t *testing.T) {
 
 			// WHEN
 			clock.Advance(tt.gap - tt.tick)
-			out := loop.Cycle(clock.Now(), 50)
+			first := loop.Cycle(clock.Now(), 50)
+			clock.Advance(tt.tick)
+			second := loop.Cycle(clock.Now(), 50)
 
-			// THEN
-			if tt.reseeded {
-				assert.Equal(t, 100.0, out)
-			} else {
-				// P 0.05*(50-100) = -2.5, I = 100, D 0
-				assert.InDelta(t, 97.5, out, 1e-9)
+			// THEN: the first cycle after the gap is the same: P 0.05*(50-100) = -2.5, I = 100, D 0
+			assert.InDelta(t, 97.5, first, 1e-9)
+			// the second one shows how much of the gap was integrated: err*dt = -50*dt.
+			// P 0.05*(50-97.5) = -2.375, D -0.01*(97.5-100)/tick
+			dt := tt.gap.Seconds()
+			if tt.countsAsOneTick {
+				dt = tt.tick.Seconds()
 			}
+			expected := max(0, -2.375+0.4*(100/0.4-50*dt)-0.01*(97.5-100)/tt.tick.Seconds())
+			assert.InDelta(t, expected, second, 1e-9)
 		})
 	}
 }
@@ -335,7 +335,30 @@ func TestPidControlLoop_ClockGoesBackwards_LoopKeepsRunning(t *testing.T) {
 	// WHEN: the clock goes back by an hour
 	clock.Advance(-time.Hour)
 
-	// THEN: the loop holds its output once, and then follows the target again
-	assert.Equal(t, 100.0, cycle(loop, clock, 50))
+	// THEN: the loop keeps following the target, as if one tick had passed
 	assert.InDelta(t, 97.5, cycle(loop, clock, 50), 1e-9)
+	assert.Less(t, cycle(loop, clock, 50), 97.5)
+}
+
+func TestPidControlLoop_CyclesSlowerThanTheGapThreshold_StillReachTheTarget(t *testing.T) {
+	// GIVEN: a loop with a 200 ms tick that has been running at 100
+	loop, clock := convergedPidLoop(t, pidTestTick, 100)
+
+	// WHEN: every cycle takes 3 s (e.g. a slow fan), so each one is above the gap threshold of 2 s,
+	// and the target rises to 255
+	outputs := make([]float64, 0, 100)
+	for i := 0; i < 100; i++ {
+		clock.Advance(3*time.Second - pidTestTick)
+		outputs = append(outputs, cycle(loop, clock, 255))
+	}
+
+	// THEN: each cycle counts as one tick, so the output rises monotonically and reaches the target
+	// like it does with 200 ms cycles, instead of staying at 100
+	prev := 100.0
+	for i, out := range outputs {
+		assert.Greater(t, out, prev-1e-9, "cycle %d", i)
+		prev = out
+	}
+	assert.Greater(t, outputs[0], 100.0)
+	assert.InDelta(t, 255, outputs[len(outputs)-1], 2)
 }

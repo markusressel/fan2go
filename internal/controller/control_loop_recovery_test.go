@@ -2,11 +2,14 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/control_loop"
+	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,7 +19,7 @@ const recoveryTestTick = 200 * time.Millisecond
 
 // newRecoveryTestController creates a controller for a fan with minPwm 0, maxPwm 200 and identity maps,
 // driven by UpdateFanSpeed calls, with the given control loop and a fake clock.
-func newRecoveryTestController(t *testing.T, fan *MockFan, controlLoop control_loop.ControlLoop) (*DefaultFanController, *switchableCurve, *util.FakeClock) {
+func newRecoveryTestController(t *testing.T, fan fans.Fan, controlLoop control_loop.ControlLoop) (*DefaultFanController, *switchableCurve, *util.FakeClock) {
 	t.Cleanup(setUpRunTestConfig(time.Hour))
 	curve := &switchableCurve{value: 100}
 	clock := util.NewFakeClock(time.Unix(1000, 0))
@@ -147,4 +150,77 @@ func TestFanController_CalculateTargetSpeed_PresetsTheControlLoopOnRecovery(t *t
 			assert.InDelta(t, tt.expected, target, 1e-9)
 		})
 	}
+}
+
+// manualModeFailingFan is a MockFan whose control mode writes fail, except for automatic, during the next
+// failManualModeWrites attempts to take manual control (each one writes pwm, then disabled as a fallback)
+type manualModeFailingFan struct {
+	*MockFan
+
+	failMu               sync.Mutex
+	failManualModeWrites int
+}
+
+func (fan *manualModeFailingFan) SetControlMode(mode fans.ControlMode) error {
+	fan.failMu.Lock()
+	fail := mode != fans.ControlModeAutomatic && fan.failManualModeWrites > 0
+	if fail && mode == fans.ControlModeDisabled {
+		// the fallback of trySetManualPwm, the last write of this attempt
+		fan.failManualModeWrites--
+	}
+	fan.failMu.Unlock()
+	if fail {
+		return errors.New("can't set manual mode")
+	}
+	return fan.MockFan.SetControlMode(mode)
+}
+
+func (fan *manualModeFailingFan) failNextManualModeWrites(n int) {
+	fan.failMu.Lock()
+	defer fan.failMu.Unlock()
+	fan.failManualModeWrites = n
+}
+
+// After onSensorFailure: restore, the speed the fan ran at while it was handed back is unknown.
+// The pid control algorithm starts at the curve value, like on startup, instead of smoothing from its
+// output before the failure. This also holds if taking manual control back fails at first.
+func TestFanController_Pid_RecoveryFromRestore_StartsAtTheCurveValue(t *testing.T) {
+	// GIVEN: a fan in automatic mode before fan2go took it over, running at curve value 100 with pid
+	fan := &manualModeFailingFan{MockFan: newRecoveryTestFan(configuration.OnSensorFailureRestore)}
+	fan.ControlMode = fans.ControlModeAutomatic
+	loop := control_loop.NewPidControlLoop(control_loop.DefaultPidConfig.P, control_loop.DefaultPidConfig.I, control_loop.DefaultPidConfig.D, recoveryTestTick)
+	controller, curve, clock := newRecoveryTestController(t, fan, loop)
+	require.NoError(t, controller.storeCurrentFanState())
+	// like Run
+	require.NoError(t, takeManualControl(fan))
+	controller.restoreOnce = &sync.Once{}
+	for i := 0; i < 20; i++ {
+		updateAndTick(t, controller, clock)
+	}
+	require.Equal(t, 78, fan.PWM) // 0 + round(99/254 * 200)
+
+	// WHEN: the curve fails, the fan is handed back, and the BIOS changes its speed
+	curve.set(0, errStale)
+	for elapsed := time.Duration(0); elapsed < time.Minute; elapsed += recoveryTestTick {
+		updateAndTick(t, controller, clock)
+	}
+	require.Equal(t, fans.ControlModeAutomatic, fan.ControlMode)
+	require.NoError(t, fan.MockFan.SetPwm(120))
+
+	// WHEN: the curve recovers at a lower value, but manual control can't be taken back at first
+	fan.failNextManualModeWrites(1)
+	curve.set(50, nil)
+	updateAndTick(t, controller, clock)
+
+	// THEN: no PWM value is written while the fan isn't controlled by fan2go
+	assert.Equal(t, 120, fan.PWM)
+
+	// WHEN: manual control can be taken back on the next update
+	updateAndTick(t, controller, clock)
+
+	// THEN: the first PWM value is the one of the curve value, not one smoothed from before the failure
+	assert.Equal(t, fans.ControlModePWM, fan.ControlMode)
+	assert.Equal(t, 39, fan.PWM) // 0 + round(49/254 * 200)
+	updateAndTick(t, controller, clock)
+	assert.Equal(t, 39, fan.PWM)
 }

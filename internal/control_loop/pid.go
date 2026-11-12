@@ -21,6 +21,9 @@ var (
 	}
 )
 
+// defaultTickRate is the default fanController.adjustmentTickRate, used if no positive tick rate is given
+const defaultTickRate = 200 * time.Millisecond
+
 // minCycleGap is the lower bound of the gap between two cycles after which a control loop
 // doesn't integrate over the time since the last cycle, see maxCycleGap.
 const minCycleGap = 2 * time.Second
@@ -30,19 +33,21 @@ const minCycleGap = 2 * time.Second
 const maxCycleGapTicks = 5
 
 // maxCycleGap returns the largest time between two cycles that a control loop with the given tick rate
-// still treats as continuous operation: max(2s, 5 x tickRate). A longer gap means the loop was not cycled
-// for a while (e.g. while the curve couldn't be evaluated, or the controller was restarted), so integrating
-// over it would saturate the output.
+// still integrates over: max(2s, 5 x tickRate). A longer gap means the loop was not cycled for a while
+// (e.g. while the curve couldn't be evaluated, or the controller was restarted), or a cycle took that long
+// (e.g. a slow fan). Integrating over it would saturate the output, so it counts as one tick instead.
 func maxCycleGap(tickRate time.Duration) time.Duration {
 	return max(minCycleGap, maxCycleGapTicks*tickRate)
 }
 
 // PidControlLoop is a PidLoop based control loop implementation.
 // The first cycle applies the target directly; the PID loop only smooths later changes of the target.
-// After a gap between two cycles that is longer than maxCycleGap, the loop continues from its last output
-// instead of integrating over the gap.
+// A gap between two cycles that is longer than maxCycleGap counts as one tick, so the loop doesn't integrate
+// over the whole gap.
 type PidControlLoop struct {
 	pidLoop *util.PidLoop
+	// the expected time between two cycles
+	tickRate time.Duration
 	// the largest time between two cycles that is integrated over, see maxCycleGap
 	maxGap time.Duration
 
@@ -58,16 +63,20 @@ type PidControlLoop struct {
 
 // NewPidControlLoop creates a PidControlLoop, which uses a PID loop to approach the target.
 // tickRate is the expected time between two cycles (fanController.adjustmentTickRate). It only determines
-// the gap after which the loop doesn't integrate over the time since the last cycle (see maxCycleGap).
+// how a gap between two cycles is handled (see maxCycleGap): a gap counts as one tick.
 func NewPidControlLoop(
 	p float64,
 	i float64,
 	d float64,
 	tickRate time.Duration,
 ) *PidControlLoop {
+	if tickRate <= 0 {
+		tickRate = defaultTickRate
+	}
 	return &PidControlLoop{
-		pidLoop: util.NewPidLoop(p, i, d, 0, 255, true, true),
-		maxGap:  maxCycleGap(tickRate),
+		pidLoop:  util.NewPidLoop(p, i, d, 0, 255, true, true),
+		tickRate: tickRate,
+		maxGap:   maxCycleGap(tickRate),
 	}
 }
 
@@ -90,12 +99,11 @@ func (l *PidControlLoop) Cycle(now time.Time, target float64) float64 {
 	}
 	if gap := now.Sub(l.lastCycleTime); gap < 0 || gap > l.maxGap {
 		// the loop wasn't cycled for a while: integrating over the gap would saturate the I term and drive the
-		// output to 0 or 255. Continue from the last output instead, as if the loop had held it.
-		// A time before the last cycle (the clock went backwards) re-seeds too, so the loop doesn't freeze
-		// until the clock has caught up again.
-		l.seed(now, l.lastPidOutput)
-		ui.Debug("PidControlLoop: %s since the last cycle, continuing from: %.4f, target(curve): %.4f", gap, l.lastPidOutput, target)
-		return l.lastPidOutput
+		// output to 0 or 255. Count the gap as one tick instead, so the loop continues from where it was.
+		// This also keeps the loop moving towards the target if every cycle takes longer than maxGap (e.g. a
+		// slow fan), and if the clock went backwards.
+		ui.Debug("PidControlLoop: %s since the last cycle, counting it as %s", gap, l.tickRate)
+		l.pidLoop.ResumeAt(now.Add(-l.tickRate))
 	}
 
 	// Use the *previous output* of this PID loop as the 'measured' value for smoothing

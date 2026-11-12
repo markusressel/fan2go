@@ -1177,8 +1177,8 @@ makes the output overshoot the curve value. If you increase `adjustmentTickRate`
 The first cycle after fan2go starts (or reloads its config) applies the curve value directly, like the direct control
 algorithm. The PID loop is initialized as if it had already settled at that value, so it only smooths later changes
 of the curve value instead of ramping the fan up from (almost) zero. If the loop hasn't run for a while (more than
-`2s` or 5 cycles, whichever is longer, e.g. while a sensor failed), it continues from its last output instead of
-making up for the whole pause at once.
+`2s` or 5 times `adjustmentTickRate`, whichever is longer, e.g. while a sensor failed), it treats the pause like a
+single cycle, instead of making up for the whole pause at once.
 
 See [PID controller on Wikipedia](https://en.wikipedia.org/wiki/Proportional%E2%80%93integral%E2%80%93derivative_controller)
 for more information on what a PID controller is.
