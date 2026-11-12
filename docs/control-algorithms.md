@@ -73,7 +73,7 @@ The direct algorithm doesn't look at the time (it ignores `now`). It counts cycl
   `PidLoop.PresetAt(now, target, target)`.
 - First cycle after `Preset(value)`: the same with `value` instead of the target.
 - A cycle more than `max(2s, 5 x adjustmentTickRate)` after the last one (a gap), or before it (the clock went
-  backwards): the gap counts as one tick (`PidLoop.ResumeAt(now - adjustmentTickRate)`), then a normal step.
+  backwards): the gap counts as `max(1s, adjustmentTickRate)` (`PidLoop.ResumeAt`), then a normal step.
 - Other cycles: `PidLoop.LoopAt(now, target, measured)` with `measured = lastPidOutput`, the previous output of
   this same loop. The result (clamped to `[0..255]` by `PidLoop`) becomes the new `lastPidOutput`.
 
@@ -239,9 +239,9 @@ max write failed during the failure, the loop still starts at max, which errs on
 ### The PID algorithm doesn't integrate over a gap
 
 **Decision**: If more than `max(2s, 5 x adjustmentTickRate)` passed since the last cycle, `PidControlLoop` counts the
-gap as one tick: it uses `adjustmentTickRate` as `dt` of that cycle (`PidLoop.ResumeAt`) and keeps its state. The
-threshold and the tick are the tick rate passed to `NewPidControlLoop` (`maxCycleGap`). `direct` needs no such rule,
-it doesn't use time.
+gap as `max(1s, adjustmentTickRate)`: it uses that as `dt` of the cycle (`PidLoop.ResumeAt`) and keeps its state.
+Both are computed from the tick rate passed to `NewPidControlLoop` (`maxCycleGap`, `gapDt`). `direct` needs no such
+rule, it doesn't use time.
 
 **Why**: `PidLoop.LoopAt` integrates `err * dt` with no upper bound on `dt`. After a pause (a curve failure, a
 failed reload restarting the old controllers after several seconds, a stalled update loop) the I term saturated at
@@ -250,10 +250,22 @@ once: with the default values, output 100 before the gap and curve value 50 afte
 fan stopped briefly. This is defence in depth next to the preset above: it also covers gaps without a failure.
 System suspend is not a gap: Go measures `dt` with a monotonic clock, which doesn't advance during suspend on Linux.
 
-Counting the gap as one tick, instead of holding the last output, keeps the loop moving towards the target when
-every cycle takes longer than the threshold. That happens if a single update of the fan takes more than about 2 s
-(e.g. a slow `cmd` fan with a PWM readback). Holding the output would freeze such a fan at its first speed, even if
-the curve went to 255.
+Counting the gap as a short, fixed time, instead of holding the last output, keeps the loop moving towards the
+target when every cycle takes longer than the threshold. That happens if a single update of the fan takes more than
+about 2 s (e.g. a slow `cmd` fan with a PWM readback). Holding the output would freeze such a fan at its first
+speed, even if the curve went to 255.
+
+Why 1 s: simulated with the default values and updates every 3 s, a step reaches 90% after:
+
+| A gap counts as | Updates to 90% (step up / down) | Lowest output for 100 to 50 |
+|---|---|---|
+| one tick (`200ms`) | 28 / 28 | 50, no overshoot |
+| `1s` | 4 / 4 | 46.1 (8% overshoot) |
+| `2s` (the threshold at `200ms`) | 3 / 12 | 17.5 |
+| `3s` (the whole update) | 2 / never settles | 0.0, oscillates |
+
+1 s is well below the cycle time at which the default values start to oscillate (about 2.7 s, see above). With a
+tick of 1 s or more, a gap counts as one tick.
 
 **Who benefits**: Everyone on the default algorithm. Normal operation is unchanged: evaluator cycles that are
 coalesced or slightly delayed stay far below the threshold as long as one update of the fan takes well under 2 s.
@@ -262,8 +274,9 @@ coalesced or slightly delayed stay far below the threshold as long as one update
 
 - A gap just below the threshold is still integrated (at `200ms`, a 2 s gap gives `97.5`, then `57.8` for the
   example above), which is a much smaller effect.
-- A fan whose every update takes longer than the threshold moves as if it ran at `adjustmentTickRate`, per update:
-  it reaches a new curve value after about 50 updates instead of about 10 s. It still gets there.
+- A fan whose every update takes longer than the threshold moves 1 s worth per update: it gets within 10% of a new
+  curve value after about 4 updates, and may overshoot a step down by about 8%.
+- The 1 s fits the default values. With a larger `i`, it can overshoot more (bounded by the `[0..255]` clamp).
 
 ### PID is the default
 

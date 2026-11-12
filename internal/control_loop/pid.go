@@ -24,6 +24,17 @@ var (
 // defaultTickRate is the default fanController.adjustmentTickRate, used if no positive tick rate is given
 const defaultTickRate = 200 * time.Millisecond
 
+// minGapDt is the lower bound of the time a gap between two cycles counts as, see gapDt
+const minGapDt = time.Second
+
+// gapDt returns the time a gap between two cycles counts as: max(1s, tickRate). One tick would be safe, but it
+// makes a fan whose every update is a gap (e.g. a slow fan) converge very slowly: about 28 updates to 90% of a
+// step with the default values and a 200 ms tick, vs. 4 with 1 s. 1 s is well below the cycle time at which the
+// default values start to oscillate (about 2.7 s), and overshoots a step down by at most about 8%.
+func gapDt(tickRate time.Duration) time.Duration {
+	return max(minGapDt, tickRate)
+}
+
 // minCycleGap is the lower bound of the gap between two cycles after which a control loop
 // doesn't integrate over the time since the last cycle, see maxCycleGap.
 const minCycleGap = 2 * time.Second
@@ -35,19 +46,19 @@ const maxCycleGapTicks = 5
 // maxCycleGap returns the largest time between two cycles that a control loop with the given tick rate
 // still integrates over: max(2s, 5 x tickRate). A longer gap means the loop was not cycled for a while
 // (e.g. while the curve couldn't be evaluated, or the controller was restarted), or a cycle took that long
-// (e.g. a slow fan). Integrating over it would saturate the output, so it counts as one tick instead.
+// (e.g. a slow fan). Integrating over it would saturate the output, so it counts as gapDt instead.
 func maxCycleGap(tickRate time.Duration) time.Duration {
 	return max(minCycleGap, maxCycleGapTicks*tickRate)
 }
 
 // PidControlLoop is a PidLoop based control loop implementation.
 // The first cycle applies the target directly; the PID loop only smooths later changes of the target.
-// A gap between two cycles that is longer than maxCycleGap counts as one tick, so the loop doesn't integrate
+// A gap between two cycles that is longer than maxCycleGap counts as gapDt, so the loop doesn't integrate
 // over the whole gap.
 type PidControlLoop struct {
 	pidLoop *util.PidLoop
-	// the expected time between two cycles
-	tickRate time.Duration
+	// the time a gap counts as, see gapDt
+	gapDt time.Duration
 	// the largest time between two cycles that is integrated over, see maxCycleGap
 	maxGap time.Duration
 
@@ -63,7 +74,7 @@ type PidControlLoop struct {
 
 // NewPidControlLoop creates a PidControlLoop, which uses a PID loop to approach the target.
 // tickRate is the expected time between two cycles (fanController.adjustmentTickRate). It only determines
-// how a gap between two cycles is handled (see maxCycleGap): a gap counts as one tick.
+// how a gap between two cycles is handled (see maxCycleGap and gapDt).
 func NewPidControlLoop(
 	p float64,
 	i float64,
@@ -74,9 +85,9 @@ func NewPidControlLoop(
 		tickRate = defaultTickRate
 	}
 	return &PidControlLoop{
-		pidLoop:  util.NewPidLoop(p, i, d, 0, 255, true, true),
-		tickRate: tickRate,
-		maxGap:   maxCycleGap(tickRate),
+		pidLoop: util.NewPidLoop(p, i, d, 0, 255, true, true),
+		gapDt:   gapDt(tickRate),
+		maxGap:  maxCycleGap(tickRate),
 	}
 }
 
@@ -99,11 +110,11 @@ func (l *PidControlLoop) Cycle(now time.Time, target float64) float64 {
 	}
 	if gap := now.Sub(l.lastCycleTime); gap < 0 || gap > l.maxGap {
 		// the loop wasn't cycled for a while: integrating over the gap would saturate the I term and drive the
-		// output to 0 or 255. Count the gap as one tick instead, so the loop continues from where it was.
+		// output to 0 or 255. Count the gap as gapDt instead, so the loop continues from where it was.
 		// This also keeps the loop moving towards the target if every cycle takes longer than maxGap (e.g. a
 		// slow fan), and if the clock went backwards.
-		ui.Debug("PidControlLoop: %s since the last cycle, counting it as %s", gap, l.tickRate)
-		l.pidLoop.ResumeAt(now.Add(-l.tickRate))
+		ui.Debug("PidControlLoop: %s since the last cycle, counting it as %s", gap, l.gapDt)
+		l.pidLoop.ResumeAt(now.Add(-l.gapDt))
 	}
 
 	// Use the *previous output* of this PID loop as the 'measured' value for smoothing

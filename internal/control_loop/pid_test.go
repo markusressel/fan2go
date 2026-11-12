@@ -1,6 +1,7 @@
 package control_loop
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -232,13 +233,13 @@ func TestPidControlLoop_GapThreshold(t *testing.T) {
 		name string
 		tick time.Duration
 		gap  time.Duration
-		// true if the gap counts as one tick
-		countsAsOneTick bool
+		// true if the gap counts as max(1s, tick)
+		countsAsGapDt bool
 	}{
-		{name: "200ms tick, gap of 2s is integrated", tick: pidTestTick, gap: 2 * time.Second, countsAsOneTick: false},
-		{name: "200ms tick, gap above 2s counts as one tick", tick: pidTestTick, gap: 2*time.Second + time.Millisecond, countsAsOneTick: true},
-		{name: "1s tick, gap of 5s is integrated", tick: time.Second, gap: 5 * time.Second, countsAsOneTick: false},
-		{name: "1s tick, gap above 5s counts as one tick", tick: time.Second, gap: 5*time.Second + time.Millisecond, countsAsOneTick: true},
+		{name: "200ms tick, gap of 2s is integrated", tick: pidTestTick, gap: 2 * time.Second, countsAsGapDt: false},
+		{name: "200ms tick, gap above 2s counts as 1s", tick: pidTestTick, gap: 2*time.Second + time.Millisecond, countsAsGapDt: true},
+		{name: "1s tick, gap of 5s is integrated", tick: time.Second, gap: 5 * time.Second, countsAsGapDt: false},
+		{name: "1s tick, gap above 5s counts as one tick (1s)", tick: time.Second, gap: 5*time.Second + time.Millisecond, countsAsGapDt: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -256,8 +257,9 @@ func TestPidControlLoop_GapThreshold(t *testing.T) {
 			// the second one shows how much of the gap was integrated: err*dt = -50*dt.
 			// P 0.05*(50-97.5) = -2.375, D -0.01*(97.5-100)/tick
 			dt := tt.gap.Seconds()
-			if tt.countsAsOneTick {
-				dt = tt.tick.Seconds()
+			if tt.countsAsGapDt {
+				// max(1s, tick)
+				dt = max(1, tt.tick.Seconds())
 			}
 			expected := max(0, -2.375+0.4*(100/0.4-50*dt)-0.01*(97.5-100)/tt.tick.Seconds())
 			assert.InDelta(t, expected, second, 1e-9)
@@ -341,24 +343,44 @@ func TestPidControlLoop_ClockGoesBackwards_LoopKeepsRunning(t *testing.T) {
 }
 
 func TestPidControlLoop_CyclesSlowerThanTheGapThreshold_StillReachTheTarget(t *testing.T) {
-	// GIVEN: a loop with a 200 ms tick that has been running at 100
-	loop, clock := convergedPidLoop(t, pidTestTick, 100)
-
-	// WHEN: every cycle takes 3 s (e.g. a slow fan), so each one is above the gap threshold of 2 s,
-	// and the target rises to 255
-	outputs := make([]float64, 0, 100)
-	for i := 0; i < 100; i++ {
-		clock.Advance(3*time.Second - pidTestTick)
-		outputs = append(outputs, cycle(loop, clock, 255))
+	tests := []struct {
+		name   string
+		target float64
+	}{
+		{name: "step up", target: 255},
+		{name: "step down", target: 50},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// GIVEN: a loop with a 200 ms tick that has been running at 100
+			loop, clock := convergedPidLoop(t, pidTestTick, 100)
 
-	// THEN: each cycle counts as one tick, so the output rises monotonically and reaches the target
-	// like it does with 200 ms cycles, instead of staying at 100
-	prev := 100.0
-	for i, out := range outputs {
-		assert.Greater(t, out, prev-1e-9, "cycle %d", i)
-		prev = out
+			// WHEN: every cycle takes 3 s (e.g. a slow fan), so each one is above the gap threshold of 2 s
+			outputs := make([]float64, 0, 100)
+			for i := 0; i < 100; i++ {
+				clock.Advance(3*time.Second - pidTestTick)
+				outputs = append(outputs, cycle(loop, clock, tt.target))
+			}
+
+			// THEN: each cycle counts as 1 s, so the output gets within 10% of the step within a few cycles,
+			// instead of staying at 100 or oscillating
+			step := tt.target - 100
+			reached := -1
+			for i, out := range outputs {
+				if math.Abs(tt.target-out) <= 0.1*math.Abs(step) {
+					reached = i
+					break
+				}
+			}
+			assert.GreaterOrEqual(t, reached, 0, "never got within 10%% of the step")
+			assert.Less(t, reached, 5, "took %d cycles to get within 10%% of the step", reached+1)
+			// ... and it overshoots by less than 10% of the step
+			low, high := min(100, tt.target), max(100, tt.target)
+			for i, out := range outputs {
+				assert.GreaterOrEqual(t, out, low-0.1*math.Abs(step), "cycle %d", i)
+				assert.LessOrEqual(t, out, high+0.1*math.Abs(step), "cycle %d", i)
+			}
+			assert.InDelta(t, tt.target, outputs[len(outputs)-1], 1)
+		})
 	}
-	assert.Greater(t, outputs[0], 100.0)
-	assert.InDelta(t, 255, outputs[len(outputs)-1], 2)
 }
