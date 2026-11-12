@@ -1183,8 +1183,8 @@ fans:
 ```
 
 The loop is advanced at a constant rate, determined by the [cycle rate](#cycle) (`fanController.adjustmentTickRate`),
-which defaults to `200ms`. The values depend on the cycle rate: with the default values, the output starts to
-overshoot the curve value at a cycle rate of about `700ms` (by more than 1 % above about `800ms`, about 8 % at `1s`). If you increase `adjustmentTickRate`, lower `i` accordingly.
+which defaults to `200ms`. The values depend on the cycle rate: with the default values, the output overshoots the
+curve value by more than 1 % at a cycle rate above about `800ms` (about 8 % at `1s`). If you increase `adjustmentTickRate`, lower `i` accordingly.
 
 fan2go checks the values against the cycle rate when it loads the config. Because the loop compares the curve value
 with its own previous output, it is a linear system of its own, so its stability can be computed exactly:
@@ -1193,7 +1193,7 @@ with its own previous output, it is a linear system of its own, so its stability
   output would settle at a small fraction of the curve value (about 9 % with `p: 0.1`).
 - fan2go rejects values that are unstable with the configured cycle rate: the output would oscillate between `0`
   and `255`. With the default values, this is the case for a cycle rate of about `2.64s` or slower (`i` too large for
-  the time step) and of `20ms` or faster (`d` too large for the time step).
+  the time step) and of about `21ms` or faster (`d` too large for the time step).
 - fan2go warns if the output overshoots a change of the curve value by more than 1 %.
 
 This also applies to fans without a `controlAlgorithm` (they use the default values) and to the deprecated

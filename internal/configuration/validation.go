@@ -170,9 +170,17 @@ func pidControlAlgorithmGains(fanConfig FanConfig) (p, i, d float64, key string,
 }
 
 // validatePidControlAlgorithms checks that the pid control algorithm of each fan is stable with the
-// configured fanController.adjustmentTickRate (error), and warns if it overshoots.
+// configured fanController.adjustmentTickRate (error), and warns if it overshoots. The warning is logged
+// once per distinct algorithm (e.g. once for all fans with the default one), with the ids of its fans.
 func validatePidControlAlgorithms(config *Configuration) error {
+	type algorithm struct {
+		key     string
+		p, i, d float64
+	}
 	tickRate := config.FanController.AdjustmentTickRate
+	var overshooting []algorithm
+	overshoot := map[algorithm]float64{}
+	fanIds := map[algorithm][]string{}
 	for _, fanConfig := range config.Fans {
 		p, i, d, key, ok := pidControlAlgorithmGains(fanConfig)
 		if !ok {
@@ -186,10 +194,22 @@ func validatePidControlAlgorithms(config *Configuration) error {
 				fanConfig.ID, key, p, i, d, tickRate)
 		}
 		if result.Overshoots() {
-			ui.Warning("fan %s: %s (p: %v, i: %v, d: %v) overshoots a change of the curve value by about %.0f%% with fanController.adjustmentTickRate %s. "+
-				"Lower i or d, or the adjustmentTickRate, to avoid this",
-				fanConfig.ID, key, p, i, d, result.Overshoot*100, tickRate)
+			a := algorithm{key: key, p: p, i: i, d: d}
+			if _, seen := fanIds[a]; !seen {
+				overshooting = append(overshooting, a)
+				overshoot[a] = result.Overshoot
+			}
+			fanIds[a] = append(fanIds[a], fanConfig.ID)
 		}
+	}
+	for _, a := range overshooting {
+		label := "fan"
+		if len(fanIds[a]) > 1 {
+			label = "fans"
+		}
+		ui.Warning("%s %s: %s (p: %v, i: %v, d: %v) overshoots a change of the curve value by about %.0f%% with fanController.adjustmentTickRate %s. "+
+			"Lower i or d, or the adjustmentTickRate, to avoid this",
+			label, strings.Join(fanIds[a], ", "), a.key, a.p, a.i, a.d, overshoot[a]*100, tickRate)
 	}
 	return nil
 }

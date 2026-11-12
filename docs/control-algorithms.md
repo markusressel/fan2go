@@ -155,8 +155,9 @@ The characteristic polynomial is `z³ + (p + d/T - 1)z² + (iT - p - 2d/T)z + d/
 roots are strictly inside the unit circle (checked with the Jury criterion). `P(1) = iT`, so `i <= 0` is never
 stable: without an I term the output settles at `p / (1 + p)` of the curve value. The overshoot is measured on the
 simulated step response from a settled state, which is what the bumpless start gives. With the default values the
-loop is stable from `21ms` to about `2.64s`; below that, `d/T` is too large (a pole below `-1`), above that `iT`
-is (complex poles outside the unit circle). Overshoot above 1 % starts just above `800ms`.
+loop is stable above about `21ms` and below about `2.64s`; below that, `d/T` is too large (a pole below `-1`),
+above that `iT` is (complex
+poles outside the unit circle). Overshoot above 1 % starts just above `800ms`.
 
 **Who benefits**: Users who change `adjustmentTickRate` or the gains learn about an oscillating config when it is
 loaded, not from the fan noise.

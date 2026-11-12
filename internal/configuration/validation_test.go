@@ -1422,3 +1422,35 @@ func TestWarnAboutCmdSensorTimeouts_UsesTheDefaultSensorStaleTimeout(t *testing.
 	warnAboutCmdSensorTimeouts(&config)
 	assert.Contains(t, warnings.String(), "sensor cmd_sensor: cmd.timeout (20s) is not shorter than sensorStaleTimeout (20s)")
 }
+
+func TestValidateConfig_OvershootWarningOncePerAlgorithm(t *testing.T) {
+	var warnings bytes.Buffer
+	oldWarning := pterm.Warning
+	pterm.Warning = *pterm.Warning.WithWriter(&warnings)
+	t.Cleanup(func() { pterm.Warning = oldWarning })
+
+	// GIVEN: two fans with the default pid algorithm, and one with its own gains, all overshooting at 1s
+	yaml := validationGapsYaml("fanController:\n  adjustmentTickRate: 1s", "", "") + `
+  - id: fan2
+    curve: curve
+    file:
+      path: /dev/null
+  - id: fan3
+    curve: curve
+    file:
+      path: /dev/null
+    controlAlgorithm:
+      pid:
+        p: 0.05
+        i: 0.6
+`
+
+	// WHEN
+	err := loadAndValidateYaml(t, yaml)
+
+	// THEN: one warning per distinct algorithm, with the ids of its fans
+	assert.NoError(t, err)
+	assert.Equal(t, 2, strings.Count(warnings.String(), "overshoots"), warnings.String())
+	assert.Contains(t, warnings.String(), "fans fan, fan2: the default pid control algorithm (p: 0.05, i: 0.4, d: 0.01) overshoots")
+	assert.Contains(t, warnings.String(), "fan fan3: controlAlgorithm.pid (p: 0.05, i: 0.6, d: 0) overshoots")
+}
