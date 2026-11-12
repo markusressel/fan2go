@@ -279,7 +279,9 @@ fans:
         # default: 2s (available for setPwm, getPwm and getRpm).
         # Use a unit: like for other durations, a plain number means milliseconds.
         timeout: 2s
-      # Command to retrieve the current PWM value (0..255)
+      # (optional) Command to retrieve the current PWM value (0..255).
+      # Without it, fan2go can't read the original PWM value, and leaves the fan
+      # at the last speed it set when it exits (see controlMode.onExit to change that).
       getPwm:
         exec: /usr/bin/nvidia-settings
         args: [ "-a", "someargument" ]
@@ -405,15 +407,23 @@ fans:
     #
     # active: the control mode to set when fan2go takes control of this fan.
     #   Accepts: "pwm" (default, with "disabled" fallback), "disabled", "auto", or an integer.
+    #   On hwmon fans, integers >= 3 are written to pwmX_enable as is (e.g. a driver specific mode like 5);
+    #   0, 1 and 2 mean disabled, pwm and auto. Nvidia fans don't support integers >= 3.
     # onExit: what to do when fan2go exits.
     #   String shorthand:
-    #     onExit: restore   # restore original control mode (default)
+    #     onExit: restore   # restore original control mode and PWM value (default).
+    #                       # Values fan2go could not read when it started (e.g. a cmd fan without
+    #                       # getPwm) are not restored: the fan stays at the last speed set by fan2go.
+    #                       # If the original control mode is unknown, but fan2go can set it, the
+    #                       # fan is switched to automatic control instead. Only if that fails, it
+    #                       # is set back to its original PWM value (if known) in manual mode.
     #     onExit: none      # leave fan at last speed set by fan2go (useful for hardware controllers
     #                       # that remember PWM settings — see issue #416)
     #   Map form (set explicit values on exit):
     #     onExit:
     #       mode: auto      # set a specific control mode on exit
-    #       speed: 128      # set a fixed PWM speed on exit (0..255)
+    #       speed: 128      # set a fixed speed on exit (0..255). It is mapped through the
+    #                       # pwmMap of the fan (not scaled to minPwm..maxPwm) before it is written.
     #     # mode and speed can be combined or used independently.
     controlMode:
       active: pwm

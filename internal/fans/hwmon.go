@@ -26,6 +26,11 @@ type HwMonFan struct {
 	// This value is used when fan2go requests to set the control mode to automatic.
 	lastKnownAutomaticControlMode *int
 
+	// driverSpecificControlMode stores the pwm_enable value >= 3 that fan2go itself wrote last
+	// (e.g. from an integer controlMode.active), so that reading it back doesn't overwrite
+	// lastKnownAutomaticControlMode. nil if fan2go didn't write such a value.
+	driverSpecificControlMode *int
+
 	// pwmEnableReadable caches whether pwm_enable can be read (probed once on first Supports call).
 	pwmEnableReadable *bool
 }
@@ -157,19 +162,22 @@ func (fan *HwMonFan) ShouldNeverStop() bool {
 }
 
 func (fan *HwMonFan) GetControlMode() (ControlMode, error) {
-	pwmEnabledValue, err := util.ReadIntFromFile(fan.Config.HwMon.PwmEnablePath)
+	pwmEnabledValue, err := fan.readPwmEnable()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			ui.Warning("Fan %s: pwm_enable file does not exist, assuming no control mode support", fan.GetId())
 			return ControlModeDisabled, nil
 		}
-		return ControlModeUnknown, fmt.Errorf("fan %s: error reading pwm_enable: %w", fan.GetId(), err)
+		return ControlModeUnknown, err
 	}
 
 	if pwmEnabledValue >= 2 {
 		// if we have a pwm_enable value >= 2, store it as the last known automatic control mode
-		// so that we can use it when setting the control mode to automatic later
-		fan.lastKnownAutomaticControlMode = &pwmEnabledValue
+		// so that we can use it when setting the control mode to automatic later.
+		// A driver specific mode that fan2go set itself is not the automatic mode to return to.
+		if fan.driverSpecificControlMode == nil || *fan.driverSpecificControlMode != pwmEnabledValue {
+			fan.lastKnownAutomaticControlMode = &pwmEnabledValue
+		}
 		return ControlModeAutomatic, nil
 	}
 
@@ -181,6 +189,15 @@ func (fan *HwMonFan) GetControlMode() (ControlMode, error) {
 	default:
 		return ControlModeUnknown, fmt.Errorf("fan %s: cannot map pwm_enable value %d to ControlMode", fan.GetId(), pwmEnabledValue)
 	}
+}
+
+// readPwmEnable reads the raw value of pwmX_enable, without mapping it to a ControlMode.
+func (fan *HwMonFan) readPwmEnable() (int, error) {
+	value, err := util.ReadIntFromFile(fan.Config.HwMon.PwmEnablePath)
+	if err != nil {
+		return 0, fmt.Errorf("fan %s: error reading pwm_enable: %w", fan.GetId(), err)
+	}
+	return value, nil
 }
 
 // SetControlMode writes the given value to pwmX_enable
@@ -202,9 +219,16 @@ func (fan *HwMonFan) GetControlMode() (ControlMode, error) {
 // 4 - "Smart Fan III" mode (NCT6775F only) (presumably similar to 5)
 // 5 - "Smart Fan IV" mode (uses a configurable curve)
 //
-// Any value >= 2 will be considered as "automatic control mode" by fan2go,
+// Any value >= 2 read from pwmX_enable will be considered as "automatic control mode" by fan2go,
 // and will be stored as the last known automatic control mode for this fan.
+//
+// ControlModeAutomatic (2) writes the last known automatic control mode (or 2 if none is known).
+// Any other value >= 3 (e.g. from an integer `controlMode.active`) is written to pwmX_enable as is.
+// ControlModeUnknown and other negative values are rejected without writing anything.
 func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
+	if value < 0 {
+		return fmt.Errorf("fan %s: cannot set unknown control mode %d", fan.GetId(), value)
+	}
 	var pwmEnabledValue int
 	switch value {
 	case ControlModeDisabled:
@@ -220,21 +244,35 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 			ui.Warning("No last known automatic control mode for fan '%s', assuming 2 (automatic control)", fan.GetId())
 			pwmEnabledValue = 2
 		}
+	default:
+		// driver specific mode (>= 3), write it as is
+		pwmEnabledValue = int(value)
 	}
 
 	err = util.WriteIntToFile(pwmEnabledValue, fan.Config.HwMon.PwmEnablePath)
 	if err != nil {
 		return err
 	}
-	currentValue, err := fan.GetControlMode()
-	if err != nil {
-		if errors.Is(err, os.ErrPermission) {
-			ui.Warning("Cannot read pwm_enable of fan '%s', pwm_enable state validation cannot work. Continuing assuming it worked.", fan.GetId())
-			return nil
-		}
-		return err
+	if value > ControlModeAutomatic {
+		fan.driverSpecificControlMode = &pwmEnabledValue
+	} else {
+		fan.driverSpecificControlMode = nil
 	}
-	if currentValue != value {
+	currentValue, err := fan.readPwmEnable()
+	if err != nil {
+		// the write succeeded, only the validation is not possible
+		ui.Warning("Cannot read pwm_enable of fan '%s', pwm_enable state validation cannot work. Continuing assuming it worked: %v", fan.GetId(), err)
+		return nil
+	}
+	if value == ControlModeAutomatic {
+		// the driver may report any of its automatic modes (>= 2)
+		if currentValue < 2 {
+			return fmt.Errorf("PWM mode stuck to %d", currentValue)
+		}
+		fan.lastKnownAutomaticControlMode = &currentValue
+		return nil
+	}
+	if currentValue != pwmEnabledValue {
 		return fmt.Errorf("PWM mode stuck to %d", currentValue)
 	}
 	return nil

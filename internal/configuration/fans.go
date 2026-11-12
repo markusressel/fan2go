@@ -73,7 +73,8 @@ type OnExitConfig struct {
 	Restore     *OnExitRestoreConfig `json:"restore,omitempty"`
 	None        *OnExitNoneConfig    `json:"none,omitempty"`
 	ControlMode *ControlModeValue    `mapstructure:"mode" json:"mode,omitempty"`
-	Speed       *int                 `json:"speed,omitempty"`
+	// Speed is a speed value in [0..255] that is mapped through the pwmMap of the fan before it is written.
+	Speed *int `json:"speed,omitempty"`
 }
 
 // OnExitRestoreConfig restores the original control mode (default behavior).
