@@ -220,7 +220,7 @@ func (p *fakePersistence) DeleteFanAnalysisInfo(fanId string) error {
 	return nil
 }
 
-// originalState returns the saved original state of the fan, and false if there is none.
+// ReplaceFanAnalysisData replaces all analysis data of the fan, like the real persistence (in one step).
 func (p *fakePersistence) ReplaceFanAnalysisData(fanId string, data persistence.FanAnalysisData) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -243,6 +243,7 @@ func (p *fakePersistence) ReplaceFanAnalysisData(fanId string, data persistence.
 	return nil
 }
 
+// originalState returns the saved original state of the fan, and false if there is none.
 func (p *fakePersistence) originalState(fanId string) (persistence.FanOriginalState, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
