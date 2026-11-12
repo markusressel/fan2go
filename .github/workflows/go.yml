@@ -121,8 +121,13 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           OUTPUT_BIN="dist/fan2go-linux-${{ matrix.goarch }}"
-          make ${{ matrix.make_target }}          OUTPUT_BIN="${OUTPUT_BIN}"
-          make ${{ matrix.make_target }}-no-nvml  OUTPUT_BIN="${OUTPUT_BIN}-no-nvml"
+          # release builds take their version from the tag, so the Makefile default doesn't have to be bumped
+          VERSION_ARG=""
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION_ARG="VERSION=${GITHUB_REF_NAME}"
+          fi
+          make ${{ matrix.make_target }}          OUTPUT_BIN="${OUTPUT_BIN}" ${VERSION_ARG}
+          make ${{ matrix.make_target }}-no-nvml  OUTPUT_BIN="${OUTPUT_BIN}-no-nvml" ${VERSION_ARG}
           file "${OUTPUT_BIN}"
           file "${OUTPUT_BIN}-no-nvml"
 
