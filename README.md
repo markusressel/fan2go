@@ -354,7 +354,7 @@ fans:
     # If not set, it is derived from the measured fan curve: the lowest PWM value
     # at which the fan reaches 98% of its peak RPM (higher values hardly make it faster).
     # Fail-safe paths (onSensorFailure: max, a neverStop fan that stalls) use this
-    # value if it is set, and full speed (255) otherwise.
+    # value if it is set, and full speed (255; nvidia: 100) otherwise.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
     # Note: minPwm, startPwm and maxPwm must be in [0..255], and minPwm and startPwm
@@ -368,7 +368,7 @@ fans:
     # pwmSetDelay: 10ms
     # (Optional) What to do with this fan while its curve can't be evaluated, e.g. because a sensor
     # can't be read or its value is stale. See "Sensor failures" below.
-    #   max (default): set the fan to its configured maxPwm, or full speed (255) if none is configured
+    #   max (default): set the fan to its configured maxPwm, or full speed (255; nvidia: 100) if none is configured
     #   restore:       hand the fan back like on exit (see controlMode.onExit); max if that would
     #                  leave the fan at a fixed PWM value
     onSensorFailure: max
@@ -1170,7 +1170,7 @@ releases when the process exits, also if it is killed.
 The derived `maxPwm` is the lowest PWM value at which the fan reaches 98% of its peak RPM, so a fan that is at full
 speed at PWM 150 uses the whole curve range up to 150. For fans with a few speed levels it is the first value of the
 level that reaches 98%. The fail-safe paths (`onSensorFailure: max`, a `neverStop` fan that doesn't spin) use a
-configured `maxPwm`, or full speed (255) without one.
+configured `maxPwm`, or full speed (255; nvidia: 100) without one.
 
 During the analysis, fan2go also measures how long the driver takes to report a written PWM value (the readback
 delay), up to 2 seconds. Some drivers (e.g. older versions of the out-of-tree `nct6687` driver) report the old value
@@ -1221,7 +1221,7 @@ stale can't be evaluated. This also applies to a `function` curve if any of its 
 
 While the curve of a fan can't be evaluated (for any reason), fan2go applies the fan's `onSensorFailure` option:
 
-- `max` (default): the fan is set to its configured `maxPwm`, or to full speed (255) if `maxPwm` is not configured
+- `max` (default): the fan is set to its configured `maxPwm`, or to full speed (255; nvidia: 100) if `maxPwm` is not configured
   (mapped through its `pwmMap`, like any other speed). The `maxPwm` derived from the fan curve is not used here.
 - `restore`: the fan is handed back like on exit (see `controlMode.onExit`, e.g. to the automatic control of the
   BIOS). A fixed PWM value is not fail-safe, so if that doesn't hand the fan over to a control mode other than manual

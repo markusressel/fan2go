@@ -254,7 +254,8 @@ from the curve, before the level alignment.
 - `measureAtPwm` polls until the readback matches (see above) and records the time.
 
 The longest delay observed (capped at 2 s, rounded up to ms) is saved as `readbackDelayMillis` in the `fanAnalysisInfo`
-record ([details](hardware-quirks.md#persistence)), for hwmon and nvidia fans. A delay of 0 means the first read
+record ([details](hardware-quirks.md#persistence)), for fans whose PWM can be read back (not nvidia fans: fan2go
+doesn't use their reported value). A delay of 0 means the first read
 after `pwmSetDelay` already showed the new value. The daemon loads it (`loadReadbackDelay`). While it controls the
 fan, for `max(readbackDelay, pwmSetDelay)` after a write (`readbackMayBeStale`):
 
@@ -282,7 +283,10 @@ than the cache period; the sweep waits twice as long, and the control loop only 
 readback that never changes (e.g. some amdgpu cards, #148) can't be measured: the analysis logs a warning and uses
 `pwmSetDelay`. Data analyzed by an older version has no measured delay until the next `fan init`. A ramping
 controller (the readback moves towards the value over seconds) reports the time until the first change in the
-probe, and the time until it matches in `measureAtPwm`.
+probe, and the time until it matches in `measureAtPwm` (up to 2 s). With such a delay, the `pwmValueChangedByThirdParty`
+check is skipped for that long after every write, so with a target that changes on most cycles it rarely runs. Only
+the analysis saves the delay: a sweep that runs at startup because only the saved `setPwmToGetPwmMap` is missing
+(e.g. it was corrupt) measures it, but doesn't save it.
 
 ### Adaptive boundary search instead of a full sweep
 
@@ -369,7 +373,7 @@ Data format: five buckets, keyed by fan `id`, values are JSON:
 | `fanSetPwmToGetPwmMap` | set PWM to reported PWM                  | `{"0":0,"1":1,...}`           |
 | `fanPwmMapping`        | `pwmMap`, an array of exactly 256 values | `[0,1,2,...,255]`             |
 | `fanOriginalState`     | state before fan2go took control, only while it controls the fan | `{"hardware":"hwmon:nct6798/0/pwm1","controlMode":2,"automaticControlMode":5,"pwm":120}` |
-| `fanAnalysisInfo`      | known hardware quirks entry the analysis data of a hwmon fan was measured with ([details](hardware-quirks.md#persistence)), and the measured readback delay (hwmon and nvidia fans) | `{"quirk":"corsaircpro","quirkVersion":1,"readbackDelayMillis":0}` |
+| `fanAnalysisInfo`      | known hardware quirks entry the analysis data of a hwmon fan was measured with ([details](hardware-quirks.md#persistence)), and the measured readback delay (fans whose PWM can be read back) | `{"quirk":"corsaircpro","quirkVersion":1,"readbackDelayMillis":0}` |
 
 A fan without an RPM sensor stores `null` in `fans`: it counts as "analyzed, no curve" as long as the fan has no
 RPM sensor. If a hwmon or nvidia fan has one later (a fixed `rpmChannel`, a driver that was loaded late), the `null`
@@ -402,7 +406,7 @@ timeout, and its entries of removed fans are deleted at daemon start.
 `setPwmToGetPwmMap` (unless it comes from the config or a known readback formula), the `pwmMap` and the RPM curve.
 It doesn't use the saved data of the fan (`freshAnalysis`), and doesn't change it until the analysis succeeded. Then
 it deletes the saved RPM curve, `setPwmToGetPwmMap`, `pwmMap` and analysis info, and saves the new ones
-(`replaceSavedMappings`, then `SaveFanRpmData` and `SaveFanAnalysisInfo`). A failed or interrupted run keeps the saved
+in one transaction (`Persistence.ReplaceFanAnalysisData`). A failed or interrupted run, or a failed save, keeps the saved
 data. It prints the measured curve. It always hands the fan back afterwards: on success, on errors, on SIGINT/SIGTERM
 and on panics (unless it failed before writing to the fan). Hand-back means the original control mode and PWM, or
 `controlMode.onExit` (see [Fan controller](fan-controller.md)). Like the daemon, it saves the original state in
@@ -429,8 +433,8 @@ off by default. On a system where the daemon never ran, the commands failed with
 arbitrary speed, and the old data survives a failed run.
 
 **Trade-offs**: The daemon has to be stopped for `fan init` and `fan reset`, also to analyze a fan it doesn't control.
-The data is replaced in several transactions; if the process is killed in between, the fan has no (or incomplete)
-data and is analyzed on the next start.
+The daemon (which analyzes only fans without usable data) saves the curve and the analysis info in two transactions;
+if it is killed in between, the record is missing, and a fan with a known hardware quirks formula is analyzed again.
 
 ### No continuous re-analysis at runtime
 

@@ -72,8 +72,8 @@ func (f *FanCurveAnalyzer) RunInitializationSequence(ctx context.Context) (rpmCu
 
 	distinct := f.fanController.targetValuesWithDistinctPWMValue
 	if len(distinct) == 0 {
-		ui.Warning("Fan %s: no distinct PWM values found, skipping initialization", fan.GetId())
-		return nil, nil
+		// saving no curve would make every start analyze the fan again
+		return nil, fmt.Errorf("fan %s: no distinct PWM values found, unable to measure the RPM curve", fan.GetId())
 	}
 
 	curveData := map[int]float64{}
@@ -456,12 +456,12 @@ func (f *FanCurveAnalyzer) measureAtPwm(ctx context.Context, fan fans.Fan, pwm i
 	expectedPwm := f.fanController.getReportedPwmAfterApplyingPwm(actualPwm)
 	matchedPwm := false
 	for attempt := 0; attempt <= pwmMismatchRetries; attempt++ {
-		lastWriteBefore := f.fanController.lastPwmWriteAt
+		writesBefore := f.fanController.pwmWriteCount
 		err := f.fanController.setTargetPwm(pwm)
 		if err != nil {
 			return 0, fmt.Errorf("unable to set PWM %d (target %d): %w", actualPwm, pwm, err)
 		}
-		wrote := !f.fanController.lastPwmWriteAt.Equal(lastWriteBefore)
+		wrote := f.fanController.pwmWriteCount != writesBefore
 
 		// The reported PWM may lag behind the requested value on some hardware: wait up to FanResponseDelay for it
 		currentPwm, matched, delay, err := f.fanController.waitForReadback(ctx,

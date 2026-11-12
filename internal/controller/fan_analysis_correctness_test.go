@@ -357,6 +357,54 @@ func TestRunInitialization_SaveRpmDataFails_ReturnsTheError(t *testing.T) {
 	assert.NotContains(t, p.analysisInfos, "fan")
 }
 
+func TestRunInitializationAndRestore_SaveFails_KeepsTheSavedData(t *testing.T) {
+	setUpAnalysisTestConfig(t)
+	clock := util.NewAutoAdvancingFakeClock(time.Unix(1000, 0))
+
+	// GIVEN: saved data, and a database that can't save the new data
+	fan := newAnalysisTestFan(clock)
+	p := &failingRpmSavePersistence{fakePersistence: newFakePersistence()}
+	seedSavedAnalysisData(p.fakePersistence)
+	controller := newAnalysisTestController(p, fan, clock)
+
+	// WHEN
+	_, err := controller.RunInitializationAndRestore(context.Background())
+
+	// THEN
+	assert.ErrorContains(t, err, "disk full")
+	assert.Equal(t, map[int]float64{0: 0, 100: 500, 255: 1000}, p.rpmData["fan"])
+	assert.Equal(t, map[int]int{0: 0, 255: 255}, p.setPwmToGetPwmMaps["fan"])
+	assert.Equal(t, make([]int, 256), p.pwmMaps["fan"])
+	assert.Equal(t, persistence.FanAnalysisInfo{Quirk: "old", QuirkVersion: 1}, p.analysisInfos["fan"])
+}
+
+func TestRunInitialization_Daemon_SaveRpmDataFails_ReturnsTheError(t *testing.T) {
+	setUpAnalysisTestConfig(t)
+	clock := util.NewAutoAdvancingFakeClock(time.Unix(1000, 0))
+
+	fan := newAnalysisTestFan(clock)
+	p := &failingRpmSavePersistence{fakePersistence: newFakePersistence()}
+	controller := newAnalysisTestController(p, fan, clock)
+
+	_, err := controller.RunInitialization(context.Background())
+
+	assert.ErrorContains(t, err, "disk full")
+	assert.NotContains(t, p.analysisInfos, "fan")
+}
+
+func TestLoadReadbackDelay_OutOfRange_IsClamped(t *testing.T) {
+	clock := util.NewFakeClock(time.Unix(1000, 0))
+	fan := newAnalysisTestFan(clock)
+	p := newFakePersistence()
+	huge := int64(3_600_000)
+	p.analysisInfos["fan"] = persistence.FanAnalysisInfo{ReadbackDelayMillis: &huge}
+	controller := newAnalysisTestController(p, fan, clock)
+
+	controller.loadReadbackDelay()
+
+	assert.Equal(t, maxReadbackDelay, controller.readbackDelay)
+}
+
 // --- start boundary search ---
 
 func TestDetectStartBoundary_SkippedProbe_TriesTheNeighbour(t *testing.T) {

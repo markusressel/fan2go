@@ -221,6 +221,28 @@ func (p *fakePersistence) DeleteFanAnalysisInfo(fanId string) error {
 }
 
 // originalState returns the saved original state of the fan, and false if there is none.
+func (p *fakePersistence) ReplaceFanAnalysisData(fanId string, data persistence.FanAnalysisData) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.rpmData[fanId] = data.RpmCurve
+	if data.SetPwmToGetPwmMap != nil {
+		p.setPwmToGetPwmMaps[fanId] = data.SetPwmToGetPwmMap
+	} else {
+		delete(p.setPwmToGetPwmMaps, fanId)
+	}
+	if data.PwmMap != nil {
+		p.pwmMaps[fanId] = data.PwmMap
+	} else {
+		delete(p.pwmMaps, fanId)
+	}
+	if data.Info != nil {
+		p.analysisInfos[fanId] = *data.Info
+	} else {
+		delete(p.analysisInfos, fanId)
+	}
+	return nil
+}
+
 func (p *fakePersistence) originalState(fanId string) (persistence.FanOriginalState, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

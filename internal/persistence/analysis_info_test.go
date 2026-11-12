@@ -78,3 +78,45 @@ func TestPersistence_SaveFanAnalysisInfo_WithoutReadbackDelay_OmitsTheField(t *t
 
 	assert.Equal(t, `{"quirk":"corsaircpro","quirkVersion":1}`, string(getRaw(t, dbPath, BucketFanAnalysisInfo, "cpu")))
 }
+
+func TestPersistence_ReplaceFanAnalysisData(t *testing.T) {
+	// GIVEN: saved data
+	p, _ := newTempPersistence(t)
+	require.NoError(t, p.SaveFanSetPwmToGetPwmMap("cpu", map[int]int{0: 0, 255: 255}))
+	require.NoError(t, p.SaveFanPwmMap("cpu", make([]int, 256)))
+	require.NoError(t, p.SaveFanAnalysisInfo("cpu", FanAnalysisInfo{Quirk: "old", QuirkVersion: 1}))
+	delay := int64(12)
+	pwmMap := make([]int, 256)
+	pwmMap[255] = 255
+
+	// WHEN: replaced with data without a setPwmToGetPwmMap
+	err := p.ReplaceFanAnalysisData("cpu", FanAnalysisData{
+		RpmCurve: map[int]float64{0: 0, 255: 1000},
+		PwmMap:   pwmMap,
+		Info:     &FanAnalysisInfo{ReadbackDelayMillis: &delay},
+	})
+
+	// THEN
+	require.NoError(t, err)
+	_, err = p.LoadFanSetPwmToGetPwmMap("cpu")
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	loadedPwmMap, err := p.LoadFanPwmMap("cpu")
+	require.NoError(t, err)
+	assert.Equal(t, pwmMap, loadedPwmMap)
+	info, err := p.LoadFanAnalysisInfo("cpu")
+	require.NoError(t, err)
+	assert.Equal(t, "", info.Quirk)
+	assert.Equal(t, int64(12), *info.ReadbackDelayMillis)
+}
+
+func TestPersistence_ReplaceFanAnalysisData_InvalidPwmMap_ChangesNothing(t *testing.T) {
+	p, _ := newTempPersistence(t)
+	require.NoError(t, p.SaveFanAnalysisInfo("cpu", FanAnalysisInfo{Quirk: "old", QuirkVersion: 1}))
+
+	err := p.ReplaceFanAnalysisData("cpu", FanAnalysisData{PwmMap: []int{1, 2}})
+
+	assert.Error(t, err)
+	info, err := p.LoadFanAnalysisInfo("cpu")
+	require.NoError(t, err)
+	assert.Equal(t, "old", info.Quirk)
+}

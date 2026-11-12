@@ -3,6 +3,7 @@ package fan
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
@@ -75,6 +76,9 @@ func openPersistenceExclusively(dbPath string) (p persistence.Persistence, relea
 		if errors.As(err, &locked) {
 			return nil, nil, fmt.Errorf("%w. Is the fan2go daemon running? Stop it first (e.g. 'sudo systemctl stop fan2go'), "+
 				"then run this command again", err)
+		}
+		if errors.Is(err, os.ErrPermission) {
+			return nil, nil, fmt.Errorf("%w. Run this command as root (like the daemon)", err)
 		}
 		return nil, nil, err
 	}

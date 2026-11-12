@@ -312,3 +312,7 @@ type failingRpmSavePersistence struct {
 func (p *failingRpmSavePersistence) SaveFanRpmData(fans.Fan) error {
 	return errors.New("disk full")
 }
+
+func (p *failingRpmSavePersistence) ReplaceFanAnalysisData(string, persistence.FanAnalysisData) error {
+	return errors.New("disk full")
+}

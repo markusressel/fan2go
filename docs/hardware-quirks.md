@@ -102,7 +102,8 @@ since the identity readback has 256 levels) were measured together, so the saved
 uses the formula again.
 
 The record also stores the readback delay measured during the analysis (`readbackDelayMillis`, see
-[Fan analysis](fan-analysis.md)), also for nvidia fans and hwmon fans without an entry. It is optional: records
+[Fan analysis](fan-analysis.md)), also for hwmon fans without an entry. Fans whose PWM can't be read back (e.g.
+nvidia fans) have no measured delay. It is optional: records
 written before it existed have no such field, which means "not measured", and they stay valid. The readback delay
 is not compared: a different delay doesn't make fan2go analyze the fan again.
 

@@ -334,7 +334,7 @@ or reload ("sensor not found", until the next reload), a failed sub-curve, or a 
 `handleCurveFailure` applies `onSensorFailure` and returns `ErrCurveEvaluation`, which the update loop ignores; the
 next cycle tries again.
 
-- `max` (default): write the fail-safe speed (the configured `maxPwm`, else 255; through the `pwmMap`) on every
+- `max` (default): write the fail-safe speed (the configured `maxPwm`, else 255, nvidia: 100; through the `pwmMap`) on every
   cycle while the failure lasts. The `maxPwm` derived from the curve is not used: it can be below full speed. A failed write is
   logged once per failure state, and it does not count towards the PWM write timeout.
 - `restore`: hand the fan back once, with the same logic as on exit. It only counts as success if the fan ends up
@@ -396,7 +396,7 @@ its RPM average is below 50 RPM (`fans.IsRpmLikelySpinning`) while the target is
 and the average has been seeded. It then raises `minPwmOffset` by 1 and the target by 1. After the first update
 and after each raise, the fan gets 3 `rpmPollingRate` periods to react (`minPwmIncreaseRpmPollingPeriods`,
 `hadTimeToReactToPwmFloor`). The floor can rise above a derived `maxPwm`. If the fan is still stalled at the
-fail-safe speed (the configured `maxPwm`, else 255), `UpdateFanSpeed` returns
+fail-safe speed (the configured `maxPwm`, else 255; nvidia: 100), `UpdateFanSpeed` returns
 `ErrFanStalledAtMaxPwm`, and the controller restores the fan and stops. The offset is in the statistics
 (`MinPwmOffset`, `IncreasedMinPwmCount`), but it is not persisted. Without an RPM sensor, `neverStop` only sets
 the PWM floor, and fan2go logs a warning at startup.

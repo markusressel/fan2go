@@ -104,7 +104,7 @@ fans:
     # If not set, it is derived from the measured fan curve: the lowest PWM value
     # at which the fan reaches 98% of its peak RPM (higher values hardly make it faster).
     # Fail-safe paths (onSensorFailure: max, a neverStop fan that stalls) use this
-    # value if it is set, and full speed (255) otherwise.
+    # value if it is set, and full speed (255; nvidia: 100) otherwise.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
     # Note: minPwm, startPwm and maxPwm must be in [0..255], and minPwm and startPwm
@@ -147,7 +147,7 @@ fans:
     # (Optional) What to do with this fan while its curve can't be evaluated, e.g. because a
     # sensor can't be read or its value is stale (see sensorStaleTimeout).
     # fan2go keeps trying and resumes normal control once the curve can be evaluated again.
-    #   max (default): set the fan to its configured maxPwm, or full speed (255) if none is configured
+    #   max (default): set the fan to its configured maxPwm, or full speed (255; nvidia: 100) if none is configured
     #   restore:       hand the fan back like on exit (see controlMode.onExit), and take control
     #                  again once the curve recovers. If that would leave the fan at a fixed
     #                  PWM value (e.g. onExit: none, or its original mode was manual), the fan

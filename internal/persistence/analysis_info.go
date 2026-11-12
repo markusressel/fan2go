@@ -97,3 +97,68 @@ func (p persistence) DeleteFanAnalysisInfo(fanId string) error {
 		return b.Delete([]byte(fanId))
 	})
 }
+
+// FanAnalysisData is the complete analysis data of a fan, see ReplaceFanAnalysisData.
+type FanAnalysisData struct {
+	// RpmCurve is the RPM curve, nil for a fan without RPM curve (saved as null)
+	RpmCurve map[int]float64
+	// SetPwmToGetPwmMap is the measured setPwmToGetPwmMap, nil if none is saved (config, readback formula)
+	SetPwmToGetPwmMap map[int]int
+	// PwmMap is the computed pwmMap (256 values), nil if none is saved (configured)
+	PwmMap []int
+	// Info is the analysis info, nil if none is saved
+	Info *FanAnalysisInfo
+}
+
+// ReplaceFanAnalysisData replaces all saved analysis data of the given fan (RPM curve, setPwmToGetPwmMap, pwmMap,
+// analysis info) in a single transaction: either everything is replaced, or nothing changes. Parts that are nil
+// are deleted (except the RPM curve, which is saved as null).
+func (p persistence) ReplaceFanAnalysisData(fanId string, data FanAnalysisData) error {
+	if data.PwmMap != nil && len(data.PwmMap) != 256 {
+		return errors.New("pwmMapping slice must have exactly 256 elements")
+	}
+	values := map[string][]byte{}
+	var err error
+	if values[BucketFans], err = json.Marshal(data.RpmCurve); err != nil {
+		return err
+	}
+	if data.SetPwmToGetPwmMap != nil {
+		if values[BucketFanSetPwmToSetPwmMap], err = json.Marshal(data.SetPwmToGetPwmMap); err != nil {
+			return err
+		}
+	}
+	if data.PwmMap != nil {
+		if values[BucketFanPwmMap], err = json.Marshal(data.PwmMap); err != nil {
+			return err
+		}
+	}
+	if data.Info != nil {
+		if values[BucketFanAnalysisInfo], err = json.Marshal(*data.Info); err != nil {
+			return err
+		}
+	}
+
+	db, err := p.openPersistence()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+
+	return db.Update(func(tx *bolt.Tx) error {
+		for _, bucket := range []string{BucketFans, BucketFanSetPwmToSetPwmMap, BucketFanPwmMap, BucketFanAnalysisInfo} {
+			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
+			if err != nil {
+				return fmt.Errorf("create bucket: %s", err)
+			}
+			if value, ok := values[bucket]; ok {
+				err = b.Put([]byte(fanId), value)
+			} else {
+				err = b.Delete([]byte(fanId))
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

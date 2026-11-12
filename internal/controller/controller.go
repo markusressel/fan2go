@@ -245,6 +245,8 @@ type DefaultFanController struct {
 	// value by the controller (zero time: none in this Run). See readbackMayBeStale.
 	lastPwmWriteValue int
 	lastPwmWriteAt    time.Time
+	// pwmWriteCount counts the successful writes of PWM values by the controller (see writePwm)
+	pwmWriteCount uint64
 
 	// control loop that specifies how the target value of the curve is approached
 	controlLoop control_loop.ControlLoop
@@ -983,19 +985,10 @@ func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]f
 		ui.Info("Fan %s: Measured PWM readback delay: %s", fan.GetId(), f.readbackDelay)
 	}
 
-	// save to database to restore it on restarts
-	if f.freshAnalysis {
-		if err := f.replaceSavedMappings(); err != nil {
-			return nil, err
-		}
-	}
-	err = f.persistence.SaveFanRpmData(fan)
-	if err != nil {
-		return nil, fmt.Errorf("unable to save the fan curve data of fan %s: %w", fan.GetId(), err)
-	}
+	var info *persistence.FanAnalysisInfo
 	if config := fan.GetConfig(); config.HwMon != nil || config.Nvidia != nil {
 		id, version := f.analysisQuirkFingerprint()
-		info := persistence.FanAnalysisInfo{Quirk: id, QuirkVersion: version}
+		info = &persistence.FanAnalysisInfo{Quirk: id, QuirkVersion: version}
 		if f.observedReadbackDelay != nil {
 			millis := f.observedReadbackDelay.Milliseconds()
 			if time.Duration(millis)*time.Millisecond < *f.observedReadbackDelay {
@@ -1003,7 +996,22 @@ func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]f
 			}
 			info.ReadbackDelayMillis = &millis
 		}
-		if err := f.persistence.SaveFanAnalysisInfo(fan.GetId(), info); err != nil {
+	}
+
+	// save to database to restore it on restarts
+	if f.freshAnalysis {
+		// replace everything at once, so a failed save keeps the old data
+		if err := f.replaceSavedAnalysisData(curveData, info); err != nil {
+			return nil, err
+		}
+		return curveData, nil
+	}
+	err = f.persistence.SaveFanRpmData(fan)
+	if err != nil {
+		return nil, fmt.Errorf("unable to save the fan curve data of fan %s: %w", fan.GetId(), err)
+	}
+	if info != nil {
+		if err := f.persistence.SaveFanAnalysisInfo(fan.GetId(), *info); err != nil {
 			return nil, fmt.Errorf("unable to save the analysis info of fan %s: %w", fan.GetId(), err)
 		}
 	}
@@ -1011,30 +1019,20 @@ func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]f
 	return curveData, nil
 }
 
-// replaceSavedMappings replaces the saved setPwmToGetPwmMap and pwmMap of the fan with the ones of a fresh
-// analysis (see freshAnalysis), and deletes the saved RPM curve and analysis info, which are saved next.
-// Mappings that don't come from the database (config, known readback formula) are deleted, like `fan reset` does.
-func (f *DefaultFanController) replaceSavedMappings() error {
-	fan := f.fan
-	if err := f.persistence.DeleteFanRpmData(fan); err != nil {
-		return fmt.Errorf("unable to delete the fan curve data of fan %s: %w", fan.GetId(), err)
-	}
-	if err := f.persistence.DeleteFanAnalysisInfo(fan.GetId()); err != nil {
-		return fmt.Errorf("unable to delete the analysis info of fan %s: %w", fan.GetId(), err)
-	}
-	if f.pendingSetPwmToGetPwmMap != nil {
-		if err := f.persistence.SaveFanSetPwmToGetPwmMap(fan.GetId(), f.pendingSetPwmToGetPwmMap); err != nil {
-			return fmt.Errorf("unable to save the setPwmToGetPwmMap of fan %s: %w", fan.GetId(), err)
-		}
-	} else if err := f.persistence.DeleteFanSetPwmToGetPwmMap(fan.GetId()); err != nil {
-		return fmt.Errorf("unable to delete the setPwmToGetPwmMap of fan %s: %w", fan.GetId(), err)
+// replaceSavedAnalysisData replaces the saved analysis data of the fan with the result of a fresh analysis
+// (see freshAnalysis) in one transaction. Mappings that don't come from the database (config, known readback
+// formula) are deleted, like `fan reset` does.
+func (f *DefaultFanController) replaceSavedAnalysisData(curveData map[int]float64, info *persistence.FanAnalysisInfo) error {
+	data := persistence.FanAnalysisData{
+		RpmCurve:          curveData,
+		SetPwmToGetPwmMap: f.pendingSetPwmToGetPwmMap,
+		Info:              info,
 	}
 	if f.pendingPwmMap {
-		if err := f.persistence.SaveFanPwmMap(fan.GetId(), f.pwmMapping[:]); err != nil {
-			return fmt.Errorf("unable to save the pwm map of fan %s: %w", fan.GetId(), err)
-		}
-	} else if err := f.persistence.DeleteFanPwmMap(fan.GetId()); err != nil {
-		return fmt.Errorf("unable to delete the pwm map of fan %s: %w", fan.GetId(), err)
+		data.PwmMap = append([]int(nil), f.pwmMapping[:]...)
+	}
+	if err := f.persistence.ReplaceFanAnalysisData(f.fan.GetId(), data); err != nil {
+		return fmt.Errorf("unable to save the analysis data of fan %s: %w", f.fan.GetId(), err)
 	}
 	return nil
 }
@@ -1058,7 +1056,13 @@ func (f *DefaultFanController) loadReadbackDelay() {
 		ui.Debug("Fan %s: PWM readback delay not measured yet (run 'fan2go fan --id %s init' to measure it)", fan.GetId(), fan.GetId())
 		return
 	}
-	f.readbackDelay = time.Duration(*info.ReadbackDelayMillis) * time.Millisecond
+	delay := time.Duration(*info.ReadbackDelayMillis) * time.Millisecond
+	if delay < 0 || delay > maxReadbackDelay {
+		ui.Warning("Fan %s: the saved PWM readback delay (%dms) is out of range, using %s",
+			fan.GetId(), *info.ReadbackDelayMillis, util.Coerce(delay, 0, maxReadbackDelay))
+		delay = util.Coerce(delay, 0, maxReadbackDelay)
+	}
+	f.readbackDelay = delay
 	if f.readbackDelay > f.getPwmSetDelay() {
 		ui.Info("Fan %s: Using the measured PWM readback delay of %s", fan.GetId(), f.readbackDelay)
 	}
@@ -1878,6 +1882,7 @@ func (f *DefaultFanController) writePwm(raw int) error {
 	if err == nil {
 		f.lastPwmWriteValue = raw
 		f.lastPwmWriteAt = f.getClock().Now()
+		f.pwmWriteCount++
 	}
 	return err
 }
@@ -1940,8 +1945,8 @@ func (f *DefaultFanController) waitForReadback(
 // sweep: it writes 0 and 255 alternately (four writes, starting with the value further away from the current
 // one) and waits until the readback changes, up to maxReadbackDelay each. It returns the time the sweep waits
 // for the readback of each write: twice the longest observed delay (the readback of a caching driver changes at
-// its next refresh, so a single observation can be shorter than the cache period), at least pwmSetDelay and
-// at most maxReadbackDelay. If the readback never changes, the delay can't be measured, and it returns pwmSetDelay.
+// its next refresh, so a single observation can be shorter than the cache period), at most maxReadbackDelay, but
+// at least pwmSetDelay. If the readback never changes, the delay can't be measured, and it returns pwmSetDelay.
 func (f *DefaultFanController) probeReadbackDelay(ctx context.Context) (time.Duration, error) {
 	floor := f.getPwmSetDelay()
 	previous, err := f.fan.GetPwm()
@@ -1981,7 +1986,7 @@ func (f *DefaultFanController) probeReadbackDelay(ctx context.Context) (time.Dur
 		return floor, nil
 	}
 	ui.Info("Fan %s: PWM readback delay before the set/get sweep: %s", f.fan.GetId(), *longest)
-	return min(max(floor, 2**longest), maxReadbackDelay), nil
+	return max(floor, min(2**longest, maxReadbackDelay)), nil
 }
 
 // ensureFanModeIsSetToExpectedMode makes sure that the fan control mode is set to the expected mode (manual PWM control),
