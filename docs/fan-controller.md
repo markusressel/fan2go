@@ -364,8 +364,9 @@ controllers keep running; an invalid config leaves them untouched. While a contr
 curve evaluator, and starts new fans, a new evaluator and new controllers (`runOrchestrator`, `applyConfiguration`).
 If the new objects can't be created, the old controllers and evaluator are started again with the old config. `Run`
 resets the runtime state of a controller at its start (`resetRuntimeState`: failure states, last PWM, `minPwmOffset`,
-stall timers, RPM average seed, the control algorithm via `ControlLoop.Reset`), so a restarted controller behaves
-like a new one. Only the fan state from before fan2go first took over the fan is kept.
+stall timers, RPM average seed, the control algorithm via `ControlLoop.Reset`), so a restarted controller controls
+the fan like a new one. It keeps the fan state from before fan2go first took over the fan, the cumulative
+statistics counters and the log-once flags.
 
 **Why**: New objects don't carry stale state (offsets, overrides, failure states) into a changed config, and the
 reload reuses the tested shutdown path. **Who benefits**: users who tune their config while fan2go runs.

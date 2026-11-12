@@ -293,7 +293,9 @@ func TestWaitForReload_Deferred_NewRequestReplacesOrDropsTheDeferredConfig(t *te
 	reloadChan <- struct{}{}
 	assert.Contains(t, receive(t, notified, "the notification"), "deferred reload")
 	fan.initializing.Store(false)
-	clock.Advance(deferredReloadCheckInterval)
+	// THEN: nothing is deferred anymore (no ticker), so nothing is applied when the analysis finishes
+	require.Eventually(t, func() bool { return clock.Waiters() == 0 }, 5*time.Second, time.Millisecond)
+	assert.Empty(t, done)
 
 	// WHEN: a newer valid config arrives
 	writeConfigFile(t, configPath, strings.Replace(validTestConfig, "valid.db", "newest.db", 1))

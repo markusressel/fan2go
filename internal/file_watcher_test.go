@@ -70,7 +70,7 @@ func (test *fileWatcherTest) awaitWatching() {
 		writeConfigFile(test.t, marker, "x")
 		select {
 		case what := <-test.actions:
-			require.Equal(test.t, "ignored", what)
+			require.Equal(test.t, "ignored:marker", what)
 			return true
 		default:
 			return false
@@ -78,7 +78,7 @@ func (test *fileWatcherTest) awaitWatching() {
 	}, 5*time.Second, 10*time.Millisecond)
 	// drop the events of the remaining marker writes
 	require.NoError(test.t, os.Remove(marker))
-	test.awaitAction("ignored")
+	test.awaitAction("ignored:marker")
 	test.drainActions()
 }
 
@@ -177,7 +177,7 @@ func TestWatchConfigFile_OtherFileInDirectory_Ignored(t *testing.T) {
 
 	writeConfigFile(t, filepath.Join(test.dir, "other.yaml"), "x")
 
-	test.awaitAction("ignored")
+	test.awaitAction("ignored:other.yaml")
 	assert.Equal(t, 0, test.clock.Waiters(), "no debounce started")
 	assert.Equal(t, 0, test.reloads())
 }

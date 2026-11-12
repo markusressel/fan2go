@@ -107,7 +107,7 @@ var notifyWarning = func(title string, format string, a ...any) {
 }
 
 // configWatchHook is called with what the config file watcher did with an event or a debounced change
-// ("ignored", "debounced", "unreadable", "unchanged", "reload", "dropped"), nil outside of tests.
+// ("ignored:<file name>", "debounced", "unreadable", "unchanged", "reload", "dropped"), nil outside of tests.
 var configWatchHook func(what string)
 
 // runFileWatcher requests a reload whenever the content of the config file changes. The automatic reload is
@@ -191,7 +191,7 @@ func watchConfigFile(ctx context.Context, configPath string, reloadChan chan<- s
 				return errors.New("the file watcher stopped (event channel closed)")
 			}
 			if !w.isRelevant(event) {
-				hook("ignored")
+				hook("ignored:" + filepath.Base(event.Name))
 				continue
 			}
 			ui.Debug("Config file event: %v", event)
@@ -227,6 +227,11 @@ func watchConfigFile(ctx context.Context, configPath string, reloadChan chan<- s
 				return errors.New("the file watcher stopped (error channel closed)")
 			}
 			ui.Warning("File watcher error: %v", err)
+			if errors.Is(err, fsnotify.ErrEventOverflow) {
+				// events may have been lost: check the file in case one of them was a change of it
+				debounced = clock.After(configWatchDebounce)
+				hook("debounced")
+			}
 		}
 	}
 }
@@ -367,11 +372,14 @@ func waitForReload(ctx context.Context, reloadChan <-chan struct{}, fanControlle
 	// ticks while a reload is deferred
 	var ticker util.Ticker
 	var tickC <-chan time.Time
-	defer func() {
+	stopTicker := func() {
 		if ticker != nil {
 			ticker.Stop()
+			ticker = nil
+			tickC = nil
 		}
-	}()
+	}
+	defer stopTicker()
 
 	for {
 		requested := false
@@ -387,6 +395,7 @@ func waitForReload(ctx context.Context, reloadChan <-chan struct{}, fanControlle
 				}
 				notifyError("Config Reload Failed", "Reload failed: %v. Keeping current configuration.", err)
 				pending = nil
+				stopTicker()
 				continue
 			}
 			pending = &config

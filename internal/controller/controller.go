@@ -78,8 +78,8 @@ type FanController interface {
 	// RunInitialization runs the fan initialization sequence.
 	RunInitialization(ctx context.Context) (map[int]float64, error)
 
-	// IsInitializing returns true while Run analyzes the fan (or waits to do so) because it has no saved
-	// fan curve data yet. Safe to call while the controller is running.
+	// IsInitializing returns true while Run analyzes the fan (or waits to do so) because it has no usable saved
+	// fan curve data or setPwmToGetPwmMap. Safe to call while the controller is running.
 	IsInitializing() bool
 }
 
@@ -184,7 +184,8 @@ type DefaultFanController struct {
 	// so nested initialization steps don't try to acquire it again.
 	// Only accessed by the goroutine that runs the initialization.
 	holdsInitializationLock bool
-	// initializing is true while Run runs the initialization sequence (see IsInitializing)
+	// initializing is true while Run runs the initialization sequence or the setPwm -> getPwm sweep
+	// (see IsInitializing)
 	initializing atomic.Bool
 	// mayHaveWrittenToFan is set once the current Run (or initialization) may have written to the fan:
 	// the initialization or the setPwm -> getPwm detection started, or Run switched the fan to manual mode.
@@ -654,7 +655,8 @@ func (f *DefaultFanController) resetRuntimeState() {
 	f.stats.MinPwmOffset = 0
 }
 
-// IsInitializing returns true while Run analyzes the fan (or waits for the initialization lock to do so).
+// IsInitializing returns true while Run analyzes the fan or runs the setPwm -> getPwm sweep (or waits for
+// the initialization lock to do so).
 func (f *DefaultFanController) IsInitializing() bool {
 	return f.initializing.Load()
 }
@@ -1721,6 +1723,10 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically(ctx context
 	}
 
 	// this sweeps the fan through all PWM values, so it is a part of the initialization sequence
+	// (and counts as initializing, unless it runs within the whole initialization already)
+	if f.initializing.CompareAndSwap(false, true) {
+		defer f.initializing.Store(false)
+	}
 	unlock, err := f.lockInitializationSequence(ctx)
 	if err != nil {
 		return err

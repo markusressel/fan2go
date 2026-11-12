@@ -77,8 +77,8 @@ sensors and curves).
    fails, the error is logged and notified ("Reload failed: ... Keeping current configuration."), and nothing else
    happens: no fan is touched. viper replaces its in-memory config only after a successful parse, and
    `configuration.CurrentConfig` is not changed.
-2. If a fan controller is analyzing its fan (`FanController.IsInitializing`: the fan has no saved data yet), the
-   reload is deferred ("Config reload deferred until the analysis of fan(s) ... has finished.") and checked again
+2. If a fan controller is analyzing its fan (`FanController.IsInitializing`: the fan initialization or the
+   `setPwmToGetPwmMap` sweep runs because there is no usable saved data), the reload is deferred ("Config reload deferred until the analysis of fan(s) ... has finished.") and checked again
    every second. Another reload request meanwhile reads the file again: a valid file replaces the deferred config,
    an invalid one drops it. A shutdown is never deferred.
 3. The current cycle is cancelled. The orchestrator waits until all fan controllers, sensor monitors and webservers
@@ -88,8 +88,8 @@ sensors and curves).
 5. On success, the new cycle starts, and a warning is logged for each changed key that only applies on startup
    (`dbPath`, `profiling.*`). If the objects can't be created, the error is logged and notified, the old config
    stays current, and the previous objects are started again. Each restarted fan controller resets its runtime
-   state first (`resetRuntimeState`), so it starts like a new one (only the fan state from before fan2go took over
-   the fan is kept).
+   state first (`resetRuntimeState`), so it controls the fan like a new one. It keeps the fan state from before
+   fan2go took over the fan, its cumulative statistics counters and its log-once flags.
 
 Fan controllers don't survive a reload. Every fan is handed back to its pre-fan2go state and taken over again by a
 new controller after the startup delays.
@@ -99,7 +99,7 @@ sees atomic saves (a temporary file renamed over the config, as vim, most GUI ed
 Events of other files in the directory are ignored. If the config file is a symlink, the directory of its target is
 watched too (re-resolved after each change), and any change in the directory of the symlink is considered. After the
 last change, the watcher waits 500 ms (`configWatchDebounce`), then hashes the file and requests a reload only if
-the content changed. If the watcher can't be set up (e.g. the inotify limits are reached) or stops, it warns and
+the content changed. An inotify queue overflow also makes it check the file. If the watcher can't be set up (e.g. the inotify limits are reached) or stops, it warns and
 notifies once ("Automatic config reload is disabled"), and the daemon keeps running; `SIGHUP` still reloads.
 
 ### Shutdown
@@ -392,8 +392,8 @@ described in the subsystem documents.
 - **A valid reload releases all fans briefly**, even if only an unrelated key changed, and resets runtime-learned
   state. Errors that only object creation detects (not validation) also cause a release and takeover by the old
   controllers.
-- **A reload during the first analysis waits for it.** Until the analysis of every new fan has finished, the old
-  config stays active.
+- **A reload during an analysis waits for it.** Until every running analysis of the current config has finished,
+  the old config stays active. Fans that are new in the reloaded config are analyzed after it was applied.
 - **`fan2go fan init` next to a running daemon is not prevented.** The initialization lock only works within one
   process, and the database is opened per operation, so nothing stops both from writing to the same fan. Run
   `fan init` with the daemon stopped. A running daemon picks up the new data only after a reload or restart (see
