@@ -70,7 +70,9 @@ when it starts. After each cycle it sends a notification to every subscriber. Ea
   lowest step the curve returns the lowest step's value, above the highest step the highest step's value.
 - Without `steps`: `min` maps to `0`, `max` maps to `255`, linear in between. At or above `max` the value is `255`,
   at or below `min` it is `0`.
-- If both `steps` and `min`/`max` are set, `steps` wins.
+- If both `steps` and `min`/`max` are set, `steps` wins, and validation warns that `min`/`max` are ignored.
+- Without `steps`, validation requires `min < max`. A curve with neither (both `0`) used to return `255` for every
+  temperature at or above 0 °C.
 
 ### Staircase
 
@@ -315,14 +317,14 @@ Curve definitions (under `curves:`):
 |----------------------------------|---------|------------------------------------------------------------------------|
 | `id`                             | -       | Required, unique.                                                      |
 | `linear.sensor`                  | -       | Required, must reference a sensor.                                     |
-| `linear.min`, `linear.max`       | `0`     | Degrees, integers. Used only without `steps`.                          |
+| `linear.min`, `linear.max`       | `0`     | Degrees, integers. Used only without `steps`, then `min < max`.        |
 | `linear.steps`                   | -       | Map degrees -> `0..255` or `0%..100%`.                                 |
 | `staircase.sensor`               | -       | Required.                                                              |
 | `staircase.steps`                | -       | Required, same format as `linear.steps`.                               |
 | `staircase.hysteresis.down`      | `0`     | Degrees.                                                               |
 | `pid.sensor`                     | -       | Required.                                                              |
 | `pid.setPoint`                   | `0`     | Degrees, must be finite.                                               |
-| `pid.p`, `pid.i`, `pid.d`        | `0`     | Not all three may be `0`. Use negative gains for cooling.              |
+| `pid.p`, `pid.i`, `pid.d`        | `0`     | Not all three may be `0`. Negative gains cool; all positive: warning.  |
 | `function.type`                  | -       | `minimum`, `maximum`, `average`, `delta`, `sum`, `difference`.         |
 | `function.curves`                | -       | At least 2 curve ids, no self-reference, no cycles.                    |
 
@@ -341,12 +343,10 @@ Related global and fan options:
 
 ## Known limitations and open questions
 
-- A `linear` curve without `steps` and without `min`/`max` is accepted and returns `255` for every temperature at or
-  above 0 °C. `min > max` is accepted too and gives a step function at `max`.
-- Positive PID gains are accepted. With them, the fan speeds up when the temperature is below `setPoint`.
+- Positive PID gains are accepted with a warning (heating use cases). With them, the fan speeds up when the
+  temperature is below `setPoint`.
 - The staircase hysteresis truncates the measured temperature to whole degrees, so the curve steps down after a drop
   of up to one degree less than `down`. Example: step 50, `down: 5`, it steps down at 45.9 °C.
-- The validation error for a missing curve type lists `linear | pid | function` and omits `staircase`.
 - `fan2go curve list` prints nothing for `staircase` curves, and no graph for `min`/`max` linear curves.
 - One tick rate for all curves and fans. A per-fan or event-driven pipeline was left out of #553.
 - A reload resets all curve state, even for unchanged curves.

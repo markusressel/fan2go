@@ -222,3 +222,29 @@ func TestPidLoop_Preset_ZeroIntegralGain(t *testing.T) {
 	assert.Equal(t, 100.0, sameTime)
 	assert.InDelta(t, 110.0, next, 1e-9)
 }
+
+func TestPidLoop_ResumeAt_MeasuresDtFromTheGivenTime(t *testing.T) {
+	// GIVEN: a loop (P 0, I 1) preset to 100 at t=0
+	pidLoop := NewPidLoop(0, 1, 0, 0, 255, true, true)
+	pidLoop.PresetAt(time.Unix(0, 0), 100, 100)
+
+	// WHEN: a minute passed, but the loop resumes as if the last loop had run 1 s ago
+	pidLoop.ResumeAt(time.Unix(59, 0))
+	first := pidLoop.LoopAt(time.Unix(60, 0), 50, 100)
+	second := pidLoop.LoopAt(time.Unix(61, 0), 50, 100)
+
+	// THEN: the integral only grew by err*1s, not by err*60s
+	assert.InDelta(t, 100.0, first, 1e-9) // the I term lags one loop
+	assert.InDelta(t, 50.0, second, 1e-9) // integral 100 - 50*1
+}
+
+func TestPidLoop_ResumeAt_BeforeTheFirstLoopDoesNothing(t *testing.T) {
+	// GIVEN
+	pidLoop := NewPidLoop(1, 0, 0, 0, 255, true, true)
+
+	// WHEN
+	pidLoop.ResumeAt(time.Unix(59, 0))
+
+	// THEN: the first loop still initializes the loop (P term only)
+	assert.InDelta(t, 10.0, pidLoop.LoopAt(time.Unix(60, 0), 20, 10), 1e-9)
+}

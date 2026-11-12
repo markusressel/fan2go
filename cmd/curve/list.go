@@ -21,16 +21,9 @@ var curveCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Print the measured fan curve(s) to console",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		configPath := configuration.DetectAndReadConfigFile()
-		ui.Info("Using configuration file at: %s", configPath)
-		configuration.CurrentConfig, err = configuration.LoadConfig()
+		_, err = configuration.LoadAndValidateConfigFile()
 		if err != nil {
-			ui.FatalWithoutStacktrace("configuration parsing failed: %v", err)
-		}
-
-		err = configuration.ValidateConfig(&configuration.CurrentConfig, configPath)
-		if err != nil {
-			ui.FatalWithoutStacktrace("configuration validation failed: %v", err)
+			return err
 		}
 
 		curveConfigsToPrint := []configuration.CurveConfig{}
@@ -57,11 +50,14 @@ var curveCmd = &cobra.Command{
 
 			switch curve.(type) {
 			case *curves.LinearSpeedCurve:
-				printLinearCurveInfo(curve, curveConfig.Linear)
+				err = printLinearCurveInfo(curve, curveConfig.Linear)
 			case *curves.PidSpeedCurve:
-				printPidCurveInfo(curve, curveConfig.PID)
+				err = printPidCurveInfo(curve, curveConfig.PID)
 			case *curves.FunctionSpeedCurve:
-				printFunctionCurveInfo(curve, curveConfig.Function)
+				err = printFunctionCurveInfo(curve, curveConfig.Function)
+			}
+			if err != nil {
+				return err
 			}
 		}
 
@@ -69,7 +65,7 @@ var curveCmd = &cobra.Command{
 	},
 }
 
-func printLinearCurveInfo(curve curves.SpeedCurve, config *configuration.LinearCurveConfig) {
+func printLinearCurveInfo(curve curves.SpeedCurve, config *configuration.LinearCurveConfig) error {
 	curveType := "Linear"
 
 	sensorId := config.Sensor
@@ -87,12 +83,13 @@ func printLinearCurveInfo(curve curves.SpeedCurve, config *configuration.LinearC
 			{curve.GetId(), curveType, sensorId},
 		}
 
-		printInfoTable(headers, rows)
+		if err := printInfoTable(headers, rows); err != nil {
+			return err
+		}
 
 		interpolated, err := util.InterpolateLinearly(&stepMappings, 0, 255)
 		if err != nil {
-			ui.Error("Error interpolating curve values: %v", err)
-			return
+			return fmt.Errorf("error interpolating curve values: %w", err)
 		}
 		drawGraph(interpolated, "Temp / Curve Value")
 	} else {
@@ -101,7 +98,9 @@ func printLinearCurveInfo(curve curves.SpeedCurve, config *configuration.LinearC
 			{curve.GetId(), curveType, sensorId, fmt.Sprint(config.Min), fmt.Sprint(config.Max)},
 		}
 
-		printInfoTable(headers, rows)
+		if err := printInfoTable(headers, rows); err != nil {
+			return err
+		}
 
 		/*
 			var keys map[int]float64
@@ -138,7 +137,7 @@ func printLinearCurveInfo(curve curves.SpeedCurve, config *configuration.LinearC
 			}
 		*/
 	}
-
+	return nil
 }
 
 func drawGraph(graphValues map[int]float64, caption string) {
@@ -157,7 +156,7 @@ func drawGraph(graphValues map[int]float64, caption string) {
 	ui.Println(graph)
 }
 
-func printFunctionCurveInfo(curve curves.SpeedCurve, config *configuration.FunctionCurveConfig) {
+func printFunctionCurveInfo(curve curves.SpeedCurve, config *configuration.FunctionCurveConfig) error {
 	curveType := "Function"
 
 	t := config.Type
@@ -169,10 +168,10 @@ func printFunctionCurveInfo(curve curves.SpeedCurve, config *configuration.Funct
 		{curve.GetId(), curveType, t, curveIdsText},
 	}
 
-	printInfoTable(headers, rows)
+	return printInfoTable(headers, rows)
 }
 
-func printPidCurveInfo(curve curves.SpeedCurve, config *configuration.PidCurveConfig) {
+func printPidCurveInfo(curve curves.SpeedCurve, config *configuration.PidCurveConfig) error {
 	curveType := "PID"
 
 	headers := []string{"ID", "Type", "P", "I", "D", "Set Point"}
@@ -180,10 +179,10 @@ func printPidCurveInfo(curve curves.SpeedCurve, config *configuration.PidCurveCo
 		{curve.GetId(), curveType, fmt.Sprint(config.P), fmt.Sprint(config.I), fmt.Sprint(config.D), fmt.Sprint(config.SetPoint)},
 	}
 
-	printInfoTable(headers, rows)
+	return printInfoTable(headers, rows)
 }
 
-func printInfoTable(headers []string, rows [][]string) {
+func printInfoTable(headers []string, rows [][]string) error {
 	tab := table.Table{
 		Headers: headers,
 		Rows:    rows,
@@ -200,10 +199,11 @@ func printInfoTable(headers []string, rows [][]string) {
 		},
 	})
 	if tableErr != nil {
-		panic(tableErr)
+		return fmt.Errorf("error printing table: %w", tableErr)
 	}
 	tableString := buf.String()
 	ui.Println(tableString)
+	return nil
 }
 
 func init() {

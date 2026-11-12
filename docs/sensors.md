@@ -290,6 +290,7 @@ scripts). Safety: a hanging script can't block fan2go beyond its timeout.
   `/usr/bin/bash` and a script path) isn't checked.
 - At the default polling rate, the command runs 5 times per second. Long-running commands cause skipped polls.
   If a command needs longer than `sensorStaleTimeout` between successful runs, its sensor becomes stale.
+  Validation warns if `cmd.timeout` (incl. the default) is not shorter than the effective `sensorStaleTimeout`.
 - Side effects of frequent runs (e.g. `nvidia-settings` waking a dGPU) are documented in the README.
 
 ### disk sensors: stable device paths, sysfs first, SMART fallback
@@ -360,7 +361,7 @@ Per sensor (`sensors[]`):
 | `nvidia.index` | Accepted, unused. |
 | `file.path` | Integer in milli-units. `~` is expanded. |
 | `cmd.exec`, `cmd.args` | Executable must be root-owned and not writable by others. |
-| `cmd.timeout` | Default `2s` (`DefaultCmdTimeout`), `0` means default, negative is rejected. |
+| `cmd.timeout` | Default `2s` (`DefaultCmdTimeout`), `0` means default, negative is rejected. Warning if not shorter than `sensorStaleTimeout`. |
 | `disk.device` | Required. Path or by-id name. |
 
 Per fan, `onSensorFailure` (`max` by default, or `restore`) decides what happens to a fan while its curve can't be

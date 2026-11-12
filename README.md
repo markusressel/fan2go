@@ -356,6 +356,10 @@ fans:
     maxPwm: 255
     # Note: minPwm, startPwm and maxPwm must be in [0..255], and minPwm and startPwm
     #       must not be greater than maxPwm. minPwm > startPwm only causes a warning.
+    #       Values that aren't configured are derived from the measured fan curve. If a derived
+    #       minPwm or startPwm is above maxPwm (e.g. maxPwm: 100 and the fan only starts at 120),
+    #       fan2go logs a warning: a configured maxPwm wins, the derived values are lowered to it.
+    #       Otherwise the derived maxPwm is raised to minPwm/startPwm.
     # (Optional) Override the global fanController.pwmSetDelay for this specific fan.
     # Useful when a fan requires more or less time to respond to PWM changes than the global default.
     # pwmSetDelay: 10ms
@@ -580,7 +584,7 @@ max temp will result in a curve value of `255`:
 ```yaml
 curves:
   - id: cpu_curve
-    # The type of the curve, one of: linear | function
+    # The type of the curve, one of: linear | staircase | pid | function
     linear:
       # The sensor ID to use as a temperature input
       sensor: cpu_package
@@ -590,6 +594,9 @@ curves:
       # Sensor input value at which the curve is at maximum speed
       max: 80
 ```
+
+Without `steps`, `max` must be greater than `min`. If `steps` are set too, `min` and `max` are ignored (with a
+warning).
 
 You can also define the curve in multiple, linear sections using the `steps` parameter,
 where the left side refers to the sensor input value and the right side refers to the curve value at that sensor input.
@@ -688,6 +695,11 @@ specified `controlAlgorithm`) which would also affect how the curve is applied t
 
 `setPoint` is the target temperature.
 
+The curve computes its error as `setPoint - temperature`, so a temperature above the `setPoint` gives a negative
+error. To cool, the gains must therefore be negative, like in the example above: then the curve value rises with the
+temperature. fan2go warns if all non-zero gains are positive (the curve value then falls when it gets hotter), but
+accepts it for heating use cases.
+
 See: [PID controller on Wikipedia](https://en.wikipedia.org/wiki/Proportional%E2%80%93integral%E2%80%93derivative_controller)
 for more information on what a PID controller is.
 
@@ -748,7 +760,9 @@ Running external commands repeatedly through fan2go can have unintended side eff
 graphics, running `nvidia-settings` can cause the dedicated GPU to wake up, resulting in substantial increase in power
 consumption while on battery. Also, fan2go expects to be able to update sensor values with a minimal delay, so using a
 long running script or some network call with a long timeout could also cause problems. Each command is killed and
-treated as failed after its `timeout` (default: 2s). Each command runs in its own process group: on timeout, the whole
+treated as failed after its `timeout` (default: 2s). fan2go warns if the `timeout` of a sensor command is not shorter
+than the [`sensorStaleTimeout`](#sensor-failures): the sensor value would become stale while the command is still
+running. Each command runs in its own process group: on timeout, the whole
 process group is killed, including processes the command started in the background. A command that starts a
 long-running background process (e.g. a daemon) and exits in time is not killed. If the background process keeps the
 command's output open, fan2go uses the output shortly after the command itself has exited and closes its end of it, so
@@ -811,6 +825,44 @@ journalctl -u fan2go -f
 
 > NOTE: If you want to use a config path that differs from the default one, make sure to edit the
 > unit file and point the `-c` flag to the correct path.
+
+The unit restarts fan2go 10 seconds after it exited, unless it exited because of a config error (exit code 78, see
+[Exit codes](#exit-codes)). After fixing the config, start it again with `sudo systemctl restart fan2go`.
+
+The unit restricts what fan2go can access. Two restrictions can affect your config:
+
+- **Network:** only connections from and to localhost are allowed (`IPAddressDeny=any`, `IPAddressAllow=localhost`).
+  Setting `statistics.host` or `api.host` to `0.0.0.0` is not enough to reach them from another machine; packets from
+  other addresses are dropped silently.
+- **Filesystem:** the system is read-only for fan2go (`ProtectSystem=strict`), except for `/sys/class/hwmon`,
+  `/sys/class/thermal`, `/sys/devices` and the directories `/var/lib/fan2go`, `/var/log/fan2go` and `/run/fan2go`.
+  A `dbPath` outside `/var/lib/fan2go` can't be written, so fan2go can't save the results of the fan initialization.
+
+To lift one of them, add a drop-in with `sudo systemctl edit fan2go`, for example:
+
+```ini
+[Service]
+# allow remote Prometheus scrapes and API clients from the local network
+# (statistics.host / api.host must be set to 0.0.0.0 or that interface's address, too)
+IPAddressAllow=192.168.1.0/24
+# make a custom dbPath writable
+ReadWritePaths=/srv/fan2go
+```
+
+Then restart fan2go with `sudo systemctl restart fan2go`.
+
+### Exit codes
+
+| Code | Meaning                                                                                                    |
+|------|------------------------------------------------------------------------------------------------------------|
+| 0    | fan2go stopped normally (e.g. after `SIGINT` or `SIGTERM`), or the command succeeded                       |
+| 1    | Any other error, e.g. no configured fan could be found, or an invalid command line                         |
+| 78   | Config error: the config file can't be found, read, parsed or validated, or its curves can't be set up (e.g. a curve dependency cycle) |
+
+The codes are the same for the daemon and for the other commands, e.g. `fan2go config validate` exits with 78 for an
+invalid config. fan2go isn't restarted by systemd after a config error, since a restart can't fix it. "No fan could be
+found" is not a config error: the hardware may just not be available yet (e.g. a driver that is loaded late), so
+systemd restarts fan2go after it.
 
 ## CLI Commands
 
@@ -906,6 +958,8 @@ running.
 > [!NOTE]
 > Before fan2go 1.0.0, the exporter listened on all interfaces by default. If a Prometheus server on another machine
 > scrapes fan2go, set `host: 0.0.0.0` (or the address of a specific interface).
+> When fan2go runs with the provided systemd unit, remote scrapes also need a drop-in that allows them, see
+> [As a Service](#systemd).
 
 The exported values are the ones fan2go maintains anyway, so a scrape doesn't read any sensor or fan:
 
@@ -948,6 +1002,9 @@ api:
   # The port to listen for connections
   port: 9001
 ```
+
+When fan2go runs with the provided systemd unit, clients on other machines also need a drop-in that allows them, see
+[As a Service](#systemd).
 
 ### Endpoints
 
@@ -1081,7 +1138,9 @@ In both cases, fan2go keeps trying to evaluate the curve on every cycle, and res
 control again for `restore`) as soon as it can. Entering this state is logged and notified once, and so is the
 recovery. The fan controller only stops for good if a fan with `neverStop: true` doesn't spin even at its `maxPwm`
 (see above); this check is paused while the fan is in the failure state. A PID curve starts over when its sensor
-recovers from a stale value.
+recovers from a stale value. After `max`, the control algorithm continues from the fan's maximum speed, so the fan
+comes down gradually (with the `pid` control algorithm, or `direct` with `maxPwmChangePerCycle`) instead of
+jumping to the curve value. After `restore`, it starts at the curve value, like on startup.
 
 ```yaml
 # (Optional) default: 10 x tempSensorPollingRate, but at least 10s
@@ -1201,12 +1260,31 @@ fans:
 ```
 
 The loop is advanced at a constant rate, determined by the [cycle rate](#cycle) (`fanController.adjustmentTickRate`),
-which defaults to `200ms`. The values depend on the cycle rate: with the default values, a cycle rate of `1s` or slower
-makes the output overshoot the curve value. If you increase `adjustmentTickRate`, lower `i` accordingly.
+which defaults to `200ms`. The values depend on the cycle rate: with the default values, the output overshoots the
+curve value by more than 1 % at a cycle rate above about `800ms` (about 8 % at `1s`). If you increase `adjustmentTickRate`, lower `i` accordingly.
+
+fan2go checks the values against the cycle rate when it loads the config. Because the loop compares the curve value
+with its own previous output, it is a linear system of its own, so its stability can be computed exactly:
+
+- `i` must be greater than `0`. Omitted values are `0`, so `pid: {p: 0.1}` is rejected. Without an I term, the
+  output would settle at a small fraction of the curve value (about 9 % with `p: 0.1`).
+- fan2go rejects values that are unstable with the configured cycle rate: the output would oscillate between `0`
+  and `255`. With the default values, this is the case for a cycle rate of about `2.64s` or slower (`i` too large for
+  the time step) and of about `21ms` or faster (`d` too large for the time step).
+- fan2go warns if the output overshoots a change of the curve value by more than 1 %.
+- fan2go also warns if the values are unstable at a cycle rate of `1s` (if `adjustmentTickRate` is shorter): a fan
+  whose every update takes longer than `max(2s, 5 x adjustmentTickRate)` (e.g. a slow `cmd` fan) runs the loop at
+  that rate.
+
+This also applies to fans without a `controlAlgorithm` (they use the default values) and to the deprecated
+`controlLoop` setting. Only one of `direct` and `pid` may be set, and `controlLoop` can't be combined with
+`controlAlgorithm`.
 
 The first cycle after fan2go starts (or reloads its config) applies the curve value directly, like the direct control
 algorithm. The PID loop is initialized as if it had already settled at that value, so it only smooths later changes
-of the curve value instead of ramping the fan up from (almost) zero.
+of the curve value instead of ramping the fan up from (almost) zero. If the loop hasn't run for a while (more than
+`2s` or 5 times `adjustmentTickRate`, whichever is longer, e.g. while a sensor failed), it treats the pause like
+`1s` (or one `adjustmentTickRate`, if that is longer), instead of making up for the whole pause at once.
 
 See [PID controller on Wikipedia](https://en.wikipedia.org/wiki/Proportional%E2%80%93integral%E2%80%93derivative_controller)
 for more information on what a PID controller is.

@@ -815,9 +815,9 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 	if !f.recoverFromCurveFailure() {
 		return nil
 	}
-	// only now, after the first update that could evaluate the curve: a controller that is (still) in the
-	// failure state, e.g. when Run started again after a failed reload, goes from initializing straight
-	// back to its sensor_failure_* state, and never reports running in between
+	// only now, after the first update that could evaluate the curve: a controller whose curve fails when
+	// Run starts (e.g. again after a failed reload) goes from initializing straight to (or back to) its
+	// sensor_failure_* state on its first update, and never reports running in between
 	f.setState(status.StateRunning, nil)
 
 	f.ensureNoThirdPartyIsMessingWithUs()
@@ -1077,7 +1077,7 @@ func (f *DefaultFanController) handleCurveFailure(err error) {
 	if f.sensorFailureAction == configuration.OnSensorFailureMax {
 		// keep the fan at max while the failure lasts (e.g. if a third party changed it)
 		f.setMaxPwmForSensorFailure()
-		// keeps the state accurate, also if Run started again in the failure state
+		// keeps the state accurate on every update while the failure lasts
 		f.setState(status.StateSensorFailureMax, err)
 		return
 	}
@@ -1344,16 +1344,38 @@ func (f *DefaultFanController) applyPwmMapForRestore(target int) int {
 //   - reading the result of the associated curve from the last cycle of the curve evaluator
 //     (the controller never evaluates the curve itself, since other fans and curves may use it too)
 //   - cycling the control loop
+//
+// If the curve can be evaluated again after a failure (see handleCurveFailure), the control loop
+// continues from the speed the fan has now, instead of from its output before the failure.
 func (f *DefaultFanController) calculateTargetSpeed() (float64, error) {
 	result := f.getCurve().CurrentResult()
 	if result.Err != nil {
 		return 0, result.Err
 	}
 
+	// this runs before recoverFromCurveFailure, which leaves the failure state
+	switch f.sensorFailureAction {
+	case configuration.OnSensorFailureMax:
+		// the fan was set to maxPwm without the control loop, so ramp down from there
+		f.controlLoop.Preset(f.maxPwmCurveValue())
+	case configuration.OnSensorFailureRestore:
+		// the speed the fan was handed back at is unknown, start at the target like on startup
+		f.controlLoop.Reset()
+	}
+
 	// the new target speed to set, which approaches the actual target based on the control loop
-	newTarget := f.controlLoop.Cycle(result.Value)
+	newTarget := f.controlLoop.Cycle(f.getClock().Now(), result.Value)
 
 	return newTarget, nil
+}
+
+// maxPwmCurveValue returns the curve value that UpdateFanSpeed maps to the maxPwm of the fan:
+// 255, or maxPwm itself if the fan uses unscaled curve values.
+func (f *DefaultFanController) maxPwmCurveValue() float64 {
+	if f.fan.GetConfig().UseUnscaledCurveValues {
+		return float64(f.fan.GetMaxPwm())
+	}
+	return fans.MaxPwmValue
 }
 
 // getPwmSetDelay returns the effective PWM set delay for this fan, using the per-fan override

@@ -40,7 +40,7 @@ fans:
 
 	viper.Reset()
 	t.Cleanup(viper.Reset)
-	configuration.InitConfig(configPath)
+	require.NoError(t, configuration.InitConfig(configPath))
 
 	oldConfig := configuration.CurrentConfig
 	t.Cleanup(func() { configuration.CurrentConfig = oldConfig })
