@@ -117,6 +117,9 @@ type FanConfig struct {
 	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
 	// SanityCheck defines Configuration options for sanity checks
 	SanityCheck SanityCheckConfig `json:"sanityCheck"`
+	// OnSensorFailure defines what fan2go does with the fan while its curve can't be evaluated
+	// (e.g. because a sensor can't be read or its value is stale). Defaults to max.
+	OnSensorFailure OnSensorFailureAction `json:"onSensorFailure,omitempty"`
 	// HwMon, File and Cmd are the different ways to configure the respective fan types.
 	HwMon  *HwMonFanConfig  `json:"hwMon,omitempty"`
 	Nvidia *NvidiaFanConfig `json:"nvidia,omitempty"`
@@ -129,6 +132,24 @@ type FanConfig struct {
 	// and should not be used. To change how the fan is controlled
 	// use ControlAlgorithm instead.
 	ControlLoop *ControlLoopConfig `json:"controlLoop,omitempty"`
+}
+
+// OnSensorFailureAction is what fan2go does with a fan while its curve can't be evaluated.
+type OnSensorFailureAction string
+
+const (
+	// OnSensorFailureMax drives the fan to its maxPwm (the default).
+	OnSensorFailureMax OnSensorFailureAction = "max"
+	// OnSensorFailureRestore hands the fan back like on exit (see controlMode.onExit).
+	OnSensorFailureRestore OnSensorFailureAction = "restore"
+)
+
+// GetOnSensorFailure returns the configured onSensorFailure action, or OnSensorFailureMax if it is not set.
+func (c FanConfig) GetOnSensorFailure() OnSensorFailureAction {
+	if c.OnSensorFailure == "" {
+		return OnSensorFailureMax
+	}
+	return c.OnSensorFailure
 }
 
 type ControlAlgorithm string

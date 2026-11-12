@@ -26,6 +26,9 @@ import (
 
 var (
 	ErrFanStalledAtMaxPwm = errors.New("fan stalled at max pwm")
+	// ErrCurveEvaluation is returned (wrapped) by UpdateFanSpeed when the curve of the fan can't be evaluated.
+	// The onSensorFailure action of the fan has been applied then, and the controller keeps running.
+	ErrCurveEvaluation = errors.New("curve evaluation failed")
 )
 
 // initializationSequenceLock serializes the parts of the fan initialization that move the fans
@@ -191,6 +194,13 @@ type DefaultFanController struct {
 
 	// lastFanModeCheckTime is the last time we checked if some third party changed the fan control mode
 	lastFanModeCheckTime time.Time
+
+	// sensorFailureAction is the onSensorFailure action that is active because the curve can't be evaluated,
+	// or "" while the fan is controlled normally. Only used by the update loop.
+	sensorFailureAction configuration.OnSensorFailureAction
+	// sensorFailureMaxWriteFailed is true once setting the max PWM failed in the current failure state
+	// (only used by the update loop)
+	sensorFailureMaxWriteFailed bool
 
 	// clock is the time source for all waits, tickers and timestamps of the controller
 	// (nil means util.RealClock), replaceable in tests via SetClock
@@ -426,21 +436,11 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 		ui.Warning("Suspicious pwm config of fan '%s': MinPwm (%d) > StartPwm (%d)", fan.GetId(), fan.GetMinPwm(), fan.GetStartPwm())
 	}
 
-	// TODO: check if fan.Supports(fans.FeatureControlModeWrite) - or is it ok if it doesn't and our
-	//       default assumption is that it will always be in manual mode then?
-	//       (trySetManualPwm() just returns nil in that case)
-	//       Alternatively, should fans that don't support switching the mode but run in manual mode
-	//       by default (cmd or file fans?) just always return ControlModePWM in fan.GetControlMode()
-	//       so we can check that?
 	f.mayHaveWrittenToFan = true
-	err = trySetManualPwm(fan)
+	err = takeManualControl(fan)
 	if err != nil {
-		cm, e := fan.GetControlMode()
-		// if the control mode is PWM even though trySetManualPwm() failed, ignore that error
-		if e != nil || cm != fans.ControlModePWM {
-			// ... otherwise cancel here, FanController can't do anything if manual fan control doesn't work
-			return err
-		}
+		// FanController can't do anything if manual fan control doesn't work
+		return err
 	}
 
 	var g run.Group
@@ -495,7 +495,7 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 			tick := f.getClock().NewTicker(f.updateRate)
 			defer tick.Stop()
 
-			if err := f.UpdateFanSpeed(); err != nil {
+			if err := f.UpdateFanSpeed(); err != nil && !errors.Is(err, ErrCurveEvaluation) {
 				f.stopAfterUpdateError(err)
 				return nil
 			}
@@ -507,7 +507,9 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 					f.restoreControlModeOnce()
 					return nil
 				case <-tick.C():
-					if err := f.UpdateFanSpeed(); err != nil {
+					// a curve error doesn't stop the controller: UpdateFanSpeed applied the onSensorFailure
+					// action, and the next tick tries again
+					if err := f.UpdateFanSpeed(); err != nil && !errors.Is(err, ErrCurveEvaluation) {
 						f.stopAfterUpdateError(err)
 						return nil
 					}
@@ -689,17 +691,25 @@ func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]f
 // - mapping the resulting target value to the [minPwm, maxPwm] range of the fan
 // - applying sanity checks to ensure the fan never stops (if specified)
 //
+// If the curve can't be evaluated, the onSensorFailure action of the fan is applied instead
+// (see handleCurveFailure), and an error wrapping ErrCurveEvaluation is returned.
+// Once the curve can be evaluated again, normal control resumes.
+//
 // returns ErrFanStalledAtMaxPwm if no rpm is detected even at fan.maxPwm
 func (f *DefaultFanController) UpdateFanSpeed() error {
 	fan := f.fan
 
-	f.ensureNoThirdPartyIsMessingWithUs()
-
 	// calculate the direct optimal target speed
 	target, err := f.calculateTargetSpeed()
 	if err != nil {
-		return err
+		f.handleCurveFailure(err)
+		return fmt.Errorf("%w: %w", ErrCurveEvaluation, err)
 	}
+	if !f.recoverFromCurveFailure() {
+		return nil
+	}
+
+	f.ensureNoThirdPartyIsMessingWithUs()
 
 	// ensure target value is within bounds of possible values
 	if target > fans.MaxPwmValue {
@@ -859,6 +869,26 @@ func parseControlModeValue(value configuration.ControlModeValue) (fans.ControlMo
 	}
 }
 
+// takeManualControl switches the fan to manual control (see trySetManualPwm).
+// An error of trySetManualPwm is ignored if the fan is in PWM mode anyway.
+func takeManualControl(fan fans.Fan) error {
+	// TODO: check if fan.Supports(fans.FeatureControlModeWrite) - or is it ok if it doesn't and our
+	//       default assumption is that it will always be in manual mode then?
+	//       (trySetManualPwm() just returns nil in that case)
+	//       Alternatively, should fans that don't support switching the mode but run in manual mode
+	//       by default (cmd or file fans?) just always return ControlModePWM in fan.GetControlMode()
+	//       so we can check that?
+	err := trySetManualPwm(fan)
+	if err != nil {
+		cm, e := fan.GetControlMode()
+		// if the control mode is PWM even though trySetManualPwm() failed, ignore that error
+		if e != nil || cm != fans.ControlModePWM {
+			return err
+		}
+	}
+	return nil
+}
+
 func trySetManualPwm(fan fans.Fan) error {
 	if !fan.Supports(fans.FeatureControlModeWrite) {
 		return nil
@@ -901,10 +931,96 @@ func (f *DefaultFanController) stopAfterUpdateError(err error) {
 	notify("Fan Control Error", "Fan %s: %v", f.fan.GetId(), err)
 }
 
+// handleCurveFailure applies the onSensorFailure action of the fan, because its curve can't be evaluated
+// (err). It logs and notifies only when the fan enters the failure state, not on every tick.
+//   - max (default): drive the fan to its maxPwm, on every tick while the failure lasts.
+//   - restore: hand the fan back like on exit (restoreControlMode), once. If that doesn't hand the fan over
+//     to a control mode other than manual PWM (e.g. controlMode.onExit: none, the original mode was manual,
+//     the control mode can't be written or is unknown), fall back to max: a fixed PWM value is not fail-safe.
+func (f *DefaultFanController) handleCurveFailure(err error) {
+	fan := f.fan
+	if f.sensorFailureAction == configuration.OnSensorFailureMax {
+		// keep the fan at max while the failure lasts (e.g. if a third party changed it)
+		f.setMaxPwmForSensorFailure()
+		return
+	}
+	if f.sensorFailureAction != "" {
+		// already restored, leave the fan alone until the curve can be evaluated again
+		return
+	}
+
+	action := fan.GetConfig().GetOnSensorFailure()
+	var description string
+	switch action {
+	case configuration.OnSensorFailureRestore:
+		if f.restoreControlModeOnceForSensorFailure() {
+			f.sensorFailureAction = configuration.OnSensorFailureRestore
+			// fan2go didn't set the current PWM value, so don't compare it with the last target after the recovery
+			f.lastTarget = nil
+			description = "handed the fan back (onSensorFailure: restore)"
+		} else {
+			// fan2go still controls the fan, so it must be restored when the controller stops
+			f.restoreOnce = &sync.Once{}
+			f.sensorFailureAction = configuration.OnSensorFailureMax
+			f.setMaxPwmForSensorFailure()
+			description = "restoring didn't hand the fan over to another control mode, set it to its max PWM instead (onSensorFailure: restore)"
+		}
+	default:
+		f.sensorFailureAction = configuration.OnSensorFailureMax
+		f.setMaxPwmForSensorFailure()
+		description = "set it to its max PWM (onSensorFailure: max)"
+	}
+
+	notify := f.errorNotifier
+	if notify == nil {
+		notify = ui.ErrorAndNotify
+	}
+	// notify only after the fan was set to a safe state
+	notify("Sensor Failure", "Fan %s: curve can't be evaluated, %s until it can be evaluated again: %v", fan.GetId(), description, err)
+}
+
+// setMaxPwmForSensorFailure sets the fan to its maxPwm, the fail-safe speed while its curve can't be evaluated.
+// A failed write is logged once per failure state, not on every tick.
+func (f *DefaultFanController) setMaxPwmForSensorFailure() {
+	err := f.setTargetPwm(f.fan.GetMaxPwm())
+	if err != nil && !f.sensorFailureMaxWriteFailed {
+		ui.Error("Fan %s: Error setting max PWM (further errors are not logged until the curve recovers): %v", f.fan.GetId(), err)
+	}
+	f.sensorFailureMaxWriteFailed = err != nil || f.sensorFailureMaxWriteFailed
+}
+
+// recoverFromCurveFailure leaves the failure state (see handleCurveFailure) after the curve
+// could be evaluated again. If the fan was handed back, manual control is taken again first, like at startup.
+// It returns false if the fan stays in the failure state, because manual control can't be taken again.
+func (f *DefaultFanController) recoverFromCurveFailure() bool {
+	switch f.sensorFailureAction {
+	case "":
+		return true
+	case configuration.OnSensorFailureRestore:
+		if err := takeManualControl(f.fan); err != nil {
+			ui.Debug("Fan %s: Can't take manual control again: %v", f.fan.GetId(), err)
+			return false
+		}
+		// fan2go controls the fan again, so it must be restored when the controller stops
+		f.restoreOnce = &sync.Once{}
+	}
+	f.sensorFailureAction = ""
+	f.sensorFailureMaxWriteFailed = false
+	ui.Info("Fan %s: Curve can be evaluated again, resuming normal control", f.fan.GetId())
+	return true
+}
+
 // restoreControlModeOnce restores the fan settings (see restoreControlMode), unless the current Run
 // already did. Concurrent callers wait until the restore has finished.
 // A panic during the restore is logged, so it can't skip the restore of other fans.
 func (f *DefaultFanController) restoreControlModeOnce() {
+	f.restoreControlModeOnceForSensorFailure()
+}
+
+// restoreControlModeOnceForSensorFailure is restoreControlModeOnce, and returns true if this call restored
+// the fan settings and handed the fan over to a control mode other than manual PWM (see restoreControlMode).
+// After a successful restore, the update loop arms a new restoreOnce once it controls the fan again.
+func (f *DefaultFanController) restoreControlModeOnceForSensorFailure() (restored bool) {
 	once := f.restoreOnce
 	if once == nil {
 		// not called from Run
@@ -916,8 +1032,9 @@ func (f *DefaultFanController) restoreControlModeOnce() {
 				ui.Error("Fan %s: Panic while restoring the fan settings: %v\n%s", f.fan.GetId(), r, debug.Stack())
 			}
 		}()
-		f.restoreControlMode()
+		restored = f.restoreControlMode()
 	})
+	return restored
 }
 
 // panicToError logs a panic r recovered in Run or one of its goroutines (named by where)
@@ -938,10 +1055,14 @@ func (f *DefaultFanController) panicToError(where string, r any) error {
 // the last speed fan2go set.
 // Exception: if the original control mode is unknown on restore (default), but the fan supports
 // writing it, the fan is handed back to automatic control (see restoreUnknownControlMode).
-func (f *DefaultFanController) restoreControlMode() {
+//
+// Returns true if the fan was handed over to a control mode other than manual PWM (e.g. automatic),
+// or set to max speed because its control mode couldn't be restored. Otherwise, the fan is left at a fixed
+// PWM value (or wasn't changed at all).
+func (f *DefaultFanController) restoreControlMode() (handedOver bool) {
 	if f.originalFanState == nil {
 		ui.Warning("Skipping fan settings restore for %s, original state was never captured", f.fan.GetId())
-		return
+		return false
 	}
 	originalControlMode := f.originalFanState.ControlMode
 	originalPwmValue := f.originalFanState.PwmValue
@@ -956,14 +1077,13 @@ func (f *DefaultFanController) restoreControlMode() {
 	// none: skip all restore actions
 	if onExit != nil && onExit.None != nil {
 		ui.Info("Skipping fan restore for %s (controlMode.onExit: none)", f.fan.GetId())
-		return
+		return false
 	}
 
 	// restore (default), but the original control mode is unknown
 	restoreOriginal := onExit == nil || onExit.Restore != nil
 	if restoreOriginal && originalControlMode == nil && f.fan.Supports(fans.FeatureControlModeWrite) {
-		f.restoreUnknownControlMode(originalPwmValue)
-		return
+		return f.restoreUnknownControlMode(originalPwmValue)
 	}
 
 	var controlModeToSet *fans.ControlMode = nil
@@ -1017,9 +1137,11 @@ func (f *DefaultFanController) restoreControlMode() {
 				ui.Warning("Fan %s: Error restoring control mode %d, setting max speed instead: %v", f.fan.GetId(), *controlModeToSet, err)
 				if err := f.fan.SetPwm(f.applyPwmMapForRestore(fans.MaxPwmValue)); err != nil {
 					ui.Warning("Unable to restore fan %s, make sure it is running!", f.fan.GetId())
+					return false
 				}
-				return
+				return true
 			}
+			handedOver = *controlModeToSet != fans.ControlModePWM
 		} else {
 			ui.Warning("Cannot restore control mode of fan %s, writing control mode is not supported", f.fan.GetId())
 		}
@@ -1030,23 +1152,25 @@ func (f *DefaultFanController) restoreControlMode() {
 			ui.Warning("Fan %s: Error restoring original PWM value: %v", f.fan.GetId(), err)
 		}
 	}
+	return handedOver
 }
 
 // restoreUnknownControlMode restores a fan that supports writing its control mode, but whose
 // original control mode is unknown: it hands the fan back to automatic control. Only if that fails,
 // it falls back to manual control at the original PWM value, if that is known.
-func (f *DefaultFanController) restoreUnknownControlMode(originalPwmValue *int) {
+// Returns true if the fan was handed back to automatic control.
+func (f *DefaultFanController) restoreUnknownControlMode(originalPwmValue *int) bool {
 	err := f.fan.SetControlMode(fans.ControlModeAutomatic)
 	if err == nil {
 		// don't write a PWM value: on some drivers that switches the fan back to manual control
 		ui.Info("Original control mode of fan %s is unknown, handed it back to automatic control", f.fan.GetId())
-		return
+		return true
 	}
 	ui.Warning("Fan %s: Original control mode is unknown and automatic control could not be set: %v", f.fan.GetId(), err)
 
 	if originalPwmValue == nil {
 		ui.Warning("Original PWM value of fan %s is unknown, leaving it at the last speed set by fan2go", f.fan.GetId())
-		return
+		return false
 	}
 	if err := f.fan.SetControlMode(fans.ControlModePWM); err != nil {
 		ui.Warning("Fan %s: Error setting manual control mode: %v", f.fan.GetId(), err)
@@ -1054,6 +1178,7 @@ func (f *DefaultFanController) restoreUnknownControlMode(originalPwmValue *int) 
 	if err := f.fan.SetPwm(*originalPwmValue); err != nil {
 		ui.Warning("Fan %s: Error restoring original PWM value: %v", f.fan.GetId(), err)
 	}
+	return false
 }
 
 // applyPwmMapForRestore maps a target value (pre-pwmMap) to the raw value to write on restore.

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -48,7 +49,7 @@ const testD = -10.0
 //   - The D term acts on the change of the measurement (not of the error): D = -d * dMeasured/dt.
 
 // setupTest creates a PID curve via NewSpeedCurve, bound to a mock sensor at initialTemp.
-// The returned tick function advances the curve's clock by loopDelay, standing in for the time between two cycles.
+// The returned tick function advances the clock by loopDelay, standing in for the time between two sensor readings.
 func setupTest(t *testing.T, p, i, d float64, initialTemp float64) (*PidSpeedCurve, *MockSensor, func()) {
 	mockSensor := &MockSensor{
 		ID:        testSensorID,
@@ -69,9 +70,12 @@ func setupTest(t *testing.T, p, i, d float64, initialTemp float64) (*PidSpeedCur
 	}
 	reg.RegisterCurve(curve)
 
-	now := time.Unix(0, 0)
-	curve.pidLoop.SetClock(func() time.Time { return now })
-	tick := func() { now = now.Add(loopDelay) }
+	// the sensor monitor records a new reading every loopDelay; the pid loop uses the time between
+	// two readings as dt
+	clock := util.NewFakeClock(time.Unix(1000, 0))
+	curve.SetClock(clock)
+	mockSensor.ReadingTime = clock.Now
+	tick := func() { clock.Advance(loopDelay) }
 
 	return curve, mockSensor, tick
 }

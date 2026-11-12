@@ -28,13 +28,13 @@ func (c *FunctionSpeedCurve) GetId() string {
 
 func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
 	if c.registry == nil {
-		return c.Value, fmt.Errorf("no registry bound to speed curve '%s'", c.Config.ID)
+		return c.CurrentValue(), fmt.Errorf("no registry bound to speed curve '%s'", c.Config.ID)
 	}
 	var curves []SpeedCurve
 	for _, curveId := range c.Config.Function.Curves {
 		curve, exists := c.registry.GetCurve(curveId)
 		if !exists || curve == nil {
-			return c.Value, fmt.Errorf("sub-curve not found with id '%s'", curveId)
+			return c.CurrentValue(), fmt.Errorf("sub-curve not found with id '%s'", curveId)
 		}
 		curves = append(curves, curve)
 	}
@@ -51,7 +51,9 @@ func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
 		//  even if it is currently not used by any fan controller.
 		v, err := curve.Evaluate()
 		if err != nil {
-			return 0, err
+			// an error of any sub-curve fails the whole curve (e.g. a maximum over two sensors
+			// must not ignore the one that can't be read)
+			return c.CurrentValue(), fmt.Errorf("curve %s: %w", c.Config.ID, err)
 		}
 		values = append(values, v)
 	}
@@ -93,7 +95,7 @@ func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
 		value = avg
 	default:
 		// unreachable after config validation, but must not exit the process on the control path
-		return 0, fmt.Errorf("unknown curve function %q in curve '%s'", c.Config.Function.Type, c.Config.ID)
+		return c.CurrentValue(), fmt.Errorf("unknown curve function %q in curve '%s'", c.Config.Function.Type, c.Config.ID)
 	}
 
 	ui.Debug("Evaluating curve '%s'. Curve values: '%v' Desired speed: %.2f", c.Config.ID, values, value)

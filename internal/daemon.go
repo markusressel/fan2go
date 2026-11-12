@@ -289,6 +289,8 @@ func ignoreSignalsDuringShutdown(sig <-chan os.Signal) {
 
 func startSensorMonitors(ctx context.Context, reg *registry.Registry, wg *sync.WaitGroup) {
 	// === sensor monitoring
+	ui.Info("Sensor values are considered stale %s after their last successful reading (sensorStaleTimeout)",
+		configuration.CurrentConfig.GetSensorStaleTimeout())
 	sensorMapData := reg.SnapshotSensors()
 	for _, sensor := range sensorMapData {
 		s := sensor

@@ -20,6 +20,11 @@ tempSensorPollingRate: 200ms
 # Smoothing of temp sensor values (must be >= 1): exponential moving average, each new value
 # moves the average by 1/tempRollingWindowSize towards it (larger = smoother, but slower)
 tempRollingWindowSize: 10
+# (Optional) The time after the last successful reading of a temperature sensor after which its value
+# is considered stale (must be > 0). Curves using a stale sensor can't be evaluated, and the fans
+# using them are handled according to their onSensorFailure option.
+# Default: 10 x tempSensorPollingRate, but at least 10s
+#sensorStaleTimeout: 10s
 
 # The rate to poll fan RPM input sensors at (must be > 0)
 rpmPollingRate: 1s
@@ -123,6 +128,15 @@ fans:
     #   onExit:
     #     mode: auto     # set control mode on exit (accepts same values as active)
     #     speed: 128     # set fixed speed on exit (0..255), mapped through the pwmMap
+    # (Optional) What to do with this fan while its curve can't be evaluated, e.g. because a
+    # sensor can't be read or its value is stale (see sensorStaleTimeout).
+    # fan2go keeps trying and resumes normal control once the curve can be evaluated again.
+    #   max (default): set the fan to its maxPwm
+    #   restore:       hand the fan back like on exit (see controlMode.onExit), and take control
+    #                  again once the curve recovers. If that would leave the fan at a fixed
+    #                  PWM value (e.g. onExit: none, or its original mode was manual), the fan
+    #                  is set to its maxPwm instead.
+    # onSensorFailure: max
     # (Optional) Override the global fanController.pwmSetDelay for this specific fan.
     # pwmSetDelay: 10ms
     # (Optional) By default (useUnscaledCurveValues: false) speed values from the curve are scaled

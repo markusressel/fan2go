@@ -24,7 +24,9 @@ const (
 type DiskSensor struct {
 	Config    configuration.SensorConfig `json:"configuration"`
 	MovingAvg float64                    `json:"movingAvg"`
-	mu        sync.Mutex
+
+	ReadingTracker
+	mu sync.Mutex
 }
 
 func (s *DiskSensor) GetId() string {

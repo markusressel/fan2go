@@ -22,6 +22,8 @@ type NvidiaSensor struct {
 	Config    configuration.SensorConfig `json:"configuration"`
 	MovingAvg float64                    `json:"movingAvg"`
 
+	ReadingTracker
+
 	device         nvml.Device
 	nvidiaSensorId nvml.TemperatureSensors
 

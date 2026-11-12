@@ -359,6 +359,12 @@ fans:
     # (Optional) Override the global fanController.pwmSetDelay for this specific fan.
     # Useful when a fan requires more or less time to respond to PWM changes than the global default.
     # pwmSetDelay: 10ms
+    # (Optional) What to do with this fan while its curve can't be evaluated, e.g. because a sensor
+    # can't be read or its value is stale. See "Sensor failures" below.
+    #   max (default): set the fan to its maxPwm
+    #   restore:       hand the fan back like on exit (see controlMode.onExit); maxPwm if that would
+    #                  leave the fan at a fixed PWM value
+    onSensorFailure: max
     # (Optional) Configure how fan2go maps the internal [0..255] PWM range to
     # hardware-specific PWM values. If omitted, fan2go auto-detects the mapping
     # during fan initialization.
@@ -425,7 +431,8 @@ fans:
     #   On hwmon fans, integers >= 3 are written to pwmX_enable as is (e.g. a driver specific mode like 5);
     #   0, 1 and 2 mean disabled, pwm and auto. Nvidia fans don't support integers >= 3.
     # onExit: what to do when fan2go exits.
-    #   This also applies when a fan controller stops because of an error. Further SIGINT/SIGTERM/SIGHUP
+    #   This also applies when a fan controller stops because of an error, and to onSensorFailure: restore.
+    #   Further SIGINT/SIGTERM/SIGHUP
     #   signals during shutdown are ignored until all fans are handled; use SIGKILL to force an exit.
     #   String shorthand:
     #     onExit: restore   # restore original control mode and PWM value (default).
@@ -671,6 +678,10 @@ curves:
 
 Unlike the other curve types, this one does not use the average of the sensor data
 to calculate its value, which allows you to create a completely custom behaviour.
+It uses the last successful (raw) reading of the sensor monitor, which is at most one
+`tempSensorPollingRate` old, and only advances when a new reading has arrived, using the time
+between two readings for its I and D terms. Evaluating the curve more often than the sensor is
+polled therefore doesn't change its result.
 Keep in mind though that the fan controller may also be PID based (depending on the
 specified `controlAlgorithm`) which would also affect how the curve is applied to the fan.
 
@@ -1011,9 +1022,38 @@ fan2go increases it (again). If the fan still doesn't spin at its `maxPwm`, fan2
 the state it had before fan2go took control. A fan whose RPM sensor reports 0 RPM even though it spins (e.g. a missing
 or broken tach signal) therefore ends up uncontrolled: check the tach signal, or disable `neverStop` for such a fan.
 
+### Sensor failures
+
+Curves never read sensors themselves: they use the values recorded by the sensor monitors. A failed reading leaves
+the average (and the last reading) unchanged; only the first failed reading of a series and the recovery are logged.
+A sensor that can't be read at startup has no value until its first successful reading, which then becomes its average.
+
+A sensor value is **stale** when its last successful reading is older than `sensorStaleTimeout` (default: 10 times
+`tempSensorPollingRate`, but at least 10 seconds), or if it has never been read successfully. A curve whose sensor is
+stale can't be evaluated. This also applies to a `function` curve if any of its curves can't be evaluated.
+
+While the curve of a fan can't be evaluated (for any reason), fan2go applies the fan's `onSensorFailure` option:
+
+- `max` (default): the fan is set to its `maxPwm` (mapped through its `pwmMap`, like any other speed).
+- `restore`: the fan is handed back like on exit (see `controlMode.onExit`, e.g. to the automatic control of the
+  BIOS). A fixed PWM value is not fail-safe, so if that doesn't hand the fan over to a control mode other than manual
+  PWM (e.g. `onExit: none`, the original mode was manual, or the fan's control mode can't be written or is unknown),
+  the fan is set to its `maxPwm` instead.
+
+In both cases, fan2go keeps trying to evaluate the curve on every cycle, and resumes normal control (taking manual
+control again for `restore`) as soon as it can. Entering this state is logged and notified once, and so is the
+recovery. The fan controller only stops for good if a fan with `neverStop: true` doesn't spin even at its `maxPwm`
+(see above); this check is paused while the fan is in the failure state. A PID curve starts over when its sensor
+recovers from a stale value.
+
+```yaml
+# (Optional) default: 10 x tempSensorPollingRate, but at least 10s
+sensorStaleTimeout: 10s
+```
+
 fan2go rejects a config at startup (and keeps the current config on reload) if a polling rate
-(`tempSensorPollingRate`, `rpmPollingRate`) or `fanController.adjustmentTickRate` is not greater than 0, or if a
-rolling window size is smaller than 1.
+(`tempSensorPollingRate`, `rpmPollingRate`), `sensorStaleTimeout` or `fanController.adjustmentTickRate` is not
+greater than 0, or if a rolling window size is smaller than 1.
 
 ## Fan Controllers
 

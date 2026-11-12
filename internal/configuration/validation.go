@@ -76,6 +76,10 @@ func validateGlobals(config *Configuration) error {
 		}
 	}
 
+	if config.SensorStaleTimeout != nil && *config.SensorStaleTimeout <= 0 {
+		return fmt.Errorf("sensorStaleTimeout must be > 0, got %s", *config.SensorStaleTimeout)
+	}
+
 	if config.FanResponseDelay < 0 {
 		return fmt.Errorf("fanResponseDelay must be >= 0, got %v", config.FanResponseDelay)
 	}
@@ -413,6 +417,13 @@ func validateFans(config *Configuration) error {
 
 		if fanConfig.PwmSetDelay != nil && *fanConfig.PwmSetDelay < 0 {
 			return fmt.Errorf("fan %s: pwmSetDelay must be >= 0, got %s", fanConfig.ID, *fanConfig.PwmSetDelay)
+		}
+
+		switch fanConfig.OnSensorFailure {
+		case "", OnSensorFailureMax, OnSensorFailureRestore:
+		default:
+			return fmt.Errorf("fan %s: invalid onSensorFailure %q, must be one of: %s | %s",
+				fanConfig.ID, fanConfig.OnSensorFailure, OnSensorFailureMax, OnSensorFailureRestore)
 		}
 
 		if fanConfig.ControlAlgorithm != nil {
