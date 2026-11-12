@@ -1087,6 +1087,14 @@ fanController:
 
 This setting also determines the time unit implied by `maxPwmChangePerCycle` in the Direct control algorithm.
 
+If writing the PWM value to the hardware fails, fan2go tries again in the next cycle. Only the first failure, every
+25th failure in a row and the recovery are logged. If writing keeps failing for 10 seconds, fan2go stops controlling
+that fan: it restores the fan settings like on exit (as far as possible, see `controlMode.onExit`) and notifies you.
+While a fan is set to its `maxPwm` because of a sensor failure (`onSensorFailure: max`), failed writes are only
+logged and don't stop the controller. Possible causes are an
+unloaded driver, missing permissions or a device that is gone. Restart fan2go or reload its config to control the fan
+again.
+
 ### Control Algorithms
 
 A control algorithm
@@ -1141,6 +1149,10 @@ fans:
 The loop is advanced at a constant rate, determined by the [cycle rate](#cycle) (`fanController.adjustmentTickRate`),
 which defaults to `200ms`.
 
+The first cycle after fan2go starts (or reloads its config) applies the curve value directly, like the direct control
+algorithm. The PID loop is initialized as if it had already settled at that value, so it only smooths later changes
+of the curve value instead of ramping the fan up from (almost) zero.
+
 See [PID controller on Wikipedia](https://en.wikipedia.org/wiki/Proportional%E2%80%93integral%E2%80%93derivative_controller)
 for more information on what a PID controller is.
 
@@ -1160,6 +1172,10 @@ that was not caused by fan2go itself. This usually means that fan2go is not the 
 and something else (like f.ex. the mainboard or another fan control software) is also running and changing the speed
 of the fan, competing with fan2go. Since fan2go cannot figure out what other software is, you have to investigate
 this yourself.
+
+While the PWM value keeps being changed, only the first change, every 25th change in a row and the recovery are
+logged. Every change is counted in the `fan2go_controller_unexpected_pwm_value_count` metric
+(see [Statistics](#statistics)).
 
 Another common reason this message can occur is when the driver of the fan in question does not actually support
 setting the PWM directly and uses some kind of virtual PWM instead. This has been a problem mostly on AMD graphics
