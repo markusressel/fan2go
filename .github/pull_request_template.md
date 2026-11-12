@@ -22,3 +22,5 @@ None.
 ## Testing
 
 <!-- How was this verified? Commands run, tests added, hardware tested on. -->
+
+<!-- If this changes a core system, update the matching document in docs/ (see AGENTS.md). -->
