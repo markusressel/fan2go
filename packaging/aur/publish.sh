@@ -13,7 +13,7 @@
 #   --yes           push without asking for confirmation
 #
 # Environment:
-#   AUR_DIR         directory containing the AUR clones fan2go/ and fan2go-git/ (default: ~/programming);
+#   AUR_DIR         directory containing the AUR clones fan2go/ and fan2go-git/ (default: ~/programming/AUR);
 #                   missing clones are created (fan2go-git is expected at $AUR_DIR/fan2go-git)
 
 set -euo pipefail
@@ -66,7 +66,7 @@ done
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(git -C "$script_dir" rev-parse --show-toplevel)"
-aur_dir="${AUR_DIR:-$HOME/programming}"
+aur_dir="${AUR_DIR:-$HOME/programming/AUR}"
 
 info "Checking that tag $version exists on GitHub"
 git -C "$repo_dir" ls-remote --exit-code --tags origin "refs/tags/$version" > /dev/null ||
