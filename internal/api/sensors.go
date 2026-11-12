@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/labstack/echo/v5"
@@ -17,8 +16,6 @@ func registerSensorEndpoints(rest *echo.Echo, reg *registry.Registry) {
 	group.GET("/:"+urlParamId+"/", func(c *echo.Context) error {
 		return getSensor(c, reg)
 	})
-	group.POST("/", createSensor)
-	group.DELETE("/:"+urlParamId+"/", deleteSensor)
 }
 
 func getSensors(c *echo.Context, reg *registry.Registry) error {
@@ -35,12 +32,4 @@ func getSensor(c *echo.Context, reg *registry.Registry) error {
 	} else {
 		return c.JSONPretty(http.StatusOK, data, indentationChar)
 	}
-}
-
-func createSensor(c *echo.Context) error {
-	return returnError(c, errors.New("not yet supported"))
-}
-
-func deleteSensor(c *echo.Context) error {
-	return returnError(c, errors.New("not yet supported"))
 }
