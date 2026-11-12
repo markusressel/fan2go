@@ -9,5 +9,8 @@
       ]
     }
   },
-  "movingAvg": 38000
+  "movingAvg": 38000,
+  "consecutiveFailures": 0,
+  "readFailures": 0,
+  "stale": true
 }

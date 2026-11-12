@@ -10,6 +10,9 @@ Group=root
 ExecStart=/usr/bin/fan2go -c /etc/fan2go/fan2go.yaml --no-style
 Restart=always
 RestartSec=10
+# exit code 78 is a config error (config file missing, unreadable or invalid), a restart can't fix that
+# (see "Exit codes" in the README)
+RestartPreventExitStatus=78
 Environment=DISPLAY=:0
 
 NoNewPrivileges=true

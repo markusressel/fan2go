@@ -220,12 +220,7 @@ func (fan *HwMonFan) AttachFanRpmCurveData(curveData *map[int]float64) (err erro
 	fan.FanCurveData = data
 	fan.mu.Unlock()
 
-	startPwm, maxPwm := ComputePwmBoundariesFromCurveData(*data, configuredStartPwm(fan))
-	fan.SetStartPwm(startPwm, false)
-	fan.SetMaxPwm(maxPwm, false)
-
-	// TODO: we don't have a way to determine this yet
-	fan.SetMinPwm(startPwm, false)
+	applyPwmBoundariesFromCurveData(fan, *data)
 
 	return err
 }

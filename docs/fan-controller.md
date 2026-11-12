@@ -21,7 +21,7 @@ polling and staleness in [sensors.md](sensors.md), and curves and the curve eval
   prepareController, storeInitialFanState                           UpdateFanSpeed():
   wait startupSensorWarmup (2s) + tempSensorPollingRate               curve.CurrentResult()
   runInitializationIfNeeded / load curve data / pwmMap                  error -> onSensorFailure (max | restore)
-  takeManualControl (controlMode.active)                              controlLoop.Cycle(value)
+  takeManualControl (controlMode.active)                              controlLoop.Cycle(now, value)
   run.Group:                                                          clamp, scale to [minPwm..maxPwm]
     RPM monitor goroutine (every rpmPollingRate)                      neverStop floor + stall detection
       measureRpm -> exponential moving average                        setTargetPwm -> pwmMap -> fan.SetPwm
@@ -101,7 +101,12 @@ deterministic tests under `-race`); users (shutdown isn't delayed by waits).
 
 `minPwm`, `startPwm` and `maxPwm` come from the config if set, otherwise from the saved fan analysis
 (`AttachFanRpmCurveData`). Without config values, `minPwm` is set to the measured `startPwm`. `startPwm` itself
-is not used by the update loop: it is only logged, and `Run` warns if `minPwm > startPwm`. fan2go has no
+is not used by the update loop: it is only logged, and `Run` warns if `minPwm > startPwm`. If a derived `minPwm` or
+`startPwm` ends up above `maxPwm` (e.g. `maxPwm: 100` and a measured start of 120), `AttachFanRpmCurveData` logs a
+warning and clamps (`clampDerivedPwmBoundaries`), so the scaling can't run backwards. A configured value always
+wins: with a configured `maxPwm`, the derived `minPwm`/`startPwm` are lowered to it; otherwise the derived `maxPwm`
+is raised to the (configured or derived) `minPwm`/`startPwm` (a higher PWM is the safe direction), as far as the
+fan allows (nvidia: 100); derived values still above it are lowered. fan2go has no
 "jump-start" from standstill (open issue #30). File and cmd fans always report `minPwm` 0 and `maxPwm` 255; nvidia
 fans default to `maxPwm` 100, because NVML speeds are percent.
 
@@ -232,7 +237,8 @@ PWM is only written when the fan is not handed back to automatic.
 - Deleted after a complete restore (`restoreControlModeOnceAndForget`): no write failed, no fallback to full speed,
   no panic. This covers exit, reload, update errors, panics, `fan2go fan init` and `onSensorFailure: restore` if
   the fan was handed over. `onExit: none` counts as complete. If `restore` falls back to `max`, fan2go still controls
-  the fan and the entry stays. After an incomplete restore, the entry stays too.
+  the fan and the entry stays. After an incomplete restore, the entry stays too, and the stopped controller reports
+  the error "fan not handed back completely, see the log" in its status (`/controller`).
 - On start, `storeInitialFanState` reads the fan as before, then loads the entry. A saved state wins over the
   read one (logged as a warning): the fan is presumably still in the state a killed run left behind. The hwmon
   driver value of the automatic mode is seeded into the fan (`fans.AutomaticControlModeKeeper`), so the restore
@@ -315,6 +321,9 @@ next cycle tries again.
   only `onExit.speed`, original mode manual, mode unknown or not writable), the fan is set to `maxPwm` like `max`.
 - Recovery (`recoverFromCurveFailure`): after `restore`, take manual control again (like at startup) and arm a new
   `restoreOnce`. If that fails, the fan stays handed back and fan2go tries again on the next cycle.
+  Before that, `calculateTargetSpeed` makes the control loop continue from the fan's speed: `Preset` at the curve
+  value of `maxPwm` after `max`, `Reset` (start at the target) after `restore`. So the fan ramps down from max
+  instead of jumping (see [control-algorithms.md](control-algorithms.md)).
 - Entering the failure state is logged and notified once, after the fan is in a safe state. Recovery is logged
   once. The stall detection is paused while the curve fails, because `UpdateFanSpeed` returns before it.
 
@@ -388,8 +397,43 @@ startup. Snapping to the input fixes averages that stayed just below a constant 
 
 **Who benefits**: `neverStop` users; users of the RPM values in the statistics and REST API.
 
-**Trade-offs**: `rpmRollingWindowSize` is not a window, despite its name. RPM read errors are logged on every poll,
-unlike temperature sensors, whose monitor logs only the first failure and the recovery ([sensors.md](sensors.md)).
+Like the sensor monitor ([sensors.md](sensors.md)), it logs only the first failed reading of a series and the
+recovery (with the number of failed readings), not every poll (`rpmReadFailures`).
+
+**Trade-offs**: `rpmRollingWindowSize` is not a window, despite its name. A tach that fails for a long time is only
+visible in the first log line; there is no metric for failed RPM reads yet.
+
+### Controller state
+
+**Decision**: Each controller keeps its state (`controller/status.State`), the time it entered it and the error that
+caused it, under `statsMutex`. `GetStatus` returns a snapshot. The Prometheus metric `fan2go_controller_state{id,state}`
+and the REST API (`/controller`, `/controller/<fan id>`) show it.
+
+| State | Meaning |
+|---|---|
+| `stopped` | Not started yet, or stopped cleanly (shutdown, reload, cancelled during startup) |
+| `initializing` | `Run` started: sensor warm-up, fan initialization, `setPwm -> getPwm` detection, until the first update |
+| `running` | Normal control (set by the first update that could evaluate the curve) |
+| `sensor_failure_max` | The curve fails, the fan is held at `maxPwm` (`onSensorFailure: max`, or `restore` that couldn't hand the fan over) |
+| `sensor_failure_restored` | The curve fails, the fan was handed back (`onSensorFailure: restore`) |
+| `stopped_pwm_write_failed` | Stopped after `ErrPwmWriteFailed` |
+| `stopped_stalled` | Stopped after `ErrFanStalledAtMaxPwm` |
+| `stopped_error` | `Run` returned another error (e.g. initialization, manual control, panic) |
+
+The update loop records the reason when it stops the controller (`stopAfterUpdateError`); `Run` doesn't overwrite
+it when it returns. A `Run` that starts again (after a failed reload) starts with `initializing`. While the curve
+fails, every update sets the `sensor_failure_*` state again. `running` is only set by an update that could evaluate
+the curve, so a controller whose curve still fails when `Run` starts again re-enters the failure state on its first
+update, without reporting `running` in between: alerts on the failure state don't resolve and fire again. If the
+curve recovers but manual control can't be taken again, the state stays `sensor_failure_restored` with that error.
+
+**Why**: Before, a fan in a failure state or a stopped controller was only visible in the log and a desktop
+notification. Headless users couldn't alert on it.
+
+**Who benefits**: Users who monitor fan2go with Prometheus, and UI clients of the REST API.
+
+**Trade-offs**: The state is per run of the controller; a reload creates new controllers that start at `stopped`.
+The metric has one series per state and controller (8 per fan).
 
 ### Locking: leaf locks in the fans, snapshots for JSON
 
@@ -438,7 +482,7 @@ fan2go's own state).
 | `tempSensorPollingRate` | `200ms` | Added to the 2 s startup warm-up; also sets the default `sensorStaleTimeout`. |
 | `sensorStaleTimeout` | max(10s, 10 x `tempSensorPollingRate`) | When a sensor counts as stale, so when `onSensorFailure` applies. See [sensors.md](sensors.md). |
 | `fans[].neverStop` | `false` | Floor at `minPwm`; with an RPM sensor, stall detection. |
-| `fans[].minPwm`, `startPwm`, `maxPwm` | from analysis | Range for scaling; validation requires `minPwm`, `startPwm` <= `maxPwm` if set. |
+| `fans[].minPwm`, `startPwm`, `maxPwm` | from analysis | Range for scaling; validation requires `minPwm`, `startPwm` <= `maxPwm` if set; derived values are clamped. |
 | `fans[].useUnscaledCurveValues` | `false` | Skip the scaling to `[minPwm..maxPwm]`. |
 | `fans[].pwmMap`, `setPwmToGetPwmMap` | autodetect | See [fan-analysis.md](fan-analysis.md). |
 | `fans[].controlMode.active` | `pwm` | Mode written when fan2go takes control: `pwm`/`manual`, `disabled`, `auto`, or an integer. |
@@ -457,8 +501,6 @@ threshold 50 RPM, stall reaction 3 RPM polling periods, PWM write failure timeou
 
 - `startPwm` is not used at runtime; without config values `minPwm` equals the measured `startPwm`, and there is no
   jump-start from standstill (#30).
-- If only `maxPwm` is configured and it is below the measured `startPwm`, `minPwm > maxPwm` is possible. Validation
-  only checks configured values, so the scaling then runs backwards.
 - A successful fallback to `disabled` hides a failed switch to `pwm` mode; the `fanModeChangedByThirdParty` check
   expects PWM mode even with another `controlMode.active`.
 - A stopped controller (`ErrPwmWriteFailed`, `ErrFanStalledAtMaxPwm`, panic) is not restarted, and the daemon keeps

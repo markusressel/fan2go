@@ -2,6 +2,7 @@ package curves
 
 import (
 	"encoding/json"
+	"math"
 	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -56,7 +57,9 @@ type staircaseCurveJson struct {
 	Value       float64                   `json:"value"`
 	Error       string                    `json:"error,omitempty"`
 	EvaluatedAt time.Time                 `json:"evaluatedAt,omitzero"`
-	LastTemp    int
+	// LastTemp is the temperature (in °C) of the step the curve value belongs to,
+	// omitted before the first evaluation and while the sensor value is below the lowest step
+	LastTemp *int `json:"lastTemp,omitempty"`
 }
 
 func (c *StaircaseSpeedCurve) MarshalJSON() ([]byte, error) {
@@ -67,7 +70,10 @@ func (c *StaircaseSpeedCurve) MarshalJSON() ([]byte, error) {
 		Value:       base.Value,
 		Error:       base.Error,
 		EvaluatedAt: base.EvaluatedAt,
-		LastTemp:    c.LastTemp,
+	}
+	if c.LastTemp != math.MinInt {
+		lastTemp := c.LastTemp
+		snapshot.LastTemp = &lastTemp
 	}
 	c.mu.RUnlock()
 	return json.Marshal(snapshot)

@@ -5,5 +5,8 @@
       "device": "/dev/sda"
     }
   },
-  "movingAvg": 35000
+  "movingAvg": 35000,
+  "consecutiveFailures": 0,
+  "readFailures": 0,
+  "stale": true
 }

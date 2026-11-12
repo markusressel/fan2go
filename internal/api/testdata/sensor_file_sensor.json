@@ -5,5 +5,9 @@
       "path": "/tmp/file_sensor"
     }
   },
-  "movingAvg": 40000
+  "movingAvg": 40000,
+  "lastReadingTime": "2024-01-02T03:04:05Z",
+  "consecutiveFailures": 2,
+  "readFailures": 2,
+  "stale": true
 }

@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/ui"
 )
 
 const (
@@ -182,6 +183,68 @@ func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 		pwmRpmMap = &map[int]float64{}
 	}
 	return ComputePwmBoundariesFromCurveData(*pwmRpmMap, configuredStartPwm(fan))
+}
+
+// applyPwmBoundariesFromCurveData sets the startPwm, maxPwm and minPwm of the fan that aren't configured
+// from the given PWM -> RPM curve data, then resolves conflicts between derived and configured values
+// (see clampDerivedPwmBoundaries).
+func applyPwmBoundariesFromCurveData(fan Fan, curveData map[int]float64) {
+	startPwm, maxPwm := ComputePwmBoundariesFromCurveData(curveData, configuredStartPwm(fan))
+	fan.SetStartPwm(startPwm, false)
+	fan.SetMaxPwm(maxPwm, false)
+
+	// TODO: we don't have a way to determine this yet
+	fan.SetMinPwm(startPwm, false)
+
+	clampDerivedPwmBoundaries(fan)
+}
+
+// clampDerivedPwmBoundaries makes sure minPwm and startPwm aren't above maxPwm, which would invert the
+// scaling of the curve value to [minPwm..maxPwm]. Validation rejects such configured values, so a conflict
+// always involves a value derived from the curve data, e.g. a measured startPwm of 120 with maxPwm: 100.
+// A configured value always wins: with a configured maxPwm, the derived minPwm/startPwm are lowered to it.
+// Otherwise the derived maxPwm is raised to the (configured or derived) minPwm/startPwm, as far as the fan allows
+// (a higher PWM is the safe direction), and only what is still above it is lowered. Configured values are never
+// changed.
+func clampDerivedPwmBoundaries(fan Fan) {
+	config := fan.GetConfig()
+	minPwm, startPwm, maxPwm := fan.GetMinPwm(), fan.GetStartPwm(), fan.GetMaxPwm()
+	if minPwm <= maxPwm && startPwm <= maxPwm {
+		return
+	}
+
+	if config.MaxPwm == nil {
+		newMaxPwm := max(minPwm, startPwm)
+		fan.SetMaxPwm(newMaxPwm, false)
+		// the fan may limit the value (nvidia fans: 100)
+		maxPwm = fan.GetMaxPwm()
+		ui.Warning("Fan %s: the derived maxPwm is below minPwm (%d) or startPwm (%d), using maxPwm %d",
+			fan.GetId(), minPwm, startPwm, maxPwm)
+		if minPwm <= maxPwm && startPwm <= maxPwm {
+			return
+		}
+	}
+
+	if minPwm > maxPwm {
+		if config.MinPwm == nil {
+			ui.Warning("Fan %s: the derived minPwm (%d) is above maxPwm (%d), using minPwm %d",
+				fan.GetId(), minPwm, maxPwm, maxPwm)
+			fan.SetMinPwm(maxPwm, false)
+		} else {
+			ui.Warning("Fan %s: the configured minPwm (%d) is above the highest possible maxPwm (%d)",
+				fan.GetId(), minPwm, maxPwm)
+		}
+	}
+	if startPwm > maxPwm {
+		if config.StartPwm == nil {
+			ui.Warning("Fan %s: the derived startPwm (%d) is above maxPwm (%d), using startPwm %d",
+				fan.GetId(), startPwm, maxPwm, maxPwm)
+			fan.SetStartPwm(maxPwm, false)
+		} else {
+			ui.Warning("Fan %s: the configured startPwm (%d) is above the highest possible maxPwm (%d)",
+				fan.GetId(), startPwm, maxPwm)
+		}
+	}
 }
 
 // configuredStartPwm returns the startPwm the user configured for the fan, or MaxPwmValue if there is none

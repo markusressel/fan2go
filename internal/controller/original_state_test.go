@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/controller/status"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/util"
@@ -217,6 +218,8 @@ func TestFanController_Run_IncompleteRestore_KeepsSavedStateForTheNextController
 	test.stop()
 
 	// THEN: the fan is set to full speed instead, and the saved state is kept
+	assert.Equal(t, status.StateStopped, test.controller.GetStatus().State)
+	assert.Equal(t, errHandbackIncomplete.Error(), test.controller.GetStatus().Error)
 	assert.Equal(t, 255, fan.PWM)
 	assert.Equal(t, fans.ControlModePWM, fan.ControlMode)
 	saved, ok := p.originalState("fan")
@@ -230,6 +233,7 @@ func TestFanController_Run_IncompleteRestore_KeepsSavedStateForTheNextController
 
 	// THEN: the fan is restored to the original (automatic) mode, not to manual mode at full speed
 	assert.Equal(t, fans.ControlModeAutomatic, fan.ControlMode)
+	assert.Empty(t, test.controller.GetStatus().Error)
 	_, ok = p.originalState("fan")
 	assert.False(t, ok)
 }

@@ -18,8 +18,9 @@ curve evaluator (every adjustmentTickRate)
         v  curve.CurrentResult()
 DefaultFanController.calculateTargetSpeed
         |  result.Err != nil  --> handleCurveFailure (onSensorFailure), control loop NOT cycled
+        |  recovering from max --> controlLoop.Preset(maxPwm curve value); from restore --> controlLoop.Reset()
         |
-        v  controlLoop.Cycle(curveValue)        [0..255] in, [0..255] out
+        v  controlLoop.Cycle(now, curveValue)   [0..255] in, [0..255] out
 DefaultFanController.UpdateFanSpeed
         |  scale [1..255] to [minPwm..maxPwm], neverStop, stall check
         v
@@ -30,38 +31,54 @@ The control algorithm works in the curve value space `[0..255]`. It runs before 
 `minPwm`..`maxPwm` range and before `neverStop` and the `pwmMap` are applied. It never sees the fan's RPM or the PWM
 value read back from the hardware.
 
-The interface is a single method (`internal/control_loop/common.go`):
+The interface (`internal/control_loop/common.go`):
 
 ```go
 type ControlLoop interface {
-	Cycle(target float64) float64
+	Cycle(now time.Time, target float64) float64
+	Reset()
+	Preset(value float64)
 }
 ```
 
-Each fan controller owns one `ControlLoop` instance. A new instance is created on every start and every successful
-config reload, so all algorithm state starts over then. If a reload fails, fan2go restarts the old fan controllers
-with their old `ControlLoop` instances, so the state is kept.
+- `Cycle` advances the loop. `now` comes from the fan controller's clock (`getClock().Now()`), so a fake clock in
+  tests drives the controller and its algorithm together.
+- `Reset` makes the next `Cycle` start at its target, like the first cycle of a new instance.
+- `Preset(value)` makes the next `Cycle` continue from `value` (clamped to `[0..255]`) instead of the last output.
+  The fan controller uses it when it set the fan without the loop (see "The control loop continues from the fan's
+  speed after a curve failure").
+
+Each fan controller owns one `ControlLoop` instance, used only by its update loop (not safe for concurrent use).
+A new instance is created on every start and every successful config reload, so all algorithm state starts over
+then. If a reload fails, fan2go restarts the old fan controllers with their old `ControlLoop` instances (see
+[fan-controller.md](fan-controller.md) for the state that is reset then).
 
 ### Direct
 
 `DirectControlLoop.Cycle`:
 
-- First cycle: return the target, clamped to `[0..255]`.
+- First cycle (and the first cycle after `Reset`): return the target, clamped to `[0..255]`.
+- `Preset(value)` sets the last output to `value`, so the next step starts from there.
 - Later cycles without `maxPwmChangePerCycle`: return the target, clamped to `[0..255]`.
 - Later cycles with `maxPwmChangePerCycle`: move from the last output towards the target by at most
   `maxPwmChangePerCycle`, then clamp to `[0..255]`. The clamped value is stored as the base of the next step.
 
-The direct algorithm doesn't look at the time. It counts cycles.
+The direct algorithm doesn't look at the time (it ignores `now`). It counts cycles.
 
 ### PID
 
 `PidControlLoop.Cycle`:
 
-- First cycle: return the target, clamped to `[0..255]`, and call `PidLoop.Preset(target, target)`.
-- Later cycles: `PidLoop.Loop(target, measured)` with `measured = lastPidOutput`, the previous output of this
-  same loop. The result (clamped to `[0..255]` by `PidLoop`) becomes the new `lastPidOutput`.
+- First cycle (and the first cycle after `Reset`): return the target, clamped to `[0..255]`, and call
+  `PidLoop.PresetAt(now, target, target)`.
+- First cycle after `Preset(value)`: the same with `value` instead of the target.
+- A cycle more than `max(2s, 5 x adjustmentTickRate)` after the last one (a gap), or before it (the clock went
+  backwards): the gap counts as `max(1s, adjustmentTickRate)` (`PidLoop.ResumeAt`), then a normal step.
+- Other cycles: `PidLoop.LoopAt(now, target, measured)` with `measured = lastPidOutput`, the previous output of
+  this same loop. The result (clamped to `[0..255]` by `PidLoop`) becomes the new `lastPidOutput`.
 
-`PidLoop.LoopAt` computes, with `dt` the time since the last call (from `time.Now`, so a monotonic clock):
+`PidLoop.LoopAt` computes, with `dt` the time since the last call (`now` from the controller's clock; with the
+real clock a monotonic reading, so suspend doesn't count):
 
 ```
 err      = target - measured
@@ -123,7 +140,7 @@ documented. A simulation of the real `PidLoop` (step from 50 to 200, default val
 | `800ms` | Overshoot of about 1.5 PWM. |
 | `1s` | Overshoot of about 12 PWM (peak 211.6 for a target of 200). |
 | `2s` | Swings up to 255; takes about 50 s to settle. |
-| about `2.7s` and slower | Unstable. The output oscillates between the limits and never settles. |
+| about `2.64s` and slower | Unstable. The output oscillates between the limits and never settles. |
 
 The reason is the discrete update: the I term changes the output by `i * dt * err` per cycle. Once `i * dt`
 approaches 1, one cycle overcorrects. The D term acts as `d / dt` on the change of the loop's own output, so a large
@@ -132,8 +149,47 @@ approaches 1, one cycle overcorrects. The D term acts as `d / dt` on the change 
 **Who benefits**: Users on the default `200ms` cycle get a smooth, overshoot-free response.
 
 **Trade-offs**: Users who raise `adjustmentTickRate` (for example, to reduce CPU wakeups) change the behaviour of
-every fan that uses the `pid` algorithm. The README says to lower `i` accordingly. Nothing in the config validation
-warns about an unstable combination.
+every fan that uses the `pid` algorithm. The README says to lower `i` accordingly. Validation rejects unstable
+combinations and warns about overshoot (next decision).
+
+### Validation computes the stability of the PID algorithm
+
+**Decision** (maintainer decision): Validation rejects a `pid` algorithm whose gains are unstable with the
+configured `adjustmentTickRate`, and warns if it overshoots a change of the curve value by more than 1 %
+(`control_loop.AnalyzePidStability`, called by `validatePidControlAlgorithms` after the global timing checks). It
+checks every fan that uses the `pid` algorithm: `controlAlgorithm.pid`, the string `pid`, the deprecated
+`controlLoop`, and fans without `controlAlgorithm` (default values). `i` must be `> 0`.
+
+**Why**: The algorithm feeds its own output back, so inside `[0..255]` it is a linear discrete system that doesn't
+depend on the fan. With the curve value `r`, the output `y`, the I term `u` and `T = adjustmentTickRate`:
+
+```
+y[k] = p*(r - y[k-1]) + u[k-1] - (d/T)*(y[k-1] - y[k-2])
+u[k] = u[k-1] + i*T*(r - y[k-1])
+```
+
+The characteristic polynomial is `z³ + (p + d/T - 1)z² + (iT - p - 2d/T)z + d/T`. The loop is stable if all
+roots are strictly inside the unit circle (checked with the Jury criterion). `P(1) = iT`, so `i <= 0` is never
+stable: without an I term the output settles at `p / (1 + p)` of the curve value. The overshoot is measured on the
+simulated step response from a settled state, which is what the bumpless start gives. With the default values the
+loop is stable above about `21ms` and below about `2.64s`; below that, `d/T` is too large (a pole below `-1`),
+above that `iT` is (complex
+poles outside the unit circle). Overshoot above 1 % starts just above `800ms`.
+
+**Who benefits**: Users who change `adjustmentTickRate` or the gains learn about an oscillating config when it is
+loaded, not from the fan noise.
+
+**Trade-offs**: The model ignores the clamping to `[0..255]` and the anti-windup, which only matter once the
+output hits a limit, and assumes that a cycle takes exactly `adjustmentTickRate`. A fan whose every update takes
+longer than the gap threshold (e.g. a slow `cmd` fan) runs the loop at `max(1s, adjustmentTickRate)` instead (see
+"The PID algorithm doesn't integrate over a gap"). Validation therefore also checks that step
+(`control_loop.GapDt`), but only warns if the values are unstable there, because it only affects slow fans: for
+example, `p: 0.05, i: 1.25` is stable at `200ms` and unstable at `1s`. Configs that worked "well enough" with an oscillating fan are now rejected. The overshoot threshold of 1 % is a
+judgement call (about 2.5 PWM for a full-range step).
+
+**Alternatives considered**: A rule of thumb like `i * adjustmentTickRate < 1`. It ignores `p` and `d`, and misses
+the instability for small tick rates. Filling omitted gains with the defaults instead of rejecting `i: 0`: that
+would silently change working configs that rely on an omitted `p` or `d` being `0`.
 
 ### The PID algorithm starts at the curve value (#552)
 
@@ -150,8 +206,8 @@ matters for systems that reload the config often.
 **Alternatives considered**: Users who want a slow start can use `direct` with `maxPwmChangePerCycle` (named in the
 #552 upgrade notes).
 
-**Trade-offs**: With `i: 0` the preset can't hold the output, because only the I term holds a value at steady state.
-See "Known limitations".
+**Trade-offs**: With `i: 0` the preset couldn't hold the output, because only the I term holds a value at steady
+state. Validation rejects `i <= 0` (see "Validation computes the stability of the PID algorithm").
 
 ### The direct algorithm counts cycles, not time
 
@@ -194,15 +250,75 @@ How a stale sensor becomes a curve error is described in [curves.md](curves.md) 
 
 **Why**: There is no valid target to feed into the loop. Not cycling keeps the loop state from before the failure.
 
+**Trade-offs**: The loop state from before the failure no longer matches the fan after it. The next two decisions
+handle that.
+
+### The control loop continues from the fan's speed after a curve failure
+
+**Decision**: When the curve can be evaluated again while an `onSensorFailure` action is active,
+`calculateTargetSpeed` adjusts the loop before it cycles it (this runs before `recoverFromCurveFailure`):
+
+- `max` (also the `restore` fallback to max): `Preset` at the curve value that maps to `maxPwm`: `255`, or `maxPwm`
+  itself with `useUnscaledCurveValues`. The `pid` algorithm returns that value on the first cycle and smooths down
+  from there. `direct` with `maxPwmChangePerCycle` ramps down from it; without a limit it applies the target.
+- `restore`: `Reset`. fan2go doesn't know the speed the fan ran at while it was handed back, so the loop starts at
+  the target like on startup.
+
+**Why**: The fail-safe max write bypasses the control loop (it must not be slowed by it), so the loop doesn't know
+the fan's speed. Before, the output continued from the value before the failure: with `direct` and
+`maxPwmChangePerCycle` the fan jumped from `maxPwm` to near the old value, and `pid` integrated over the whole
+failure (next decision).
+
+**Who benefits**: Users with `onSensorFailure` whose sensors recover: no audible drop or jump of the fan.
+
+**Trade-offs**: With `restore`, if manual control can't be taken back yet, the loop is cycled anyway and its output
+isn't applied. It is reset again on every cycle until manual control is taken back, so this is harmless. If the
+max write failed during the failure, the loop still starts at max, which errs on the side of cooling.
+
+### The PID algorithm doesn't integrate over a gap
+
+**Decision**: If more than `max(2s, 5 x adjustmentTickRate)` passed since the last cycle, `PidControlLoop` counts the
+gap as `max(1s, adjustmentTickRate)`: it uses that as `dt` of the cycle (`PidLoop.ResumeAt`) and keeps its state.
+Both are computed from the tick rate passed to `NewPidControlLoop` (`maxCycleGap`, `GapDt`). `direct` needs no such
+rule, it doesn't use time.
+
+**Why**: `PidLoop.LoopAt` integrates `err * dt` with no upper bound on `dt`. After a pause (a curve failure, a
+stalled update loop) the I term saturated at once: with the default values, output 100 before the gap and curve
+value 50 after a gap of 5 s or more gave `97.5`, then `0.0`, then a ramp back over about 10 s. Output 0 means PWM 0
+for a fan without `neverStop`, so the fan stopped briefly. This is defence in depth next to the preset above: it
+also covers gaps without a failure. System suspend is not a gap: Go measures `dt` with a monotonic clock, which
+doesn't advance during suspend on Linux.
+
+Counting the gap as a short, fixed time, instead of holding the last output, keeps the loop moving towards the
+target when every cycle takes longer than the threshold. That happens if a single update of the fan takes more than
+about 2 s (e.g. a slow `cmd` fan with a PWM readback). Holding the output would freeze such a fan at its first
+speed, even if the curve went to 255.
+
+Why 1 s: simulated with the default values and updates every 3 s, a step reaches 90% after:
+
+| A gap counts as | Updates to 90% (step up / down) | Lowest output for 100 to 50 |
+|---|---|---|
+| one tick (`200ms`) | 28 / 28 | 50, no overshoot |
+| `1s` | 4 / 4 | 46.1 (8% overshoot) |
+| `2s` (the threshold at `200ms`) | 3 / 12 | 17.5 |
+| `3s` (the whole update) | 2 / never settles | 0.0, oscillates |
+
+1 s is well below the cycle time at which the default values start to oscillate (about 2.64 s). With a tick of
+1 s or more, a gap counts as one tick. A slow fan thus runs the loop at a step of `max(1s, adjustmentTickRate)`, so
+the `pid` values must also be stable at that step, not only at `adjustmentTickRate`. Validation warns if they aren't
+(see "Validation computes the stability of the PID algorithm").
+
+**Who benefits**: Everyone on the default algorithm. Normal operation is unchanged: evaluator cycles that are
+coalesced or slightly delayed stay far below the threshold as long as one update of the fan takes well under 2 s.
+
 **Trade-offs**:
 
-- The `pid` algorithm measures the time since its last call. After a failure state, that whole gap becomes `dt` of
-  the first cycle. See "Known limitations".
-- Neither algorithm knows that the fan was at `maxPwm` (or handed back) during the failure. After the recovery the
-  output continues from the value before the failure, not from the fan's actual speed. With `direct` and
-  `maxPwmChangePerCycle`, the fan doesn't ramp down from `maxPwm`; it jumps to near the old value.
-- With `restore`, the loop is cycled again as soon as the curve recovers, even while fan2go can't take manual
-  control back yet. Its output isn't applied then, but its state moves on.
+- A gap just below the threshold is still integrated (at `200ms`, a 2 s gap gives `97.5`, then `57.8` for the
+  example above), which is a much smaller effect.
+- A fan whose every update takes longer than the threshold moves 1 s worth per update: it gets within 10% of a new
+  curve value after about 4 updates, and may overshoot a step down by about 8%.
+- The 1 s fits the default values. With a larger `i`, a slow fan can overshoot more, or oscillate between `0` and
+  `255` without end if the values are unstable at 1 s (e.g. `p: 0.05, i: 1.25`); validation warns about the latter.
 
 ### PID is the default
 
@@ -244,36 +360,17 @@ fans:
 |---|---|---|
 | `controlAlgorithm` | `pid` with `p: 0.05`, `i: 0.4`, `d: 0.01` | String (`pid`, `direct`) or object. |
 | `controlAlgorithm.direct.maxPwmChangePerCycle` | not set (no limit) | Validation rejects values `<= 0`. In curve value units per cycle. |
-| `controlAlgorithm.pid.p`, `.i`, `.d` | see above; in the object form, omitted keys are `0` | Validation rejects only the case where all three are `0`. |
-| `controlLoop.p`, `.i`, `.d` | - | Deprecated. Creates a `pid` algorithm and logs a warning. Not validated. |
+| `controlAlgorithm.pid.p`, `.i`, `.d` | see above; in the object form, omitted keys are `0` | `i` must be `> 0`. Unstable combinations with `adjustmentTickRate` are rejected, overshoot causes a warning. |
+| `controlLoop.p`, `.i`, `.d` | - | Deprecated. Creates a `pid` algorithm, validation logs a warning. Validated like `controlAlgorithm.pid`. |
 | `fanController.adjustmentTickRate` (global) | `200ms` | Sets the cycle rate. Changes the ramp speed of `direct` and the response of `pid`. |
 
-If both `direct` and `pid` are set in the object form, `pid` wins silently. The deprecated `controlLoop` takes
-precedence over `controlAlgorithm`.
+Validation rejects a `controlAlgorithm` with both `direct` and `pid`, and `controlLoop` together with
+`controlAlgorithm`.
 
 ## Known limitations and open questions
 
-- **Output jump after a pause in cycling.** After a failure state (`onSensorFailure` was active) the first `pid`
-  cycle sees the whole gap as `dt`. If the curve value changed during the gap, the integral term saturates at once
-  and the output jumps to `0` or `255`, then recovers over about 10 s. Example with the default values, output 100
-  before the failure, curve value 50 after a gap of 5 s or more: outputs `97.5`, then `0.0`, then `7.4`, then a
-  ramp back to about 50 over about 10 s. For a curve value of 200: `105`, then `255`, then a ramp down. With a 2 s
-  gap the effect is smaller (`97.5`, then `57.8`). There is no jump if the curve value is unchanged after the gap.
-  A failed config reload has the same effect: the old fan controllers restart with their old loops after the
-  startup delays (several seconds). Unlike the `pid` curve, which resets its loop after a stale period
-  (see [curves.md](curves.md)), the control algorithm has no such reset. System suspend doesn't trigger this on
-  Linux, because Go measures `dt` with a monotonic clock that stops during suspend.
-- **No stability check for the cycle rate.** With the default values, `adjustmentTickRate` of about `2.7s` or
-  slower makes the `pid` algorithm oscillate forever. Overshoot already starts below `1s`.
-- **`i: 0` collapses the output.** The steady-state output of the `pid` algorithm comes from the I term. With `i: 0`
-  and `p: 0.05`, a constant curve value of 200 gives `200` on the first cycle, `0` on the second and then settles at
-  about `9.5` (`p / (1 + p)` of the curve value; with `d: 0.01` after a short swing: 20, 8, 10.2, ...). Validation
-  accepts this config. The deprecated `controlLoop` with all values `0` gives `0` after the first cycle.
 - **No feedback on the fan.** Neither algorithm corrects for a fan that doesn't reach the expected speed. The
   `neverStop` stall check in the fan controller is the only RPM-based correction.
-- **The PID clock isn't the controller's clock.** `PidControlLoop` uses `time.Now` unless created with
-  `NewPidControlLoopWithClock`. The fan controller's injectable clock (#542) doesn't drive it, so controller tests with
-  a fake clock and the `pid` algorithm use real time for `dt`.
 - **Values in the curve value space.** Both algorithms run before the scaling to `minPwm`..`maxPwm`. The meaning of
   `maxPwmChangePerCycle` in actual PWM depends on the fan's range.
 - Open question: whether the filter should be expressed in time (for example, a time constant in seconds) instead of

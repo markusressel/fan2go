@@ -105,7 +105,11 @@ reading"). `initializeSensors` only seeds the average and the last reading if th
 **Who benefits**: Safety. A broken sensor can no longer look like a cold component.
 
 **Trade-offs**: The last good value stays visible as the moving average (e.g. in the API and in
-`fan2go_sensor_value`) while the sensor is failing. Consumers must check staleness to know if it is current.
+`fan2go_sensor_value`) while the sensor is failing. Consumers must check staleness to know if it is current: the
+API shows `stale`, `lastReadingTime`, `consecutiveFailures` and `readFailures`, and the metrics
+`fan2go_sensor_stale`, `fan2go_sensor_last_reading_timestamp_seconds` and `fan2go_sensor_read_failures_total`
+(see "Reading status is exported"). A sensor that was never read successfully has no `fan2go_sensor_value` sample
+(its average is meaningless) and no `lastReadingTime`.
 
 ### Staleness: sensorStaleTimeout with a derived default
 
@@ -148,6 +152,24 @@ desktop notifications. Notifications come from the fan controller when a curve c
 
 **Trade-offs**: Some backends still log on every failed read themselves. `util.SafeCmdExecution` warns on each
 timeout and failed command, and `CmdSensor.GetValue` warns on each unparsable output.
+
+### Reading status is exported
+
+**Decision**: `ReadingTracker` counts the consecutive and the total failed readings next to the last successful
+one. `GetReadingStatus` returns all of it as one snapshot (`ReadingStatus`), and `ReadingStatus.IsStale` applies the
+same rule as `FreshReading`. The REST API adds `lastReadingTime` (omitted until the first successful reading),
+`consecutiveFailures`, `readFailures` and `stale` to every sensor. The Prometheus collector exports
+`fan2go_sensor_stale`, `fan2go_sensor_last_reading_timestamp_seconds` (omitted until the first successful reading)
+and `fan2go_sensor_read_failures_total`, and omits `fan2go_sensor_value` until the first successful reading.
+
+**Why**: Headless users couldn't see or alert on a stale sensor; the only signals were one log line and the
+notification of the fan controller. A never-read sensor exported 0, which looks like a cold component.
+
+**Who benefits**: Users who monitor fan2go with Prometheus, and UI clients of the REST API.
+
+**Trade-offs**: `stale` and `fan2go_sensor_stale` are computed when the API is read or the metrics are scraped
+(wall clock, global `sensorStaleTimeout`). The counters start at 0 on every reload, because the sensors are
+recreated.
 
 ### Panics in a sensor backend are failed readings
 
@@ -192,8 +214,10 @@ weight. The reason for an EMA isn't documented; likely simplicity and no buffer 
 
 **Decision**: An hwmon sensor is configured with a `platform` regex and exactly one of `index` or `channel`
 (both >= 1). `hwmon.GetChips` discovers chips and their `tempN` features through libsensors (`gosensors`).
-`hwmon.UpdateSensorConfigFromHwMonControllers` then picks the first matching sensor and stores its sysfs input
-path in the config. `GetValue()` reads that file directly.
+`hwmon.FindSensorForConfig` (used by `UpdateSensorConfigFromHwMonControllers`) then picks the first matching sensor
+and stores its index, channel and sysfs input path in the config. The daemon copies the label, min and max of the
+matched sensor into the runtime `HwmonSensor` (shown in the REST API; `-1` if the chip doesn't report min or max).
+`GetValue()` reads the input file directly.
 
 - `channel` is the `N` of `tempN_input`. It comes from the kernel and doesn't change when other inputs appear or
   disappear (#452, issue #286).
@@ -266,6 +290,7 @@ scripts). Safety: a hanging script can't block fan2go beyond its timeout.
   `/usr/bin/bash` and a script path) isn't checked.
 - At the default polling rate, the command runs 5 times per second. Long-running commands cause skipped polls.
   If a command needs longer than `sensorStaleTimeout` between successful runs, its sensor becomes stale.
+  Validation warns if `cmd.timeout` (incl. the default) is not shorter than the effective `sensorStaleTimeout`.
 - Side effects of frequent runs (e.g. `nvidia-settings` waking a dGPU) are documented in the README.
 
 ### disk sensors: stable device paths, sysfs first, SMART fallback
@@ -336,7 +361,7 @@ Per sensor (`sensors[]`):
 | `nvidia.index` | Accepted, unused. |
 | `file.path` | Integer in milli-units. `~` is expanded. |
 | `cmd.exec`, `cmd.args` | Executable must be root-owned and not writable by others. |
-| `cmd.timeout` | Default `2s` (`DefaultCmdTimeout`), `0` means default, negative is rejected. |
+| `cmd.timeout` | Default `2s` (`DefaultCmdTimeout`), `0` means default, negative is rejected. Warning if not shorter than `sensorStaleTimeout`. |
 | `disk.device` | Required. Path or by-id name. |
 
 Per fan, `onSensorFailure` (`max` by default, or `restore`) decides what happens to a fan while its curve can't be
@@ -348,17 +373,12 @@ The CLI command `fan2go sensor --id <id>` resolves one sensor like the daemon (#
 
 ## Known limitations and open questions
 
-- **Stale state isn't visible from outside.** The REST API serializes sensors without their last reading or
-  failure count, and `fan2go_sensor_value` exports the moving average, which is 0 for a sensor that was never read.
-  The state exists (`GetLastReading`, `GetConsecutiveFailures`); exposing it is a follow-up from #551.
 - **One stale timeout for all sensors**, no hysteresis between stale and fresh.
 - **No re-resolution at runtime.** hwmon chips and NVIDIA GPUs that appear after startup need a reload (hwmon) or a
   restart (NVML).
 - **cmd sensors:** only the executable is permission-checked, not a script passed as an argument. Timeouts and
   failures are logged on every poll by `SafeCmdExecution`, despite the log-once policy of the monitor.
 - **File and cmd parsing differ:** a file sensor needs an integer, a cmd sensor accepts a float.
-- **hwmon sensors created by the daemon have no label.** `NewSensor` copies only the index and the input path, so
-  the label, channel, min and max of the runtime `HwmonSensor` stay empty or 0 in the API output.
 - **Disk sensors** poll SMART at the full polling rate if `drivetemp` isn't loaded. Whether that wakes sleeping disks
   is untested. Attribute 194 isn't preferred over 190: the first of the two in the table wins.
 - **cmd output parsing:** only newlines are stripped, so output with trailing spaces or `\r\n` fails on every read.

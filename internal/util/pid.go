@@ -66,13 +66,29 @@ func (p *PidLoop) Reset() {
 // yields output (if the I gain is not 0). The time of the clock (see SetClock) is used as the time
 // of the last loop.
 func (p *PidLoop) Preset(output float64, measured float64) {
-	p.lastTime = p.now()
+	p.PresetAt(p.now(), output, measured)
+}
+
+// PresetAt is Preset with an explicit time of the last loop.
+func (p *PidLoop) PresetAt(loopTime time.Time, output float64, measured float64) {
+	p.lastTime = loopTime
 	p.lastMeasured = measured
 	p.lastOutput = output
 	p.integral = 0
 	if p.i != 0 {
 		p.integral = output / p.i
 	}
+}
+
+// ResumeAt makes the next LoopAt call measure the time since loopTime instead of since the last loop,
+// as if the last loop had run at loopTime. The rest of the state (integral, last output) is kept.
+// Use it to bridge a pause between two loops without integrating over the whole pause.
+func (p *PidLoop) ResumeAt(loopTime time.Time) {
+	if p.lastTime.IsZero() {
+		// not initialized: the next loop initializes the loop anyway
+		return
+	}
+	p.lastTime = loopTime
 }
 
 // Loop advances the pid loop, using the current time of its clock (see SetClock) as the time of the measurement

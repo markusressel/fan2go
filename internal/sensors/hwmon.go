@@ -11,7 +11,7 @@ type HwmonSensor struct {
 	Label     string                     `json:"label"`
 	Index     int                        `json:"index"`
 	Channel   int                        `json:"channel"`
-	Input     string                     `json:"string"`
+	Input     string                     `json:"input"`
 	Max       int                        `json:"max"`
 	Min       int                        `json:"min"`
 	Config    configuration.SensorConfig `json:"configuration"`
