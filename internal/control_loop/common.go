@@ -6,4 +6,6 @@ type ControlLoop interface {
 	// Note: multiple calls to Loop may not result in the same output, as
 	// the control loop may take time into account or have other stateful properties.
 	Cycle(target float64) float64
+	// Reset forgets all state: the next Cycle starts at its target, like the first cycle after creation.
+	Reset()
 }

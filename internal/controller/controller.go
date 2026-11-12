@@ -77,6 +77,10 @@ type FanController interface {
 
 	// RunInitialization runs the fan initialization sequence.
 	RunInitialization(ctx context.Context) (map[int]float64, error)
+
+	// IsInitializing returns true while Run analyzes the fan (or waits to do so) because it has no saved
+	// fan curve data yet. Safe to call while the controller is running.
+	IsInitializing() bool
 }
 
 type FanStateSnapshot struct {
@@ -180,6 +184,8 @@ type DefaultFanController struct {
 	// so nested initialization steps don't try to acquire it again.
 	// Only accessed by the goroutine that runs the initialization.
 	holdsInitializationLock bool
+	// initializing is true while Run runs the initialization sequence (see IsInitializing)
+	initializing atomic.Bool
 	// mayHaveWrittenToFan is set once the current Run (or initialization) may have written to the fan:
 	// the initialization or the setPwm -> getPwm detection started, or Run switched the fan to manual mode.
 	// Errors before that don't restore the fan settings, so a fan fan2go never wrote to isn't changed
@@ -432,8 +438,7 @@ func (f *DefaultFanController) clearInitialFanState() {
 // A panic in Run or one of its goroutines is returned as an error, and also restores the fan settings
 // if fan2go may have written to the fan already.
 func (f *DefaultFanController) Run(ctx context.Context) (err error) {
-	f.restoreOnce = &sync.Once{}
-	f.mayHaveWrittenToFan = false
+	f.resetRuntimeState()
 	// set once fan2go may write to the fan (initialization, set -> get PWM detection, control loop)
 	fanMayBeTouched := false
 	defer func() {
@@ -623,6 +628,37 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 	return err
 }
 
+// resetRuntimeState resets everything a previous Run learned or tracked about the fan to the state of a new
+// controller, so Run starts like the first time when it is called again (e.g. after a failed config reload).
+// It keeps originalFanState, the fan state before fan2go first took over the fan.
+// Must not be called while Run is running.
+func (f *DefaultFanController) resetRuntimeState() {
+	f.restoreOnce = &sync.Once{}
+	f.mayHaveWrittenToFan = false
+	f.lastTarget = nil
+	f.pwmFloorSetAt = time.Time{}
+	f.rpmAvgSeeded.Store(false)
+	f.lastFanModeCheckTime = time.Unix(0, 0)
+	f.sensorFailureAction = ""
+	f.sensorFailureMaxWriteFailed = false
+	f.pwmWriteFailures = consecutiveFailures{}
+	f.thirdPartyPwmChanges = consecutiveFailures{}
+	if f.controlLoop != nil {
+		f.controlLoop.Reset()
+	}
+
+	f.statsMutex.Lock()
+	defer f.statsMutex.Unlock()
+	f.lastSetPwm = nil
+	f.minPwmOffset = 0
+	f.stats.MinPwmOffset = 0
+}
+
+// IsInitializing returns true while Run analyzes the fan (or waits for the initialization lock to do so).
+func (f *DefaultFanController) IsInitializing() bool {
+	return f.initializing.Load()
+}
+
 func (f *DefaultFanController) runInitializationIfNeeded(ctx context.Context) (map[int]float64, error) {
 	fan := f.fan
 	// check if we have data for this fan in persistence,
@@ -645,7 +681,12 @@ func (f *DefaultFanController) runInitializationIfNeeded(ctx context.Context) (m
 		} else {
 			ui.Warning("Fan '%s' has not yet been analyzed, starting initialization sequence...", fan.GetId())
 		}
-		fanCurveData, err := f.RunInitialization(ctx)
+		// also cleared after a panic, so a config reload isn't deferred forever
+		fanCurveData, err := func() (map[int]float64, error) {
+			f.initializing.Store(true)
+			defer f.initializing.Store(false)
+			return f.RunInitialization(ctx)
+		}()
 		if err != nil {
 			return nil, err
 		}

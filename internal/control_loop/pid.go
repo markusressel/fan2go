@@ -56,6 +56,14 @@ func NewPidControlLoopWithClock(
 	return l
 }
 
+// Reset forgets all state, so the next Cycle starts at its target like the first cycle after creation
+// (and presets the PID loop at the time of that cycle, so the time since the last cycle doesn't count).
+func (l *PidControlLoop) Reset() {
+	l.initialized = false
+	l.lastPidOutput = 0
+	l.pidLoop.Reset()
+}
+
 func (l *PidControlLoop) Cycle(target float64) float64 {
 	if !l.initialized {
 		// first cycle: start at the target instead of ramping up from 0, which would slow the fan down

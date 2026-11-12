@@ -79,3 +79,16 @@ func TestDirect_MaxChange_OutOfRangeTargetDoesNotShiftTheRampBase(t *testing.T) 
 	// THEN the ramp continues from the applied (clamped) value, not from the out-of-range target
 	assert.Equal(t, 245.0, next)
 }
+
+func TestDirect_Reset_NextCycleAppliesTargetDirectly(t *testing.T) {
+	// GIVEN a rate-limited loop that has been running at 0
+	maxChange := 10
+	loop := NewDirectControlLoop(&maxChange)
+	assert.Equal(t, 0.0, loop.Cycle(0))
+
+	// WHEN it is reset
+	loop.Reset()
+
+	// THEN the next cycle applies its target directly instead of ramping from the last output
+	assert.Equal(t, 200.0, loop.Cycle(200))
+}

@@ -30,6 +30,11 @@ func NewDirectControlLoop(
 	}
 }
 
+// Reset forgets the last output, so the next Cycle applies its target directly.
+func (l *DirectControlLoop) Reset() {
+	l.lastOutput = math.NaN()
+}
+
 func (l *DirectControlLoop) Cycle(target float64) float64 {
 	if math.IsNaN(l.lastOutput) {
 		// first run, just apply the target (within sane bounds)
