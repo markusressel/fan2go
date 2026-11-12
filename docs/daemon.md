@@ -385,8 +385,8 @@ There are no metrics for failed fan RPM reads or PWM writes yet.
 ### REST API: read-only, local, off by default
 
 **Decision:** The REST API (`api.enabled`, default `127.0.0.1:9001`) serves `GET /alive`, `/fan`, `/fan/<id>`,
-`/sensor`, `/sensor/<id>`, `/curve`, `/curve/<id>`, `/controller` and `/controller/<fan id>`. `POST /fan` and
-`DELETE /fan/<id>` exist but return an error ("not yet supported"). There is no authentication.
+`/sensor`, `/sensor/<id>`, `/curve`, `/curve/<id>`, `/controller` and `/controller/<fan id>`. It has no write
+endpoints: other methods on these paths get `405 Method Not Allowed`. There is no authentication.
 
 Besides their state, sensors show their reading status (`lastReadingTime`, `consecutiveFailures`, `readFailures`,
 `stale`), curves the result of their last evaluation (`error`, `evaluatedAt`), and `/controller` the state of each

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/labstack/echo/v5"
@@ -17,8 +16,6 @@ func registerCurveEndpoints(rest *echo.Echo, reg *registry.Registry) {
 	group.GET("/:"+urlParamId+"/", func(c *echo.Context) error {
 		return getCurve(c, reg)
 	})
-	group.POST("/", createCurve)
-	group.DELETE("/:"+urlParamId+"/", deleteCurve)
 }
 
 func getCurves(c *echo.Context, reg *registry.Registry) error {
@@ -34,12 +31,4 @@ func getCurve(c *echo.Context, reg *registry.Registry) error {
 	} else {
 		return c.JSONPretty(http.StatusOK, data, indentationChar)
 	}
-}
-
-func deleteCurve(c *echo.Context) error {
-	return returnError(c, errors.New("not yet supported"))
-}
-
-func createCurve(c *echo.Context) error {
-	return returnError(c, errors.New("not yet supported"))
 }
