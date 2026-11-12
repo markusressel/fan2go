@@ -18,7 +18,7 @@ import (
 	"github.com/tomlazar/table"
 )
 
-func printTables(tables []table.Table) {
+func printTables(tables []table.Table) error {
 	tableConfig := &table.Config{
 		ShowIndex:       false,
 		Color:           !global.NoColor,
@@ -37,7 +37,7 @@ func printTables(tables []table.Table) {
 		var buf bytes.Buffer
 		tableErr := table.WriteTable(&buf, tableConfig)
 		if tableErr != nil {
-			ui.Fatal("Error printing table: %v", tableErr)
+			return fmt.Errorf("error printing table: %w", tableErr)
 		}
 		tableString := buf.String()
 		if idx < (len(tables) - 1) {
@@ -46,16 +46,17 @@ func printTables(tables []table.Table) {
 			ui.Println(tableString)
 		}
 	}
+	return nil
 }
 
 var detectCmd = &cobra.Command{
 	Use:   "detect",
 	Short: "Detect fans and sensors",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		var err error
 		configuration.CurrentConfig, err = configuration.LoadConfig()
 		if err != nil {
-			ui.Fatal("configuration parsing failed: %v", err)
+			return fmt.Errorf("configuration parsing failed: %w", err)
 		}
 
 		controllers := hwmon.GetChips()
@@ -154,7 +155,9 @@ var detectCmd = &cobra.Command{
 				Rows:    sensorRows,
 			}
 
-			printTables([]table.Table{fanTable, sensorTable})
+			if err := printTables([]table.Table{fanTable, sensorTable}); err != nil {
+				return err
+			}
 		}
 
 		nvControllers := nvidia.GetDevices()
@@ -221,8 +224,11 @@ var detectCmd = &cobra.Command{
 				Rows:    sensorRows,
 			}
 
-			printTables([]table.Table{fanTable, sensorTable})
+			if err := printTables([]table.Table{fanTable, sensorTable}); err != nil {
+				return err
+			}
 		}
+		return nil
 	},
 }
 

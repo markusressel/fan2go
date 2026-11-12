@@ -6,7 +6,6 @@ import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/hwmon"
 	"github.com/markusressel/fan2go/internal/sensors"
-	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
@@ -47,16 +46,9 @@ func init() {
 }
 
 func getSensor(id string) (sensors.Sensor, error) {
-	configPath := configuration.DetectAndReadConfigFile()
-	ui.Info("Using configuration file at: %s", configPath)
-	var err error
-	configuration.CurrentConfig, err = configuration.LoadConfig()
+	_, err := configuration.LoadAndValidateConfigFile()
 	if err != nil {
-		ui.FatalWithoutStacktrace("configuration parsing failed: %v", err)
-	}
-	err = configuration.ValidateConfig(&configuration.CurrentConfig, configPath)
-	if err != nil {
-		ui.FatalWithoutStacktrace("%v", err)
+		return nil, err
 	}
 
 	controllers := hwmon.GetChips()

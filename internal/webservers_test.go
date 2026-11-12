@@ -200,3 +200,86 @@ func TestStartWebservers_ServeAndShutdown(t *testing.T) {
 		_ = listener.Close()
 	}
 }
+
+func TestRunProfilingWebserver_ServeAndShutdown(t *testing.T) {
+	// GIVEN
+	port := freeTcpPorts(t, 1)[0]
+	address := fmt.Sprintf("127.0.0.1:%d", port)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// WHEN
+	done := make(chan error, 1)
+	go func() { done <- runProfilingWebserver(ctx, address) }()
+
+	// THEN: the pprof endpoints are served
+	require.Eventually(t, func() bool {
+		resp, err := http.Get("http://" + address + "/debug/pprof/")
+		if err != nil {
+			return false
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// AND: the server stops and releases its port when the context is cancelled
+	cancel()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("profiling webserver did not shut down")
+	}
+	listener, err := net.Listen("tcp", address)
+	require.NoError(t, err, "port %d is still in use", port)
+	_ = listener.Close()
+}
+
+// doneObservingContext reports when Done is called, i.e. when the code under test starts waiting for ctx
+type doneObservingContext struct {
+	context.Context
+	doneCalled chan struct{}
+	once       sync.Once
+}
+
+func (c *doneObservingContext) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.doneCalled) })
+	return c.Context.Done()
+}
+
+func TestRunProfilingWebserver_BindErrorDoesNotStopDaemon(t *testing.T) {
+	// GIVEN: the port is in use
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = listener.Close() }()
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx := &doneObservingContext{Context: parent, doneCalled: make(chan struct{})}
+
+	// WHEN
+	done := make(chan error, 1)
+	go func() { done <- runProfilingWebserver(ctx, listener.Addr().String()) }()
+
+	// THEN: it waits for the context instead of returning (an error would end the run group)
+	select {
+	case <-ctx.doneCalled:
+	case err := <-done:
+		t.Fatalf("returned before the context was cancelled: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("profiling webserver doesn't wait for the context")
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("returned before the context was cancelled: %v", err)
+	default:
+	}
+
+	// AND: returns nil once the context is cancelled
+	cancel()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("profiling webserver did not return")
+	}
+}

@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -91,41 +90,6 @@ func WriteIntToFileAtomic(value int, path string) error {
 	valueAsString := fmt.Sprintf("%d", value)
 	valueReader := strings.NewReader(valueAsString)
 	return atomic.WriteFile(path, valueReader)
-}
-
-// FindFilesMatching finds all files in a given directory, matching the given regex
-func FindFilesMatching(path string, expr *regexp.Regexp) []string {
-	var result []string
-	err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			ui.Fatal("File error: %v", err)
-		}
-
-		if !info.IsDir() && expr.MatchString(info.Name()) {
-			var devicePath string
-
-			// we may need to adjust the path (pwmconfig cite...)
-			_, err := os.Stat(path + "/name")
-			if os.IsNotExist(err) {
-				devicePath = path + "/device"
-			} else {
-				devicePath = path
-			}
-
-			devicePath, err = filepath.EvalSymlinks(devicePath)
-			if err != nil {
-				panic(err)
-			}
-
-			result = append(result, devicePath)
-		}
-		return nil
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	return result
 }
 
 // HashFile computes the SHA-256 hash of the file at configPath

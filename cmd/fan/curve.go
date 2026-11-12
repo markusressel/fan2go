@@ -21,17 +21,10 @@ import (
 var curveCmd = &cobra.Command{
 	Use:   "curve",
 	Short: "Print the measured fan curve(s) to console",
-	Run: func(cmd *cobra.Command, args []string) {
-		configPath := configuration.DetectAndReadConfigFile()
-		ui.Info("Using configuration file at: %s", configPath)
-		var err error
-		configuration.CurrentConfig, err = configuration.LoadConfig()
+	RunE: func(cmd *cobra.Command, args []string) error {
+		_, err := configuration.LoadAndValidateConfigFile()
 		if err != nil {
-			ui.FatalWithoutStacktrace("configuration parsing failed: %v", err)
-		}
-		err = configuration.ValidateConfig(&configuration.CurrentConfig, configPath)
-		if err != nil {
-			ui.FatalWithoutStacktrace("%v", err)
+			return err
 		}
 
 		persistence := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
@@ -40,7 +33,7 @@ var curveCmd = &cobra.Command{
 		for _, config := range configuration.CurrentConfig.Fans {
 			fan, err := fans.NewFan(config)
 			if err != nil {
-				ui.Fatal("Unable to process fan configuration: %s", config.ID)
+				return fmt.Errorf("unable to process fan configuration: %s: %w", config.ID, err)
 			}
 			fanList = append(fanList, fan)
 		}
@@ -92,7 +85,7 @@ var curveCmd = &cobra.Command{
 				},
 			})
 			if tableErr != nil {
-				panic(tableErr)
+				return fmt.Errorf("error printing table: %w", tableErr)
 			}
 			tableString := buf.String()
 			ui.Println(tableString)
@@ -100,7 +93,7 @@ var curveCmd = &cobra.Command{
 			// print graph
 			if fanCurveErr != nil {
 				ui.Println("No fan curve data yet...")
-				return
+				return nil
 			}
 
 			for _, warning := range analyzeCurveDataQuality(pwmData) {
@@ -132,10 +125,10 @@ var curveCmd = &cobra.Command{
 				}
 			}
 
-			return
+			return nil
 		}
 
-		ui.Fatal("No fan with id found: %s", fanId)
+		return fmt.Errorf("no fan with id found: %s", fanId)
 	},
 }
 
