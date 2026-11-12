@@ -685,6 +685,8 @@ func trySetManualPwm(fan fans.Fan) error {
 // Only values that are actually known are written: if the original control mode or PWM value
 // could not be read when the controller started, it is not written, and the fan stays at
 // the last speed fan2go set.
+// Exception: if the original control mode is unknown on restore (default), but the fan supports
+// writing it, the fan is handed back to automatic control (see restoreUnknownControlMode).
 func (f *DefaultFanController) restoreControlMode() {
 	if f.originalFanState == nil {
 		ui.Warning("Skipping fan settings restore for %s, original state was never captured", f.fan.GetId())
@@ -703,6 +705,13 @@ func (f *DefaultFanController) restoreControlMode() {
 	// none: skip all restore actions
 	if onExit != nil && onExit.None != nil {
 		ui.Info("Skipping fan restore for %s (controlMode.onExit: none)", f.fan.GetId())
+		return
+	}
+
+	// restore (default), but the original control mode is unknown
+	restoreOriginal := onExit == nil || onExit.Restore != nil
+	if restoreOriginal && originalControlMode == nil && f.fan.Supports(fans.FeatureControlModeWrite) {
+		f.restoreUnknownControlMode(originalPwmValue)
 		return
 	}
 
@@ -769,6 +778,30 @@ func (f *DefaultFanController) restoreControlMode() {
 		if err := f.fan.SetPwm(*pwmToSet); err != nil {
 			ui.Warning("Fan %s: Error restoring original PWM value: %v", f.fan.GetId(), err)
 		}
+	}
+}
+
+// restoreUnknownControlMode restores a fan that supports writing its control mode, but whose
+// original control mode is unknown: it hands the fan back to automatic control. Only if that fails,
+// it falls back to manual control at the original PWM value, if that is known.
+func (f *DefaultFanController) restoreUnknownControlMode(originalPwmValue *int) {
+	err := f.fan.SetControlMode(fans.ControlModeAutomatic)
+	if err == nil {
+		// don't write a PWM value: on some drivers that switches the fan back to manual control
+		ui.Info("Original control mode of fan %s is unknown, handed it back to automatic control", f.fan.GetId())
+		return
+	}
+	ui.Warning("Fan %s: Original control mode is unknown and automatic control could not be set: %v", f.fan.GetId(), err)
+
+	if originalPwmValue == nil {
+		ui.Warning("Original PWM value of fan %s is unknown, leaving it at the last speed set by fan2go", f.fan.GetId())
+		return
+	}
+	if err := f.fan.SetControlMode(fans.ControlModePWM); err != nil {
+		ui.Warning("Fan %s: Error setting manual control mode: %v", f.fan.GetId(), err)
+	}
+	if err := f.fan.SetPwm(*originalPwmValue); err != nil {
+		ui.Warning("Fan %s: Error restoring original PWM value: %v", f.fan.GetId(), err)
 	}
 }
 

@@ -260,11 +260,9 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 	}
 	currentValue, err := fan.readPwmEnable()
 	if err != nil {
-		if errors.Is(err, os.ErrPermission) {
-			ui.Warning("Cannot read pwm_enable of fan '%s', pwm_enable state validation cannot work. Continuing assuming it worked.", fan.GetId())
-			return nil
-		}
-		return err
+		// the write succeeded, only the validation is not possible
+		ui.Warning("Cannot read pwm_enable of fan '%s', pwm_enable state validation cannot work. Continuing assuming it worked: %v", fan.GetId(), err)
+		return nil
 	}
 	if value == ControlModeAutomatic {
 		// the driver may report any of its automatic modes (>= 2)

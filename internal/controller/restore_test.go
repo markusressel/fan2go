@@ -25,8 +25,10 @@ type restoreTestFan struct {
 	pwmReadErr        error
 	controlModeErr    error
 	setControlModeErr error
-	pwmWrites         []int
-	controlModeWrites []fans.ControlMode
+	// failingControlModes lists control modes whose write fails with an error
+	failingControlModes map[fans.ControlMode]bool
+	pwmWrites           []int
+	controlModeWrites   []fans.ControlMode
 }
 
 // GetId only reads the ID: the promoted MockFan.GetId copies the whole struct, which races with
@@ -64,6 +66,9 @@ func (fan *restoreTestFan) SetControlMode(mode fans.ControlMode) error {
 	fan.controlModeWrites = append(fan.controlModeWrites, mode)
 	if fan.setControlModeErr != nil {
 		return fan.setControlModeErr
+	}
+	if fan.failingControlModes[mode] {
+		return errors.New("control mode rejected")
 	}
 	fan.ControlMode = mode
 	return nil
@@ -125,23 +130,105 @@ func TestRestoreControlMode_PwmReadFailsDuringSnapshot_DoesNotRestorePwm(t *test
 	assert.Empty(t, fan.pwmWrites)
 }
 
-func TestRestoreControlMode_ControlModeReadFailsDuringSnapshot_DoesNotRestoreControlMode(t *testing.T) {
-	// GIVEN: a fan whose control mode read fails when the snapshot is taken
-	fan := &restoreTestFan{
-		MockFan:        MockFan{ID: "fan", PWM: 180, ControlMode: fans.ControlModePWM},
-		features:       allFanFeatures,
-		controlModeErr: errors.New("read error"),
-	}
-	controller := DefaultFanController{fan: fan}
+// newUnknownControlModeController returns a controller for a fan that can write its control mode,
+// but whose control mode couldn't be read when the snapshot was taken.
+func newUnknownControlModeController(t *testing.T, fan *restoreTestFan) *DefaultFanController {
+	fan.features = allFanFeatures
+	fan.controlModeErr = errors.New("read error")
+	controller := &DefaultFanController{fan: fan}
+	require.NoError(t, controller.storeCurrentFanState())
+	require.Nil(t, controller.originalFanState.ControlMode)
+	return controller
+}
+
+func TestRestoreControlMode_UnknownControlMode_AutomaticSucceeds_NoPwmWrite(t *testing.T) {
+	// GIVEN
+	fan := &restoreTestFan{MockFan: MockFan{ID: "fan", PWM: 180}}
+	controller := newUnknownControlModeController(t, fan)
 
 	// WHEN
-	require.NoError(t, controller.storeCurrentFanState())
 	controller.restoreControlMode()
 
-	// THEN: ControlModeUnknown is never written, the known PWM value is restored
-	assert.Nil(t, controller.originalFanState.ControlMode)
-	assert.Empty(t, fan.controlModeWrites)
+	// THEN: the fan is handed back to automatic control, ControlModeUnknown is never written,
+	// and no PWM is written afterwards (on some drivers that switches back to manual control)
+	assert.Equal(t, []fans.ControlMode{fans.ControlModeAutomatic}, fan.controlModeWrites)
+	assert.Empty(t, fan.pwmWrites)
+}
+
+func TestRestoreControlMode_UnknownControlMode_AutomaticFails_RestoresOriginalPwmInManualMode(t *testing.T) {
+	// GIVEN
+	fan := &restoreTestFan{
+		MockFan:             MockFan{ID: "fan", PWM: 180},
+		failingControlModes: map[fans.ControlMode]bool{fans.ControlModeAutomatic: true},
+	}
+	controller := newUnknownControlModeController(t, fan)
+
+	// WHEN
+	controller.restoreControlMode()
+
+	// THEN
+	assert.Equal(t, []fans.ControlMode{fans.ControlModeAutomatic, fans.ControlModePWM}, fan.controlModeWrites)
 	assert.Equal(t, []int{180}, fan.pwmWrites)
+}
+
+func TestRestoreControlMode_UnknownControlMode_AutomaticFailsAndPwmUnknown_WritesNothingElse(t *testing.T) {
+	// GIVEN
+	fan := &restoreTestFan{
+		MockFan:             MockFan{ID: "fan", PWM: 180},
+		failingControlModes: map[fans.ControlMode]bool{fans.ControlModeAutomatic: true},
+		pwmReadErr:          errors.New("read error"),
+	}
+	controller := newUnknownControlModeController(t, fan)
+
+	// WHEN
+	controller.restoreControlMode()
+
+	// THEN: only the attempt to switch to automatic control, no made-up PWM value
+	assert.Equal(t, []fans.ControlMode{fans.ControlModeAutomatic}, fan.controlModeWrites)
+	assert.Empty(t, fan.pwmWrites)
+}
+
+func TestRestoreControlMode_UnknownControlMode_OnExitSettingsTakePrecedence(t *testing.T) {
+	// GIVEN: onExit.speed is configured
+	speed := 100
+	fan := &restoreTestFan{MockFan: MockFan{
+		ID:                "fan",
+		PWM:               180,
+		ControlModeConfig: &configuration.ControlModeConfig{OnExit: &configuration.OnExitConfig{Speed: &speed}},
+	}}
+	controller := newUnknownControlModeController(t, fan)
+
+	// WHEN
+	controller.restoreControlMode()
+
+	// THEN: no switch to automatic control, only the configured speed
+	assert.Empty(t, fan.controlModeWrites)
+	assert.Equal(t, []int{100}, fan.pwmWrites)
+}
+
+func TestRestoreControlMode_HwMonPwmEnableNotReadable_SwitchesToAutomatic(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read files without read permission")
+	}
+	// GIVEN: a hwmon fan whose pwm_enable can be written, but not read
+	fan, pwmEnablePath := newFileBackedHwMonFan(t, "1", nil)
+	pwmPath := fan.Config.HwMon.PwmPath
+	require.NoError(t, os.WriteFile(pwmPath, []byte("180"), 0o644))
+	require.NoError(t, os.Chmod(pwmEnablePath, 0o200))
+	controller := DefaultFanController{fan: fan}
+	require.NoError(t, controller.storeCurrentFanState())
+	require.Nil(t, controller.originalFanState.ControlMode)
+	require.NoError(t, os.WriteFile(pwmPath, []byte("50"), 0o644)) // fan2go controls the fan
+
+	// WHEN
+	controller.restoreControlMode()
+
+	// THEN: the write without readback counts as success, so no PWM is written afterwards
+	require.NoError(t, os.Chmod(pwmEnablePath, 0o644))
+	assert.Equal(t, "2", readPwmEnableFile(t, pwmEnablePath))
+	pwm, err := os.ReadFile(pwmPath)
+	require.NoError(t, err)
+	assert.Equal(t, "50", strings.TrimSpace(string(pwm)))
 }
 
 func TestRestoreControlMode_PwmReadbackWithoutControlMode_RestoresPwm(t *testing.T) {

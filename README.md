@@ -414,6 +414,9 @@ fans:
     #     onExit: restore   # restore original control mode and PWM value (default).
     #                       # Values fan2go could not read when it started (e.g. a cmd fan without
     #                       # getPwm) are not restored: the fan stays at the last speed set by fan2go.
+    #                       # If the original control mode is unknown, but fan2go can set it, the
+    #                       # fan is switched to automatic control instead. Only if that fails, it
+    #                       # is set back to its original PWM value (if known) in manual mode.
     #     onExit: none      # leave fan at last speed set by fan2go (useful for hardware controllers
     #                       # that remember PWM settings — see issue #416)
     #   Map form (set explicit values on exit):

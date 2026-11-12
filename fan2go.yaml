@@ -115,6 +115,7 @@ fans:
     #   # String shorthands:
     #   #   onExit: restore   # restore original control mode and PWM value (default behavior);
     #   #                     # values that could not be read on startup are not restored
+    #   #                     # (an unknown control mode becomes "auto", if fan2go can set it)
     #   #   onExit: none      # do nothing — leave fan at last speed set by fan2go
     #   # Map form (set explicit values on exit):
     #   onExit:
