@@ -1092,7 +1092,9 @@ In both cases, fan2go keeps trying to evaluate the curve on every cycle, and res
 control again for `restore`) as soon as it can. Entering this state is logged and notified once, and so is the
 recovery. The fan controller only stops for good if a fan with `neverStop: true` doesn't spin even at its `maxPwm`
 (see above); this check is paused while the fan is in the failure state. A PID curve starts over when its sensor
-recovers from a stale value.
+recovers from a stale value. After `max`, the control algorithm continues from the fan's maximum speed, so the fan
+comes down gradually (with the `pid` control algorithm, or `direct` with `maxPwmChangePerCycle`) instead of
+jumping to the curve value. After `restore`, it starts at the curve value, like on startup.
 
 ```yaml
 # (Optional) default: 10 x tempSensorPollingRate, but at least 10s
@@ -1217,7 +1219,9 @@ makes the output overshoot the curve value. If you increase `adjustmentTickRate`
 
 The first cycle after fan2go starts (or reloads its config) applies the curve value directly, like the direct control
 algorithm. The PID loop is initialized as if it had already settled at that value, so it only smooths later changes
-of the curve value instead of ramping the fan up from (almost) zero.
+of the curve value instead of ramping the fan up from (almost) zero. If the loop hasn't run for a while (more than
+`2s` or 5 times `adjustmentTickRate`, whichever is longer, e.g. while a sensor failed), it treats the pause like
+`1s` (or one `adjustmentTickRate`, if that is longer), instead of making up for the whole pause at once.
 
 See [PID controller on Wikipedia](https://en.wikipedia.org/wiki/Proportional%E2%80%93integral%E2%80%93derivative_controller)
 for more information on what a PID controller is.

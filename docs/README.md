@@ -23,6 +23,6 @@ sensors ──> sensor monitors ──> curve evaluator ──> fan controllers 
 | [Daemon](daemon.md) | Startup, reload, shutdown and signals, failure policy, concurrency, time handling, config validation, statistics, REST API, notifications, build variants, versioning |
 | [Sensors](sensors.md) | Sensor types, how hwmon/NVIDIA/disk sensors are found, polling, moving averages, stale detection, `cmd` sensors |
 | [Curves](curves.md) | Curve types (`linear`, `staircase`, `pid`, `function`), value range, the central curve evaluator, failure propagation |
-| [Control algorithms](control-algorithms.md) | `direct` and `pid`, their defaults and tick-rate dependence, seeding at the curve value |
+| [Control algorithms](control-algorithms.md) | `direct` and `pid`, their defaults and tick-rate dependence, seeding at the curve value, recovery after a curve failure or a gap |
 | [Fan controller](fan-controller.md) | The per-fan runtime loop, PWM limits and `pwmMap`, control modes, restore on exit, sensor and write failures, `neverStop` stall detection |
 | [Fan analysis](fan-analysis.md) | The initialization sequence, `pwmMap` detection, the PWM to RPM curve, persistence, `fan2go fan init` |
