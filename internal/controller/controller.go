@@ -74,9 +74,11 @@ type DefaultFanController struct {
 	updateRate time.Duration
 	// the fan state as it was before the controller started (nil until captured)
 	originalFanState *FanStateSnapshot
-	// the last pwm value that was set to the fan, **before** applying the pwmMap to it
+	// the last pwm value that was set to the fan, **before** applying the pwmMap to it.
+	// This is always a target value (pre-pwmMap), never a raw value: only setTargetPwm writes it.
+	// Apply the pwmMap (applyPwmMapToTarget) to get the raw value that was written to the fan.
 	lastTarget *int
-	// a list of all pre-pwmMap pwm values where setPwm(x) != setPwm(y) for the controlled fan
+	// a list of all pre-pwmMap pwm values where pwmMap[x] != pwmMap[y] for the controlled fan
 	targetValuesWithDistinctPWMValue []int
 
 	// a map of setPwm(x) -> getPwm() = Y for x in [0..255] for the controlled fan
@@ -538,7 +540,7 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 		}
 	}
 
-	err = f.setPwm(speedTarget)
+	err = f.setTargetPwm(speedTarget)
 	if err != nil {
 		// TODO: maybe we should add some kind of critical failure mode here
 		//  in case these errors don't resolve after a while
@@ -785,10 +787,12 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 	}
 }
 
-// setPwm applies the given target speed in [0..255] to the fan which is controlled
+// setTargetPwm applies the given target speed in [0..255] to the fan which is controlled
 // in this FanController. Since the fan might not support the range of [0..255]
 // the target value is mapped to a pwm value in the supported range using the pwmMap.
-func (f *DefaultFanController) setPwm(target int) (err error) {
+// Always pass a target (pre-pwmMap) value, never a value that was already mapped
+// with applyPwmMapToTarget, otherwise the pwmMap is applied twice.
+func (f *DefaultFanController) setTargetPwm(target int) (err error) {
 	pwmMappedValue := f.applyPwmMapToTarget(target)
 	expectedReportedPwmValue := f.getReportedPwmAfterApplyingPwm(pwmMappedValue)
 	// setting pwmMappedValue will yield expectedReportedPwmValue when reading back the pwm value
