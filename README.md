@@ -427,6 +427,13 @@ fans:
     #     0: 0
     #     128: 128
     #     255: 255
+    #
+    # For some devices fan2go knows the readback formula of the driver (see "Known hardware quirks"),
+    # and uses it instead of the sweep when setPwmToGetPwmMap is omitted or autodetect.
+    # (Optional) Known hardware quirks of the device that fan2go applies to this fan (hwmon fans only),
+    # see "Known hardware quirks". Set enabled: false to not apply them.
+    # quirks:
+    #   enabled: false
     # (Optional) Configure the control mode fan2go uses while running and on exit.
     # Both fields are optional; omitting controlMode entirely preserves existing behavior.
     #
@@ -767,6 +774,10 @@ or to validate a specific config file:
   ERROR   Validation failed: Curve m2_ssd_curve: no curve definition with id 'm2_first_ssd_curve123' found
 ```
 
+For hwmon fans of a device with [known hardware quirks](#known-hardware-quirks), `config validate` also prints tips
+and warnings about settings that don't work well with that device (e.g. a `deadband` that is finer than the 8 fan
+levels of a ThinkPad). They don't change the result of the validation.
+
 ## Using external commands for sensors/fans
 
 fan2go supports using external executables for use as both sensor input, as well as fan output (and rpm input). There
@@ -1095,6 +1106,26 @@ stale), `error` contains the reason, and `value` is the value of the last succes
 ## Device detection
 
 fan2go uses [gosensors](https://github.com/md14454/gosensors) to directly interact with lm-sensors.
+
+## Known hardware quirks
+
+fan2go knows the driver behaviour of a few devices from the kernel docs and driver sources, and applies it
+automatically to fans of these devices. The device is identified exactly by its hwmon name. fan2go logs every
+applied entry at startup, and `fan2go detect` shows it in the `Quirks` column.
+
+| Entry          | Devices (hwmon name)                                       | Effect |
+|----------------|------------------------------------------------------------|--------|
+| `corsaircpro`  | Corsair Commander Pro, Obsidian 1000D (`corsaircpro`)      | `setPwmToGetPwmMap` from the driver formula (1% steps), no set/get sweep at the first start |
+| `aquacomputer` | Aquacomputer D5 Next, Octo, Quadro, Aquaero (`d5next`, `octo`, `quadro`, `aquaero`) | set→get map from the driver formula (equal to the identity), no set/get sweep (which takes minutes on these devices) |
+| `thinkpad`     | ThinkPad (`thinkpad`)                                      | hint about `thinkpad_acpi fan_control=1`; `config validate` advice for its 8 fan levels |
+| `nzxtsmart2`   | NZXT RGB & Fan Controller, Smart Device v2 (`nzxtsmart2`)  | `setPwmToGetPwmMap` from the driver formula (1% steps); hint about fans connected after boot |
+
+A configured `setPwmToGetPwmMap` map (`identity`, `linear` or `values`) takes precedence; `autodetect` uses the
+formula. To not apply an entry to a fan (and measure the map instead), set
+`quirks.enabled: false` on it. When an entry with a readback formula is added or its formula changes, the fans that use it are analyzed once
+more.
+Details, sources, and recipes for devices without an entry (e.g. Dell laptops, AMD GPUs) are in
+[docs/hardware-quirks.md](docs/hardware-quirks.md).
 
 ## Initialization
 

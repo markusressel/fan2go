@@ -1,0 +1,95 @@
+package persistence
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+
+	"github.com/markusressel/fan2go/internal/ui"
+	bolt "go.etcd.io/bbolt"
+)
+
+const BucketFanAnalysisInfo = "fanAnalysisInfo"
+
+// FanAnalysisInfo describes how the saved analysis data of a fan (RPM curve, setPwmToGetPwmMap, pwmMap)
+// was measured. If it differs from the current one, the data is measured again.
+type FanAnalysisInfo struct {
+	// Quirk is the id of the known hardware quirks entry that applied to the fan, "" if none
+	Quirk string `json:"quirk"`
+	// QuirkVersion is the version of that entry, 0 if none
+	QuirkVersion int `json:"quirkVersion"`
+}
+
+// SaveFanAnalysisInfo saves the analysis info of the given fan, overwriting a saved one.
+func (p persistence) SaveFanAnalysisInfo(fanId string, info FanAnalysisInfo) error {
+	data, err := json.Marshal(info)
+	if err != nil {
+		return err
+	}
+	db, err := p.openPersistence()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+
+	return db.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte(BucketFanAnalysisInfo))
+		if err != nil {
+			return fmt.Errorf("create bucket: %s", err)
+		}
+		return b.Put([]byte(fanId), data)
+	})
+}
+
+// LoadFanAnalysisInfo loads the analysis info of the given fan.
+// Returns os.ErrNotExist if there is none, and ErrCorruptData (after deleting it) if it can't be read.
+func (p persistence) LoadFanAnalysisInfo(fanId string) (FanAnalysisInfo, error) {
+	db, err := p.openPersistence()
+	if err != nil {
+		return FanAnalysisInfo{}, err
+	}
+	defer func() { _ = db.Close() }()
+
+	var info FanAnalysisInfo
+	err = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(BucketFanAnalysisInfo))
+		if b == nil {
+			return os.ErrNotExist
+		}
+		v := b.Get([]byte(fanId))
+		if v == nil {
+			return os.ErrNotExist
+		}
+		if err := json.Unmarshal(v, &info); err != nil {
+			ui.Warning("Unable to read saved analysis info of fan %s: %v", fanId, err)
+			return fmt.Errorf("%w: analysis info of %s: %v", ErrCorruptData, fanId, err)
+		}
+		return nil
+	})
+	if errors.Is(err, ErrCorruptData) {
+		deleteCorruptKey(db, BucketFanAnalysisInfo, fanId)
+		return FanAnalysisInfo{}, err
+	}
+	if err != nil {
+		return FanAnalysisInfo{}, err
+	}
+	return info, nil
+}
+
+// DeleteFanAnalysisInfo deletes the analysis info of the given fan (a no-op if there is none).
+func (p persistence) DeleteFanAnalysisInfo(fanId string) error {
+	db, err := p.openPersistence()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(BucketFanAnalysisInfo))
+		if b == nil {
+			return nil
+		}
+		return b.Delete([]byte(fanId))
+	})
+}

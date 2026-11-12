@@ -237,6 +237,9 @@ func initializeFans(
 			ui.NotifyError("Fan Skipped", errMsg)
 			continue
 		}
+		if entry := fans.KnownQuirksOf(fan); entry != nil {
+			ui.Info("%s", entry.AppliedMessage(config))
+		}
 		reg.RegisterFan(fan)
 		result[config] = fan
 	}

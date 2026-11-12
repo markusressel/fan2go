@@ -115,7 +115,8 @@ mappings and boundaries come from the config, but the RPM curve is still measure
 
 **Trade-offs**: The data is keyed by the fan `id` only. It goes stale if the hardware behind an `id` changes (other
 hwmon index, new fan) or if the `pwmMap` config changes. The user has to run `fan2go fan --id <id> init` (or `reset`)
-then.
+then. Only a change of the [known hardware quirks](hardware-quirks.md#persistence) entry of a hwmon fan deletes the
+data automatically.
 
 ### Re-analyze only on missing or corrupt data
 
@@ -148,7 +149,9 @@ database.
 
 In `autodetect` mode:
 
-- `setPwmToGetPwmMap`: `computeSetPwmToGetPwmMapAutomatically` writes every value 0..255, waits `pwmSetDelay` and
+- `setPwmToGetPwmMap`: if the fan has a [known hardware quirks](hardware-quirks.md) entry with a readback formula
+  (and `quirks.enabled` is not `false`), the map comes from that formula, without a
+  sweep and without the database. Otherwise `computeSetPwmToGetPwmMapAutomatically` writes every value 0..255, waits `pwmSetDelay` and
   reads `pwm` back. Values whose write fails are left out. Without a readable `pwm` (or with
   `fan init --assume-pwm-map-identity`), it assumes a 1:1 map.
 - `pwmMap`: `computePwmMapAutomatically` takes the keys of the `setPwmToGetPwmMap`, i.e. the raw values the driver
@@ -243,7 +246,7 @@ next to the daemon is not serialized.
 `Load`/`Save`/`Delete` opens the database, runs one transaction and closes it again. bbolt takes an exclusive
 file lock on open and waits up to 1 minute (`bolt.Options{Timeout: 1 * time.Minute}`) before it gives up.
 
-Data format: four buckets, keyed by fan `id`, values are JSON:
+Data format: five buckets, keyed by fan `id`, values are JSON:
 
 | Bucket                 | Content                                  | Example                       |
 |------------------------|------------------------------------------|-------------------------------|
@@ -251,6 +254,7 @@ Data format: four buckets, keyed by fan `id`, values are JSON:
 | `fanSetPwmToGetPwmMap` | set PWM to reported PWM                  | `{"0":0,"1":1,...}`           |
 | `fanPwmMapping`        | `pwmMap`, an array of exactly 256 values | `[0,1,2,...,255]`             |
 | `fanOriginalState`     | state before fan2go took control, only while it controls the fan | `{"hardware":"hwmon:nct6798/0/pwm1","controlMode":2,"automaticControlMode":5,"pwm":120}` |
+| `fanAnalysisInfo`      | known hardware quirks entry the analysis data of a hwmon fan was measured with ([details](hardware-quirks.md#persistence)) | `{"quirk":"corsaircpro","quirkVersion":1}` |
 
 A fan without an RPM sensor stores `null` in `fans`: it counts as "analyzed, no curve". File and cmd fans store their
 fixed linear curve (0..255 to 0..255).
@@ -331,6 +335,7 @@ Per-fan keys:
 | `setPwmToGetPwmMap` | `autodetect` | `identity`, `linear`, `values` skip the sweep and the database    |
 | `minPwm`, `startPwm`, `maxPwm` | measured | override the values derived from the curve               |
 | `pwmSetDelay`       | global value | per-fan override of `fanController.pwmSetDelay`                   |
+| `quirks.enabled`    | `true`       | `false` doesn't apply the [known hardware quirks](hardware-quirks.md) of the device |
 
 CLI: `fan2go fan --id <id> init [--fan-response-delay <delay>] [--assume-pwm-map-identity]`,
 `fan2go fan --id <id> reset`, `fan2go fan --id <id> curve`.
@@ -345,7 +350,8 @@ CLI: `fan2go fan --id <id> init [--fan-response-delay <delay>] [--assume-pwm-map
 - `minPwm` and `startPwm` are not measured separately (#30). The binary search mixes start-from-standstill and
   keep-spinning behaviour.
 - A fan that spins at PWM 0 gets RPM 0 stored for PWM 0 anyway, and its `startPwm` becomes the next measured value.
-- Saved data is keyed by fan `id` and not invalidated when the hardware or the `pwmMap` config changes.
+- Saved data is keyed by fan `id` and not invalidated when the hardware or the `pwmMap` config changes (only a
+  changed known hardware quirks entry invalidates it).
 - A `null` curve (stored when the RPM sensor was missing at analysis time) counts as "analyzed". If the RPM input
   appears later (fixed `rpmChannel`, driver loaded late), the fan keeps running without a curve until `fan init`.
 - The autodetected `pwmMap` ignores the readback values; quantized drivers get an identity map with many redundant

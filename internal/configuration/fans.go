@@ -117,6 +117,8 @@ type FanConfig struct {
 	ControlAlgorithm *ControlAlgorithmConfig `json:"controlAlgorithm,omitempty"`
 	// SanityCheck defines Configuration options for sanity checks
 	SanityCheck SanityCheckConfig `json:"sanityCheck"`
+	// Quirks configures the built-in known hardware quirks for this fan (hwmon fans only).
+	Quirks *QuirksConfig `json:"quirks,omitempty"`
 	// OnSensorFailure defines what fan2go does with the fan while its curve can't be evaluated
 	// (e.g. because a sensor can't be read or its value is stale). Defaults to max.
 	OnSensorFailure OnSensorFailureAction `json:"onSensorFailure,omitempty"`
@@ -246,6 +248,17 @@ type FanModeChangedByThirdPartyConfig struct {
 	ThrottleDuration time.Duration `json:"throttleDuration,omitempty" default:"10s"`
 }
 
+// QuirksConfig configures the built-in known hardware quirks of a fan (see docs/hardware-quirks.md).
+type QuirksConfig struct {
+	// Enabled defines whether the built-in known quirks of the device are applied to the fan (default true).
+	Enabled DefaultTrueBool `json:"enabled,omitempty"`
+}
+
+// QuirksEnabled returns whether the built-in known hardware quirks are applied to the fan.
+func (c FanConfig) QuirksEnabled() bool {
+	return c.Quirks == nil || c.Quirks.Enabled.Get()
+}
+
 type HwMonFanConfig struct {
 	Platform      string `json:"platform"`
 	Index         int    `json:"index"`
@@ -255,6 +268,10 @@ type HwMonFanConfig struct {
 	RpmInputPath  string
 	PwmPath       string
 	PwmEnablePath string
+	// HwmonName is the content of the name file of the hwmon device (set by fan2go, not configurable)
+	HwmonName string
+	// Modalias is the content of the device/modalias file of the hwmon device (set by fan2go, not configurable)
+	Modalias string
 }
 
 type NvidiaFanConfig struct {

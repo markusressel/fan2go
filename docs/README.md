@@ -26,3 +26,4 @@ sensors ──> sensor monitors ──> curve evaluator ──> fan controllers 
 | [Control algorithms](control-algorithms.md) | `direct` (time-based smoothing, the default) and `pid`, their defaults and tick-rate dependence, seeding at the curve value, recovery after a curve failure or a gap |
 | [Fan controller](fan-controller.md) | The per-fan runtime loop, PWM limits and `pwmMap`, control modes, restore on exit, sensor and write failures, `neverStop` stall detection |
 | [Fan analysis](fan-analysis.md) | The initialization sequence, `pwmMap` detection, the PWM to RPM curve, persistence, `fan2go fan init` |
+| [Known hardware quirks](hardware-quirks.md) | The built-in registry of device-specific driver behaviour, identification, precedence, `config validate` advice, how to add an entry |

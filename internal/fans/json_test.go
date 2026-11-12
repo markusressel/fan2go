@@ -22,7 +22,9 @@ func exportedFields(t reflect.Type) []string {
 // The MarshalJSON methods serialize a snapshot type, which must have the same exported fields
 // (names, types, json tags, order) as the fan type, so the REST API output doesn't change.
 func TestFans_JsonSnapshotTypesMatchFanTypes(t *testing.T) {
-	assert.Equal(t, exportedFields(reflect.TypeOf(HwMonFan{})), exportedFields(reflect.TypeOf(hwMonFanJson{})))
+	// the snapshot of a hwmon fan also has the (unexported) known hardware quirks entry of the fan
+	hwMonFanFields := append(exportedFields(reflect.TypeOf(HwMonFan{})), "Quirks *fans.knownQuirksJson `json:\"quirks,omitempty\"`")
+	assert.Equal(t, hwMonFanFields, exportedFields(reflect.TypeOf(hwMonFanJson{})))
 	assert.Equal(t, exportedFields(reflect.TypeOf(FileFan{})), exportedFields(reflect.TypeOf(fileFanJson{})))
 	assert.Equal(t, exportedFields(reflect.TypeOf(CmdFan{})), exportedFields(reflect.TypeOf(cmdFanJson{})))
 }

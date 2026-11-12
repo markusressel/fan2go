@@ -53,6 +53,11 @@ type Persistence interface {
 	LoadFanOriginalStates() (map[string]FanOriginalState, error)
 	SaveFanOriginalState(fanId string, state FanOriginalState) error
 	DeleteFanOriginalState(fanId string) error
+
+	// how the analysis data of a fan was measured, see FanAnalysisInfo
+	LoadFanAnalysisInfo(fanId string) (FanAnalysisInfo, error)
+	SaveFanAnalysisInfo(fanId string, info FanAnalysisInfo) error
+	DeleteFanAnalysisInfo(fanId string) error
 }
 
 type persistence struct {

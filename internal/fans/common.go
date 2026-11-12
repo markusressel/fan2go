@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/quirks"
 	"github.com/markusressel/fan2go/internal/ui"
 )
 
@@ -112,6 +113,21 @@ type Fan interface {
 	Supports(feature FeatureFlag) bool
 }
 
+// KnownQuirksProvider is implemented by fans that can have an entry in the known hardware quirks registry
+// (hwmon fans).
+type KnownQuirksProvider interface {
+	// KnownQuirks returns the registry entry that applies to the fan, nil if none.
+	KnownQuirks() *quirks.Entry
+}
+
+// KnownQuirksOf returns the known hardware quirks entry that applies to the given fan, nil if none.
+func KnownQuirksOf(fan Fan) *quirks.Entry {
+	if provider, ok := fan.(KnownQuirksProvider); ok {
+		return provider.KnownQuirks()
+	}
+	return nil
+}
+
 // AutomaticControlModeKeeper is implemented by fans whose driver has several automatic control modes
 // (hwmon: every pwmX_enable value >= 2). SetControlMode(ControlModeAutomatic) writes the last known one.
 type AutomaticControlModeKeeper interface {
@@ -126,12 +142,13 @@ type AutomaticControlModeKeeper interface {
 func NewFan(config configuration.FanConfig) (Fan, error) {
 	if config.HwMon != nil {
 		return &HwMonFan{
-			Label:    config.ID,
-			Index:    config.HwMon.Index,
-			MinPwm:   config.MinPwm,
-			StartPwm: config.StartPwm,
-			MaxPwm:   config.MaxPwm,
-			Config:   config,
+			Label:       config.ID,
+			Index:       config.HwMon.Index,
+			MinPwm:      config.MinPwm,
+			StartPwm:    config.StartPwm,
+			MaxPwm:      config.MaxPwm,
+			Config:      config,
+			knownQuirks: quirks.ForFan(config),
 		}, nil
 	}
 
