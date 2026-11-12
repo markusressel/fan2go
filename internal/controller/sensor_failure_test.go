@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/control_loop"
 	"github.com/markusressel/fan2go/internal/controller/status"
 	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
@@ -424,4 +425,68 @@ func TestFanController_SensorFailure_Max_StateAfterRunStartsAgain(t *testing.T) 
 	// THEN
 	assertState(t, test.controller, status.StateSensorFailureMax, "sensor value is stale")
 	test.stop()
+}
+
+// Run can be called again on the same controller (the daemon does that after a failed config reload).
+// The second Run must not inherit the failure state of the first one: with onSensorFailure: restore,
+// it takes over the fan, sees that the curve still fails and hands the fan back again, instead of
+// leaving it in manual mode because it was "already restored".
+func TestFanController_SensorFailure_Restore_SecondRunHandlesFailureAgain(t *testing.T) {
+	test := startSensorFailureTest(t, configuration.OnSensorFailureRestore, nil)
+	test.curve.set(0, errStale)
+	test.awaitNotified(1)
+	test.stop()
+	require.Equal(t, []fans.ControlMode{fans.ControlModePWM, fans.ControlModeAutomatic}, test.fan.getControlModeWrites())
+
+	// WHEN: the controller runs again while the curve still fails
+	ctx, cancel := context.WithCancel(context.Background())
+	test.cancel = cancel
+	test.done = startRun(test.controller, ctx)
+	advanceThroughRunStartup(t, test.clock)
+
+	// THEN: it takes over the fan, and hands it back again because of the failing curve
+	test.awaitNotified(2)
+	assert.Equal(t, []fans.ControlMode{fans.ControlModePWM, fans.ControlModeAutomatic, fans.ControlModePWM, fans.ControlModeAutomatic},
+		test.fan.getControlModeWrites())
+
+	// WHEN: the curve recovers, normal control resumes
+	test.curve.set(80, nil)
+	test.awaitPwm(80)
+	test.stop()
+}
+
+// A second Run starts without the PWM value, the minPwm offset and the control loop state of the first one.
+func TestFanController_SecondRun_ResetsRuntimeState(t *testing.T) {
+	test := startSensorFailureTest(t, configuration.OnSensorFailureMax, nil)
+	test.controller.increaseMinPwmOffset()
+	test.stop()
+	_, ok := test.controller.GetLastSetPwm()
+	require.True(t, ok)
+	loop := &resetCountingControlLoop{ControlLoop: test.controller.controlLoop}
+	test.controller.controlLoop = loop
+
+	// WHEN
+	ctx, cancel := context.WithCancel(context.Background())
+	test.cancel = cancel
+	test.done = startRun(test.controller, ctx)
+	test.clock.BlockUntil(1)
+
+	// THEN: the state is reset before the controller touches the fan
+	_, ok = test.controller.GetLastSetPwm()
+	assert.False(t, ok)
+	assert.Equal(t, 0, test.controller.GetStatistics().MinPwmOffset)
+	assert.Equal(t, 1, test.controller.GetStatistics().IncreasedMinPwmCount, "the counter is kept")
+	assert.Equal(t, 1, loop.resets)
+	test.cancel()
+	assert.ErrorIs(t, awaitRun(t, test.done), context.Canceled, "cancelled during the startup warm-up")
+}
+
+type resetCountingControlLoop struct {
+	control_loop.ControlLoop
+	resets int
+}
+
+func (l *resetCountingControlLoop) Reset() {
+	l.resets++
+	l.ControlLoop.Reset()
 }

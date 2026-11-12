@@ -759,3 +759,59 @@ func TestRunInitializationAndRestore_Panic_RestoresFanAndReturnsError(t *testing
 	mode, _ := fan.GetControlMode()
 	assert.Equal(t, fans.ControlModeAutomatic, mode)
 }
+
+func TestRunInitializationIfNeeded_IsInitializingWhileWaitingAndAnalyzing(t *testing.T) {
+	defer setUpInitTestConfig(false)()
+	waiting := waitHook(t)
+
+	// GIVEN: a fan without saved data, and another fan that is being initialized
+	releaseLock := holdInitializationLock(t)
+	log := &writeLog{}
+	fan := newInitTestFan("fan", log)
+	releaseSetPwm := fan.blockInFirstSetPwm(t)
+	controller := newInitTestController(newFakePersistence(), fan)
+	assert.False(t, controller.IsInitializing())
+
+	// WHEN
+	done := make(chan error, 1)
+	go func() {
+		_, err := controller.runInitializationIfNeeded(context.Background())
+		done <- err
+	}()
+
+	// THEN: it counts as initializing while it waits for the other fan
+	select {
+	case <-waiting:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the fan")
+	}
+	assert.True(t, controller.IsInitializing())
+
+	// and while it analyzes the fan
+	releaseLock()
+	await(t, fan.blockedInSetPwm, "the analysis")
+	assert.True(t, controller.IsInitializing())
+
+	// but not anymore once the analysis finished
+	releaseSetPwm()
+	require.NoError(t, awaitError(t, done))
+	assert.False(t, controller.IsInitializing())
+}
+
+// The setPwm -> getPwm sweep also runs on its own (saved RPM data, but no saved map), and counts as initializing.
+func TestComputeFanSpecificMappings_IsInitializingDuringSweep(t *testing.T) {
+	defer setUpInitTestConfig(true)()
+	log := &writeLog{}
+	fan := newInitTestFan("fan", log)
+	releaseSetPwm := fan.blockInFirstSetPwm(t)
+	controller := newInitTestController(newFakePersistence(), fan)
+
+	done := make(chan error, 1)
+	go func() { done <- controller.computeFanSpecificMappings(context.Background()) }()
+
+	await(t, fan.blockedInSetPwm, "the sweep")
+	assert.True(t, controller.IsInitializing())
+	releaseSetPwm()
+	require.NoError(t, awaitError(t, done))
+	assert.False(t, controller.IsInitializing())
+}

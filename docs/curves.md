@@ -259,9 +259,10 @@ freeze all fans at their last speed. With it, the fans pause for about one secon
 
 **Decision**: curve state (`Value`, `LastTemp`, the PID loop) lives in the curve object, guarded by the curve's own
 mutex. A config reload (`SIGHUP` or a change to the config file) stops the evaluator after the fan controllers,
-builds new sensors, curves and a new evaluator (`reloadConfiguration`), and starts them. All old workers are
-stopped before the new config is read, and the fan controllers hand their fans back like on exit. If the reload
-fails, fan2go restarts the old sensors, curves, evaluator and fan controllers. Their state is kept, but the fans are
+builds new sensors, curves and a new evaluator (`applyConfiguration`), and starts them. The new config is read and
+validated first, while the old workers keep running; an invalid config changes nothing. A valid one stops all old
+workers, and the fan controllers hand their fans back like on exit. If creating the new objects fails, fan2go
+restarts the old sensors, curves, evaluator and fan controllers. The curve state is kept then, but the fans are
 handed back and taken over again like on a restart. See [daemon.md](daemon.md#config-reload).
 
 **Why**: per-curve locks let the REST API and Prometheus read concurrently without blocking each other. Building

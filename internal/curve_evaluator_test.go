@@ -54,6 +54,7 @@ type cycleCheckingController struct {
 
 func (c *cycleCheckingController) SetCurveCycles(cycles <-chan struct{}) { c.cycles = cycles }
 func (c *cycleCheckingController) GetFanId() string                      { return "fan" }
+func (c *cycleCheckingController) IsInitializing() bool                  { return false }
 
 func (c *cycleCheckingController) Run(ctx context.Context) error {
 	close(c.started)
@@ -102,16 +103,18 @@ func TestRunOrchestratorCycle_StopsCurveEvaluatorAfterFanControllers(t *testing.
 	fanController := &cycleCheckingController{clock: clock, started: make(chan struct{}), cycleAfterStop: make(chan bool, 1)}
 	fanController.SetCurveCycles(evaluator.Subscribe())
 
+	useConfigFile(t, validTestConfig)
 	reloadChan := make(chan struct{}, 1)
 	done := make(chan bool, 1)
 	go func() {
-		done <- runOrchestratorCycle(context.Background(), reloadChan, reg, map[fans.Fan]controller.FanController{fan: fanController}, evaluator)
+		_, appExiting := runOrchestratorCycle(context.Background(), reloadChan, reg, map[fans.Fan]controller.FanController{fan: fanController}, evaluator)
+		done <- appExiting
 	}()
 	<-fanController.started
 	// the evaluator has created its ticker and run its first cycle
 	require.Eventually(t, func() bool { return curve.CurrentResult().Err == nil }, 5*time.Second, time.Millisecond)
 
-	// WHEN: a reload is requested
+	// WHEN: a reload with a valid config is requested
 	reloadChan <- struct{}{}
 
 	// THEN: the evaluator was still running while the controller stopped

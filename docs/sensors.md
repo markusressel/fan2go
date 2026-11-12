@@ -323,7 +323,8 @@ smartmontools sources. The PR states that it wasn't tested on hardware.
 
 ### Sensors are recreated on reload
 
-**Decision**: On a config reload, the daemon first stops the old sensor monitors (`runOrchestratorCycle`), then
+**Decision**: On a config reload with a valid config, the daemon first stops the old sensor monitors
+(`runOrchestratorCycle`), then
 `InitializeObjects` creates new sensor objects, resolves hwmon sensors again, and seeds them with one read. Reading
 state and averages of the old sensors are dropped.
 

@@ -50,8 +50,10 @@ type ControlLoop interface {
 
 Each fan controller owns one `ControlLoop` instance, used only by its update loop (not safe for concurrent use).
 A new instance is created on every start and every successful config reload, so all algorithm state starts over
-then. If a reload fails, fan2go restarts the old fan controllers with their old `ControlLoop` instances (see
-[fan-controller.md](fan-controller.md) for the state that is reset then).
+then. If a reload fails after the old controllers were stopped (an error while creating the new objects; an invalid
+config doesn't stop them), fan2go restarts the old fan controllers with their old `ControlLoop` instances, and `Run`
+resets them first (`ControlLoop.Reset`), so the state starts over as well (see [fan-controller.md](fan-controller.md)
+for the other state that is reset then).
 
 ### Direct
 

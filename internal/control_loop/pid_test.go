@@ -384,3 +384,20 @@ func TestPidControlLoop_CyclesSlowerThanTheGapThreshold_StillReachTheTarget(t *t
 		})
 	}
 }
+
+func TestPidControlLoop_Reset_NextCycleStartsAtTargetAgain(t *testing.T) {
+	// GIVEN a loop that has been running at 100
+	loop, clock := newDefaultPidLoopWithFakeClock()
+	for range 50 {
+		cycle(loop, clock, 100)
+	}
+
+	// WHEN it is reset, and the next cycle comes after a long gap (e.g. a restarted fan controller)
+	loop.Reset()
+	clock.Advance(time.Hour)
+
+	// THEN the next cycle applies its target directly, like the first cycle after creation
+	assert.Equal(t, 200.0, cycle(loop, clock, 200))
+	// and the gap isn't used as the time step of the following cycle: it continues smoothly from 200
+	assert.InDelta(t, 200.0, cycle(loop, clock, 200), 0.001)
+}
