@@ -10,7 +10,7 @@
 #   <version>       release tag to publish, e.g. 0.15.1 (must already be pushed to GitHub)
 #   --pkgrel N      pkgrel for the stable package (default: 1); use for packaging-only fixes of the same version
 #   --skip-build    only generate .SRCINFO, don't test-build the packages
-#   --yes           push without asking for confirmation
+#   --yes           don't ask for confirmation: push, also if the checkout is not the latest master
 #
 # Environment:
 #   AUR_DIR         directory containing the AUR clones fan2go/ and fan2go-git/ (default: ~/programming/AUR);
@@ -30,6 +30,10 @@ die() {
 
 info() {
 	echo "==> $*"
+}
+
+warn() {
+	echo "warning: $*" >&2
 }
 
 assume_yes=false
@@ -76,8 +80,89 @@ if ! git -C "$repo_dir" diff --quiet HEAD -- packaging/aur; then
 	die "packaging/aur has uncommitted changes; commit them first so the published files match the repository"
 fi
 
+# confirm <question>: returns 0 if the user answers yes (or --yes was given)
+confirm() {
+	local answer=""
+	if [ "$assume_yes" = true ]; then
+		return 0
+	fi
+	read -r -p "$1 [y/N] " answer || answer=""
+	case "$answer" in
+	y | Y | yes) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+# the stable package is published with the PKGBUILD of this checkout, so it should be the latest master
+default_branch=master
+info "Checking that the checkout is the latest $default_branch"
+git -C "$repo_dir" fetch --quiet origin "$default_branch" || die "could not fetch $default_branch from origin"
+branch="$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD || echo "a detached HEAD")"
+behind="$(git -C "$repo_dir" rev-list --count HEAD..FETCH_HEAD)"
+unpushed=false
+git -C "$repo_dir" diff --quiet FETCH_HEAD HEAD -- packaging/aur || unpushed=true
+if [ "$branch" != "$default_branch" ] || [ "$behind" -gt 0 ] || [ "$unpushed" = true ]; then
+	if [ "$branch" != "$default_branch" ]; then
+		warn "$repo_dir is on $branch, not on $default_branch"
+	fi
+	if [ "$behind" -gt 0 ]; then
+		warn "$repo_dir is $behind commit(s) behind origin/$default_branch"
+	fi
+	if [ "$unpushed" = true ]; then
+		warn "packaging/aur in $repo_dir differs from origin/$default_branch"
+	fi
+	confirm "Publish with the packaging files of this checkout anyway?" ||
+		die "aborted; check out $default_branch and pull first"
+fi
+
 work_dir="$(mktemp -d)"
-trap 'rm -rf "$work_dir"' EXIT
+# AUR clones this script has changed and not published; restored if it stops (error or "no")
+touched=()
+publishing=false
+# HEAD of each AUR clone before this script changed it (empty for a clone without commits)
+declare -A orig_head=()
+
+# restore_clones: undoes the changes of this script in the AUR clones in $touched
+restore_clones() {
+	local pkg clone
+	for pkg in "${touched[@]}"; do
+		clone="$aur_dir/$pkg"
+		if [ -n "${orig_head[$pkg]:-}" ]; then
+			# also drops a commit of this script that was not pushed
+			git -C "$clone" reset --quiet --hard "${orig_head[$pkg]}"
+			# a file that is new in this release (and was not staged yet) is not removed by the reset
+			if ! git -C "$clone" ls-files --error-unmatch fan2go.install > /dev/null 2>&1; then
+				rm -f "$clone/fan2go.install"
+			fi
+		else
+			# drops a first commit of this script that was not pushed
+			git -C "$clone" update-ref -d HEAD 2> /dev/null || true
+			git -C "$clone" rm --quiet --cached --force --ignore-unmatch -- PKGBUILD .SRCINFO fan2go.install
+			rm -f "$clone/PKGBUILD" "$clone/.SRCINFO" "$clone/fan2go.install"
+		fi
+	done
+	touched=()
+}
+
+cleanup() {
+	local status=$?
+	set +e
+	if [ ${#touched[@]} -gt 0 ]; then
+		if [ "$status" -eq 0 ]; then
+			:
+		elif [ "$publishing" = true ]; then
+			echo "error: not published: ${touched[*]}. Restoring their AUR clones." >&2
+		else
+			echo "error: stopped before publishing, nothing was published. Restoring the AUR clones: ${touched[*]}" >&2
+		fi
+		restore_clones
+	fi
+	rm -rf "$work_dir"
+	exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # prepare_clone <pkgname>: makes sure $aur_dir/<pkgname> is an up-to-date, clean AUR clone
 prepare_clone() {
@@ -99,6 +184,7 @@ prepare_clone() {
 	elif [ -n "$(git -C "$clone" status --porcelain --untracked-files=no)" ]; then
 		die "$clone has staged changes"
 	fi
+	orig_head[$pkg]="$(git -C "$clone" rev-parse --verify -q HEAD || true)"
 }
 
 # build <pkgname>: generates .SRCINFO (and test-builds the package) in a temporary copy
@@ -129,6 +215,7 @@ build() {
 for pkg in fan2go fan2go-git; do
 	prepare_clone "$pkg"
 	build "$pkg"
+	touched+=("$pkg")
 	cp "$work_dir/$pkg/PKGBUILD" "$work_dir/$pkg/.SRCINFO" "$work_dir/$pkg/fan2go.install" "$aur_dir/$pkg/"
 	git -C "$aur_dir/$pkg" add PKGBUILD .SRCINFO fan2go.install
 done
@@ -150,30 +237,22 @@ if [ ${#changed[@]} -eq 0 ]; then
 	exit 0
 fi
 
-if [ "$assume_yes" != true ]; then
-	echo
-	read -r -p "Publish ${changed[*]} for $version to the AUR? [y/N] " answer
-	case "$answer" in
-	y | Y | yes) ;;
-	*)
-		for pkg in fan2go fan2go-git; do
-			if git -C "$aur_dir/$pkg" rev-parse --verify -q HEAD > /dev/null; then
-				git -C "$aur_dir/$pkg" reset --quiet --hard
-			else
-				git -C "$aur_dir/$pkg" rm --quiet --cached --force -- PKGBUILD .SRCINFO fan2go.install
-				rm -f "$aur_dir/$pkg/PKGBUILD" "$aur_dir/$pkg/.SRCINFO" "$aur_dir/$pkg/fan2go.install"
-			fi
-		done
-		echo "Aborted, nothing was published. The AUR clones under $aur_dir were restored."
-		exit 1
-		;;
-	esac
+echo
+if ! confirm "Publish ${changed[*]} for $version to the AUR?"; then
+	restore_clones
+	echo "Aborted, nothing was published. The AUR clones under $aur_dir were restored."
+	exit 1
 fi
 
+# from here on, only the clones of packages that were not pushed (yet) are restored
+touched=("${changed[@]}")
+publishing=true
 for pkg in "${changed[@]}"; do
 	info "$pkg: publishing"
 	git -C "$aur_dir/$pkg" commit --quiet -m "Release $version"
-	git -C "$aur_dir/$pkg" push origin HEAD:master
+	# on failure, the restore drops the commit, otherwise the next run would find nothing to publish
+	git -C "$aur_dir/$pkg" push origin HEAD:master || die "pushing $pkg failed"
+	touched=("${touched[@]:1}")
 done
 
 info "Done"
