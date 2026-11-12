@@ -1,10 +1,29 @@
+name-template: "$RESOLVED_VERSION"
+tag-template: "$RESOLVED_VERSION"
 categories:
+  - title: ⚠️ Breaking changes
+    label: breaking-change
   - title: 🚀 Features and ✨ Enhancements
     label: enhancement
   - title: 🐛 Bugfixes
     label: bug
 change-template: "* $TITLE (#$NUMBER) by @$AUTHOR"
+# fan2go is pre-1.0: breaking changes and features bump the minor version, everything else the patch version.
+version-resolver:
+  minor:
+    labels:
+      - breaking-change
+      - enhancement
+  patch:
+    labels:
+      - bug
+  default: patch
 template: |
+  ## Upgrade notes
+
+  <!-- Before publishing: replace this comment with the "Breaking changes / upgrade notes" sections of all PRs labeled
+  `breaking-change` (see RELEASING.md), or remove this section if there are none. -->
+
   ## What’s Changed
 
   $CHANGES
