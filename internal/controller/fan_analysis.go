@@ -15,25 +15,44 @@ import (
 
 const pwmMismatchRetries = 2
 
-func sleepWithContext(ctx context.Context, d time.Duration) error {
+// defaultSettleSampleInterval is the time between two RPM readings while waiting for a fan to settle.
+const defaultSettleSampleInterval = 500 * time.Millisecond
+
+// sleepWithContext waits for d on the given clock. It returns ctx.Err() if ctx is done first,
+// and also if ctx is already done when it is called (even for d <= 0).
+func sleepWithContext(ctx context.Context, clock util.Clock, d time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if d <= 0 {
+		return nil
+	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(d):
+	case <-clock.After(d):
 		return nil
 	}
 }
 
 type FanCurveAnalyzer struct {
 	fanController *DefaultFanController
+	// settleSampleInterval is the time between two RPM readings in waitForFanToSettle
+	settleSampleInterval time.Duration
 }
 
 func NewFanCurveAnalyzer(
 	fanController *DefaultFanController,
 ) *FanCurveAnalyzer {
 	return &FanCurveAnalyzer{
-		fanController: fanController,
+		fanController:        fanController,
+		settleSampleInterval: defaultSettleSampleInterval,
 	}
+}
+
+// clock returns the time source of the analyzed fan controller.
+func (f *FanCurveAnalyzer) clock() util.Clock {
+	return f.fanController.getClock()
 }
 
 func (f *FanCurveAnalyzer) RunInitializationSequence(ctx context.Context) (rpmCurve map[int]float64, err error) {
@@ -58,35 +77,36 @@ func (f *FanCurveAnalyzer) RunInitializationSequence(ctx context.Context) (rpmCu
 
 	curveData := map[int]float64{}
 
-	initStarted := time.Now()
+	clock := f.clock()
+	initStarted := clock.Now()
 
-	startBoundaryStarted := time.Now()
+	startBoundaryStarted := clock.Now()
 	startIdx, _, err := f.detectStartBoundary(ctx, fan, distinct, curveData)
 	if err != nil {
 		return nil, err
 	}
-	ui.Info("Fan %s: Boundary discovery (start) finished in %s", fan.GetId(), time.Since(startBoundaryStarted).Round(time.Millisecond))
+	ui.Info("Fan %s: Boundary discovery (start) finished in %s", fan.GetId(), clock.Now().Sub(startBoundaryStarted).Round(time.Millisecond))
 
-	maxBoundaryStarted := time.Now()
+	maxBoundaryStarted := clock.Now()
 	maxIdx, _, err := f.detectMaxBoundary(ctx, fan, distinct, startIdx, curveData)
 	if err != nil {
 		return nil, err
 	}
-	ui.Info("Fan %s: Boundary discovery (max) finished in %s", fan.GetId(), time.Since(maxBoundaryStarted).Round(time.Millisecond))
+	ui.Info("Fan %s: Boundary discovery (max) finished in %s", fan.GetId(), clock.Now().Sub(maxBoundaryStarted).Round(time.Millisecond))
 
-	interiorStarted := time.Now()
+	interiorStarted := clock.Now()
 	curveData, err = f.sampleInteriorCoarse(ctx, fan, distinct, startIdx, maxIdx, curveData)
 	if err != nil {
 		return nil, err
 	}
-	ui.Info("Fan %s: Interior coarse sampling finished in %s", fan.GetId(), time.Since(interiorStarted).Round(time.Millisecond))
+	ui.Info("Fan %s: Interior coarse sampling finished in %s", fan.GetId(), clock.Now().Sub(interiorStarted).Round(time.Millisecond))
 
 	curveData, err = f.rpmCurveMeasurementCleanup(curveData)
 	if err != nil {
 		return nil, err
 	}
 
-	ui.Info("Fan %s: RPM curve analysis finished in %s", fan.GetId(), time.Since(initStarted).Round(time.Millisecond))
+	ui.Info("Fan %s: RPM curve analysis finished in %s", fan.GetId(), clock.Now().Sub(initStarted).Round(time.Millisecond))
 
 	return curveData, nil
 }
@@ -417,7 +437,7 @@ func (f *FanCurveAnalyzer) measureAtPwm(ctx context.Context, fan fans.Fan, pwm i
 	for attempt := 0; attempt <= pwmMismatchRetries; attempt++ {
 		if attempt > 0 {
 			// The reported PWM may lag behind the requested value on some hardware, so wait FanResponseDelay before retrying.
-			if err := sleepWithContext(ctx, time.Duration(configuration.CurrentConfig.FanResponseDelay)*time.Second); err != nil {
+			if err := sleepWithContext(ctx, f.clock(), configuration.CurrentConfig.FanResponseDelay.Duration()); err != nil {
 				return 0, err
 			}
 		}
@@ -425,7 +445,9 @@ func (f *FanCurveAnalyzer) measureAtPwm(ctx context.Context, fan fans.Fan, pwm i
 		if err != nil {
 			return 0, fmt.Errorf("unable to set PWM %d (target %d): %w", actualPwm, pwm, err)
 		}
-		time.Sleep(f.fanController.getPwmSetDelay())
+		if err := sleepWithContext(ctx, f.clock(), f.fanController.getPwmSetDelay()); err != nil {
+			return 0, err
+		}
 
 		currentPwm, err := f.fanController.getPwm()
 		if err != nil {
@@ -450,7 +472,7 @@ func (f *FanCurveAnalyzer) measureAtPwm(ctx context.Context, fan fans.Fan, pwm i
 		}
 	} else {
 		// Small PWM step — a response-delay sleep is sufficient.
-		if err := sleepWithContext(ctx, time.Duration(configuration.CurrentConfig.FanResponseDelay)*time.Second); err != nil {
+		if err := sleepWithContext(ctx, f.clock(), configuration.CurrentConfig.FanResponseDelay.Duration()); err != nil {
 			return 0, err
 		}
 	}
@@ -463,7 +485,7 @@ func (f *FanCurveAnalyzer) measureAtPwm(ctx context.Context, fan fans.Fan, pwm i
 	samples := make([]float64, 0, sampleCount)
 	for i := 0; i < sampleCount; i++ {
 		if i > 0 {
-			if err := sleepWithContext(ctx, sampleDelay); err != nil {
+			if err := sleepWithContext(ctx, f.clock(), sampleDelay); err != nil {
 				return 0, err
 			}
 		}
@@ -485,8 +507,12 @@ func (f *FanCurveAnalyzer) measureAtPwm(ctx context.Context, fan fans.Fan, pwm i
 // warning is logged and the function returns early rather than blocking forever.
 func (f *FanCurveAnalyzer) waitForFanToSettle(ctx context.Context, fan fans.Fan, timeout time.Duration) error {
 	const requiredConsecutive = 3
-	const settleSampleInterval = 500 * time.Millisecond
 	const settleWindowSize = 8
+	clock := f.clock()
+	settleSampleInterval := f.settleSampleInterval
+	if settleSampleInterval <= 0 {
+		settleSampleInterval = defaultSettleSampleInterval
+	}
 	const minSamplesForDecision = 6
 	diffThreshold := configuration.CurrentConfig.MaxRpmDiffForSettledFan
 
@@ -501,16 +527,16 @@ func (f *FanCurveAnalyzer) waitForFanToSettle(ctx context.Context, fan fans.Fan,
 
 	var deadline time.Time
 	if timeout > 0 {
-		deadline = time.Now().Add(timeout)
+		deadline = clock.Now().Add(timeout)
 	}
 
 	consecutiveStable := 0
 	for consecutiveStable < requiredConsecutive {
-		if timeout > 0 && time.Now().After(deadline) {
+		if timeout > 0 && clock.Now().After(deadline) {
 			ui.Warning("Fan %s did not settle within %v, continuing anyway (%d/%d stable readings)", fan.GetId(), timeout, consecutiveStable, requiredConsecutive)
 			return nil
 		}
-		if err := sleepWithContext(ctx, settleSampleInterval); err != nil {
+		if err := sleepWithContext(ctx, clock, settleSampleInterval); err != nil {
 			return err
 		}
 

@@ -7,12 +7,14 @@ import (
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
 )
 
 // mockFanLaggingPwmReadback is a fan whose reported PWM converges to the requested value only after lag has passed.
 type mockFanLaggingPwmReadback struct {
 	MockFan
+	clock        util.Clock
 	lag          time.Duration
 	targetPwm    int
 	reportedPwm  int
@@ -23,13 +25,13 @@ func (fan *mockFanLaggingPwmReadback) SetPwm(pwm int) error {
 	if pwm != fan.targetPwm {
 		fan.reportedPwm = fan.targetPwm
 		fan.targetPwm = pwm
-		fan.lastChangeAt = time.Now()
+		fan.lastChangeAt = fan.clock.Now()
 	}
 	return nil
 }
 
 func (fan *mockFanLaggingPwmReadback) GetPwm() (int, error) {
-	if time.Since(fan.lastChangeAt) >= fan.lag {
+	if fan.clock.Now().Sub(fan.lastChangeAt) >= fan.lag {
 		return fan.targetPwm, nil
 	}
 	return fan.reportedPwm, nil
@@ -42,19 +44,22 @@ func TestMeasureAtPwm_LaggingReadback_HonorsFanResponseDelay(t *testing.T) {
 		configuration.CurrentConfig = originalConfig
 	}()
 	configuration.CurrentConfig.FanController.PwmSetDelay = 1 * time.Millisecond
-	configuration.CurrentConfig.FanResponseDelay = 1
+	configuration.CurrentConfig.FanResponseDelay = configuration.SecondsOrDuration(time.Second)
 	configuration.CurrentConfig.Analysis.SampleCount = 1
 	configuration.CurrentConfig.Analysis.SampleDelay = 0
 
+	clock := util.NewAutoAdvancingFakeClock(time.Unix(1000, 0))
 	fan := &mockFanLaggingPwmReadback{
 		MockFan: MockFan{
 			ID:  "fan",
 			RPM: 900,
 		},
-		lag: 300 * time.Millisecond,
+		clock: clock,
+		lag:   300 * time.Millisecond,
 	}
 	controller := &DefaultFanController{
-		fan: fan,
+		fan:   fan,
+		clock: clock,
 	}
 	for i := 0; i < 256; i++ {
 		controller.pwmMapping[i] = i
@@ -119,7 +124,7 @@ func setupNonIdempotentPwmMapController(t *testing.T) (*mockFanRecordingRawPwm, 
 		persistence: mockPersistence{},
 		fan:         fan,
 	}
-	err := controller.computeFanSpecificMappings()
+	err := controller.computeFanSpecificMappings(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, 3, controller.applyPwmMapToTarget(128))
 	assert.Equal(t, 0, controller.applyPwmMapToTarget(3))

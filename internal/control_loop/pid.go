@@ -1,6 +1,8 @@
 package control_loop
 
 import (
+	"time"
+
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 )
@@ -36,6 +38,19 @@ func NewPidControlLoop(
 	return &PidControlLoop{
 		pidLoop: util.NewPidLoop(p, i, d, 0, 255, true, true),
 	}
+}
+
+// NewPidControlLoopWithClock creates a PidControlLoop like NewPidControlLoop, but uses the given
+// time source to compute the time between two cycles. Intended for tests.
+func NewPidControlLoopWithClock(
+	p float64,
+	i float64,
+	d float64,
+	now func() time.Time,
+) *PidControlLoop {
+	l := NewPidControlLoop(p, i, d)
+	l.pidLoop.SetClock(now)
+	return l
 }
 
 func (l *PidControlLoop) Cycle(target float64) float64 {

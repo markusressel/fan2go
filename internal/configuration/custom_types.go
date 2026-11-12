@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"time"
@@ -238,6 +239,76 @@ func durationMillisecondsHookFunc() mapstructure.DecodeHookFuncType {
 			return data, nil
 		}
 	}
+}
+
+// SecondsOrDuration is a duration that is configured either as a plain number of seconds
+// (e.g. `2`, `0.5`, or `"2"` from the command line) or as a Go duration string (e.g. `"500ms"`, `"2s"`).
+// Unlike plain time.Duration fields, where durationMillisecondsHookFunc reads a plain number as
+// milliseconds, a plain number means seconds here. This keeps fields that used to be an integer
+// number of seconds backwards compatible.
+type SecondsOrDuration time.Duration
+
+// Duration returns the value as a time.Duration.
+func (d SecondsOrDuration) Duration() time.Duration {
+	return time.Duration(d)
+}
+
+func (d SecondsOrDuration) String() string {
+	return time.Duration(d).String()
+}
+
+// secondsOrDurationHookFunc decodes numbers (seconds) and strings (a plain number of seconds
+// or a Go duration) into a SecondsOrDuration.
+func secondsOrDurationHookFunc() mapstructure.DecodeHookFuncType {
+	targetType := reflect.TypeOf(SecondsOrDuration(0))
+
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data interface{},
+	) (interface{}, error) {
+		if t != targetType {
+			return data, nil
+		}
+
+		switch v := data.(type) {
+		case SecondsOrDuration:
+			return v, nil
+		case time.Duration:
+			return SecondsOrDuration(v), nil
+		case string:
+			if seconds, err := strconv.ParseFloat(v, 64); err == nil {
+				return secondsToDuration(seconds)
+			}
+			parsed, err := time.ParseDuration(v)
+			if err != nil {
+				return nil, fmt.Errorf("cannot parse %q as a number of seconds or a duration (e.g. \"500ms\"): %w", v, err)
+			}
+			return SecondsOrDuration(parsed), nil
+		}
+
+		value := reflect.ValueOf(data)
+		switch value.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			return secondsToDuration(float64(value.Int()))
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			return secondsToDuration(float64(value.Uint()))
+		case reflect.Float32, reflect.Float64:
+			return secondsToDuration(value.Float())
+		default:
+			return data, nil
+		}
+	}
+}
+
+// maxSeconds is the largest number of seconds a time.Duration can hold.
+var maxSeconds = float64(math.MaxInt64) / float64(time.Second)
+
+func secondsToDuration(seconds float64) (SecondsOrDuration, error) {
+	if math.IsNaN(seconds) || math.IsInf(seconds, 0) || math.Abs(seconds) > maxSeconds {
+		return 0, fmt.Errorf("%v is not a valid number of seconds", seconds)
+	}
+	return SecondsOrDuration(time.Duration(seconds * float64(time.Second))), nil
 }
 
 // DefaultTrueBoolHookFunc returns a mapstructure decode hook function for DefaultTrueBool.

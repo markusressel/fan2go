@@ -156,6 +156,9 @@ func validateSensors(config *Configuration) error {
 		if subConfigs <= 0 {
 			return fmt.Errorf("sensor %s: sub-configuration for sensor is missing, use one of: hwmon | nvidia | file | cmd | disk", sensorConfig.ID)
 		}
+		if sensorConfig.Cmd != nil && sensorConfig.Cmd.Timeout < 0 {
+			return fmt.Errorf("sensor %s: cmd.timeout must be >= 0, got %s", sensorConfig.ID, sensorConfig.Cmd.Timeout)
+		}
 
 		if !isSensorConfigInUse(sensorConfig, config.Curves) {
 			ui.Warning("Unused sensor configuration: %s", sensorConfig.ID)
@@ -569,6 +572,19 @@ func validateFans(config *Configuration) error {
 			}
 			if len(cmdConfig.SetPwm.Exec) <= 0 {
 				return fmt.Errorf("fan %s: setPwm executable is missing", fanConfig.ID)
+			}
+			execConfigs := []struct {
+				key    string
+				config *ExecConfig
+			}{
+				{"setPwm", cmdConfig.SetPwm},
+				{"getPwm", cmdConfig.GetPwm},
+				{"getRpm", cmdConfig.GetRpm},
+			}
+			for _, execConfig := range execConfigs {
+				if execConfig.config != nil && execConfig.config.Timeout < 0 {
+					return fmt.Errorf("fan %s: cmd.%s.timeout must be >= 0, got %s", fanConfig.ID, execConfig.key, execConfig.config.Timeout)
+				}
 			}
 		}
 	}

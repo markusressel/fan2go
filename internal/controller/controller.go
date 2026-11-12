@@ -138,7 +138,21 @@ type DefaultFanController struct {
 
 	// lastFanModeCheckTime is the last time we checked if some third party changed the fan control mode
 	lastFanModeCheckTime time.Time
+
+	// clock is the time source for all waits, tickers and timestamps of the controller
+	// (nil means util.RealClock), replaceable in tests via SetClock
+	clock util.Clock
+	// startupSensorWarmup is the time Run waits (in addition to one tempSensorPollingRate)
+	// to gather monitoring data before it starts to control the fan
+	startupSensorWarmup time.Duration
+	// startupUpdateDelay is the time the update loop waits before the first fan speed update
+	startupUpdateDelay time.Duration
 }
+
+const (
+	defaultStartupSensorWarmup = 2 * time.Second
+	defaultStartupUpdateDelay  = 1 * time.Second
+)
 
 func (f *DefaultFanController) UpdateCurve(curve curves.SpeedCurve) {
 	f.curveMutex.Lock()
@@ -164,7 +178,24 @@ func NewFanController(
 		minPwmOffset:                     0,
 		assumePwmMapIdentity:             assumePwmMapIdentity,
 		lastFanModeCheckTime:             time.Unix(0, 0), // ensure first check happens immediately
+		clock:                            util.RealClock,
+		startupSensorWarmup:              defaultStartupSensorWarmup,
+		startupUpdateDelay:               defaultStartupUpdateDelay,
 	}
+}
+
+// SetClock replaces the time source used for all waits, tickers and timestamps of the controller.
+// Intended for tests, which can then advance time deterministically instead of sleeping.
+func (f *DefaultFanController) SetClock(clock util.Clock) {
+	f.clock = clock
+}
+
+// getClock returns the clock of the controller, falling back to util.RealClock.
+func (f *DefaultFanController) getClock() util.Clock {
+	if f.clock == nil {
+		return util.RealClock
+	}
+	return f.clock
 }
 
 func (f *DefaultFanController) GetFanId() string {
@@ -246,7 +277,11 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 
 	ui.Info("Gathering sensor data for %s...", fan.GetId())
 	// wait a bit to gather monitoring data
-	time.Sleep(2*time.Second + configuration.CurrentConfig.TempSensorPollingRate)
+	err = sleepWithContext(ctx, f.getClock(), f.startupSensorWarmup+configuration.CurrentConfig.TempSensorPollingRate)
+	if err != nil {
+		// cancelled before the fan was touched
+		return err
+	}
 
 	fanPwmData, err := f.runInitializationIfNeeded(ctx)
 	if err != nil {
@@ -263,8 +298,12 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 		return err
 	}
 
-	err = f.computeFanSpecificMappings()
+	err = f.computeFanSpecificMappings(ctx)
 	if err != nil {
+		if ctx.Err() != nil {
+			// cancelled during the automatic setPwm -> getPwm detection, which already wrote to the fan
+			f.restoreControlMode()
+		}
 		return err
 	}
 
@@ -302,14 +341,14 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 		pollingRate := configuration.CurrentConfig.RpmPollingRate
 
 		g.Add(func() error {
-			tick := time.NewTicker(pollingRate)
+			tick := f.getClock().NewTicker(pollingRate)
 			defer tick.Stop()
 			for {
 				select {
 				case <-controllerCtx.Done():
 					ui.Info("Fan %s: Stopping RPM monitor of fan controller...", fan.GetId())
 					return nil
-				case <-tick.C:
+				case <-tick.C():
 					f.measureRpm(fan)
 				}
 			}
@@ -323,8 +362,12 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 
 	{
 		g.Add(func() error {
-			time.Sleep(1 * time.Second)
-			tick := time.NewTicker(f.updateRate)
+			if err := sleepWithContext(controllerCtx, f.getClock(), f.startupUpdateDelay); err != nil {
+				ui.Info("Fan %s: Stopping fan controller...", fan.GetId())
+				f.restoreControlMode()
+				return nil
+			}
+			tick := f.getClock().NewTicker(f.updateRate)
 			defer tick.Stop()
 
 			err = f.UpdateFanSpeed()
@@ -340,7 +383,7 @@ func (f *DefaultFanController) Run(ctx context.Context) error {
 					ui.Info("Fan %s: Stopping fan controller...", fan.GetId())
 					f.restoreControlMode()
 					return nil
-				case <-tick.C:
+				case <-tick.C():
 					err = f.UpdateFanSpeed()
 					if err != nil {
 						ui.ErrorAndNotify("Fan Control Error", "Fan %s: %v", fan.GetId(), err)
@@ -402,9 +445,11 @@ func (f *DefaultFanController) RunInitialization(ctx context.Context) (map[int]f
 func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]float64, error) {
 	fan := f.fan
 
-	err := f.computeFanSpecificMappings()
+	err := f.computeFanSpecificMappings(ctx)
 	if err != nil {
-		ui.Error("Fan %s: Error computing fan specific mappings: %v", fan.GetId(), err)
+		if !errors.Is(err, context.Canceled) {
+			ui.Error("Fan %s: Error computing fan specific mappings: %v", fan.GetId(), err)
+		}
 		return nil, err
 	}
 
@@ -832,10 +877,11 @@ func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
 	}
 
 	// make sure we don't check this too often
-	if f.lastFanModeCheckTime.Add(sanityCheckConfig.ThrottleDuration).After(time.Now()) {
+	now := f.getClock().Now()
+	if f.lastFanModeCheckTime.Add(sanityCheckConfig.ThrottleDuration).After(now) {
 		return
 	}
-	f.lastFanModeCheckTime = time.Now()
+	f.lastFanModeCheckTime = now
 
 	cm, e := f.fan.GetControlMode()
 	if e != nil {
@@ -854,7 +900,7 @@ func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
 }
 
 // computeSetPwmToGetPwmMap computes a mapping between "set pwm value" -> "actual pwm value"
-func (f *DefaultFanController) computeSetPwmToGetPwmMap() (err error) {
+func (f *DefaultFanController) computeSetPwmToGetPwmMap(ctx context.Context) (err error) {
 	cfg := f.fan.GetConfig().SetPwmToGetPwmMap
 
 	if cfg != nil {
@@ -893,9 +939,11 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMap() (err error) {
 		return nil
 	}
 
-	err = f.computeSetPwmToGetPwmMapAutomatically()
+	err = f.computeSetPwmToGetPwmMapAutomatically(ctx)
 	if err != nil {
-		ui.Error("Fan %s: Error computing setPwmToGetPwmMap: %v", f.fan.GetId(), err)
+		if !errors.Is(err, context.Canceled) {
+			ui.Error("Fan %s: Error computing setPwmToGetPwmMap: %v", f.fan.GetId(), err)
+		}
 		return err
 	}
 
@@ -1064,7 +1112,7 @@ func (f *DefaultFanController) getReportedPwmAfterApplyingPwm(pwmMappedValue int
 	}
 }
 
-func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
+func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically(ctx context.Context) error {
 	if !f.fan.Supports(fans.FeaturePwmSensor) || f.assumePwmMapIdentity {
 		if f.assumePwmMapIdentity {
 			ui.Info("Fan %s: Automatic calculation of setPwmToGetPwmMap disabled. Assuming 1:1 relation.", f.fan.GetId())
@@ -1084,7 +1132,9 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
 			ui.Warning("Error setting PWM value %d on fan %s: %v", i, f.fan.GetId(), err)
 			continue
 		}
-		time.Sleep(f.getPwmSetDelay())
+		if err := sleepWithContext(ctx, f.getClock(), f.getPwmSetDelay()); err != nil {
+			return err
+		}
 		pwm, err := f.fan.GetPwm()
 		if err != nil {
 			ui.Warning("Error reading PWM value of fan %s: %v", f.fan.GetId(), err)
@@ -1101,10 +1151,12 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically() error {
 	return nil
 }
 
-func (f *DefaultFanController) computeFanSpecificMappings() (err error) {
-	err = f.computeSetPwmToGetPwmMap()
+func (f *DefaultFanController) computeFanSpecificMappings(ctx context.Context) (err error) {
+	err = f.computeSetPwmToGetPwmMap(ctx)
 	if err != nil {
-		ui.Error("Error computing setPwm(x) -> getPwm() map: %v", err)
+		if !errors.Is(err, context.Canceled) {
+			ui.Error("Error computing setPwm(x) -> getPwm() map: %v", err)
+		}
 		return err
 	}
 

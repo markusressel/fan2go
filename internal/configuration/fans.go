@@ -215,6 +215,13 @@ type ExecConfig struct {
 	Exec string `json:"exec"`
 	// Args is a list of arguments to pass to the command
 	Args []string `json:"args"`
+	// Timeout is the maximum time the command may run (0 means DefaultCmdTimeout)
+	Timeout time.Duration `json:"timeout,omitempty"`
+}
+
+// GetTimeout returns the configured timeout, or DefaultCmdTimeout if none is set.
+func (c *ExecConfig) GetTimeout() time.Duration {
+	return cmdTimeoutOrDefault(c.Timeout)
 }
 
 type ControlLoopConfig struct {

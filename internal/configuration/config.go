@@ -23,7 +23,8 @@ type Configuration struct {
 
 	RunFanInitializationInParallel bool    `json:"runFanInitializationInParallel"`
 	MaxRpmDiffForSettledFan        float64 `json:"maxRpmDiffForSettledFan"`
-	FanResponseDelay               int     `json:"fanResponseDelay"`
+	// FanResponseDelay is a plain number of seconds (e.g. 2) or a duration string (e.g. "500ms")
+	FanResponseDelay SecondsOrDuration `json:"fanResponseDelay"`
 
 	TempSensorPollingRate time.Duration `json:"tempSensorPollingRate"`
 	TempRollingWindowSize int           `json:"tempRollingWindowSize"`
@@ -160,6 +161,7 @@ func LoadConfig() (Configuration, error) {
 			mapstructure.ComposeDecodeHookFunc(
 				pwmMapPointsHookFunc(),
 				DefaultTrueBoolHookFunc(),
+				secondsOrDurationHookFunc(),
 				durationMillisecondsHookFunc(),
 				mapstructure.StringToTimeDurationHookFunc(),
 				mapstructure.StringToSliceHookFunc(","),
