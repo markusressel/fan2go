@@ -1126,12 +1126,24 @@ fans:
 
 ### PID Control Algorithm
 
-The PID control algorithm uses a PID loop to approach the target value. The default
-configuration is pretty non-aggressive using the following values:
+The PID control algorithm smooths the curve value before it is applied to the fan. It is the default control
+algorithm: fans without a `controlAlgorithm` use it with the default values below.
 
-| P     | I      | D       |
-|-------|--------|---------|
-| `0.3` | `0.02` | `0.005` |
+The loop doesn't measure the fan: it compares the curve value with its own previous output, not with the fan's actual
+PWM or RPM. In effect, it is a low-pass filter on the curve value that avoids abrupt speed changes, and it writes to
+the fan less often than the direct control algorithm. It doesn't correct for a fan that runs faster or slower than
+expected. (To control a temperature with a real feedback loop, use a [PID curve](#pid) instead.)
+
+The default values are:
+
+| P      | I     | D      |
+|--------|-------|--------|
+| `0.05` | `0.4` | `0.01` |
+
+With these values and the default [cycle rate](#cycle) of `200ms`, the output follows a change of the curve value
+smoothly and without overshoot: it covers about 63% of the change within about 2.5 seconds, and is within 2 PWM of the
+new value after about 10 seconds. Higher `i` values react faster, lower values slower; `p` and `d` have little effect
+on this behaviour.
 
 If you don't like the default behaviour you can configure your own in the config:
 
@@ -1141,13 +1153,14 @@ fans:
     ...
     controlAlgorithm:
       pid:
-        p: 0.3
-        i: 0.02
-        d: 0.005
+        p: 0.05
+        i: 0.4
+        d: 0.01
 ```
 
 The loop is advanced at a constant rate, determined by the [cycle rate](#cycle) (`fanController.adjustmentTickRate`),
-which defaults to `200ms`.
+which defaults to `200ms`. The values depend on the cycle rate: with the default values, a cycle rate of `1s` or slower
+makes the output overshoot the curve value. If you increase `adjustmentTickRate`, lower `i` accordingly.
 
 The first cycle after fan2go starts (or reloads its config) applies the curve value directly, like the direct control
 algorithm. The PID loop is initialized as if it had already settled at that value, so it only smooths later changes
