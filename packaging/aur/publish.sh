@@ -86,7 +86,7 @@ confirm() {
 	if [ "$assume_yes" = true ]; then
 		return 0
 	fi
-	read -r -p "$1 [y/N] " answer || true
+	read -r -p "$1 [y/N] " answer || answer=""
 	case "$answer" in
 	y | Y | yes) return 0 ;;
 	*) return 1 ;;
@@ -98,13 +98,18 @@ default_branch=master
 info "Checking that the checkout is the latest $default_branch"
 git -C "$repo_dir" fetch --quiet origin "$default_branch" || die "could not fetch $default_branch from origin"
 branch="$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD || echo "a detached HEAD")"
-behind="$(git -C "$repo_dir" rev-list --count "HEAD..origin/$default_branch")"
-if [ "$branch" != "$default_branch" ] || [ "$behind" -gt 0 ]; then
+behind="$(git -C "$repo_dir" rev-list --count HEAD..FETCH_HEAD)"
+unpushed=false
+git -C "$repo_dir" diff --quiet FETCH_HEAD HEAD -- packaging/aur || unpushed=true
+if [ "$branch" != "$default_branch" ] || [ "$behind" -gt 0 ] || [ "$unpushed" = true ]; then
 	if [ "$branch" != "$default_branch" ]; then
 		warn "$repo_dir is on $branch, not on $default_branch"
 	fi
 	if [ "$behind" -gt 0 ]; then
 		warn "$repo_dir is $behind commit(s) behind origin/$default_branch"
+	fi
+	if [ "$unpushed" = true ]; then
+		warn "packaging/aur in $repo_dir differs from origin/$default_branch"
 	fi
 	confirm "Publish with the packaging files of this checkout anyway?" ||
 		die "aborted; check out $default_branch and pull first"
@@ -114,19 +119,24 @@ work_dir="$(mktemp -d)"
 # AUR clones this script has changed and not published; restored if it stops (error or "no")
 touched=()
 publishing=false
+# HEAD of each AUR clone before this script changed it (empty for a clone without commits)
+declare -A orig_head=()
 
 # restore_clones: undoes the changes of this script in the AUR clones in $touched
 restore_clones() {
 	local pkg clone
 	for pkg in "${touched[@]}"; do
 		clone="$aur_dir/$pkg"
-		if git -C "$clone" rev-parse --verify -q HEAD > /dev/null; then
-			git -C "$clone" reset --quiet --hard
+		if [ -n "${orig_head[$pkg]:-}" ]; then
+			# also drops a commit of this script that was not pushed
+			git -C "$clone" reset --quiet --hard "${orig_head[$pkg]}"
 			# a file that is new in this release (and was not staged yet) is not removed by the reset
 			if ! git -C "$clone" ls-files --error-unmatch fan2go.install > /dev/null 2>&1; then
 				rm -f "$clone/fan2go.install"
 			fi
 		else
+			# drops a first commit of this script that was not pushed
+			git -C "$clone" update-ref -d HEAD 2> /dev/null || true
 			git -C "$clone" rm --quiet --cached --force --ignore-unmatch -- PKGBUILD .SRCINFO fan2go.install
 			rm -f "$clone/PKGBUILD" "$clone/.SRCINFO" "$clone/fan2go.install"
 		fi
@@ -151,6 +161,8 @@ cleanup() {
 	exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # prepare_clone <pkgname>: makes sure $aur_dir/<pkgname> is an up-to-date, clean AUR clone
 prepare_clone() {
@@ -172,6 +184,7 @@ prepare_clone() {
 	elif [ -n "$(git -C "$clone" status --porcelain --untracked-files=no)" ]; then
 		die "$clone has staged changes"
 	fi
+	orig_head[$pkg]="$(git -C "$clone" rev-parse --verify -q HEAD || true)"
 }
 
 # build <pkgname>: generates .SRCINFO (and test-builds the package) in a temporary copy
@@ -237,15 +250,8 @@ publishing=true
 for pkg in "${changed[@]}"; do
 	info "$pkg: publishing"
 	git -C "$aur_dir/$pkg" commit --quiet -m "Release $version"
-	if ! git -C "$aur_dir/$pkg" push origin HEAD:master; then
-		# drop the commit, otherwise the next run would find nothing to publish
-		if git -C "$aur_dir/$pkg" rev-parse --verify -q HEAD~1 > /dev/null; then
-			git -C "$aur_dir/$pkg" reset --quiet --soft HEAD~1
-		else
-			git -C "$aur_dir/$pkg" update-ref -d HEAD
-		fi
-		die "pushing $pkg failed"
-	fi
+	# on failure, the restore drops the commit, otherwise the next run would find nothing to publish
+	git -C "$aur_dir/$pkg" push origin HEAD:master || die "pushing $pkg failed"
 	touched=("${touched[@]:1}")
 done
 
