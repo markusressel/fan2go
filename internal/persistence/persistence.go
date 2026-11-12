@@ -86,10 +86,10 @@ func (p persistence) SaveFanRpmData(fan fans.Fan) (err error) {
 	// convert the curve data moving window to a map to arrays, so we can persist them
 	fanCurveDataMap := map[int]float64{}
 
-	if fan.GetFanRpmCurveData() == nil {
+	if curveData := fan.GetFanRpmCurveData(); curveData == nil {
 		fanCurveDataMap = nil
 	} else {
-		for key, value := range *fan.GetFanRpmCurveData() {
+		for key, value := range *curveData {
 			fanCurveDataMap[key] = value
 		}
 	}

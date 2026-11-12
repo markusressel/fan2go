@@ -1,0 +1,9 @@
+{
+  "configuration": {
+    "id": "disk_sensor",
+    "disk": {
+      "device": "/dev/sda"
+    }
+  },
+  "movingAvg": 35000
+}

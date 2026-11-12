@@ -19,8 +19,8 @@ LDFLAGS := -w -s \
 	-X ${NAME}/cmd/global.Date=${DATE} \
 	-X ${PACKAGE}/cmd/global.Date=${DATE}
 
-test:   ## Run all tests
-	@go clean --testcache && go test -tags disable_nvml -v ./...
+test:   ## Run all tests (with the race detector)
+	@go clean --testcache && go test -race -tags disable_nvml -v ./...
 
 coverage: ## Run all tests with coverage and show summary
 	@go test -coverprofile=coverage.out ./...

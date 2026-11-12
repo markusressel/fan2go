@@ -1,0 +1,48 @@
+{
+  "label": "hwmon_fan",
+  "index": 1,
+  "rpmMovingAvg": 1234.5,
+  "config": {
+    "id": "hwmon_fan",
+    "neverStop": true,
+    "minPwm": 30,
+    "curve": "linear_curve",
+    "useUnscaledCurveValues": false,
+    "sanityCheck": {
+      "pwmValueChangedByThirdParty": {
+        "enabled": {
+          "Value": false,
+          "Present": true,
+          "RuntimeOverride": false
+        }
+      },
+      "fanModeChangedByThirdParty": {
+        "enabled": {
+          "Value": false,
+          "Present": false,
+          "RuntimeOverride": false
+        }
+      }
+    },
+    "hwMon": {
+      "platform": "nct6798-isa-0290",
+      "index": 1,
+      "rpmChannel": 1,
+      "pwmChannel": 1,
+      "SysfsPath": "/sys/class/hwmon/hwmon4",
+      "RpmInputPath": "/sys/class/hwmon/hwmon4/fan1_input",
+      "PwmPath": "/sys/class/hwmon/hwmon4/pwm1",
+      "PwmEnablePath": "/sys/class/hwmon/hwmon4/pwm1_enable"
+    }
+  },
+  "minPwm": 30,
+  "startPwm": 40,
+  "maxPwm": 250,
+  "fanCurveData": {
+    "0": 0,
+    "128": 900.5,
+    "255": 1800
+  },
+  "rpm": 1200,
+  "pwm": 128
+}

@@ -1,9 +1,11 @@
 package fans
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -16,14 +18,52 @@ type CmdFan struct {
 
 	Rpm int `json:"rpm"`
 	Pwm int `json:"pwm"`
+
+	// mu protects all fields above, since the fan is accessed from different goroutines.
+	// It is a leaf lock: no command execution and no calls to other fan methods while holding it.
+	mu sync.RWMutex
+}
+
+// cmdFanJson has the same fields and json tags as CmdFan, without the mutex.
+type cmdFanJson struct {
+	Config    configuration.FanConfig `json:"config"`
+	MovingAvg float64                 `json:"movingAvg"`
+
+	Rpm int `json:"rpm"`
+	Pwm int `json:"pwm"`
+}
+
+// MarshalJSON serializes a snapshot of the fan that is taken under its lock.
+func (fan *CmdFan) MarshalJSON() ([]byte, error) {
+	fan.mu.RLock()
+	snapshot := cmdFanJson{
+		Config:    fan.Config,
+		MovingAvg: fan.MovingAvg,
+		Rpm:       fan.Rpm,
+		Pwm:       fan.Pwm,
+	}
+	fan.mu.RUnlock()
+	return json.Marshal(snapshot)
+}
+
+// cmdConfig returns the cmd specific part of the fan config.
+func (fan *CmdFan) cmdConfig() configuration.CmdFanConfig {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
+	if fan.Config.Cmd == nil {
+		return configuration.CmdFanConfig{}
+	}
+	return *fan.Config.Cmd
 }
 
 func (fan *CmdFan) GetId() string {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Config.ID
 }
 
 func (fan *CmdFan) GetLabel() string {
-	return "CMD Fan " + fan.Config.ID
+	return "CMD Fan " + fan.GetId()
 }
 
 func (fan *CmdFan) GetIndex() int {
@@ -58,7 +98,7 @@ func (fan *CmdFan) GetRpm() (int, error) {
 		return 0, nil
 	}
 
-	conf := fan.Config.Cmd.GetRpm
+	conf := fan.cmdConfig().GetRpm
 
 	result, err := util.SafeCmdExecution(conf.Exec, conf.Args, conf.GetTimeout())
 	if err != nil {
@@ -71,21 +111,27 @@ func (fan *CmdFan) GetRpm() (int, error) {
 		return 0, err
 	}
 
+	fan.mu.Lock()
 	fan.Rpm = int(rpm)
+	fan.mu.Unlock()
 
 	return int(rpm), nil
 }
 
 func (fan *CmdFan) GetRpmAvg() float64 {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return float64(fan.Rpm)
 }
 
 func (fan *CmdFan) SetRpmAvg(rpm float64) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	fan.Rpm = int(rpm)
 }
 
 func (fan *CmdFan) GetPwm() (result int, err error) {
-	conf := fan.Config.Cmd.GetPwm
+	conf := fan.cmdConfig().GetPwm
 
 	output, err := util.SafeCmdExecution(conf.Exec, conf.Args, conf.GetTimeout())
 	if err != nil {
@@ -98,13 +144,15 @@ func (fan *CmdFan) GetPwm() (result int, err error) {
 		return 0, err
 	}
 
+	fan.mu.Lock()
 	fan.Pwm = int(pwm)
+	fan.mu.Unlock()
 
 	return int(pwm), nil
 }
 
 func (fan *CmdFan) SetPwm(pwm int) (err error) {
-	conf := fan.Config.Cmd.SetPwm
+	conf := fan.cmdConfig().SetPwm
 
 	var args = []string{}
 	for _, arg := range conf.Args {
@@ -134,10 +182,14 @@ func (fan *CmdFan) UpdateFanRpmCurveValue(pwm int, rpm float64) {
 }
 
 func (fan *CmdFan) GetCurveId() string {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Config.Curve
 }
 
 func (fan *CmdFan) ShouldNeverStop() bool {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Config.NeverStop
 }
 
@@ -151,11 +203,21 @@ func (fan *CmdFan) SetControlMode(value ControlMode) (err error) {
 }
 
 func (fan *CmdFan) GetConfig() configuration.FanConfig {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Config
 }
 
 func (fan *CmdFan) SetConfig(config configuration.FanConfig) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	fan.Config = config
+}
+
+func (fan *CmdFan) DisableSanityCheck(check SanityCheck) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
+	disableSanityCheck(&fan.Config, check)
 }
 
 func (fan *CmdFan) Supports(feature FeatureFlag) bool {
@@ -165,9 +227,9 @@ func (fan *CmdFan) Supports(feature FeatureFlag) bool {
 	case FeatureControlModeRead:
 		return false
 	case FeaturePwmSensor:
-		return fan.Config.Cmd.GetPwm != nil
+		return fan.cmdConfig().GetPwm != nil
 	case FeatureRpmSensor:
-		return fan.Config.Cmd.GetRpm != nil
+		return fan.cmdConfig().GetRpm != nil
 	}
 	return false
 }

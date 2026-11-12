@@ -64,6 +64,9 @@ type FanStateSnapshot struct {
 type DefaultFanController struct {
 	// protects concurrent access to curve
 	curveMutex sync.RWMutex
+	// protects concurrent access to stats, which are written by the update loop
+	// and read by the statistics collector (minPwmOffset is only used by the update loop)
+	statsMutex sync.Mutex
 	// controller statistics
 	stats FanControllerStatistics
 	// persistence where fan data is stored
@@ -207,7 +210,11 @@ func (f *DefaultFanController) GetFanId() string {
 	return f.fan.GetId()
 }
 
+// GetStatistics returns a copy of the controller statistics.
+// Safe to call while the controller is running.
 func (f *DefaultFanController) GetStatistics() FanControllerStatistics {
+	f.statsMutex.Lock()
+	defer f.statsMutex.Unlock()
 	return f.stats
 }
 
@@ -878,8 +885,7 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 	if !f.fan.Supports(fans.FeaturePwmSensor) {
 		// we cannot read the PWM value, so we also cannot check if third party changed the PWM value
 		ui.Warning("Fan %s does not support PWM sensor reading, disabling 'PwmValueChangedByThirdParty' sanity check", f.fan.GetId())
-		fanConfig.SanityCheck.PwmValueChangedByThirdParty.Enabled.SetOverride(false)
-		f.fan.SetConfig(fanConfig)
+		f.fan.DisableSanityCheck(fans.SanityCheckPwmValueChangedByThirdParty)
 		return
 	}
 
@@ -892,7 +898,9 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 		expectedReportedPwm := f.getReportedPwmAfterApplyingPwm(pwmMappedValue)
 		if currentPwm, err := f.fan.GetPwm(); err == nil {
 			if currentPwm != expectedReportedPwm {
+				f.statsMutex.Lock()
 				f.stats.UnexpectedPwmValueCount += 1
+				f.statsMutex.Unlock()
 				ui.Warning("PWM of %s was changed by third party! Last set PWM value was '%d', expected reported pwm '%d' but was '%d'",
 					f.fan.GetId(), pwmMappedValue, expectedReportedPwm, currentPwm)
 			}
@@ -929,8 +937,7 @@ func (f *DefaultFanController) setTargetPwm(target int) (err error) {
 // ensureFanModeIsSetToExpectedMode makes sure that the fan control mode is set to the expected mode (manual PWM control),
 // by checking periodically.
 func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
-	fanConfig := f.fan.GetConfig()
-	sanityCheckConfig := fanConfig.SanityCheck.FanModeChangedByThirdParty
+	sanityCheckConfig := f.fan.GetConfig().SanityCheck.FanModeChangedByThirdParty
 
 	if !sanityCheckConfig.Enabled.Get() {
 		// sanity check is disabled
@@ -939,8 +946,7 @@ func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
 
 	if !f.fan.Supports(fans.FeatureControlModeRead) {
 		ui.Warning("Fan %s does not support control mode reading, disabling 'FanModeChangedByThirdParty' sanity check", f.fan.GetId())
-		fanConfig.SanityCheck.FanModeChangedByThirdParty.Enabled.SetOverride(false)
-		f.fan.SetConfig(fanConfig)
+		f.fan.DisableSanityCheck(fans.SanityCheckFanModeChangedByThirdParty)
 		return
 	}
 
@@ -1142,6 +1148,8 @@ func (f *DefaultFanController) updateDistinctPwmValues() {
 }
 
 func (f *DefaultFanController) increaseMinPwmOffset() {
+	f.statsMutex.Lock()
+	defer f.statsMutex.Unlock()
 	f.minPwmOffset += 1
 	f.stats.MinPwmOffset = f.minPwmOffset
 	f.stats.IncreasedMinPwmCount += 1

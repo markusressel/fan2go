@@ -1,0 +1,126 @@
+{
+  "cmd_fan": {
+    "config": {
+      "id": "cmd_fan",
+      "neverStop": false,
+      "curve": "function_curve",
+      "useUnscaledCurveValues": false,
+      "sanityCheck": {
+        "pwmValueChangedByThirdParty": {
+          "enabled": {
+            "Value": false,
+            "Present": false,
+            "RuntimeOverride": false
+          }
+        },
+        "fanModeChangedByThirdParty": {
+          "enabled": {
+            "Value": false,
+            "Present": false,
+            "RuntimeOverride": false
+          }
+        }
+      },
+      "cmd": {
+        "setPwm": {
+          "exec": "/usr/bin/setpwm",
+          "args": [
+            "%pwm%"
+          ]
+        },
+        "getPwm": {
+          "exec": "/usr/bin/getpwm",
+          "args": null
+        },
+        "getRpm": {
+          "exec": "/usr/bin/getrpm",
+          "args": [
+            "-a"
+          ]
+        }
+      }
+    },
+    "movingAvg": 3,
+    "rpm": 500,
+    "pwm": 50
+  },
+  "file_fan": {
+    "config": {
+      "id": "file_fan",
+      "neverStop": false,
+      "curve": "pid_curve",
+      "useUnscaledCurveValues": false,
+      "sanityCheck": {
+        "pwmValueChangedByThirdParty": {
+          "enabled": {
+            "Value": false,
+            "Present": false,
+            "RuntimeOverride": false
+          }
+        },
+        "fanModeChangedByThirdParty": {
+          "enabled": {
+            "Value": false,
+            "Present": false,
+            "RuntimeOverride": false
+          }
+        }
+      },
+      "file": {
+        "path": "/tmp/file_fan_pwm",
+        "rpmPath": "/tmp/file_fan_rpm"
+      }
+    },
+    "movingAvg": 12.5,
+    "pwm": 100,
+    "rpm": 1000
+  },
+  "hwmon_fan": {
+    "label": "hwmon_fan",
+    "index": 1,
+    "rpmMovingAvg": 1234.5,
+    "config": {
+      "id": "hwmon_fan",
+      "neverStop": true,
+      "minPwm": 30,
+      "curve": "linear_curve",
+      "useUnscaledCurveValues": false,
+      "sanityCheck": {
+        "pwmValueChangedByThirdParty": {
+          "enabled": {
+            "Value": false,
+            "Present": true,
+            "RuntimeOverride": false
+          }
+        },
+        "fanModeChangedByThirdParty": {
+          "enabled": {
+            "Value": false,
+            "Present": false,
+            "RuntimeOverride": false
+          }
+        }
+      },
+      "hwMon": {
+        "platform": "nct6798-isa-0290",
+        "index": 1,
+        "rpmChannel": 1,
+        "pwmChannel": 1,
+        "SysfsPath": "/sys/class/hwmon/hwmon4",
+        "RpmInputPath": "/sys/class/hwmon/hwmon4/fan1_input",
+        "PwmPath": "/sys/class/hwmon/hwmon4/pwm1",
+        "PwmEnablePath": "/sys/class/hwmon/hwmon4/pwm1_enable"
+      }
+    },
+    "minPwm": 30,
+    "startPwm": 40,
+    "maxPwm": 250,
+    "fanCurveData": {
+      "0": 0,
+      "128": 900.5,
+      "255": 1800
+    },
+    "rpm": 1200,
+    "pwm": 128
+  }
+}

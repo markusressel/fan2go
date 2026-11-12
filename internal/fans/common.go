@@ -21,6 +21,26 @@ const (
 	FeatureControlModeRead  FeatureFlag = 3
 )
 
+// SanityCheck identifies a sanity check of the fan controller, see configuration.SanityCheckConfig
+type SanityCheck int
+
+const (
+	SanityCheckPwmValueChangedByThirdParty SanityCheck = iota
+	SanityCheckFanModeChangedByThirdParty
+)
+
+// disableSanityCheck disables the given sanity check in the given config as a runtime override.
+// The sanity check config is a value inside FanConfig (no pointers), so copies of the config
+// handed out before are not affected.
+func disableSanityCheck(config *configuration.FanConfig, check SanityCheck) {
+	switch check {
+	case SanityCheckPwmValueChangedByThirdParty:
+		config.SanityCheck.PwmValueChangedByThirdParty.Enabled.SetOverride(false)
+	case SanityCheckFanModeChangedByThirdParty:
+		config.SanityCheck.FanModeChangedByThirdParty.Enabled.SetOverride(false)
+	}
+}
+
 type ControlMode int
 
 const (
@@ -81,6 +101,9 @@ type Fan interface {
 
 	GetConfig() configuration.FanConfig
 	SetConfig(config configuration.FanConfig)
+	// DisableSanityCheck disables the given sanity check in the config of this fan at runtime
+	// (shown as a runtime override in the config). Safe to call while the fan is in use.
+	DisableSanityCheck(check SanityCheck)
 
 	GetLabel() string
 	GetIndex() int
@@ -188,4 +211,32 @@ func ComputePwmBoundariesFromCurveData(pwmRpmMap map[int]float64, userStartPwm i
 	}
 
 	return startPwm, maxPwm
+}
+
+func copyIntPtr(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	result := *value
+	return &result
+}
+
+func copyBoolPtr(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	result := *value
+	return &result
+}
+
+// copyCurveData returns a copy of the given fan curve data, or nil.
+func copyCurveData(curveData *map[int]float64) *map[int]float64 {
+	if curveData == nil {
+		return nil
+	}
+	result := make(map[int]float64, len(*curveData))
+	for pwm, rpm := range *curveData {
+		result[pwm] = rpm
+	}
+	return &result
 }

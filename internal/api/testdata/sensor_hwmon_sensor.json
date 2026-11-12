@@ -1,0 +1,18 @@
+{
+  "label": "Package id 0",
+  "index": 1,
+  "channel": 1,
+  "string": "/sys/class/hwmon/hwmon2/temp1_input",
+  "max": 100000,
+  "min": 0,
+  "configuration": {
+    "id": "hwmon_sensor",
+    "hwMon": {
+      "platform": "coretemp",
+      "index": 1,
+      "channel": 1,
+      "TempInput": "/sys/class/hwmon/hwmon2/temp1_input"
+    }
+  },
+  "movingAvg": 45250.5
+}

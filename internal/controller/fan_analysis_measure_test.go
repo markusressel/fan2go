@@ -153,7 +153,7 @@ func TestMeasureAtPwm_NonIdempotentPwmMap_AppliesPwmMapOnlyOnce(t *testing.T) {
 // mockFanRecordingRawPwmWithoutPwmSensor is a mockFanRecordingRawPwm that can't read back its PWM value,
 // so the controller has to derive the current raw PWM from lastTarget.
 type mockFanRecordingRawPwmWithoutPwmSensor struct {
-	mockFanRecordingRawPwm
+	*mockFanRecordingRawPwm
 }
 
 func (fan *mockFanRecordingRawPwmWithoutPwmSensor) Supports(feature fans.FeatureFlag) bool {
@@ -163,7 +163,7 @@ func (fan *mockFanRecordingRawPwmWithoutPwmSensor) Supports(feature fans.Feature
 func TestMeasureAtPwm_NonIdempotentPwmMap_WithoutPwmSensor_AppliesPwmMapOnlyOnce(t *testing.T) {
 	// GIVEN
 	recordingFan, controller := setupNonIdempotentPwmMapController(t)
-	fan := &mockFanRecordingRawPwmWithoutPwmSensor{mockFanRecordingRawPwm: *recordingFan}
+	fan := &mockFanRecordingRawPwmWithoutPwmSensor{mockFanRecordingRawPwm: recordingFan}
 	controller.fan = fan
 	analyzer := NewFanCurveAnalyzer(controller)
 

@@ -1,0 +1,17 @@
+{
+  "config": {
+    "id": "staircase_curve",
+    "staircase": {
+      "sensor": "file_sensor",
+      "hysteresis": {
+        "down": 2
+      },
+      "steps": {
+        "40": 100,
+        "60": 200
+      }
+    }
+  },
+  "value": 20,
+  "LastTemp": -9223372036854775808
+}

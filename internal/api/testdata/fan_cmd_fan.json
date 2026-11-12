@@ -1,0 +1,45 @@
+{
+  "config": {
+    "id": "cmd_fan",
+    "neverStop": false,
+    "curve": "function_curve",
+    "useUnscaledCurveValues": false,
+    "sanityCheck": {
+      "pwmValueChangedByThirdParty": {
+        "enabled": {
+          "Value": false,
+          "Present": false,
+          "RuntimeOverride": false
+        }
+      },
+      "fanModeChangedByThirdParty": {
+        "enabled": {
+          "Value": false,
+          "Present": false,
+          "RuntimeOverride": false
+        }
+      }
+    },
+    "cmd": {
+      "setPwm": {
+        "exec": "/usr/bin/setpwm",
+        "args": [
+          "%pwm%"
+        ]
+      },
+      "getPwm": {
+        "exec": "/usr/bin/getpwm",
+        "args": null
+      },
+      "getRpm": {
+        "exec": "/usr/bin/getrpm",
+        "args": [
+          "-a"
+        ]
+      }
+    }
+  },
+  "movingAvg": 3,
+  "rpm": 500,
+  "pwm": 50
+}

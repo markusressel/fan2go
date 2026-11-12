@@ -1,0 +1,9 @@
+{
+  "configuration": {
+    "id": "file_sensor",
+    "file": {
+      "path": "/tmp/file_sensor"
+    }
+  },
+  "movingAvg": 40000
+}

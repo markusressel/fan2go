@@ -1,9 +1,11 @@
 package fans
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -33,21 +35,77 @@ type HwMonFan struct {
 
 	// pwmEnableReadable caches whether pwm_enable can be read (probed once on first Supports call).
 	pwmEnableReadable *bool
+
+	// mu protects all fields above, since the RPM monitor, the update loop of the fan controller,
+	// the statistics collector and the REST API access the fan from different goroutines.
+	// It is a leaf lock: no I/O and no calls to other fan methods while holding it.
+	mu sync.RWMutex
+}
+
+// hwMonFanJson has the same fields and json tags as HwMonFan, without the mutex.
+type hwMonFanJson struct {
+	Label        string                  `json:"label"`
+	Index        int                     `json:"index"`
+	RpmMovingAvg float64                 `json:"rpmMovingAvg"`
+	Config       configuration.FanConfig `json:"config"`
+	MinPwm       *int                    `json:"minPwm"`
+	StartPwm     *int                    `json:"startPwm"`
+	MaxPwm       *int                    `json:"maxPwm"`
+	FanCurveData *map[int]float64        `json:"fanCurveData"`
+	Rpm          int                     `json:"rpm"`
+	Pwm          int                     `json:"pwm"`
+}
+
+// MarshalJSON serializes a snapshot of the fan that is taken under its lock.
+func (fan *HwMonFan) MarshalJSON() ([]byte, error) {
+	fan.mu.RLock()
+	snapshot := hwMonFanJson{
+		Label:        fan.Label,
+		Index:        fan.Index,
+		RpmMovingAvg: fan.RpmMovingAvg,
+		Config:       fan.Config,
+		MinPwm:       copyIntPtr(fan.MinPwm),
+		StartPwm:     copyIntPtr(fan.StartPwm),
+		MaxPwm:       copyIntPtr(fan.MaxPwm),
+		FanCurveData: copyCurveData(fan.FanCurveData),
+		Rpm:          fan.Rpm,
+		Pwm:          fan.Pwm,
+	}
+	fan.mu.RUnlock()
+	return json.Marshal(snapshot)
+}
+
+// hwMonConfig returns the hwmon specific part of the fan config (sysfs paths).
+func (fan *HwMonFan) hwMonConfig() configuration.HwMonFanConfig {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
+	if fan.Config.HwMon == nil {
+		return configuration.HwMonFanConfig{}
+	}
+	return *fan.Config.HwMon
 }
 
 func (fan *HwMonFan) GetId() string {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Config.ID
 }
 
 func (fan *HwMonFan) GetLabel() string {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Label
 }
 
 func (fan *HwMonFan) GetIndex() int {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Index
 }
 
 func (fan *HwMonFan) GetMinPwm() int {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	if fan.MinPwm != nil {
 		return *fan.MinPwm
 	}
@@ -56,12 +114,16 @@ func (fan *HwMonFan) GetMinPwm() int {
 }
 
 func (fan *HwMonFan) SetMinPwm(pwm int, force bool) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	if fan.Config.MinPwm == nil || force {
 		fan.MinPwm = &pwm
 	}
 }
 
 func (fan *HwMonFan) GetStartPwm() int {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	if fan.StartPwm != nil {
 		return *fan.StartPwm
 	} else {
@@ -70,12 +132,16 @@ func (fan *HwMonFan) GetStartPwm() int {
 }
 
 func (fan *HwMonFan) SetStartPwm(pwm int, force bool) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	if fan.Config.StartPwm == nil || force {
 		fan.StartPwm = &pwm
 	}
 }
 
 func (fan *HwMonFan) GetMaxPwm() int {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	if fan.MaxPwm != nil {
 		return *fan.MaxPwm
 	} else {
@@ -84,59 +150,77 @@ func (fan *HwMonFan) GetMaxPwm() int {
 }
 
 func (fan *HwMonFan) SetMaxPwm(pwm int, force bool) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	if fan.Config.MaxPwm == nil || force {
 		fan.MaxPwm = &pwm
 	}
 }
 
 func (fan *HwMonFan) GetRpm() (int, error) {
-	if value, err := util.ReadIntFromFile(fan.Config.HwMon.RpmInputPath); err != nil {
+	if value, err := util.ReadIntFromFile(fan.hwMonConfig().RpmInputPath); err != nil {
 		return 0, err
 	} else {
+		fan.mu.Lock()
 		fan.Rpm = value
+		fan.mu.Unlock()
 		return value, nil
 	}
 }
 
 func (fan *HwMonFan) GetRpmAvg() float64 {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.RpmMovingAvg
 }
 
 func (fan *HwMonFan) SetRpmAvg(rpm float64) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	fan.RpmMovingAvg = rpm
 }
 
 func (fan *HwMonFan) GetPwm() (int, error) {
-	value, err := util.ReadIntFromFile(fan.Config.HwMon.PwmPath)
+	value, err := util.ReadIntFromFile(fan.hwMonConfig().PwmPath)
 	if err != nil {
 		return MinPwmValue, err
 	}
+	fan.mu.Lock()
 	fan.Pwm = value
+	fan.mu.Unlock()
 	return value, nil
 }
 
 func (fan *HwMonFan) SetPwm(pwm int) (err error) {
 	ui.Debug("Setting Fan PWM of '%s' to %d ...", fan.GetId(), pwm)
-	err = util.WriteIntToFile(pwm, fan.Config.HwMon.PwmPath)
+	err = util.WriteIntToFile(pwm, fan.hwMonConfig().PwmPath)
 	return err
 }
 
+// GetFanRpmCurveData returns a copy of the fan curve data, so callers can read it
+// while the fan is updated from another goroutine.
 func (fan *HwMonFan) GetFanRpmCurveData() *map[int]float64 {
-	return fan.FanCurveData
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
+	return copyCurveData(fan.FanCurveData)
 }
 
 // AttachFanCurveData attaches fan curve data from persistence to a fan
 // Note: When the given data is incomplete, all values up until the highest
 // value in the given dataset will be interpolated linearly
 func (fan *HwMonFan) AttachFanRpmCurveData(curveData *map[int]float64) (err error) {
+	fan.mu.Lock()
 	if curveData == nil || len(*curveData) <= 0 {
 		fan.FanCurveData = nil
+		fan.mu.Unlock()
 		return err
 	}
 
-	fan.FanCurveData = curveData
+	data := copyCurveData(curveData)
+	fan.FanCurveData = data
+	fan.mu.Unlock()
 
-	startPwm, maxPwm := ComputePwmBoundaries(fan)
+	startPwm, maxPwm := ComputePwmBoundariesFromCurveData(*data, fan.GetStartPwm())
 	fan.SetStartPwm(startPwm, false)
 	fan.SetMaxPwm(maxPwm, false)
 
@@ -147,6 +231,8 @@ func (fan *HwMonFan) AttachFanRpmCurveData(curveData *map[int]float64) (err erro
 }
 
 func (fan *HwMonFan) UpdateFanRpmCurveValue(pwm int, rpm float64) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	if fan.FanCurveData == nil {
 		fan.FanCurveData = &map[int]float64{}
 	}
@@ -154,10 +240,14 @@ func (fan *HwMonFan) UpdateFanRpmCurveValue(pwm int, rpm float64) {
 }
 
 func (fan *HwMonFan) GetCurveId() string {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Config.Curve
 }
 
 func (fan *HwMonFan) ShouldNeverStop() bool {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Config.NeverStop
 }
 
@@ -175,9 +265,11 @@ func (fan *HwMonFan) GetControlMode() (ControlMode, error) {
 		// if we have a pwm_enable value >= 2, store it as the last known automatic control mode
 		// so that we can use it when setting the control mode to automatic later.
 		// A driver specific mode that fan2go set itself is not the automatic mode to return to.
+		fan.mu.Lock()
 		if fan.driverSpecificControlMode == nil || *fan.driverSpecificControlMode != pwmEnabledValue {
 			fan.lastKnownAutomaticControlMode = &pwmEnabledValue
 		}
+		fan.mu.Unlock()
 		return ControlModeAutomatic, nil
 	}
 
@@ -193,7 +285,7 @@ func (fan *HwMonFan) GetControlMode() (ControlMode, error) {
 
 // readPwmEnable reads the raw value of pwmX_enable, without mapping it to a ControlMode.
 func (fan *HwMonFan) readPwmEnable() (int, error) {
-	value, err := util.ReadIntFromFile(fan.Config.HwMon.PwmEnablePath)
+	value, err := util.ReadIntFromFile(fan.hwMonConfig().PwmEnablePath)
 	if err != nil {
 		return 0, fmt.Errorf("fan %s: error reading pwm_enable: %w", fan.GetId(), err)
 	}
@@ -236,9 +328,9 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 	case ControlModePWM:
 		pwmEnabledValue = 1
 	case ControlModeAutomatic:
-		if fan.lastKnownAutomaticControlMode != nil {
+		if lastKnownAutomaticControlMode := fan.getLastKnownAutomaticControlMode(); lastKnownAutomaticControlMode != nil {
 			// if we have a last known automatic control mode, use that
-			pwmEnabledValue = *fan.lastKnownAutomaticControlMode
+			pwmEnabledValue = *lastKnownAutomaticControlMode
 		} else {
 			// otherwise assume 2 as default for automatic control
 			ui.Warning("No last known automatic control mode for fan '%s', assuming 2 (automatic control)", fan.GetId())
@@ -249,15 +341,17 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 		pwmEnabledValue = int(value)
 	}
 
-	err = util.WriteIntToFile(pwmEnabledValue, fan.Config.HwMon.PwmEnablePath)
+	err = util.WriteIntToFile(pwmEnabledValue, fan.hwMonConfig().PwmEnablePath)
 	if err != nil {
 		return err
 	}
+	fan.mu.Lock()
 	if value > ControlModeAutomatic {
 		fan.driverSpecificControlMode = &pwmEnabledValue
 	} else {
 		fan.driverSpecificControlMode = nil
 	}
+	fan.mu.Unlock()
 	currentValue, err := fan.readPwmEnable()
 	if err != nil {
 		// the write succeeded, only the validation is not possible
@@ -269,7 +363,9 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 		if currentValue < 2 {
 			return fmt.Errorf("PWM mode stuck to %d", currentValue)
 		}
+		fan.mu.Lock()
 		fan.lastKnownAutomaticControlMode = &currentValue
+		fan.mu.Unlock()
 		return nil
 	}
 	if currentValue != pwmEnabledValue {
@@ -278,32 +374,55 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 	return nil
 }
 
+// getLastKnownAutomaticControlMode returns a copy of the last known automatic control mode (or nil).
+func (fan *HwMonFan) getLastKnownAutomaticControlMode() *int {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
+	return copyIntPtr(fan.lastKnownAutomaticControlMode)
+}
+
 func (fan *HwMonFan) GetConfig() configuration.FanConfig {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Config
 }
 
 func (fan *HwMonFan) SetConfig(config configuration.FanConfig) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	fan.Config = config
 }
 
+func (fan *HwMonFan) DisableSanityCheck(check SanityCheck) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
+	disableSanityCheck(&fan.Config, check)
+}
+
 func (fan *HwMonFan) Supports(feature FeatureFlag) bool {
+	config := fan.hwMonConfig()
 	switch feature {
 	case FeatureControlModeWrite:
-		_, err := os.Stat(fan.Config.HwMon.PwmEnablePath)
+		_, err := os.Stat(config.PwmEnablePath)
 		return err == nil
 	case FeatureControlModeRead:
-		if fan.pwmEnableReadable != nil {
-			return *fan.pwmEnableReadable
+		fan.mu.RLock()
+		cached := copyBoolPtr(fan.pwmEnableReadable)
+		fan.mu.RUnlock()
+		if cached != nil {
+			return *cached
 		}
-		_, err := util.ReadIntFromFile(fan.Config.HwMon.PwmEnablePath)
+		_, err := util.ReadIntFromFile(config.PwmEnablePath)
 		readable := err == nil
+		fan.mu.Lock()
 		fan.pwmEnableReadable = &readable
+		fan.mu.Unlock()
 		return readable
 	case FeaturePwmSensor:
-		_, err := util.ReadIntFromFile(fan.Config.HwMon.PwmPath)
+		_, err := util.ReadIntFromFile(config.PwmPath)
 		return err == nil
 	case FeatureRpmSensor:
-		_, err := os.Stat(fan.Config.HwMon.RpmInputPath)
+		_, err := os.Stat(config.RpmInputPath)
 		return err == nil
 	}
 	return false

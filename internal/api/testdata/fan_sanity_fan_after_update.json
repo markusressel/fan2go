@@ -1,0 +1,31 @@
+{
+  "config": {
+    "id": "sanity_fan",
+    "neverStop": false,
+    "curve": "constant_curve",
+    "useUnscaledCurveValues": false,
+    "sanityCheck": {
+      "pwmValueChangedByThirdParty": {
+        "enabled": {
+          "Value": false,
+          "Present": false,
+          "RuntimeOverride": true
+        }
+      },
+      "fanModeChangedByThirdParty": {
+        "enabled": {
+          "Value": false,
+          "Present": false,
+          "RuntimeOverride": true
+        }
+      }
+    },
+    "file": {
+      "path": "/nonexistent/fan2go-test/pwm",
+      "rpmPath": "/nonexistent/fan2go-test/rpm"
+    }
+  },
+  "movingAvg": 0,
+  "pwm": 0,
+  "rpm": 0
+}

@@ -1,0 +1,13 @@
+{
+  "config": {
+    "id": "pid_curve",
+    "pid": {
+      "sensor": "cmd_sensor",
+      "setPoint": 60,
+      "p": 0.03,
+      "i": 0.002,
+      "d": 0.0005
+    }
+  },
+  "value": 30
+}
