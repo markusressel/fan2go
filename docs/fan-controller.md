@@ -106,7 +106,11 @@ is not used by the update loop: it is only logged, and `Run` warns if `minPwm > 
 warning and clamps (`clampDerivedPwmBoundaries`), so the scaling can't run backwards. A configured value always
 wins: with a configured `maxPwm`, the derived `minPwm`/`startPwm` are lowered to it; otherwise the derived `maxPwm`
 is raised to the (configured or derived) `minPwm`/`startPwm` (a higher PWM is the safe direction), as far as the
-fan allows (nvidia: 100); derived values still above it are lowered. fan2go has no
+fan allows (nvidia: 100); derived values still above it are lowered. After the PWM mappings are known, `Run` raises a
+derived `maxPwm` to the first output level that reaches 98% of the peak RPM
+(`alignDerivedMaxPwmWithOutputLevels`, see [fan-analysis.md](fan-analysis.md)). The derived `maxPwm` is only the
+top of the scaling: the fail-safe paths (`onSensorFailure: max` and the `neverStop` stall check) use the configured
+`maxPwm`, or full speed (255; nvidia: 100) without one (`fans.FailSafeMaxPwm`). fan2go has no
 "jump-start" from standstill (open issue #30). File and cmd fans always report `minPwm` 0 and `maxPwm` 255; nvidia
 fans default to `maxPwm` 100, because NVML speeds are percent.
 
@@ -293,8 +297,8 @@ fan2go touched the fan). An `ExecStopPost` helper that restores without a new st
 after the kill. If the user changes the fan state between the kill and the next start, the saved state still wins.
 Without a working database, the behaviour is the old one. A fan whose restore always fails (e.g. a driver that
 rejects automatic mode) keeps its entry, so every start logs the "didn't hand the fan back completely" warning; the
-saved state is still its true original. Running `fan2go fan init` while the daemon controls the
-same fan uses and then deletes the daemon's entry; that combination is not supported anyway.
+saved state is still its true original. `fan2go fan init` refuses to run while the daemon uses the same database
+(see [fan-analysis.md](fan-analysis.md)), so it can't use and delete the daemon's entry.
 
 ### Panics, signals and hanging commands must not skip the restore
 
@@ -330,11 +334,12 @@ or reload ("sensor not found", until the next reload), a failed sub-curve, or a 
 `handleCurveFailure` applies `onSensorFailure` and returns `ErrCurveEvaluation`, which the update loop ignores; the
 next cycle tries again.
 
-- `max` (default): write `maxPwm` (through the `pwmMap`) on every cycle while the failure lasts. A failed write is
+- `max` (default): write the fail-safe speed (the configured `maxPwm`, else 255; through the `pwmMap`) on every
+  cycle while the failure lasts. The `maxPwm` derived from the curve is not used: it can be below full speed. A failed write is
   logged once per failure state, and it does not count towards the PWM write timeout.
 - `restore`: hand the fan back once, with the same logic as on exit. It only counts as success if the fan ends up
   in a control mode other than manual PWM (`restoreControlMode` returns `handedOver`). Otherwise (`onExit: none`,
-  only `onExit.speed`, original mode manual, mode unknown or not writable), the fan is set to `maxPwm` like `max`.
+  only `onExit.speed`, original mode manual, mode unknown or not writable), the fan is set to the fail-safe speed like `max`.
 - Recovery (`recoverFromCurveFailure`): after `restore`, save the original state again (`markMayWriteToFan`), arm a
   new `restoreOnce` and take manual control again (like at startup). If that fails, the fan stays handed back, the
   state stays `sensor_failure_restored` with the error, and fan2go tries again on every cycle. The first failed
@@ -346,7 +351,7 @@ next cycle tries again.
   max speed if that fails, and deletes the saved original state if the restore is complete, instead of leaving it
   in the database.
   Before that, `calculateTargetSpeed` makes the control loop continue from the fan's speed: `Preset` at the curve
-  value of `maxPwm` after `max`, `Reset` (start at the target) after `restore`. So the fan comes down from max
+  value 255 (with `useUnscaledCurveValues`: the fail-safe speed) after `max`, `Reset` (start at the target) after `restore`. So the fan comes down from max
   (with the time constant or ramps of the control algorithm) instead of jumping (see [control-algorithms.md](control-algorithms.md)).
 - Entering the failure state is logged and notified once, after the fan is in a safe state. Recovery is logged
   once, and so is a recovery that can't take manual control again (see above). The stall detection is paused while the curve fails, because `UpdateFanSpeed` returns before it.
@@ -390,7 +395,8 @@ writes failed.
 its RPM average is below 50 RPM (`fans.IsRpmLikelySpinning`) while the target is unchanged since the last update
 and the average has been seeded. It then raises `minPwmOffset` by 1 and the target by 1. After the first update
 and after each raise, the fan gets 3 `rpmPollingRate` periods to react (`minPwmIncreaseRpmPollingPeriods`,
-`hadTimeToReactToPwmFloor`). If the fan is still stalled at `maxPwm`, `UpdateFanSpeed` returns
+`hadTimeToReactToPwmFloor`). The floor can rise above a derived `maxPwm`. If the fan is still stalled at the
+fail-safe speed (the configured `maxPwm`, else 255), `UpdateFanSpeed` returns
 `ErrFanStalledAtMaxPwm`, and the controller restores the fan and stops. The offset is in the statistics
 (`MinPwmOffset`, `IncreasedMinPwmCount`), but it is not persisted. Without an RPM sensor, `neverStop` only sets
 the PWM floor, and fan2go logs a warning at startup.
@@ -511,7 +517,7 @@ fan2go's own state).
 |-----|---------|--------|
 | `fanController.adjustmentTickRate` | `200ms` | Curve evaluator cycle, so the fan update rate. Must be > 0. |
 | `controllerAdjustmentTickRate` | unset | Deprecated alias, copied to `fanController.adjustmentTickRate` with a warning. |
-| `fanController.pwmSetDelay` | `5ms` | Wait between set and read-back during PWM map detection ([fan-analysis.md](fan-analysis.md)). |
+| `fanController.pwmSetDelay` | `5ms` | Minimum wait between set and read-back during PWM map detection and the analysis; the measured readback delay is used if longer ([fan-analysis.md](fan-analysis.md)). |
 | `rpmPollingRate` | `1s` | RPM monitor rate; also the unit of the stall reaction period (3 periods). |
 | `rpmRollingWindowSize` | `10` | n of the RPM moving average (α = 1/n). |
 | `tempSensorPollingRate` | `200ms` | Added to the 2 s startup warm-up; also sets the default `sensorStaleTimeout`. |

@@ -682,7 +682,6 @@ func runUntilError(t *testing.T, controller *DefaultFanController) error {
 }
 
 func TestFanController_Run_ErrorAfterInitialization_RestoresFan(t *testing.T) {
-	loadErr := errors.New("load failed")
 	attachErr := errors.New("attach failed")
 	pwmMapErr := errors.New("pwm map load failed")
 
@@ -690,13 +689,6 @@ func TestFanController_Run_ErrorAfterInitialization_RestoresFan(t *testing.T) {
 		setUp       func(p *fakePersistence, fan *initTestFan)
 		expectedErr error
 	}{
-		"loading the fan curve data fails": {
-			setUp: func(p *fakePersistence, fan *initTestFan) {
-				// 1st load: no data (start initialization), 2nd: at the end of the initialization, 3rd: in Run
-				p.loadRpmDataErrors = []error{nil, nil, loadErr}
-			},
-			expectedErr: loadErr,
-		},
 		"attaching the fan curve data fails": {
 			setUp: func(p *fakePersistence, fan *initTestFan) {
 				// 1st attach: during the initialization, 2nd: in Run

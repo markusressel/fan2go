@@ -199,7 +199,10 @@ func TestRunInitializationSequence_NonIdempotentPwmMap_DetectsBoundariesInTarget
 	// the curve is keyed by target values: target 128 (raw 3) is the first spinning point
 	startPwm, maxPwm := fans.ComputePwmBoundariesFromCurveData(curve, fans.MaxPwmValue)
 	assert.Equal(t, 128, startPwm)
-	assert.Equal(t, 255, maxPwm)
+	// the curve is interpolated between target 128 (raw 3) and 255 (raw 6), so it reaches 98% of the peak at
+	// target 254, which still writes raw 3: the output level alignment raises maxPwm to 255 (raw 6)
+	assert.Equal(t, 254, maxPwm)
+	assert.Equal(t, 255, alignMaxPwmWithOutputLevels(curve, maxPwm, controller.outputLevelsOfTargets()))
 	assert.Equal(t, 0.0, curve[127])
 	assert.Equal(t, 3*200.0, curve[128])
 	assert.Equal(t, 6*200.0, curve[255])

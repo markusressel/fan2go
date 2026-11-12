@@ -10,7 +10,6 @@ import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/control_loop"
 	"github.com/markusressel/fan2go/internal/controller"
-	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -21,8 +20,9 @@ var assumePwmMapIdentity bool
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Runs the initialization sequence for a fan",
-	Long:  ``,
-	Args:  cobra.NoArgs,
+	Long: `Measures the fan again (setPwmToGetPwmMap, pwmMap and RPM curve) and replaces its saved data if the
+measurement succeeds. Stop the fan2go daemon first: the command refuses to run while it uses the same database.`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		//pterm.DisableOutput()
 
@@ -34,7 +34,12 @@ var initCmd = &cobra.Command{
 		dbPath := configuration.CurrentConfig.DbPath
 		ui.Info("Using persistence at: %s", dbPath)
 
-		p := persistence.NewPersistence(dbPath)
+		p, release, err := openPersistenceExclusively(dbPath)
+		if err != nil {
+			return err
+		}
+		defer release()
+
 		_, reg, err := internal.InitializeObjects()
 		if err != nil {
 			return err
@@ -49,25 +54,11 @@ var initCmd = &cobra.Command{
 			assumePwmMapIdentity,
 		)
 
-		ui.Info("Fan %s: Deleting existing data...", fan.GetId())
-
-		if err = p.DeleteFanRpmData(fan); err != nil {
-			return err
-		}
-		if err = p.DeleteFanSetPwmToGetPwmMap(fan.GetId()); err != nil {
-			return err
-		}
-		if err = p.DeleteFanPwmMap(fan.GetId()); err != nil {
-			return err
-		}
-		if err = p.DeleteFanAnalysisInfo(fan.GetId()); err != nil {
-			return err
-		}
-
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		// hands the fan back afterwards (also on errors and panics): the analysis leaves it in manual mode
+		// replaces the saved data only if it succeeds, and hands the fan back afterwards (also on errors and
+		// panics): the analysis leaves it in manual mode
 		_, err = fanController.RunInitializationAndRestore(ctx)
 		if err == nil {
 			ui.Success("Done!")

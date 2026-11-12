@@ -19,20 +19,24 @@ Run
  ├─ wait sensor warm-up          2s + tempSensorPollingRate
  ├─ runInitializationIfNeeded
  │    LoadFanRpmData ── ok ─────────────────────────────────────────────┐
- │        ├─ missing / corrupt (hwmon, nvidia) ─► RunInitialization      │
+ │        ├─ missing / corrupt / no curve although the fan has an RPM    │
+ │        │  sensor (hwmon, nvidia) ─► RunInitialization                 │
  │        │      lock (if runFanInitializationInParallel: false)         │
  │        │      computeFanSpecificMappings                              │
- │        │         setPwmToGetPwmMap: config | db | sweep 0..255        │
- │        │         pwmMap:            config | db | derive from sweep   │
+ │        │         setPwmToGetPwmMap: config | formula | db |              │
+ │        │                            probe readback delay + sweep 0..255│
+ │        │         pwmMap:            config | db | one value per level  │
  │        │      FanCurveAnalyzer.RunInitializationSequence              │
  │        │         start boundary ─► max boundary ─► interior ─► cleanup│
- │        │      AttachFanRpmCurveData, SaveFanRpmData                   │
+ │        │      AttachFanRpmCurveData, SaveFanRpmData,                  │
+ │        │      SaveFanAnalysisInfo (quirk, readback delay)             │
  │        ├─ missing (file, cmd fan) ─► save the fixed linear curve      │
  │        └─ other error (e.g. db locked) ─► stop with an error          │
- ├─ LoadFanRpmData + AttachFanRpmCurveData  ◄───────────────────────────┘
+ ├─ AttachFanRpmCurveData  ◄────────────────────────────────────────────┘
  │      derives startPwm, maxPwm (and minPwm = startPwm) unless configured
  ├─ computeFanSpecificMappings   (loads the saved mappings; sweeps again if
  │                                 setPwmToGetPwmMap is missing or corrupt)
+ ├─ alignDerivedMaxPwmWithOutputLevels, loadReadbackDelay
  └─ takeManualControl, control loop  (see fan-controller.md)
 ```
 
@@ -56,13 +60,16 @@ it switches the fan to manual mode (`takeManualControl`; if that fails, the anal
 
 1. **Start boundary** (`detectStartBoundary`): binary search for the lowest target value at which the fan spins.
    "Spinning" means at least 50 RPM (`rpmNoiseThreshold`, `fans.IsRpmLikelySpinning`). Each step waits for the fan to
-   settle, up to `analysis.settleTimeout`. Every non-spinning probe is stored as 0 RPM. If no value spins,
+   settle, up to `analysis.settleTimeout`. Every non-spinning probe is stored as 0 RPM. If a probe is skipped
+   because the fan doesn't report the expected PWM (see below), the search tries the next higher and then the next
+   lower value in its window first; only if all three are skipped, it continues above the probe. If no value spins,
    the analysis fails with "unable to detect start boundary, no spinning PWM found".
 2. **Max boundary** (`detectMaxBoundary`, `confirmMaxBoundary`): a fast scan of the top distinct values (the top 65,
    or from the start boundary if that is higher) in steps of `analysis.coarseStep`, each with a plain
    `fanResponseDelay` wait. It then walks down from the top, measuring every value not yet measured, until one reaches
    95% of the peak RPM. It re-measures the top four values and the neighbours of that candidate with settle waits,
-   and picks the highest value that reaches 95% of the confirmed peak.
+   and picks the highest value that reaches 95% of the confirmed peak. This boundary only decides where interior
+   sampling stops; the derived `maxPwm` is computed from the cleaned-up curve (see below).
 3. **Interior** (`sampleInteriorCoarse`): measures every `max(2 * analysis.coarseStep, 8)`-th distinct value between
    the two boundaries, with settle waits for jumps of 8 or more target values (in practice always, since the step is
    at least 8 distinct values).
@@ -74,14 +81,17 @@ it switches the fan to manual mode (`takeManualControl`; if that fails, the anal
 
 Each point is measured by `measureAtPwm`:
 
-- Write the target value, wait `pwmSetDelay`, read the PWM back and compare it with the expected value from the
-  `setPwmToGetPwmMap`. On a mismatch, wait `fanResponseDelay` and try again, up to 3 attempts in total. If it still
-  doesn't match, the point is skipped (not an error).
+- Write the target value, wait `pwmSetDelay`, then read the PWM back every 5 ms until it matches the expected value
+  from the `setPwmToGetPwmMap`, for up to `fanResponseDelay`. On a mismatch, write it again, up to 3 writes in total.
+  If it still doesn't match, the point is skipped (not an error). The time until the readback matched is recorded
+  as an observed readback delay (see below).
 - Wait: `waitForFanToSettle` (if a settle timeout is given) or a plain `fanResponseDelay` sleep.
 - Take `analysis.sampleCount` RPM samples, `analysis.sampleDelay` apart, and use their median.
 
 `waitForFanToSettle` reads the RPM every 500 ms, runs it through a Kalman filter and keeps the last 8 values. After 6
-values it checks drift of the mean, change of the noise range and the trend. It needs 3 stable checks in a row. If
+values it checks drift of the mean, change of the noise range and the trend. The noise range is the range of the
+values around their linear trend (`detrendedRange`), so a fan that still ramps steadily doesn't count as noisy (and
+so as settled). It needs 3 stable checks in a row. If
 `analysis.settleTimeout` runs out first, it logs a warning and measures anyway. So a settled point takes at least about
 4 seconds.
 
@@ -90,8 +100,15 @@ values it checks drift of the mean, change of the noise range and the trend. It 
 `AttachFanRpmCurveData` derives the boundaries from the stored curve with `ComputePwmBoundariesFromCurveData`:
 
 - `startPwm`: the lowest target value with at least 50 RPM.
-- `maxPwm`: the highest target value with at least 95% of the peak RPM.
+- `maxPwm`: the lowest target value (at or above `startPwm`) with at least 98% of the peak RPM
+  (`fans.MaxPwmRpmRatio`), 255 if there is none.
 - `minPwm`: set to `startPwm` (there is no separate measurement yet, see #30).
+
+After the PWM mappings are known, `alignDerivedMaxPwmWithOutputLevels` checks the derived `maxPwm` against the output
+levels of the fan: target values whose raw values read back the same are one level. The curve between two measured
+points is interpolated, so inside a level it can reach 98% although the level doesn't (8 levels: the curve reaches
+98% inside level 6, which runs at 89%). The curve value at the first target value of a level counts for the whole
+level, and `maxPwm` is raised to the first level that reaches 98% (255 if none).
 
 Values configured in the fan config (`minPwm`, `startPwm`, `maxPwm`) always win. The control loop maps curve values
 1..255 to `minPwm..maxPwm` (see [Fan controller](fan-controller.md)). The curve itself is also
@@ -151,12 +168,18 @@ In `autodetect` mode:
 
 - `setPwmToGetPwmMap`: if the fan has a [known hardware quirks](hardware-quirks.md) entry with a readback formula
   (and `quirks.enabled` is not `false`), the map comes from that formula, without a
-  sweep and without the database. Otherwise `computeSetPwmToGetPwmMapAutomatically` writes every value 0..255, waits `pwmSetDelay` and
-  reads `pwm` back. Values whose write fails are left out. Without a readable `pwm` (or with
-  `fan init --assume-pwm-map-identity`), it assumes a 1:1 map.
-- `pwmMap`: `computePwmMapAutomatically` takes the keys of the `setPwmToGetPwmMap`, i.e. the raw values the driver
-  accepted, and spreads them evenly over 0..255 as steps (`util.ExpandMapToFullRange`). If the driver accepts all
-  values, this is the identity. If it only accepts e.g. 0..100, the target range 0..255 is quantized onto those values.
+  sweep and without the database. Otherwise `computeSetPwmToGetPwmMapAutomatically` measures the readback delay
+  (`probeReadbackDelay`, see below), then writes every value 0..255 and reads `pwm` back until it changes, for up to
+  twice the measured delay (at least `pwmSetDelay`). Values whose write fails are left out. Without a readable `pwm`
+  (or with `fan init --assume-pwm-map-identity`), it assumes a 1:1 map.
+- `pwmMap`: `computePwmMapAutomatically` groups the keys of the `setPwmToGetPwmMap` (the raw values the driver
+  accepted) by the value they read back: each group is one output level of the fan (`outputLevelValues`). Of each
+  group it uses the value that reads back as itself, else the lowest one, and spreads these values evenly over
+  0..255 as steps (`util.ExpandMapToFullRange`). If the driver accepts and reports all values, this is the identity.
+  If it only accepts e.g. 0..100, or has 8 levels, the target range 0..255 is divided between those values. For a
+  [known hardware quirks](hardware-quirks.md) formula, the groups are the entry's `OutputLevels()`. The grouping is
+  not used (every accepted value is used, like before) if the readback decreases somewhere, has fewer than two
+  values, or the fan is an nvidia fan (its `minPwm`/`maxPwm` are percent values of the identity map).
 
 **Why**: Some drivers don't report the value that was written (e.g. they report 0..100 or round), others only accept
 part of the range. Mixing both into one map broke the third-party check (#371). Without the readback map, every
@@ -165,10 +188,101 @@ analysis write would look like a mismatch.
 **Who benefits**: Users of unusual hardware (#213, #511). Users whose hardware is known can skip the sweep with
 `identity` or set exact values.
 
-**Trade-offs**: The sweep briefly writes every value from 0 to 255 in about 1.3 seconds (256 × 5 ms), including 0. The
-derived `pwmMap` ignores the readback values (a `TODO` in the code): a driver that accepts all values but only has a
-few real speed steps gets an identity `pwmMap`, so the analysis measures many target values that end up at the same
-speed.
+**Trade-offs**: The sweep briefly writes every value from 0 to 255 in about 1.3 seconds (256 × 5 ms), including 0,
+plus 4 writes of 0 and 255 to measure the readback delay. On a driver that caches its readback, the sweep takes
+longer (about 256 × the cache period). The grouped `pwmMap` relies on the readback: a driver that reports every
+value but has fewer real speeds (the readback doesn't show the levels) still gets an identity `pwmMap`.
+
+The grouped `pwmMap` (since 1.0.0) changes which raw value a target value writes on quantized drivers: a target
+range selects a level, instead of the raw value with the same number. Configured `minPwm`/`startPwm`/`maxPwm` are
+target values, so on such a fan they select another raw value than before. Saved `pwmMap`s are kept: only a new
+analysis (`fan init`, `fan reset`, or a changed known hardware quirks entry) computes the grouped map.
+
+### `maxPwm` is the lowest PWM with 98% of the peak RPM
+
+**Decision**: The derived `maxPwm` is the lowest target value whose RPM is at least 98% of the peak RPM of the
+curve, raised to the first output level that reaches it (see "How the result is used"). The fail-safe paths
+(`onSensorFailure: max`, and the `neverStop` stall check that stops the controller "at max") don't use it: they use
+the configured `maxPwm`, or full speed (255; nvidia: 100) without one (`fans.FailSafeMaxPwm`).
+
+**Why**: Before 1.0.0, `maxPwm` was the *highest* value with 95% of the peak. The cleanup makes the curve monotonic,
+so that was always 255, and a fan that saturates at PWM 150 used the upper 40% of the curve range for no change in
+speed. The ratio was chosen with a simulation of the full analysis (`RunInitializationSequence` with median of 3
+samples, interpolation, monotonic fill and Kalman smoothing), 30 runs per fan model and tach noise of 1% and 3%:
+
+| Fan model, noise | 95%: RPM at `maxPwm` (worst) | 98%: RPM at `maxPwm` (worst) | 98%: `maxPwm` (median) |
+|---|---|---|---|
+| linear, 1% | 95.1% | 98.8% | 255 |
+| linear, 3% | 93.5% | 96.7% | 255 |
+| concave (`pwm^0.6`), 3% | 93.1% | 96.3% | 255 |
+| saturates at PWM 150, 1% | 100% | 100% | 168 |
+| saturates at PWM 150, 3% | 100% | 100% | 179 |
+| soft saturation (`1-e^(-pwm/35)`), 3% | 95.5% | 97.8% | 214 |
+| 101 levels (Corsair formula), 3% | 91.9% | 95.9% | 255 |
+| 8 levels, with level alignment | 89.3% (without alignment) | 100% | 255 (top level from 224) |
+
+With 95%, fans that don't saturate lose up to 5-7% of their top speed at the highest curve value, about twice the
+tach noise. 98% keeps that loss within the noise (1-3%) and still cuts off most of the flat top of a saturating fan.
+The Kalman filter lags behind a rising curve, so smoothing can only move `maxPwm` up (towards full speed). Without
+the level alignment, the interpolated curve of a fan with 8 levels reaches 98% inside the second highest level, and
+the fan would never reach its top level.
+
+The fail-safe paths need full speed, not "98% of it": a derived value can be wrong (noise, a fan that was replaced),
+and the stall check shouldn't give up below full speed.
+
+**Who benefits**: Fans that saturate early: the whole curve range changes the speed. Everybody: the fail-safe speed is
+full speed again, independent of the measurement.
+
+**Alternatives considered**: 95% (the old constant): loses too much top speed on linear fans. 99%: the threshold is within the
+noise, so the result varies much more (fan saturating at 150, 3% noise: 169 to 255, median 199). Measuring `maxPwm` separately (a slow descent from 255): slower, and the
+boundary search already measures the top range.
+
+**Trade-offs**: At the highest curve value, a fan that doesn't saturate runs up to about 2-3% slower than before
+(the measured 98% plus noise). Saved curves are kept, so the new `maxPwm` applies on the next start without a new
+analysis. A fan whose output is quantized but whose readback isn't (the levels are unknown) can still get a
+`maxPwm` inside its second highest level; set `maxPwm` for such a fan. `fan2go fan curve` shows the value derived
+from the curve, before the level alignment.
+
+### Measure the readback delay
+
+**Decision**: fan2go measures how long a fan takes to report a written PWM value, during the analysis:
+
+- Before the sweep, `probeReadbackDelay` writes 0 and 255 alternately (4 writes, the first one far from the current
+  value) and polls the readback every 5 ms until it changes, up to 2 s each.
+- The sweep waits for each value until the readback changes (several values can have the same level), up to twice
+  the longest observed delay, at least `pwmSetDelay`.
+- `measureAtPwm` polls until the readback matches (see above) and records the time.
+
+The longest delay observed (capped at 2 s, rounded up to ms) is saved as `readbackDelayMillis` in the `fanAnalysisInfo`
+record ([details](hardware-quirks.md#persistence)), for hwmon and nvidia fans. A delay of 0 means the first read
+after `pwmSetDelay` already showed the new value. The daemon loads it (`loadReadbackDelay`). While it controls the
+fan, for `max(readbackDelay, pwmSetDelay)` after a write (`readbackMayBeStale`):
+
+- the `pwmValueChangedByThirdParty` check is skipped, because the fan may still report the old value;
+- `setTargetPwm` compares the target with the value it wrote last instead of the readback. Before, a write of A, B,
+  A within the delay read back A (the old value) for the second A and skipped it, so B stayed.
+
+Without a measured delay (0, or a record without the field), all of this behaves like before.
+
+**Why**: Some drivers report a written value only after a while. Older versions of the out-of-tree `nct6687`
+driver cache register values for 1 s (#272, #358), and `pwmSetDelay: 200ms` helped a user with an unknown driver
+(#378). With a fixed 5 ms wait, the sweep recorded the previous value for every write, and the control loop reported
+third-party changes that were its own writes. The hwmon name doesn't tell old and new driver versions apart, so a
+[known hardware quirks](hardware-quirks.md) entry can't describe it.
+
+**Who benefits**: Users of drivers with a slow or cached readback: a correct `setPwmToGetPwmMap` and `pwmMap`, no
+false warnings, no lost writes. Users of fast drivers: no change, the sweep still takes about 1.3 s.
+
+**Alternatives considered**: A fixed, longer `pwmSetDelay` (slows every fan down; still the manual floor). A
+registry field with a fixed delay per device (not possible without a primary source; may be added later if
+measuring can't catch a device's delay).
+
+**Trade-offs**: The delay of a caching driver depends on the phase of the cache, so the measurement can be shorter
+than the cache period; the sweep waits twice as long, and the control loop only uses the longest observation. A
+readback that never changes (e.g. some amdgpu cards, #148) can't be measured: the analysis logs a warning and uses
+`pwmSetDelay`. Data analyzed by an older version has no measured delay until the next `fan init`. A ramping
+controller (the readback moves towards the value over seconds) reports the time until the first change in the
+probe, and the time until it matches in `measureAtPwm`.
 
 ### Adaptive boundary search instead of a full sweep
 
@@ -219,7 +333,8 @@ seconds so existing configs keep working.
 **Who benefits**: Users of slow embedded controllers (raise the delay) and of fast hardware (lower it).
 
 **Trade-offs**: `fanResponseDelay` is a single global value; there is no per-fan override (unlike `pwmSetDelay`). A
-skipped point in the start-boundary search moves the search upwards, so the result can be too high.
+skipped point in the start-boundary search makes the search try its neighbours first; if they are skipped too, the
+search moves upwards, so the result can be too high.
 
 ### Optional serialized initialization (`runFanInitializationInParallel`)
 
@@ -236,8 +351,8 @@ only held in `computePwmMap`, which doesn't touch the hardware.
 **Who benefits**: Systems with many fans or poor passive cooling (safety). Parallel analysis benefits users who want
 the shortest first start.
 
-**Trade-offs**: Serial analysis takes longer in total. The lock only covers one process: `fan2go fan init` running
-next to the daemon is not serialized.
+**Trade-offs**: Serial analysis takes longer in total. The lock only covers one process; `fan2go fan init` can't run
+next to the daemon anyway (see "`fan2go fan init`" below).
 
 ### Persistence: one bbolt file, opened per operation
 
@@ -254,10 +369,18 @@ Data format: five buckets, keyed by fan `id`, values are JSON:
 | `fanSetPwmToGetPwmMap` | set PWM to reported PWM                  | `{"0":0,"1":1,...}`           |
 | `fanPwmMapping`        | `pwmMap`, an array of exactly 256 values | `[0,1,2,...,255]`             |
 | `fanOriginalState`     | state before fan2go took control, only while it controls the fan | `{"hardware":"hwmon:nct6798/0/pwm1","controlMode":2,"automaticControlMode":5,"pwm":120}` |
-| `fanAnalysisInfo`      | known hardware quirks entry the analysis data of a hwmon fan was measured with ([details](hardware-quirks.md#persistence)) | `{"quirk":"corsaircpro","quirkVersion":1}` |
+| `fanAnalysisInfo`      | known hardware quirks entry the analysis data of a hwmon fan was measured with ([details](hardware-quirks.md#persistence)), and the measured readback delay (hwmon and nvidia fans) | `{"quirk":"corsaircpro","quirkVersion":1,"readbackDelayMillis":0}` |
 
-A fan without an RPM sensor stores `null` in `fans`: it counts as "analyzed, no curve". File and cmd fans store their
-fixed linear curve (0..255 to 0..255).
+A fan without an RPM sensor stores `null` in `fans`: it counts as "analyzed, no curve" as long as the fan has no
+RPM sensor. If a hwmon or nvidia fan has one later (a fixed `rpmChannel`, a driver that was loaded late), the `null`
+curve counts as missing and the fan is analyzed again. File and cmd fans store their fixed linear curve (0..255 to
+0..255).
+
+A database is used by one fan2go process at a time: the daemon, `fan init` and `fan reset` take an advisory lock
+(`flock`) on `<dbPath>.lock` and refuse to run if another process holds it (`persistence.AcquireProcessLock`). The
+file contains the PID of the holder for the error message. The kernel releases the lock when the process exits, also
+after `SIGKILL`, so a lock file left behind never blocks and needs no stale-PID check. Read-only commands
+(`fan curve`) don't take it.
 
 **Why**: bbolt is an embedded, pure Go key-value store: no external service, one file, crash-safe transactions. Opening
 it per operation lets the daemon and CLI commands (`fan init`, `fan reset`, `fan curve`) share the file, because no
@@ -273,27 +396,41 @@ controllers stop (see above). Analysis data of fans that were removed from the c
 `fanOriginalState` is not analysis data: it is described in [fan-controller.md](fan-controller.md), uses a 5 s lock
 timeout, and its entries of removed fans are deleted at daemon start.
 
-### `fan2go fan init`: fresh data and hand-back
+### `fan2go fan init`: fresh data, replaced on success, and hand-back
 
-**Decision**: `fan2go fan --id <id> init` deletes the saved RPM curve, `setPwmToGetPwmMap` and `pwmMap` of the fan,
-runs `RunInitializationAndRestore`, and prints the measured curve. It always hands the fan back afterwards: on success,
-on errors, on SIGINT/SIGTERM and on panics (unless it failed before writing to the fan). Hand-back means the original
-control mode and PWM, or `controlMode.onExit` (see [Fan controller](fan-controller.md)). Like the daemon, it
-saves the original state in `fanOriginalState` while it controls the fan, uses a saved one (left behind by a killed
-daemon or `fan init`) instead of the current state, and deletes it after a complete hand-back. `reset` doesn't touch it.
-Flags: `--fan-response-delay` (`-e`) and `--assume-pwm-map-identity`. `fan2go fan --id <id> reset` only deletes
-the data.
+**Decision**: `fan2go fan --id <id> init` measures the fan again with `RunInitializationAndRestore`: the
+`setPwmToGetPwmMap` (unless it comes from the config or a known readback formula), the `pwmMap` and the RPM curve.
+It doesn't use the saved data of the fan (`freshAnalysis`), and doesn't change it until the analysis succeeded. Then
+it deletes the saved RPM curve, `setPwmToGetPwmMap`, `pwmMap` and analysis info, and saves the new ones
+(`replaceSavedMappings`, then `SaveFanRpmData` and `SaveFanAnalysisInfo`). A failed or interrupted run keeps the saved
+data. It prints the measured curve. It always hands the fan back afterwards: on success, on errors, on SIGINT/SIGTERM
+and on panics (unless it failed before writing to the fan). Hand-back means the original control mode and PWM, or
+`controlMode.onExit` (see [Fan controller](fan-controller.md)). Like the daemon, it saves the original state in
+`fanOriginalState` while it controls the fan, uses a saved one (left behind by a killed daemon or `fan init`) instead
+of the current state, and deletes it after a complete hand-back. `reset` doesn't touch it. Flags:
+`--fan-response-delay` (`-e`) and `--assume-pwm-map-identity`. `fan2go fan --id <id> reset` only deletes the data.
+
+Both commands create the database directory (`Persistence.Init`), and both refuse to run while the daemon (or
+another `fan init`/`reset`) uses the same database: "another fan2go process (PID 1234) uses the fan2go database
+(lock file /var/lib/fan2go/fan2go.db.lock). Is the fan2go daemon running? Stop it first (e.g. 'sudo systemctl stop
+fan2go'), then run this command again". The daemon refuses to start while one of them runs.
+
+Errors saving the result are returned (the analysis fails), in `fan init` and in the daemon. Before, the daemon only
+logged a failed save and then failed with a confusing "not exist" when it loaded the data again.
 
 **Why**: Before #512, a failed or interrupted `fan init` left the fan in manual mode, in one case at PWM 255 (#511).
 Before #549, a successful run left the fan in manual mode at the last PWM of the analysis while the daemon was stopped.
+Before 1.0.0, `fan init` deleted the data before it measured, so a failed or interrupted run lost valid data and the
+next start ran an unexpected analysis. It could also run next to the daemon: both wrote to the same fan, the
+measurement was garbage, and the daemon kept its old data. The API can't be used to detect the daemon, because it is
+off by default. On a system where the daemon never ran, the commands failed with "no such file or directory".
 
 **Who benefits**: Users re-analyzing a fan by hand, especially without the daemon running: the fan never stays at an
-arbitrary speed.
+arbitrary speed, and the old data survives a failed run.
 
-**Trade-offs**: The data is deleted before the analysis starts, so a failed `fan init` leaves the fan without data;
-the daemon then analyzes it on its next start. A running daemon keeps using the curve it loaded and doesn't see the
-new data until it is restarted or reloaded. Nothing stops `fan init` and the daemon from writing to the same fan at the
-same time; stop the daemon first.
+**Trade-offs**: The daemon has to be stopped for `fan init` and `fan reset`, also to analyze a fan it doesn't control.
+The data is replaced in several transactions; if the process is killed in between, the fan has no (or incomplete)
+data and is analyzed on the next start.
 
 ### No continuous re-analysis at runtime
 
@@ -325,7 +462,7 @@ Global keys (defaults from `setDefaultValues` in `internal/configuration/config.
 | `analysis.sampleCount`           | `3`                         | RPM samples per point (median), must be >= 1                 |
 | `analysis.sampleDelay`           | `200ms`                     | time between samples                                         |
 | `analysis.settleTimeout`         | `30s`                       | max wait for a fan to settle                                 |
-| `fanController.pwmSetDelay`      | `5ms`                       | wait between writing and reading back PWM (sweep and analysis) |
+| `fanController.pwmSetDelay`      | `5ms`                       | minimum wait between writing and reading back PWM (sweep and analysis); the measured readback delay is used if longer |
 
 Per-fan keys:
 
@@ -342,31 +479,24 @@ CLI: `fan2go fan --id <id> init [--fan-response-delay <delay>] [--assume-pwm-map
 
 ## Known limitations and open questions
 
-- The derived `maxPwm` is effectively always 255. The cleanup makes the curve monotonic, so PWM 255 always has the
-  peak RPM and is the highest value with at least 95% of the peak. A fan that saturates at PWM 150 still gets
-  `maxPwm` 255, and the upper part of the curve range changes little. The max-boundary search only decides where
-  interior sampling stops. The config comment ("the highest PWM value that yields an RPM increase") describes a
-  different rule. Set `maxPwm` by hand if this matters.
 - `minPwm` and `startPwm` are not measured separately (#30). The binary search mixes start-from-standstill and
   keep-spinning behaviour.
 - A fan that spins at PWM 0 gets RPM 0 stored for PWM 0 anyway, and its `startPwm` becomes the next measured value.
 - Saved data is keyed by fan `id` and not invalidated when the hardware or the `pwmMap` config changes (only a
   changed known hardware quirks entry invalidates it).
-- A `null` curve (stored when the RPM sensor was missing at analysis time) counts as "analyzed". If the RPM input
-  appears later (fixed `rpmChannel`, driver loaded late), the fan keeps running without a curve until `fan init`.
-- The autodetected `pwmMap` ignores the readback values; quantized drivers get an identity map with many redundant
-  measurement points.
-- `runFanInitializationInParallel` and the database lock only coordinate within one process; `fan init` next to a
-  running daemon is not prevented.
-- A running daemon doesn't pick up data written by `fan init` until restart or reload.
+- A fan whose output is quantized but whose readback isn't gets an identity `pwmMap`, and its derived `maxPwm` can be
+  inside its second highest level. Set `maxPwm` (and a `pwmMap`) for such a fan.
+- Saved `pwmMap`s from before 1.0.0 are kept; quantized drivers get the grouped map only after a new analysis.
+- The readback delay is measured only during an analysis; data from older versions has none until `fan init`.
+- The derived `maxPwm` cuts off the top 2% of the speed of fans that don't saturate.
+- A running daemon doesn't pick up data written by `fan init` until restart or reload; it has to be stopped for
+  `fan init` anyway.
 - A shutdown cancels a running analysis. The fan is handed back and no RPM curve is saved, so the next start measures
   it again from the beginning. A config reload (SIGHUP or a saved config file) doesn't: it is deferred until no fan is
   analyzed anymore, so the new config only takes effect after the analysis. See [Daemon](daemon.md#config-reload).
 - `dbPath` changes need a restart: the daemon creates its persistence once (`RunDaemon`) and reuses it on reload
   (a reload logs a warning if `dbPath` changed).
-- `fanResponseDelay` has no per-fan override; the settle sample interval (500 ms), the 50 RPM noise threshold and the
-  95% max ratio are hard-coded.
+- `fanResponseDelay` has no per-fan override; the settle sample interval (500 ms), the 50 RPM noise threshold, the
+  98% max ratio and the 2 s readback delay cap are hard-coded.
 - The RPM curve is never updated at runtime; the `neverStop` `minPwm` offset is not persisted.
 - Entries of fans removed from the config stay in the database.
-- The CLI commands (`fan init`, `fan reset`) don't create the database directory. On a system where the daemon never
-  ran, they fail with "no such file or directory".

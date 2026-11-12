@@ -332,8 +332,8 @@ handle that.
 **Decision**: When the curve can be evaluated again while an `onSensorFailure` action is active,
 `calculateTargetSpeed` adjusts the loop before it cycles it (this runs before `recoverFromCurveFailure`):
 
-- `max` (also the `restore` fallback to max): `Preset` at the curve value that maps to `maxPwm`: `255`, or `maxPwm`
-  itself with `useUnscaledCurveValues`. The `pid` algorithm and `direct` with a time constant or ramps return that
+- `max` (also the `restore` fallback to max): `Preset` at `255`, the curve value that maps to `maxPwm`, or the
+  fail-safe speed itself (the configured `maxPwm`, else 255) with `useUnscaledCurveValues`. The `pid` algorithm and `direct` with a time constant or ramps return that
   value on the first cycle and smooth down from there (the default algorithm comes down with its time constant of
   2 s). `direct` with `maxPwmChangePerCycle` ramps down from it; without options it applies the target.
 - `restore`: `Reset`. fan2go doesn't know the speed the fan ran at while it was handed back, so the loop starts at

@@ -571,7 +571,8 @@ func TestLinearFan(t *testing.T) {
 	// startPwm: lowest PWM where RPM >= rpmNoiseThreshold (50.0). LinearFan has RPM == PWM,
 	// so startPwm = 50 (RPM=50 is the first value that meets the >= 50 threshold).
 	assert.Equal(t, 50, startPwm)
-	assert.Equal(t, 255, maxPwm)
+	// maxPwm: lowest PWM where RPM >= 98% of the peak (255 * 0.98 = 249.9)
+	assert.Equal(t, 250, maxPwm)
 }
 
 func TestNeverStoppingFan(t *testing.T) {
@@ -583,7 +584,8 @@ func TestNeverStoppingFan(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, 0, startPwm)
-	assert.Equal(t, 255, maxPwm)
+	// maxPwm: lowest PWM where RPM >= 98% of the peak
+	assert.Equal(t, 250, maxPwm)
 }
 
 func TestCappedFan(t *testing.T) {
@@ -597,9 +599,9 @@ func TestCappedFan(t *testing.T) {
 	// startPwm: CappedFan starts at RPM=20 at PWM 6, but 20 < rpmNoiseThreshold (50).
 	// First PWM where RPM >= 50 is ~39 (interpolated value ≈ 50.62).
 	assert.Equal(t, 39, startPwm)
-	// maxPwm: peakRpm=200, 95% threshold=190. Fan plateau at 200 RPM extends from
-	// PWM 200 through 255 (interpolation clamps to last point), so highest qualifying PWM = 255.
-	assert.Equal(t, 255, maxPwm)
+	// maxPwm: peakRpm=200, 98% threshold=196. The interpolated curve reaches it at PWM 196, the plateau
+	// above it doesn't make the fan faster.
+	assert.Equal(t, 196, maxPwm)
 }
 
 func TestCappedNeverStoppingFan(t *testing.T) {
@@ -611,9 +613,8 @@ func TestCappedNeverStoppingFan(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, 0, startPwm)
-	// maxPwm: peakRpm=200, 95% threshold=190. Fan plateau at 200 RPM extends through PWM 255,
-	// so the highest qualifying PWM = 255.
-	assert.Equal(t, 255, maxPwm)
+	// maxPwm: peakRpm=200, 98% threshold=196, reached at PWM 196 (the plateau above it is cut off)
+	assert.Equal(t, 196, maxPwm)
 }
 
 func TestCalculateTargetSpeedLinear(t *testing.T) {
@@ -701,7 +702,7 @@ func TestFanWithStartPwmConfig(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, startPwm, newStartPwm)
-	assert.Equal(t, 255, maxPwm)
+	assert.Equal(t, 250, maxPwm)
 }
 
 func TestFanController_ComputePwmBoundaries_FanCurveGaps(t *testing.T) {

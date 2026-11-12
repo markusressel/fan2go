@@ -22,13 +22,17 @@ func TestSyntheticCurveSmoothing_PreservesBoundaryDetection(t *testing.T) {
 
 	startRaw, maxRaw := fans.ComputePwmBoundariesFromCurveData(rawCurve, fans.MaxPwmValue)
 	assert.Equal(t, 60, startRaw)
-	assert.Equal(t, 255, maxRaw)
+	// lowest PWM with 98% of the peak (1390 * 0.98 = 1362.2)
+	assert.Equal(t, 248, maxRaw)
 
-	smoothed := util.SmoothMapValuesKalman(rawCurve, startRaw+1, maxRaw-1, util.DefaultKalmanConfig)
+	// like rpmCurveMeasurementCleanup: smooth between the start PWM and 255 (both exclusive)
+	smoothed := util.SmoothMapValuesKalman(rawCurve, startRaw+1, fans.MaxPwmValue-1, util.DefaultKalmanConfig)
 	startSmoothed, maxSmoothed := fans.ComputePwmBoundariesFromCurveData(smoothed, fans.MaxPwmValue)
 
 	assert.Equal(t, startRaw, startSmoothed)
-	assert.Equal(t, maxRaw, maxSmoothed)
+	// the filter lags behind a rising curve, so smoothing can only move maxPwm up (towards full speed), a little
+	assert.GreaterOrEqual(t, maxSmoothed, maxRaw)
+	assert.LessOrEqual(t, maxSmoothed, fans.MaxPwmValue)
 }
 
 func TestSyntheticCurveSmoothing_DoesNotAlterOutsideInteriorRange(t *testing.T) {

@@ -126,25 +126,42 @@ func (f *FanCurveAnalyzer) detectStartBoundary(
 	ui.Info("Fan %s: Discovering start/min boundary...", fan.GetId())
 	for low <= high {
 		mid := (low + high) / 2
-		pwm := distinct[mid]
-		rpm, measureErr := f.measureAtPwm(ctx, fan, pwm, configuration.CurrentConfig.Analysis.SettleTimeout)
-		if measureErr != nil {
-			return 0, 0, measureErr
+		// If the fan doesn't report the expected PWM at mid (the point is skipped), try its neighbours inside the
+		// search window first: giving up on mid and searching only above it would make startPwm too high.
+		probeIdx := -1
+		rpm := -1.0
+		for _, idx := range []int{mid, mid + 1, mid - 1} {
+			if idx < low || idx > high {
+				continue
+			}
+			measured, measureErr := f.measureAtPwm(ctx, fan, distinct[idx], configuration.CurrentConfig.Analysis.SettleTimeout)
+			if measureErr != nil {
+				return 0, 0, measureErr
+			}
+			if measured >= 0 {
+				probeIdx = idx
+				rpm = measured
+				break
+			}
+			ui.Debug("Fan %s: skipped PWM %d in the start boundary search", fan.GetId(), distinct[idx])
 		}
-		if rpm < 0 {
-			// Progress search window even if this sample was skipped due to a transient mismatch.
+		if probeIdx < 0 {
+			// Progress search window even if these samples were skipped due to transient mismatches.
+			ui.Warning("Fan %s: the reported PWM doesn't match at and around PWM %d, skipping it in the start boundary search",
+				fan.GetId(), distinct[mid])
 			low = mid + 1
 			continue
 		}
 
+		pwm := distinct[probeIdx]
 		if fans.IsRpmLikelySpinning(rpm) {
 			curveData[pwm] = rpm
-			firstSpinning = mid
-			high = mid - 1
+			firstSpinning = probeIdx
+			high = probeIdx - 1
 		} else {
 			curveData[pwm] = 0
-			lastNotSpinning = mid
-			low = mid + 1
+			lastNotSpinning = probeIdx
+			low = probeIdx + 1
 		}
 	}
 
@@ -411,12 +428,13 @@ func (f *FanCurveAnalyzer) rpmCurveMeasurementCleanup(curveData map[int]float64)
 	}
 	interpolatedCurveData = util.EnsureMonotonicallyIncreasing(interpolatedCurveData, firstNonZeroPwm, lastPwm)
 
-	// Keep boundary detection (start/max PWM) based on robust raw statistics,
-	// and only smooth the interior range to avoid boundary drift.
-	startPwmRaw, maxPwmRaw := fans.ComputePwmBoundariesFromCurveData(interpolatedCurveData, fans.MaxPwmValue)
-	if maxPwmRaw-startPwmRaw > 1 {
+	// Smooth only the range between the start PWM and PWM 255 (both exclusive): the start PWM keeps its measured
+	// value, so the derived startPwm doesn't drift, and PWM 255 keeps the peak RPM.
+	// The range doesn't depend on the derived maxPwm, which is computed from the smoothed curve.
+	startPwmRaw, _ := fans.ComputePwmBoundariesFromCurveData(interpolatedCurveData, fans.MaxPwmValue)
+	if fans.MaxPwmValue-startPwmRaw > 1 {
 		interiorStart := startPwmRaw + 1
-		interiorStop := maxPwmRaw - 1
+		interiorStop := fans.MaxPwmValue - 1
 		interpolatedCurveData = util.SmoothMapValuesKalman(interpolatedCurveData, interiorStart, interiorStop, util.DefaultKalmanConfig)
 	}
 
@@ -425,8 +443,10 @@ func (f *FanCurveAnalyzer) rpmCurveMeasurementCleanup(curveData map[int]float64)
 
 // measureAtPwm sets the fan to the given target PWM value, optionally waits for it to settle,
 // takes SampleCount RPM samples spaced SampleDelay apart, and returns
-// their median as a robust per-point estimate. Returns -1 (with nil error) if the reported PWM does not match the
-// expected value after setting it even after waiting FanResponseDelay (indicates the hardware ignored the request).
+// their median as a robust per-point estimate. After each write it polls the reported PWM until it matches the
+// expected value, for up to FanResponseDelay, and records the time it took as an observed readback delay.
+// Returns -1 (with nil error) if the reported PWM does not match the expected value after
+// pwmMismatchRetries+1 writes (indicates the hardware ignored the request).
 // If settleTimeout > 0, waitForFanToSettle is called with that timeout (used for large PWM steps).
 // If settleTimeout == 0, a plain FanResponseDelay sleep is used instead (sufficient for small steps).
 func (f *FanCurveAnalyzer) measureAtPwm(ctx context.Context, fan fans.Fan, pwm int, settleTimeout time.Duration) (float64, error) {
@@ -436,25 +456,27 @@ func (f *FanCurveAnalyzer) measureAtPwm(ctx context.Context, fan fans.Fan, pwm i
 	expectedPwm := f.fanController.getReportedPwmAfterApplyingPwm(actualPwm)
 	matchedPwm := false
 	for attempt := 0; attempt <= pwmMismatchRetries; attempt++ {
-		if attempt > 0 {
-			// The reported PWM may lag behind the requested value on some hardware, so wait FanResponseDelay before retrying.
-			if err := sleepWithContext(ctx, f.clock(), configuration.CurrentConfig.FanResponseDelay.Duration()); err != nil {
-				return 0, err
-			}
-		}
+		lastWriteBefore := f.fanController.lastPwmWriteAt
 		err := f.fanController.setTargetPwm(pwm)
 		if err != nil {
 			return 0, fmt.Errorf("unable to set PWM %d (target %d): %w", actualPwm, pwm, err)
 		}
-		if err := sleepWithContext(ctx, f.clock(), f.fanController.getPwmSetDelay()); err != nil {
-			return 0, err
-		}
+		wrote := !f.fanController.lastPwmWriteAt.Equal(lastWriteBefore)
 
-		currentPwm, err := f.fanController.getPwm()
+		// The reported PWM may lag behind the requested value on some hardware: wait up to FanResponseDelay for it
+		currentPwm, matched, delay, err := f.fanController.waitForReadback(ctx,
+			func(reported int) bool { return reported == expectedPwm },
+			configuration.CurrentConfig.FanResponseDelay.Duration())
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return 0, ctxErr
+			}
 			return 0, fmt.Errorf("fan %s: unable to read PWM: %w", fan.GetId(), err)
 		}
-		if currentPwm == expectedPwm {
+		if matched {
+			if wrote && fan.Supports(fans.FeaturePwmSensor) {
+				f.fanController.observeReadbackDelay(delay)
+			}
 			matchedPwm = true
 			break
 		}
@@ -575,11 +597,12 @@ func (f *FanCurveAnalyzer) waitForFanToSettle(ctx context.Context, fan fans.Fan,
 	return nil
 }
 
+// evaluateAdaptiveSettling judges a window of filtered RPM readings. The noise is the range of the readings around
+// their linear trend (see detrendedRange): the plain range of a fan that still ramps up or down contains the ramp,
+// which would make any steady ramp look like noise, and so like a settled fan.
 func evaluateAdaptiveSettling(window []float64, prevMean *float64, prevRange *float64, baseThreshold float64) (bool, float64, float64) {
 	meanNow := util.Avg(window)
-	minNow := util.MinValOrElse(window, meanNow)
-	maxNow := util.MaxValOrElse(window, meanNow)
-	rangeNow := maxNow - minNow
+	rangeNow := detrendedRange(window)
 
 	// A minimum floor avoids treating near-zero quantization as "perfectly stable".
 	effectiveNoise := math.Max(2.0, rangeNow)
@@ -598,4 +621,29 @@ func evaluateAdaptiveSettling(window []float64, prevMean *float64, prevRange *fl
 	trendStable := trendPerSample <= math.Max(1.0, effectiveNoise*0.35)
 
 	return meanStable && noiseStable && trendStable, meanNow, rangeNow
+}
+
+// detrendedRange returns max - min of the residuals of values around their least squares line
+// (values are equally spaced). 0 for fewer than two values.
+func detrendedRange(values []float64) float64 {
+	n := len(values)
+	if n < 2 {
+		return 0
+	}
+	meanX := float64(n-1) / 2
+	meanY := util.Avg(values)
+	var covXY, varX float64
+	for i, y := range values {
+		dx := float64(i) - meanX
+		covXY += dx * (y - meanY)
+		varX += dx * dx
+	}
+	slope := covXY / varX
+	minResidual, maxResidual := math.Inf(1), math.Inf(-1)
+	for i, y := range values {
+		residual := y - (meanY + slope*(float64(i)-meanX))
+		minResidual = math.Min(minResidual, residual)
+		maxResidual = math.Max(maxResidual, residual)
+	}
+	return maxResidual - minResidual
 }
