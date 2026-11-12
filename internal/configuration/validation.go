@@ -427,6 +427,9 @@ func validateCurves(config *Configuration) error {
 			if err := validateLinearCurveRange(curveConfig.ID, curveConfig.Linear); err != nil {
 				return err
 			}
+			if down := curveConfig.Linear.GetHysteresisDown(); math.IsNaN(down) || math.IsInf(down, 0) || down < 0 {
+				return fmt.Errorf("curve %s: hysteresis.down must be a finite number >= 0, got %v", curveConfig.ID, down)
+			}
 		}
 
 		if curveConfig.Staircase != nil {

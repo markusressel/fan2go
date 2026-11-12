@@ -21,6 +21,11 @@ type LinearSpeedCurve struct {
 	// last is the error and time of the last evaluation (guarded by mu, like Value)
 	last evaluation
 
+	// hysteresisTemp is the temperature (in milli-degrees) the curve was last evaluated at, with
+	// hysteresis.down applied (see applyHysteresis), valid if hasHysteresisTemp (both guarded by mu)
+	hysteresisTemp    float64
+	hasHysteresisTemp bool
+
 	mu sync.RWMutex
 }
 
@@ -51,7 +56,7 @@ func (c *LinearSpeedCurve) evaluate(now time.Time) (value float64, err error) {
 	if err != nil {
 		return 0, fmt.Errorf("curve %s: %w", c.Config.ID, err)
 	}
-	var avgTemp = sensor.GetMovingAvg()
+	var avgTemp = c.applyHysteresis(sensor.GetMovingAvg())
 
 	steps := c.Config.Linear.Steps
 	if steps != nil {
@@ -79,6 +84,26 @@ func (c *LinearSpeedCurve) evaluate(now time.Time) (value float64, err error) {
 
 	ui.Debug("Evaluating curve '%s'. Sensor '%s' temp '%.0f°'. Desired speed: %.2f", c.Config.ID, sensor.GetId(), avgTemp/1000, value)
 	return value, nil
+}
+
+// applyHysteresis returns the temperature (in milli-degrees) to evaluate the curve at: the measured one if it is
+// above the last one; otherwise, the last one until the measured temperature is more than hysteresis.down below it, and
+// then the measured temperature plus hysteresis.down. So a falling temperature lowers the curve value
+// hysteresis.down degrees later, and continuously.
+func (c *LinearSpeedCurve) applyHysteresis(measured float64) float64 {
+	down := c.Config.Linear.GetHysteresisDown() * 1000 // degree to milli-degree
+	if down <= 0 {
+		return measured
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	temp := measured
+	if c.hasHysteresisTemp && measured < c.hysteresisTemp {
+		temp = min(c.hysteresisTemp, measured+down)
+	}
+	c.hysteresisTemp = temp
+	c.hasHysteresisTemp = true
+	return temp
 }
 
 func (c *LinearSpeedCurve) storeResult(value float64, err error, now time.Time) (float64, error) {

@@ -1296,6 +1296,9 @@ func TestValidateConfig_CurveAndControlAlgorithmGaps(t *testing.T) {
 		{name: "linear curve with min == max", curves: linearCurve("      min: 60\n      max: 60"), wantErr: "curve curve: min (60) must be < max (60)"},
 		{name: "linear curve with min > max", curves: linearCurve("      min: 80\n      max: 40"), wantErr: "curve curve: min (80) must be < max (40)"},
 		{name: "linear curve with empty steps", curves: linearCurve("      steps: {}"), wantErr: "curve curve: linear curve needs either steps or min and max"},
+		{name: "linear curve with hysteresis", curves: linearCurve("      min: 40\n      max: 80\n      hysteresis:\n        down: 2.5")},
+		{name: "linear curve with negative hysteresis", curves: linearCurve("      min: 40\n      max: 80\n      hysteresis:\n        down: -1"), wantErr: "curve curve: hysteresis.down must be a finite number >= 0, got -1"},
+		{name: "linear curve with NaN hysteresis", curves: linearCurve("      min: 40\n      max: 80\n      hysteresis:\n        down: .nan"), wantErr: "curve curve: hysteresis.down must be a finite number >= 0, got NaN"},
 		{name: "linear curve with steps and min/max", curves: linearCurve("      min: 40\n      max: 80\n      steps:\n        - 40: 0\n        - 80: 255"), wantWarning: "curve curve: both steps and min/max are set, min/max are ignored"},
 
 		// pid curves
