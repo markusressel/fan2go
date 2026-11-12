@@ -843,7 +843,7 @@ Then restart fan2go with `sudo systemctl restart fan2go`.
 |------|------------------------------------------------------------------------------------------------------------|
 | 0    | fan2go stopped normally (e.g. after `SIGINT` or `SIGTERM`), or the command succeeded                       |
 | 1    | Any other error, e.g. no configured fan could be found, or an invalid command line                         |
-| 78   | Config error: the config file can't be found, read, parsed or validated, or a curve can't be created from it |
+| 78   | Config error: the config file can't be found, read, parsed or validated, or its curves can't be set up (e.g. a curve dependency cycle) |
 
 The codes are the same for the daemon and for the other commands, e.g. `fan2go config validate` exits with 78 for an
 invalid config. fan2go isn't restarted by systemd after a config error, since a restart can't fix it. "No fan could be

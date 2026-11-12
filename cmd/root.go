@@ -39,6 +39,10 @@ on your computer based on temperature sensors.`,
 		}
 		// errors from here on are no usage errors
 		cmd.SilenceUsage = true
+		if isHelpOrCompletion(cmd) {
+			// these don't use the config
+			return nil
+		}
 		return initConfigErr
 	},
 	// this is the default command to run when no subcommand is specified
@@ -75,6 +79,17 @@ on your computer based on temperature sensors.`,
 		}
 		return nil
 	},
+}
+
+// isHelpOrCompletion returns whether cmd is the help command or one of the shell completion commands
+func isHelpOrCompletion(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		switch c.Name() {
+		case "help", "completion", cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd:
+			return true
+		}
+	}
+	return false
 }
 
 // initConfigErr is the error of configuration.InitConfig, which runs before every command

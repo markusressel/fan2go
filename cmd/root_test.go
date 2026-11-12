@@ -216,6 +216,54 @@ func TestRootCommand_MissingRequiredFlagPrintsUsage(t *testing.T) {
 	assert.Contains(t, out.String(), "Usage:")
 }
 
+func TestConfigValidateCommand_InvalidConfigExitsWithConfigErrorCode(t *testing.T) {
+	// GIVEN a config whose fan references a curve that doesn't exist
+	path := filepath.Join(t.TempDir(), "fan2go.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(`
+fans:
+  - id: fan
+    file:
+      path: /tmp/fan2go-test-fan
+    curve: missing
+`), 0o600))
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	previousConfig := configuration.CurrentConfig
+	t.Cleanup(func() { configuration.CurrentConfig = previousConfig })
+	require.NoError(t, configuration.InitConfig(path))
+	rootCmd.SetArgs([]string{"config", "validate"})
+	t.Cleanup(func() { rootCmd.SetArgs(nil) })
+
+	// WHEN
+	err := rootCmd.Execute()
+
+	// THEN
+	assert.ErrorContains(t, err, "no curve definition with id 'missing' found")
+	assert.Equal(t, ExitCodeConfigError, exitCode(err))
+}
+
+func TestRootCommand_InitConfigErrorDoesNotBlockHelp(t *testing.T) {
+	// GIVEN: InitConfig failed
+	previous := initConfigErr
+	initConfigErr = configuration.NewConfigError(errors.New("couldn't detect home directory"))
+	t.Cleanup(func() { initConfigErr = previous })
+	var out bytes.Buffer
+	rootCmd.SetOut(&out)
+	t.Cleanup(func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetArgs(nil)
+	})
+
+	for _, args := range [][]string{{"help", "fan"}, {"completion", "bash"}} {
+		// WHEN
+		rootCmd.SetArgs(args)
+		err := rootCmd.Execute()
+
+		// THEN
+		assert.NoError(t, err, "%v", args)
+	}
+}
+
 func TestRootCommand_InitConfigErrorFails(t *testing.T) {
 	// GIVEN: InitConfig failed
 	previous := initConfigErr
