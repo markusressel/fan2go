@@ -24,7 +24,7 @@ const concurrencyIterations = 200
 func runRpmActor(fan Fan, iterations int) {
 	for i := 0; i < iterations; i++ {
 		rpm, _ := fan.GetRpm()
-		avg := util.UpdateSimpleMovingAvg(fan.GetRpmAvg(), 10, float64(rpm))
+		avg := util.UpdateExponentialMovingAvg(fan.GetRpmAvg(), 10, float64(rpm))
 		fan.SetRpmAvg(avg)
 		_, _ = fan.GetPwm()
 		if curveData := fan.GetFanRpmCurveData(); curveData != nil {

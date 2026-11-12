@@ -944,9 +944,26 @@ existing configs keep working, while it means milliseconds for all other duratio
 
 ## Monitoring
 
-Temperature and RPM sensors are polled continuously at the rate specified by the `tempSensorPollingRate` config option.
-`tempRollingWindowSize`/`rpmRollingWindowSize` amount of measurements are always averaged and stored as the average
-sensor value.
+Temperature sensors are polled continuously at the rate specified by the `tempSensorPollingRate` config option, fan RPM
+sensors at the rate specified by `rpmPollingRate`. The measurements are smoothed with an exponential moving average:
+every new measurement moves the average by `1/n` of its distance to the measurement, where `n` is
+`tempRollingWindowSize` (temperatures) or `rpmRollingWindowSize` (RPM). Despite their names, these options don't
+define a window of measurements that is averaged: older measurements still count, with a weight that decreases
+the older they get. The average is what curves and fan controllers use.
+
+This means a larger `n` gives a smoother, but slower value: after a sudden change, the average has covered about two
+thirds of the change after `n` measurements, and about 95% after `3n`. For example, with `rpmPollingRate: 1s` and
+`rpmRollingWindowSize: 10`, an RPM drop from 1000 to 0 takes 29 seconds until the average is below 50 RPM.
+Once an update leaves the average less than 0.5 away from the measurement, the average takes that value exactly, so
+e.g. a temperature that stays at exactly a curve's step temperature does reach that step. The RPM average starts with
+the first successful RPM reading, and failed readings don't change it.
+
+For a fan with `neverStop: true` and an RPM sensor, fan2go treats the fan as stalled when its RPM average is below
+50 RPM while its PWM target is unchanged. It then increases the fan's minimum PWM by 1 (this is not persisted). The fan
+gets 3 `rpmPollingRate` periods to react, both after fan2go starts controlling it and after each increase, before
+fan2go increases it (again). If the fan still doesn't spin at its `maxPwm`, fan2go stops controlling it and restores
+the state it had before fan2go took control. A fan whose RPM sensor reports 0 RPM even though it spins (e.g. a missing
+or broken tach signal) therefore ends up uncontrolled: check the tach signal, or disable `neverStop` for such a fan.
 
 fan2go rejects a config at startup (and keeps the current config on reload) if a polling rate
 (`tempSensorPollingRate`, `rpmPollingRate`) or `fanController.adjustmentTickRate` is not greater than 0, or if a

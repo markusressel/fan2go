@@ -931,7 +931,7 @@ func TestFanController_RunStopsOnFanStallError(t *testing.T) {
 	}()
 
 	configuration.CurrentConfig.TempSensorPollingRate = 1 * time.Millisecond
-	// long enough that the RPM monitor never ticks during the test
+	// long enough that the RPM monitor ticks rarely during the test
 	configuration.CurrentConfig.RpmPollingRate = 1 * time.Hour
 	// the automatic setPwm -> getPwm detection must not wait on the fake clock
 	configuration.CurrentConfig.FanController.PwmSetDelay = 0
@@ -969,6 +969,9 @@ func TestFanController_RunStopsOnFanStallError(t *testing.T) {
 		startupSensorWarmup: defaultStartupSensorWarmup,
 		startupUpdateDelay:  defaultStartupUpdateDelay,
 	}
+	// the RPM monitor doesn't tick before the first update, so measure once by hand:
+	// stall detection only starts once the RPM average has been seeded (with 0 RPM here)
+	controller.measureRpm(fan)
 
 	done := make(chan error, 1)
 	go func() {
@@ -977,12 +980,20 @@ func TestFanController_RunStopsOnFanStallError(t *testing.T) {
 
 	advanceThroughRunStartup(t, clock)
 
-	select {
-	case err := <-done:
-		assert.NoError(t, err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("Run() did not return after the fan stalled at max pwm")
+	// the fan gets minPwmIncreaseRpmPollingPeriods RPM polling periods (3h here) to spin up before it counts as stalled
+	deadline := time.After(5 * time.Second)
+	for running := true; running; {
+		select {
+		case err := <-done:
+			assert.NoError(t, err)
+			running = false
+		case <-deadline:
+			t.Fatal("Run() did not return after the fan stalled at max pwm")
+		default:
+			clock.Advance(time.Minute)
+		}
 	}
+	assert.Equal(t, 0, controller.GetStatistics().IncreasedMinPwmCount)
 	// the stall is what stopped the controller
 	assert.ErrorIs(t, controller.UpdateFanSpeed(), ErrFanStalledAtMaxPwm)
 }

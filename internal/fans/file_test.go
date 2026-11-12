@@ -175,6 +175,27 @@ func TestFileFan_GetRpm(t *testing.T) {
 	assert.Equal(t, 2150, result)
 }
 
+func TestFileFan_GetRpm_DoesNotChangeRpmAvg(t *testing.T) {
+	// GIVEN
+	config := configuration.FanConfig{
+		File: &configuration.FileFanConfig{
+			Path:    "../../test/file_fan_pwm",
+			RpmPath: "../../test/file_fan_rpm",
+		},
+	}
+	fan, _ := NewFan(config)
+	fan.SetRpmAvg(1234.5)
+
+	// WHEN
+	rpm, err := fan.GetRpm()
+
+	// THEN
+	// reading the raw RPM value doesn't change the average, which is kept by the fan controller
+	assert.NoError(t, err)
+	assert.Equal(t, 2150, rpm)
+	assert.Equal(t, 1234.5, fan.GetRpmAvg())
+}
+
 func TestFileFan_GetRpm_InvalidPath(t *testing.T) {
 	// GIVEN
 	config := configuration.FanConfig{
@@ -211,7 +232,7 @@ func TestFileFan_SetRpmAvg(t *testing.T) {
 	fan.SetRpmAvg(rpmAvg)
 
 	// THEN
-	assert.Equal(t, float64(int(rpmAvg)), fan.GetRpmAvg())
+	assert.Equal(t, rpmAvg, fan.GetRpmAvg())
 }
 
 func TestFileFan_GetRpmAvg(t *testing.T) {
@@ -232,7 +253,7 @@ func TestFileFan_GetRpmAvg(t *testing.T) {
 	result := fan.GetRpmAvg()
 
 	// THEN
-	assert.Equal(t, float64(int(rpmAvg)), result)
+	assert.Equal(t, rpmAvg, result)
 }
 
 func TestFileFan_GetPwm(t *testing.T) {

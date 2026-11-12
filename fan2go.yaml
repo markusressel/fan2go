@@ -17,12 +17,14 @@ fanResponseDelay: 2
 
 # The rate to poll temperature sensors at (must be > 0)
 tempSensorPollingRate: 200ms
-# The number of temp sensor values to keep in a rolling window array (must be >= 1)
+# Smoothing of temp sensor values (must be >= 1): exponential moving average, each new value
+# moves the average by 1/tempRollingWindowSize towards it (larger = smoother, but slower)
 tempRollingWindowSize: 10
 
 # The rate to poll fan RPM input sensors at (must be > 0)
 rpmPollingRate: 1s
-# The number of rpm sensor values to keep in a rolling window array (must be >= 1)
+# Smoothing of fan RPM values (must be >= 1): exponential moving average, each new value
+# moves the average by 1/rpmRollingWindowSize towards it (larger = smoother, but slower)
 rpmRollingWindowSize: 10
 
 # Configuration options for the initial analysis of fan rpm curves.

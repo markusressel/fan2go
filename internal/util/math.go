@@ -59,9 +59,20 @@ func Ratio(target float64, rangeMin float64, rangeMax float64) float64 {
 	return ((target - rangeMin) / (rangeMax - rangeMin) * 100) / 100
 }
 
-// UpdateSimpleMovingAvg calculates the new moving average, based on an existing average and buffer size
-func UpdateSimpleMovingAvg(oldAvg float64, n int, newValue float64) float64 {
-	return oldAvg + (1/float64(n))*(newValue-oldAvg)
+// emaSnapThreshold is the remaining difference below which UpdateExponentialMovingAvg returns the new value itself.
+// The smoothed inputs are whole numbers (millidegrees, RPM), so a difference below half a unit carries no information.
+const emaSnapThreshold = 0.5
+
+// UpdateExponentialMovingAvg calculates the new exponential moving average with smoothing factor α = 1/n,
+// based on an existing average: oldAvg + (newValue-oldAvg)/n.
+// Once the result is less than emaSnapThreshold away from newValue, newValue is returned,
+// so that a constant input is eventually reached exactly (an EMA alone only approaches it).
+func UpdateExponentialMovingAvg(oldAvg float64, n int, newValue float64) float64 {
+	avg := oldAvg + (1/float64(n))*(newValue-oldAvg)
+	if math.Abs(newValue-avg) < emaSnapThreshold {
+		return newValue
+	}
+	return avg
 }
 
 // ExpandMapToFullRange takes a map with key-value "control points" and expands it

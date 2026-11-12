@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -225,4 +226,40 @@ func TestStaircaseCurveWithStepAtZero(t *testing.T) {
 
 	// THEN
 	assert.Equal(t, 5.0, result) // 5°C matches 0°C threshold
+}
+
+// A temperature that rises to exactly a step's threshold and stays there must reach that step.
+// The sensor value is smoothed the same way the sensor monitor does it.
+func TestStaircaseCurve_StepFiresWhenSmoothedTempReachesThresholdFromBelow(t *testing.T) {
+	// GIVEN
+	s := &MockSensor{
+		ID:        "sensor",
+		Name:      "sensor",
+		MovingAvg: 59000.0,
+	}
+	reg := NewMockRegistry()
+	reg.RegisterSensor(s)
+
+	curveConfig := createStaircaseCurveConfig(
+		"curve",
+		s.GetId(),
+		configuration.HysteresisConfig{},
+		map[int]float64{
+			50: 30,
+			60: 100,
+		},
+	)
+	curve, _ := NewSpeedCurve(curveConfig)
+	reg.RegisterCurve(curve)
+
+	// WHEN the sensor reports exactly 60°C for a while
+	for i := 0; i < 200; i++ {
+		s.SetMovingAvg(util.UpdateExponentialMovingAvg(s.GetMovingAvg(), 10, 60000))
+	}
+	result, err := curve.Evaluate()
+	assert.NoError(t, err)
+
+	// THEN
+	assert.Equal(t, 60000.0, s.GetMovingAvg())
+	assert.Equal(t, 100.0, result)
 }

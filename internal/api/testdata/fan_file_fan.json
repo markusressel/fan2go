@@ -27,5 +27,6 @@
   },
   "movingAvg": 12.5,
   "pwm": 100,
-  "rpm": 1000
+  "rpm": 1000,
+  "rpmMovingAvg": 0
 }
