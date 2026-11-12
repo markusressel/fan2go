@@ -128,25 +128,28 @@ func createControlLoop(config configuration.FanConfig, tickRate time.Duration) c
 		)
 	}
 
-	// 2. Check standard config
-	if config.ControlAlgorithm != nil {
-		if config.ControlAlgorithm.Pid != nil {
-			return control_loop.NewPidControlLoop(
-				config.ControlAlgorithm.Pid.P,
-				config.ControlAlgorithm.Pid.I,
-				config.ControlAlgorithm.Pid.D,
-				tickRate,
-			)
-		}
-		if config.ControlAlgorithm.Direct != nil {
-			return control_loop.NewDirectControlLoop(
-				config.ControlAlgorithm.Direct.MaxPwmChangePerCycle,
-			)
-		}
+	// 2. Check standard config, 3. fall back to the default
+	algorithm := config.GetControlAlgorithm()
+	if algorithm.Pid != nil {
+		return control_loop.NewPidControlLoop(
+			algorithm.Pid.P,
+			algorithm.Pid.I,
+			algorithm.Pid.D,
+			tickRate,
+		)
 	}
+	return newDirectControlLoop(*algorithm.Direct)
+}
 
-	// 3. Fallback
-	return control_loop.NewPidControlLoop(control_loop.DefaultPidConfig.P, control_loop.DefaultPidConfig.I, control_loop.DefaultPidConfig.D, tickRate)
+// newDirectControlLoop creates the direct control loop with the given config.
+func newDirectControlLoop(config configuration.DirectControlAlgorithmConfig) control_loop.ControlLoop {
+	return control_loop.NewDirectControlLoopWithOptions(control_loop.DirectControlLoopOptions{
+		MaxPwmChangePerCycle: config.MaxPwmChangePerCycle, //nolint:staticcheck // deprecated, but still supported
+		TimeConstant:         config.TimeConstant.Duration(),
+		RampUp:               config.RampUp.Value(),
+		RampDown:             config.RampDown.Value(),
+		Deadband:             config.Deadband.Value(),
+	})
 }
 
 func initializeSensors(

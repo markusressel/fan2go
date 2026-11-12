@@ -374,11 +374,9 @@ func (s *ControlAlgorithmConfig) UnmarshalText(text []byte) error {
 			},
 		}
 	case string(Direct):
-		// default configuration for Direct control algorithm
+		// default configuration for Direct control algorithm: a pass-through (all options off)
 		*s = ControlAlgorithmConfig{
-			Direct: &DirectControlAlgorithmConfig{
-				nil,
-			},
+			Direct: &DirectControlAlgorithmConfig{},
 		}
 	default:
 		// if the value is not one of the enum values, try to unmarshal into a ControlAlgorithmConfig struct

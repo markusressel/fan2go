@@ -7,8 +7,8 @@ evaluates every curve once per cycle, and the fan controllers read the stored re
 `internal/configuration/config.go` (step parsing), `internal/configuration/validation.go` (validation) and
 `internal/factory.go` / `internal/daemon.go` (wiring and lifecycle).
 
-This document covers the curves only. What a fan controller does with a curve value (direct or PID smoothing,
-`maxPwmChangePerCycle`) is described in [control-algorithms.md](control-algorithms.md). How sensors are polled and
+This document covers the curves only. What a fan controller does with a curve value (smoothing with a time constant,
+ramps and a deadband, or the `pid` control algorithm) is described in [control-algorithms.md](control-algorithms.md). How sensors are polled and
 averaged is described in [sensors.md](sensors.md).
 
 ## How it works
@@ -73,6 +73,8 @@ when it starts. After each cycle it sends a notification to every subscriber. Ea
 - If both `steps` and `min`/`max` are set, `steps` wins, and validation warns that `min`/`max` are ignored.
 - Without `steps`, validation requires `min < max`. A curve with neither (both `0`) used to return `255` for every
   temperature at or above 0 °C.
+- `hysteresis.down` (degrees, default `0` = off) delays and offsets a falling temperature, see "Temperature
+  hysteresis on linear curves" below.
 
 ### Staircase
 
@@ -212,8 +214,9 @@ evaluates the curve or how many fans use it.
   `max(tempSensorPollingRate, adjustmentTickRate)`. Like any discrete PID loop, its response (overshoot, stability)
   depends on that interval: changing either rate can require retuning the gains.
 - `tempRollingWindowSize` has no effect on PID curves. This is easy to miss.
-- A fan that uses a `pid` curve with the default `pid` control algorithm gets a smoothing filter (time constant of a
-  few seconds) behind the PID loop, which adds lag to the feedback loop. `controlAlgorithm: direct` avoids that.
+- A fan that uses a `pid` curve with the default control algorithm (`direct` with a time constant of 2 s) or the
+  `pid` control algorithm gets a smoothing filter behind the PID loop, which adds lag to the feedback loop.
+  `controlAlgorithm: direct` without options avoids that.
 
 ### Failure propagation: sensor stale -> curve error -> onSensorFailure
 
@@ -269,7 +272,7 @@ handed back and taken over again like on a restart. See [daemon.md](daemon.md#co
 everything new on reload is simple and avoids mixing old and new configuration.
 
 **Trade-offs**: after a successful reload, every curve starts from scratch: a PID curve loses its integral (first
-step is P only), a staircase curve forgets its hysteresis state, and curves report `ErrCurveNotEvaluated` until the
+step is P only), a staircase or linear curve forgets its hysteresis state, and curves report `ErrCurveNotEvaluated` until the
 first cycle (the controllers wait for it). This also happens for curves whose config didn't change.
 
 ### PID curve restarts after a stale period
@@ -310,6 +313,36 @@ temperature has fallen `hysteresis.down` degrees below the current step (#486).
 not against the temperature at which the step was entered. The measured temperature is truncated to whole degrees,
 so the curve steps down after a drop of slightly less than `down` (up to one degree less).
 
+### Temperature hysteresis on linear curves
+
+**Decision**: `linear.hysteresis.down` (degrees, a float, default `0` = off) evaluates the curve at an effective
+temperature instead of the measured one (`LinearSpeedCurve.applyHysteresis`, a backlash on the temperature):
+
+- The first evaluation, and a temperature above the last effective one: the measured temperature.
+- A falling temperature: the last effective temperature, until the measured one is more than `down` below it. From
+  then on `measured + down`, so the curve value follows the falling temperature `down` degrees later.
+
+The key is the same as `staircase.hysteresis.down`. Like all temperatures in curve configs, `down` is in sensor
+units / 1000, i.e. °C for temperature sensors that report millidegrees (also `cmd` and `file` sensors). The
+comparison uses the moving average in millidegrees as a
+float, without truncation. The effective temperature is kept across a failed evaluation (the next valid reading
+continues from it) and starts over on reload. It applies to both forms of the curve (`steps` and `min`/`max`).
+
+**Why**: the most common complaint about fan curves is fans that rev up and down while the temperature hovers on a
+steep section of the curve. Nearly all fan control tools answer this with a hysteresis in degrees on the curve,
+often only for a falling temperature. The control algorithm's deadband works on the output and can't know the
+temperature.
+
+**Who benefits**: users with a linear curve and a noisy or bursty sensor (for example CPU package temperatures).
+
+**Alternatives considered**: holding the value and then jumping to the curve value once the temperature fell by
+`down` (like the staircase curve). On a linear curve that turns a smooth decrease into steps of `down` degrees,
+which are audible; the backlash decreases continuously.
+
+**Trade-offs**: after a fall the fan runs as if it were `down` degrees warmer, until the temperature rises again.
+A temperature above the last effective one is followed at once (cooling is never delayed); a smaller rise after a
+fall stays within the band.
+
 ## Configuration
 
 Curve definitions (under `curves:`):
@@ -320,6 +353,7 @@ Curve definitions (under `curves:`):
 | `linear.sensor`                  | -       | Required, must reference a sensor.                                     |
 | `linear.min`, `linear.max`       | `0`     | Degrees, integers. Used only without `steps`, then `min < max`.        |
 | `linear.steps`                   | -       | Map degrees -> `0..255` or `0%..100%`.                                 |
+| `linear.hysteresis.down`         | `0`     | Degrees, float, must be `>= 0`. `0` = off.                             |
 | `staircase.sensor`               | -       | Required.                                                              |
 | `staircase.steps`                | -       | Required, same format as `linear.steps`.                               |
 | `staircase.hysteresis.down`      | `0`     | Degrees.                                                               |

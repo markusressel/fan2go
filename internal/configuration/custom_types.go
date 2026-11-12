@@ -1,10 +1,12 @@
 package configuration
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
@@ -345,4 +347,60 @@ func DefaultTrueBoolHookFunc() mapstructure.DecodeHookFuncType {
 			},
 		}, nil
 	}
+}
+
+// CurveUnits is a difference of curve values (e.g. a deadband), or a rate of curve values per second.
+// It is configured as a plain number of curve units (the curve value range is [0..255]),
+// or as a percentage of that range (e.g. "10%"), which is converted linearly: 1% is 2.55.
+// Unlike the absolute values of curve steps, where 1% is 1 (the minimum speed), a percentage
+// of a difference or rate has no offset.
+type CurveUnits float64
+
+// curveUnitsPerPercent converts a percentage of the curve value range into curve units
+const curveUnitsPerPercent = 255.0 / 100.0
+
+// Value returns the value in curve units.
+func (c CurveUnits) Value() float64 {
+	return float64(c)
+}
+
+// UnmarshalText parses a plain number (curve units) or a percentage ("10%").
+func (c *CurveUnits) UnmarshalText(text []byte) error {
+	value, err := parseCurveUnits(string(text))
+	if err != nil {
+		return err
+	}
+	*c = value
+	return nil
+}
+
+// UnmarshalJSON accepts a number (curve units) or a string (see UnmarshalText).
+func (c *CurveUnits) UnmarshalJSON(data []byte) error {
+	var value any
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	switch v := value.(type) {
+	case float64:
+		*c = CurveUnits(v)
+		return nil
+	case string:
+		return c.UnmarshalText([]byte(v))
+	default:
+		return fmt.Errorf("cannot parse %s as a number or a percentage (e.g. \"10%%\")", string(data))
+	}
+}
+
+func parseCurveUnits(text string) (CurveUnits, error) {
+	str := strings.TrimSpace(text)
+	percent := strings.HasSuffix(str, "%")
+	number := strings.TrimSpace(strings.TrimSuffix(str, "%"))
+	value, err := strconv.ParseFloat(number, 64)
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0, fmt.Errorf("cannot parse %q as a number or a percentage (e.g. \"10%%\")", text)
+	}
+	if percent {
+		value *= curveUnitsPerPercent
+	}
+	return CurveUnits(value), nil
 }

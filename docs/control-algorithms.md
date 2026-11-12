@@ -1,9 +1,11 @@
 # Control algorithms
 
 A control algorithm decides how a fan moves from its current PWM value to the value its curve asks for. fan2go
-offers two: `direct` (apply the curve value, optionally rate-limited) and `pid` (smooth the curve value with a PID
-loop). `pid` is the default. The algorithms live in `internal/control_loop` (`DirectControlLoop`,
-`PidControlLoop`), the PID math in `internal/util/pid.go` (`PidLoop`), and the selection in `internal/factory.go`
+offers two: `direct` (apply the curve value, optionally smoothed by a time constant, ramp rates and a deadband) and
+`pid` (smooth the curve value with a PID loop). The default is `direct` with `timeConstant: 2s` and `deadband: 1%`.
+The algorithms live in `internal/control_loop` (`DirectControlLoop`, `PidControlLoop`), the PID math in
+`internal/util/pid.go` (`PidLoop`), the default in `internal/configuration/fans.go`
+(`DefaultControlAlgorithmConfig`, `FanConfig.GetControlAlgorithm`), and the selection in `internal/factory.go`
 (`createControlLoop`).
 
 ## How it works
@@ -57,15 +59,24 @@ for the other state that is reset then).
 
 ### Direct
 
-`DirectControlLoop.Cycle`:
+`DirectControlLoop.Cycle(now, target)` clamps the target to `[0..255]` and then:
 
-- First cycle (and the first cycle after `Reset`): return the target, clamped to `[0..255]`.
-- `Preset(value)` sets the last output to `value`, so the next step starts from there.
-- Later cycles without `maxPwmChangePerCycle`: return the target, clamped to `[0..255]`.
-- Later cycles with `maxPwmChangePerCycle`: move from the last output towards the target by at most
-  `maxPwmChangePerCycle`, then clamp to `[0..255]`. The clamped value is stored as the base of the next step.
+- First cycle (and the first cycle after `Reset`): return the target. The low-pass state starts there too.
+- `Preset(value)` sets the output and the low-pass state to `value` and makes the next cycle count as no time. So
+  with smoothing, the next cycle returns `value` and smoothing continues from it; with `maxPwmChangePerCycle`, the
+  next step starts from `value`; without options, the next cycle applies its target.
+- Later cycles, with `dt` = the time since the last cycle (`0` if the clock went backwards):
+  1. **Low-pass** (`timeConstant` τ > 0): `filtered += (1 - exp(-dt/τ)) * (target - filtered)`, then
+     `filtered = target` once they are less than `0.5` apart. Without a time constant, `filtered = target`.
+  2. **Deadband** (`deadband` > 0): if `|filtered - output| < deadband`, the output doesn't change. Except when the
+     new value is `0` or `255`, or when it is on the other side of `1` than the output (below `1`, a fan without
+     `neverStop` stops, see [fan-controller.md](fan-controller.md)).
+  3. If moving to `filtered` would move the output away from the target, the output doesn't change.
+  4. **Rate limit**: the output moves towards `filtered` by at most `rampUp x dt` upwards and `rampDown x dt`
+     downwards (`0` = no limit). With the deprecated `maxPwmChangePerCycle`, by at most that per cycle in both
+     directions instead.
 
-The direct algorithm doesn't look at the time (it ignores `now`). It counts cycles.
+Without options (explicit `controlAlgorithm: direct`), every cycle returns the clamped target.
 
 ### PID
 
@@ -108,15 +119,17 @@ The quantity a fan controller could measure is RPM, but RPM and PWM are in diffe
 them is non-linear and fan-specific, and many fans have no RPM sensor (`cmd` and `file` fans, some hwmon fans).
 The code doesn't document why a filter was chosen over RPM feedback; these are the likely reasons.
 
-**Who benefits**: Everyone with the default config: noisy or spiky sensors don't make the fans audibly hunt.
-Users who want a real temperature feedback loop use a `pid` curve instead (see [curves.md](curves.md)). That curve
-measures a sensor, has a setpoint, and is unrelated to this control algorithm. With a `pid` curve and the default
-`pid` control algorithm, the filter adds its lag behind the curve's feedback loop.
+**Who benefits**: Users of the `pid` algorithm (the default before 1.0.0): noisy or spiky sensors don't make the fans
+audibly hunt. Users who want a real temperature feedback loop use a `pid` curve instead (see [curves.md](curves.md)). That curve
+measures a sensor, has a setpoint, and is unrelated to this control algorithm. With a `pid` curve and the `pid`
+control algorithm (or the default algorithm, which has a time constant), the filter adds its lag behind the curve's
+feedback loop.
 
 **Alternatives considered**:
 
 - Linear ramp (`direct` with `maxPwmChangePerCycle`). It was added in #267 (issue #266) as a replacement for the
   PID approach, which at that time didn't reach its targets. Both were kept, and the user picks one per fan.
+- A time-based low-pass (`direct` with `timeConstant`). Added for 1.0.0 and the default since then (see below).
 - RPM feedback. Not implemented.
 
 **Trade-offs**:
@@ -159,8 +172,8 @@ combinations and warns about overshoot (next decision).
 **Decision** (maintainer decision): Validation rejects a `pid` algorithm whose gains are unstable with the
 configured `adjustmentTickRate`, and warns if it overshoots a change of the curve value by more than 1 %
 (`control_loop.AnalyzePidStability`, called by `validatePidControlAlgorithms` after the global timing checks). It
-checks every fan that uses the `pid` algorithm: `controlAlgorithm.pid`, the string `pid`, the deprecated
-`controlLoop`, and fans without `controlAlgorithm` (default values). `i` must be `> 0`.
+checks every fan that uses the `pid` algorithm: `controlAlgorithm.pid`, the string `pid` and the deprecated
+`controlLoop`. Fans without `controlAlgorithm` use `direct` (since 1.0.0) and are not checked. `i` must be `> 0`.
 
 **Why**: The algorithm feeds its own output back, so inside `[0..255]` it is a linear discrete system that doesn't
 depend on the fan. With the curve value `r`, the output `y`, the I term `u` and `T = adjustmentTickRate`:
@@ -202,34 +215,93 @@ the output (bumpless transfer).
 **Why**: Before #552 the loop started from 0. The first output was `p * target` (10 for a target of 200 with the
 default values). On every start and config reload the fan dropped to near its minimum and ramped up over 5-10 s.
 
-**Who benefits**: Everyone on the default algorithm. Fans no longer dip on start and on config reloads. This also
+**Who benefits**: Everyone on the `pid` algorithm. Fans no longer dip on start and on config reloads. This also
 matters for systems that reload the config often.
 
-**Alternatives considered**: Users who want a slow start can use `direct` with `maxPwmChangePerCycle` (named in the
-#552 upgrade notes).
+**Alternatives considered**: Users who want a slow start can use `direct` with `rampUp` (#552 named
+`maxPwmChangePerCycle`, which is deprecated now).
 
 **Trade-offs**: With `i: 0` the preset couldn't hold the output, because only the I term holds a value at steady
 state. Validation rejects `i <= 0` (see "Validation computes the stability of the PID algorithm").
 
-### The direct algorithm counts cycles, not time
+### Smoothing is a set of options of `direct`, based on time
 
-**Decision**: `maxPwmChangePerCycle` limits the change per call of `Cycle`, in curve value units.
+**Decision**: `direct` has optional stages, all off unless configured: a first-order low-pass filter
+(`timeConstant`), a deadband on the output (`deadband`) and ramp rates per second (`rampUp`, `rampDown`). They use
+the time between two cycles (`now` from the fan controller's clock), not the number of cycles. There is no separate
+smoothing algorithm.
+
+**Why**: the `pid` algorithm and `maxPwmChangePerCycle` depend on `adjustmentTickRate` (see above and below). Users
+raise the tick rate to save CPU wakeups and then get overshoot, or ramps that are five times slower. Other fan
+control tools model smoothing as modifiers applied to the curve value: a rate limit per second, often separate for
+up and down, and sometimes a minimum step. `direct` with all stages off is the plain pass-through, so one algorithm
+with options avoids two names for the same thing.
+
+- The low-pass is discretized exactly (`1 - exp(-dt/τ)`), so the output after a given time is the same at every
+  tick rate and for irregular cycles (coalesced evaluator notifications, slow fans). It can't overshoot.
+- The deadband is what cuts the number of writes at a steady, noisy temperature: in a simulation (curve
+  `40..80 °C`, temperature noise `σ = 0.5 °C`, `200ms` ticks), the low-pass alone writes about as often as `pid`
+  (≈10 per minute), with a deadband of 1 to 2 units ≈3 to 0.4 per minute.
+- The ramps give "fast up, slow down", the most common wish in other tools. They are per second.
+
+**Who benefits**: everyone on the default algorithm (no tick-rate dependence), users who want a slower decrease,
+users of fans without PWM readback (every output change is a write).
+
+**Trade-offs**:
+
+- The deadband leaves a steady offset of less than `deadband` from the curve value (with the default 1 %, below
+  what can be heard). Fan off (`0`), full speed (`255`), and starting or stopping a fan are never held back.
+  With `useUnscaledCurveValues`, the fan stops below its `minPwm` instead of below `1`, which the control
+  algorithm doesn't know: there, a start or stop can be delayed until the change reaches the deadband.
+  CoolerControl also releases a held value after 30 s; fan2go doesn't, because the offset is bounded and the
+  exceptions cover the cases where it matters.
+- The deadband compares the filtered value with the output, not the ramp step, so a ramp that moves less than the
+  deadband per cycle still moves. While the filtered value drifts slowly (the end of a low-pass), the output moves
+  in steps of about `deadband`.
+- All values are in curve units (`[0..255]`), before the scaling to `minPwm`..`maxPwm`. A deadband of 1 % is less
+  than 1 % of the fan's PWM range if that range is narrower. With `useUnscaledCurveValues`, curve units are PWM values
+  before the `pwmMap`.
+- The output never moves away from the target. Without this rule, a slow ramp and a low-pass that lags behind a
+  target that reversed would keep the fan decreasing for a moment after the curve went up again.
+
+### Percentages of rates and deadbands are linear
+
+**Decision**: `rampUp`, `rampDown` and `deadband` take a plain number (curve units, per second for the ramps) or a
+percentage of the curve value range: `"N%"` is `N x 2.55` (`configuration.CurveUnits`).
+
+**Why**: curve steps map `1%` to `1` (the minimum speed) and then interpolate to `100%` = `255`. That offset is
+right for an absolute speed, but wrong for a difference or a rate: `10%` per second must be a tenth of the range.
+
+### `direct` uses the real time between two cycles, without a gap rule
+
+**Decision**: the time-based stages of `direct` use the real time since the last cycle as `dt`, however long it is.
+A cycle before the last one (the clock went backwards) counts as no time.
+
+**Why**: unlike `pid`, a low-pass or a rate limit can't saturate or oscillate with a large `dt`: after a long pause it
+moves at most to the target. The pauses in which the fan was set without the loop are handled before: after a curve
+failure the loop is preset or reset (below), and `Run` resets it on every (re)start. A fan whose every update takes
+long (for example a slow `cmd` fan) is smoothed exactly as configured.
+
+**Trade-offs**: after a pause without a preset or reset (for example a write that blocked for a long time), the
+output can move by the whole pause's worth at once.
+
+### `maxPwmChangePerCycle` counts cycles (deprecated)
+
+**Decision**: `maxPwmChangePerCycle` limits the change per call of `Cycle`, in curve value units. It still works as
+before, but it is deprecated: the config validation logs a warning with the equivalent per second at the configured
+`adjustmentTickRate` (`maxPwmChangePerCycle / adjustmentTickRate`), and rejects it together with `rampUp` or
+`rampDown`. It can be combined with `timeConstant` and `deadband`; it replaces the ramps then.
 
 **Why**: It was originally named `PwmChangePerSecond` (#267) and renamed to `maxPwmChangePerCycle` in the config
-rework, because the limit applies per cycle. A per-cycle limit is simple and deterministic in tests.
-
-**Who benefits**: Users who want a predictable linear ramp, for example to avoid audible speed jumps.
+rework, because the limit applies per cycle. `rampUp`/`rampDown` replace it with a per-second rate. It is kept so
+existing configs keep working.
 
 **Trade-offs**:
 
 - The ramp speed is `maxPwmChangePerCycle / adjustmentTickRate`. With `maxPwmChangePerCycle: 10` and the default
   `200ms`, that is 50 per second, so a full `0` to `255` change takes about 5 s. With `1s` it takes about 26 s.
-  The README notes that `adjustmentTickRate` sets the time unit.
-- The limit is in curve value units. After scaling to `minPwm`..`maxPwm` the actual PWM step is smaller when the
-  fan's range is narrower than `[0..255]`.
 - If a fan's updates are slow (for example a slow `cmd` fan, or a long `pwmSetDelay`), its controller skips
-  evaluator cycles, and its ramp slows down too. Slow sensors don't affect the cycle rate, because curves only read
-  the values the sensor monitors recorded (see [sensors.md](sensors.md)).
+  evaluator cycles, and its ramp slows down too.
 
 ### Both algorithms clamp to [0..255] and store the clamped value (#552)
 
@@ -261,15 +333,16 @@ handle that.
 `calculateTargetSpeed` adjusts the loop before it cycles it (this runs before `recoverFromCurveFailure`):
 
 - `max` (also the `restore` fallback to max): `Preset` at the curve value that maps to `maxPwm`: `255`, or `maxPwm`
-  itself with `useUnscaledCurveValues`. The `pid` algorithm returns that value on the first cycle and smooths down
-  from there. `direct` with `maxPwmChangePerCycle` ramps down from it; without a limit it applies the target.
+  itself with `useUnscaledCurveValues`. The `pid` algorithm and `direct` with a time constant or ramps return that
+  value on the first cycle and smooth down from there (the default algorithm comes down with its time constant of
+  2 s). `direct` with `maxPwmChangePerCycle` ramps down from it; without options it applies the target.
 - `restore`: `Reset`. fan2go doesn't know the speed the fan ran at while it was handed back, so the loop starts at
   the target like on startup.
 
 **Why**: The fail-safe max write bypasses the control loop (it must not be slowed by it), so the loop doesn't know
 the fan's speed. Before, the output continued from the value before the failure: with `direct` and
 `maxPwmChangePerCycle` the fan jumped from `maxPwm` to near the old value, and `pid` integrated over the whole
-failure (next decision).
+failure (see "The PID algorithm doesn't integrate over a gap").
 
 **Who benefits**: Users with `onSensorFailure` whose sensors recover: no audible drop or jump of the fan.
 
@@ -281,8 +354,8 @@ max write failed during the failure, the loop still starts at max, which errs on
 
 **Decision**: If more than `max(2s, 5 x adjustmentTickRate)` passed since the last cycle, `PidControlLoop` counts the
 gap as `max(1s, adjustmentTickRate)`: it uses that as `dt` of the cycle (`PidLoop.ResumeAt`) and keeps its state.
-Both are computed from the tick rate passed to `NewPidControlLoop` (`maxCycleGap`, `GapDt`). `direct` needs no such
-rule, it doesn't use time.
+Both are computed from the tick rate passed to `NewPidControlLoop` (`maxCycleGap`, `GapDt`). `direct` has no gap
+rule (see above).
 
 **Why**: `PidLoop.LoopAt` integrates `err * dt` with no upper bound on `dt`. After a pause (a curve failure, a
 stalled update loop) the I term saturated at once: with the default values, output 100 before the gap and curve
@@ -310,7 +383,7 @@ Why 1 s: simulated with the default values and updates every 3 s, a step reaches
 the `pid` values must also be stable at that step, not only at `adjustmentTickRate`. Validation warns if they aren't
 (see "Validation computes the stability of the PID algorithm").
 
-**Who benefits**: Everyone on the default algorithm. Normal operation is unchanged: evaluator cycles that are
+**Who benefits**: Everyone on the `pid` algorithm. Normal operation is unchanged: evaluator cycles that are
 coalesced or slightly delayed stay far below the threshold as long as one update of the fan takes well under 2 s.
 
 **Trade-offs**:
@@ -322,18 +395,31 @@ coalesced or slightly delayed stay far below the threshold as long as one update
 - The 1 s fits the default values. With a larger `i`, a slow fan can overshoot more, or oscillate between `0` and
   `255` without end if the values are unstable at 1 s (e.g. `p: 0.05, i: 1.25`); validation warns about the latter.
 
-### PID is the default
+### `direct` with a time constant and a deadband is the default (1.0.0)
 
-**Decision**: A fan without `controlAlgorithm` uses `pid` with the default values (`createControlLoop`, fallback).
-`controlAlgorithm: pid` (string form) also uses the default values; `controlAlgorithm: direct` uses no limit.
+**Decision**: A fan without `controlAlgorithm` (and without the deprecated `controlLoop`) uses `direct` with
+`timeConstant: 2s` and `deadband: 1%` (2.55), no ramps (`DefaultControlAlgorithmConfig`). An explicit
+`controlAlgorithm: direct` (string form, or `direct:` without options) is the pure pass-through, as before.
+`controlAlgorithm: pid` (string form) uses the default PID values.
 
-**Why**: PID was the original (and for a long time only) control logic. When `direct` was added in #267, PID stayed
-the default for backwards compatibility (stated in #267).
+**Why**: Before 1.0.0 the default was `pid`, kept since #267 for backwards compatibility. It is a filter with a time
+constant of about 2.3 s at `200ms`, but it overshoots from a tick rate of about `700ms` and is unstable from about
+`2.64s`. A low-pass of 2 s feels the same at the default tick rate and doesn't depend on it. The deadband reduces the
+writes at a steady temperature. 1.0.0 is a breaking release anyway, so the default changed there. Giving the
+options of `direct` defaults instead would have changed explicit `direct` configs too, whose users chose "no
+smoothing".
 
-**Who benefits**: Existing users keep their behaviour. New users get smoothing without configuring anything.
+**Who benefits**: Everyone who doesn't configure a control algorithm: the same feel at `200ms`, no overshoot at
+slower tick rates, fewer writes.
 
-**Trade-offs**: The default depends on the cycle rate (see above). Users who expect "the fan follows the curve"
-see a delay of several seconds.
+**Trade-offs**:
+
+- Breaking for configs without `controlAlgorithm`: the response is a first-order filter instead of PID's
+  second-order one (it settles a step of 150 to within 2 units in about 9 s, before about 10 s at `200ms`), and the
+  output stays within 1 % of the curve value instead of reaching it exactly. `controlAlgorithm: pid` restores the
+  old behaviour.
+- The string form `direct` and the omitted case behave differently. The README and the example config say so.
+- No per-hardware defaults.
 
 ## Configuration
 
@@ -342,15 +428,21 @@ Per fan:
 ```yaml
 fans:
   - id: some_fan
-    # string form: default values of the chosen algorithm
-    controlAlgorithm: direct      # or: pid
+    # omitted: direct with timeConstant: 2s, deadband: 1%
 
   - id: other_fan
-    controlAlgorithm:
-      direct:
-        maxPwmChangePerCycle: 10  # optional, must be > 0, no default (no limit)
+    # string form: pass-through (direct) or the default values (pid)
+    controlAlgorithm: direct      # or: pid
 
   - id: third_fan
+    controlAlgorithm:
+      direct:
+        timeConstant: 2s          # optional, low-pass on the output
+        rampUp: 10%               # optional, max increase per second
+        rampDown: 2%              # optional, max decrease per second
+        deadband: 1%              # optional, smallest change that is applied
+
+  - id: fourth_fan
     controlAlgorithm:
       pid:
         p: 0.05
@@ -360,13 +452,17 @@ fans:
 
 | Key | Default | Notes |
 |---|---|---|
-| `controlAlgorithm` | `pid` with `p: 0.05`, `i: 0.4`, `d: 0.01` | String (`pid`, `direct`) or object. |
-| `controlAlgorithm.direct.maxPwmChangePerCycle` | not set (no limit) | Validation rejects values `<= 0`. In curve value units per cycle. |
+| `controlAlgorithm` | `direct` with `timeConstant: 2s`, `deadband: 1%` | String (`pid`, `direct`) or object. The string `direct` has no options. |
+| `controlAlgorithm.direct.timeConstant` | `0` (off) | Duration (`2s`, `500ms`; a plain number is seconds, like `fanResponseDelay`). Must be `>= 0`; warning below `100ms` (except `0`) and above `1m`. |
+| `controlAlgorithm.direct.rampUp`, `.rampDown` | `0` (no limit) | Curve units per second, or `"N%"` (= `N x 2.55`). Must be `>= 0` and finite. Warning if a full increase takes more than 60 s. |
+| `controlAlgorithm.direct.deadband` | `0` (off) | Curve units or `"N%"`. Must be `>= 0`, finite and `< 255`; warning above 10 %. |
+| `controlAlgorithm.direct.maxPwmChangePerCycle` | not set (no limit) | Deprecated (warning with the per-second equivalent). Must be `> 0`. In curve value units per cycle. Can't be combined with `rampUp`/`rampDown`. |
 | `controlAlgorithm.pid.p`, `.i`, `.d` | see above; in the object form, omitted keys are `0` | `i` must be `> 0`. Unstable combinations with `adjustmentTickRate` are rejected, overshoot causes a warning. |
 | `controlLoop.p`, `.i`, `.d` | - | Deprecated. Creates a `pid` algorithm, validation logs a warning. Validated like `controlAlgorithm.pid`. |
-| `fanController.adjustmentTickRate` (global) | `200ms` | Sets the cycle rate. Changes the ramp speed of `direct` and the response of `pid`. |
+| `fanController.adjustmentTickRate` (global) | `200ms` | Sets the cycle rate. Changes the ramp speed of `maxPwmChangePerCycle` and the response of `pid`, not the time-based options of `direct`. |
 
-Validation rejects a `controlAlgorithm` with both `direct` and `pid`, and `controlLoop` together with
+Validation rejects a `controlAlgorithm` with both `direct` and `pid`, an empty one (e.g. `direct:` without a value,
+which would otherwise get the default instead of the pass-through), and `controlLoop` together with
 `controlAlgorithm`.
 
 ## Known limitations and open questions
@@ -374,6 +470,5 @@ Validation rejects a `controlAlgorithm` with both `direct` and `pid`, and `contr
 - **No feedback on the fan.** Neither algorithm corrects for a fan that doesn't reach the expected speed. The
   `neverStop` stall check in the fan controller is the only RPM-based correction.
 - **Values in the curve value space.** Both algorithms run before the scaling to `minPwm`..`maxPwm`. The meaning of
-  `maxPwmChangePerCycle` in actual PWM depends on the fan's range.
-- Open question: whether the filter should be expressed in time (for example, a time constant in seconds) instead of
-  PID values, so that it doesn't depend on `adjustmentTickRate`.
+  the ramps, the deadband and `maxPwmChangePerCycle` in actual PWM depends on the fan's range.
+- **No per-hardware smoothing defaults.** Every fan gets the same default, whatever its type.
