@@ -8,11 +8,14 @@ categories:
   - title: 🐛 Bugfixes
     label: bug
 change-template: "* $TITLE (#$NUMBER) by @$AUTHOR"
-# fan2go is pre-1.0: breaking changes and features bump the minor version, everything else the patch version.
+# Semantic versioning: breaking changes bump the major version, features the minor version, everything else the patch
+# version. The first release with breaking changes after 0.16.0 is therefore 1.0.0.
 version-resolver:
-  minor:
+  major:
     labels:
       - breaking-change
+  minor:
+    labels:
       - enhancement
   patch:
     labels:

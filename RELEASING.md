@@ -1,8 +1,13 @@
 # Releasing fan2go
 
-fan2go follows [semantic versioning](https://semver.org/) with the pre-1.0 convention: while the major version is 0,
-a release with breaking changes bumps the **minor** version (`0.15.x` → `0.16.0`), everything else bumps the patch
-version.
+fan2go follows [semantic versioning](https://semver.org/):
+
+- **major** (`1.4.2` → `2.0.0`): breaking changes,
+- **minor** (`1.4.2` → `1.5.0`): new features, without breaking changes,
+- **patch** (`1.4.2` → `1.4.3`): bug fixes only.
+
+Releases up to `0.16.0` used the pre-1.0 convention (breaking changes bumped the minor version). The first release with
+breaking changes after `0.16.0` is `1.0.0`; from then on, the rules above apply strictly.
 
 ## During development: recording breaking changes
 
@@ -18,7 +23,8 @@ For a breaking change:
 2. add the `breaking-change` label to the PR.
 
 [Release Drafter](.github/release-drafter.yml) collects merged PRs into a draft release, lists PRs labeled
-`breaking-change` in a "⚠️ Breaking changes" section and proposes the next version accordingly.
+`breaking-change` in a "⚠️ Breaking changes" section and proposes the next version from the labels (see
+[the version resolver](.github/release-drafter.yml)).
 
 ## Cutting a release
 
@@ -34,7 +40,7 @@ For a breaking change:
    at the end of the notes in [`packaging/aur/fan2go.install`](packaging/aur/fan2go.install):
 
    ```text
-   == 0.16.0
+   == 1.0.0
    statistics.host now defaults to 127.0.0.1. Set `statistics.host: 0.0.0.0` to keep remote Prometheus scrapes working.
    onExit.speed is now mapped through the fan's pwmMap, like curve values.
    ```
@@ -49,9 +55,8 @@ For a breaking change:
 4. **Publish the GitHub release; this creates the tag.** Open the draft release that Release Drafter keeps up to date
    (Releases page, or `gh release list`). Then:
    - fill the "Upgrade notes" section from step 1, or remove it if there are no breaking changes,
-   - check the proposed version; correct it if needed (e.g. a release without breaking changes or features is a patch
-     release),
-   - set the tag to the version (e.g. `0.16.0`), targeting `master`, with the same release title, and publish.
+   - check the proposed version against the rules above and correct it if needed (e.g. if a PR was labeled wrong),
+   - set the tag to the version (e.g. `1.0.0`), targeting `master`, with the same release title, and publish.
 
    Publishing creates the tag. Don't push the tag yourself: the Go workflow would then create a second release instead
    of attaching the binaries to this one. The tag push triggers:
@@ -64,7 +69,7 @@ For a breaking change:
    your AUR SSH key:
 
    ```shell
-   packaging/aur/publish.sh 0.16.0
+   packaging/aur/publish.sh 1.0.0
    ```
 
    The script updates your AUR clones (`$AUR_DIR/fan2go` and `$AUR_DIR/fan2go-git`, default `AUR_DIR=~/programming/AUR`;
