@@ -259,24 +259,24 @@ func TestPidCurve_Combined_StepUpAndHold(t *testing.T) {
 
 	// Step 2: Temp = 65 constant. Error = -5. Rate = 0, so D = 0.
 	// P = 100. I term = -10 * -1.0 = 10. Output = 110.
-	// Afterwards, the integral becomes -1.0 + -5 * 0.2 = -2.0. The previous output was 255, but the
-	// anti-windup guard only triggers for a positive error, so it does not stop the integration.
+	// The previous output was 255 (saturated) and i*err = -10 * -5 = 50 > 0 would push it further up,
+	// so the anti-windup guard skips the integration: the integral stays at -1.0.
 	result, err = curve.Evaluate()
 	assert.NoError(t, err)
 	assert.InDelta(t, 110, result, 0.001, "Step 2 - Settle based on P+I, D=0")
 	tick()
 
-	// Step 3: P = 100. I term = -10 * -2.0 = 20. D = 0. Output = 120.
-	// Afterwards, the integral becomes -3.0.
+	// Step 3: P = 100. I term = -10 * -1.0 = 10. D = 0. Output = 110.
+	// The previous output (110) is not saturated, so the integral becomes -1.0 + -5 * 0.2 = -2.0.
 	result, err = curve.Evaluate()
 	assert.NoError(t, err)
-	assert.InDelta(t, 120, result, 0.001, "Step 3 - Integral continues increasing output")
+	assert.InDelta(t, 110, result, 0.001, "Step 3 - Integral was not accumulated while saturated")
 	tick()
 
-	// Step 4: P = 100. I term = -10 * -3.0 = 30. D = 0. Output = 130.
+	// Step 4: P = 100. I term = -10 * -2.0 = 20. D = 0. Output = 120.
 	lastResult := result
 	result, err = curve.Evaluate()
 	assert.NoError(t, err)
-	assert.InDelta(t, 130, result, 0.001, "Step 4 - Output still increasing")
+	assert.InDelta(t, 120, result, 0.001, "Step 4 - Output increasing again")
 	assert.GreaterOrEqual(t, result, lastResult, "Step 4 - Output should be >= previous")
 }

@@ -22,9 +22,12 @@ var (
 )
 
 // PidControlLoop is a PidLoop based control loop implementation.
+// The first cycle applies the target directly; the PID loop only smooths later changes of the target.
 type PidControlLoop struct {
 	pidLoop *util.PidLoop
 
+	// true once the first cycle has seeded the loop with its target
+	initialized bool
 	// Store the last float64 output from the internal pidLoop (0-255 range)
 	lastPidOutput float64
 }
@@ -54,6 +57,18 @@ func NewPidControlLoopWithClock(
 }
 
 func (l *PidControlLoop) Cycle(target float64) float64 {
+	if !l.initialized {
+		// first cycle: start at the target instead of ramping up from 0, which would slow the fan down
+		// to (almost) its minimum on every start and config reload. Preset the PID loop as if it had
+		// already settled at this value (bumpless transfer): its output at steady state comes from the
+		// I term alone, so the next cycle continues from here instead of dropping back to ~0.
+		l.initialized = true
+		l.lastPidOutput = util.Coerce(target, 0, 255)
+		l.pidLoop.Preset(l.lastPidOutput, l.lastPidOutput)
+		ui.Debug("PidControlLoop: first cycle, starting at target(curve): %.4f, result(float): %.4f", target, l.lastPidOutput)
+		return l.lastPidOutput
+	}
+
 	// Convert the desired target value from the curve to float64
 	floatTarget := target
 	// Use the *previous output* of this PID loop as the 'measured' value for smoothing

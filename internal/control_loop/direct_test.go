@@ -42,9 +42,7 @@ func TestMaxChange(t *testing.T) {
 	assert.Equal(t, 4.0, newTarget)
 }
 
-func TestDirect_FirstCycleOutOfRangeTargetIsNotClamped(t *testing.T) {
-	// Pins the current behaviour: the first cycle returns the target as is,
-	// only the following cycles are clamped to [0..255].
+func TestDirect_OutOfRangeTargetIsClamped(t *testing.T) {
 	// GIVEN
 	loop := NewDirectControlLoop(nil)
 
@@ -52,8 +50,8 @@ func TestDirect_FirstCycleOutOfRangeTargetIsNotClamped(t *testing.T) {
 	first := loop.Cycle(300)
 	second := loop.Cycle(300)
 
-	// THEN
-	assert.Equal(t, 300.0, first)
+	// THEN the first cycle is clamped to [0..255] like all following cycles
+	assert.Equal(t, 255.0, first)
 	assert.Equal(t, 255.0, second)
 
 	// GIVEN
@@ -64,6 +62,20 @@ func TestDirect_FirstCycleOutOfRangeTargetIsNotClamped(t *testing.T) {
 	second = loop.Cycle(-10)
 
 	// THEN
-	assert.Equal(t, -10.0, first)
+	assert.Equal(t, 0.0, first)
 	assert.Equal(t, 0.0, second)
+}
+
+func TestDirect_MaxChange_OutOfRangeTargetDoesNotShiftTheRampBase(t *testing.T) {
+	// GIVEN
+	maxChangePerCycle := 10
+	loop := NewDirectControlLoop(&maxChangePerCycle)
+
+	// WHEN the first targets are out of range, and then the target drops
+	assert.Equal(t, 255.0, loop.Cycle(300))
+	assert.Equal(t, 255.0, loop.Cycle(400))
+	next := loop.Cycle(0)
+
+	// THEN the ramp continues from the applied (clamped) value, not from the out-of-range target
+	assert.Equal(t, 245.0, next)
 }

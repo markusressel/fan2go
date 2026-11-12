@@ -170,3 +170,55 @@ func TestPidLoop_PositiveGains_NoIntegralWindupWhileSaturatedAtMin(t *testing.T)
 	// THEN the output responds at once
 	assert.InDelta(t, 100.0, output, 0.01)
 }
+
+func TestPidLoop_CoolingGains_NoIntegralWhileSaturatedAtMax(t *testing.T) {
+	// GIVEN a cooling loop (negative gains) whose P term alone saturates the output at its maximum
+	pidLoop := NewPidLoop(-10, -0.5, 0, 0, 255, true, false) // as curves.NewSpeedCurve builds it
+	clock := useFakeClock(pidLoop)
+	assert.Equal(t, 255.0, pidLoop.Loop(80, 120))
+	for n := 0; n < 60; n++ {
+		clock.advance(time.Second)
+		assert.Equal(t, 255.0, pidLoop.Loop(80, 120))
+	}
+
+	// WHEN the temperature drops just below the setpoint
+	clock.advance(time.Second)
+	output := pidLoop.Loop(80, 79)
+
+	// THEN the I term didn't build up while the output was saturated (i*err pushed it further up),
+	// so only the P term remains: -10 * (80 - 79) = -10, clamped to 0
+	assert.Equal(t, 0.0, output)
+}
+
+func TestPidLoop_Preset_HoldsOutputAtSteadyState(t *testing.T) {
+	// GIVEN a loop that feeds its own output back as the measured value (like the PID control loop)
+	pidLoop := NewPidLoop(0.05, 0.4, 0.01, 0, 255, true, true)
+	clock := useFakeClock(pidLoop)
+
+	// WHEN it is preset to an output of 200 at a measured value of 200
+	pidLoop.Preset(200, 200)
+
+	// THEN it holds that output while the target equals the measured value
+	output := 200.0
+	for n := 0; n < 50; n++ {
+		clock.advance(200 * time.Millisecond)
+		output = pidLoop.Loop(200, output)
+		assert.InDelta(t, 200.0, output, 1e-9, "cycle %d", n)
+	}
+}
+
+func TestPidLoop_Preset_ZeroIntegralGain(t *testing.T) {
+	// GIVEN
+	pidLoop := NewPidLoop(1, 0, 0, 0, 255, true, true)
+	clock := useFakeClock(pidLoop)
+
+	// WHEN
+	pidLoop.Preset(100, 90)
+	sameTime := pidLoop.Loop(200, 90)
+	clock.advance(time.Second)
+	next := pidLoop.Loop(200, 90)
+
+	// THEN no time passed: the preset output is returned; then only the P term remains (the I term can't hold anything)
+	assert.Equal(t, 100.0, sameTime)
+	assert.InDelta(t, 110.0, next, 1e-9)
+}

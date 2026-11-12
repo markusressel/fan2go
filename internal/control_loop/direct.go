@@ -1,9 +1,9 @@
 package control_loop
 
 import (
-	"github.com/markusressel/fan2go/internal/util"
 	"math"
-	"time"
+
+	"github.com/markusressel/fan2go/internal/util"
 )
 
 // DirectControlLoop is a very simple control that directly applies the given
@@ -12,8 +12,8 @@ import (
 type DirectControlLoop struct {
 	// limits the maximum allowed pwm change per cycle
 	maxPwmChangePerCycle *int
-	lastTime             time.Time
 
+	// the last output, within [0..255] (NaN before the first cycle)
 	lastOutput float64
 }
 
@@ -21,39 +21,34 @@ type DirectControlLoop struct {
 // target pwm. It can also be used to gracefully approach the target by
 // utilizing the "maxPwmChangePerCycle" property.
 func NewDirectControlLoop(
-// (optional) limits the maximum allowed pwm change per cycle (in both directions)
+	// (optional) limits the maximum allowed pwm change per cycle (in both directions)
 	maxPwmChangePerCycle *int,
 ) *DirectControlLoop {
 	return &DirectControlLoop{
 		maxPwmChangePerCycle: maxPwmChangePerCycle,
-		lastTime:             time.Now(),
 		lastOutput:           math.NaN(),
 	}
 }
 
 func (l *DirectControlLoop) Cycle(target float64) float64 {
-	loopTime := time.Now()
-	targetFloat := float64(target)
 	if math.IsNaN(l.lastOutput) {
-		// first run, just return the target
-		l.lastOutput = targetFloat
-		l.lastTime = loopTime
-		return target
+		// first run, just apply the target (within sane bounds)
+		l.lastOutput = util.Coerce(target, 0, 255)
+		return l.lastOutput
 	}
 
-	var stepTarget = targetFloat
+	var stepTarget = target
 	if l.maxPwmChangePerCycle != nil {
 		maxChangeValue := *l.maxPwmChangePerCycle
 
-		err := targetFloat - l.lastOutput
+		err := target - l.lastOutput
 		clampedErr := util.Coerce(err, -float64(maxChangeValue), +float64(maxChangeValue))
 		stepTarget = l.lastOutput + clampedErr
 	}
 
-	l.lastOutput = stepTarget
-
 	// ensure we are within sane bounds
 	result := util.Coerce(stepTarget, 0, 255)
+	l.lastOutput = result
 
 	return result
 }

@@ -60,6 +60,21 @@ func (p *PidLoop) Reset() {
 	p.lastOutput = 0
 }
 
+// Preset initializes the loop as if it had been running in a steady state with the given output
+// at the given measured value, so the next Loop/LoopAt call continues from there (bumpless transfer)
+// instead of starting over from the P term alone. The integral is set so that the I term alone
+// yields output (if the I gain is not 0). The time of the clock (see SetClock) is used as the time
+// of the last loop.
+func (p *PidLoop) Preset(output float64, measured float64) {
+	p.lastTime = p.now()
+	p.lastMeasured = measured
+	p.lastOutput = output
+	p.integral = 0
+	if p.i != 0 {
+		p.integral = output / p.i
+	}
+}
+
 // Loop advances the pid loop, using the current time of its clock (see SetClock) as the time of the measurement
 func (p *PidLoop) Loop(target float64, measured float64) float64 {
 	return p.LoopAt(p.now(), target, measured)
@@ -119,9 +134,11 @@ func (p *PidLoop) LoopAt(loopTime time.Time, target float64, measured float64) f
 		clampedOutput = p.outMin
 	}
 
-	// Don't integrate if output is already saturated AND the error is trying to push it further
-	windupDetected := p.antiWindup && p.lastOutput >= p.outMax && err > 0
-	winddownDetected := p.antiWinddown && p.lastOutput <= p.outMin && err < 0
+	// Don't integrate if output is already saturated AND the error is trying to push it further.
+	// The direction the integral pushes the output in is the sign of i*err, not of err:
+	// with negative gains (e.g. a cooling curve), a positive error lowers the output.
+	windupDetected := p.antiWindup && p.lastOutput >= p.outMax && p.i*err > 0
+	winddownDetected := p.antiWinddown && p.lastOutput <= p.outMin && p.i*err < 0
 	if !windupDetected && !winddownDetected {
 		p.integral = p.integral + err*dt
 	}

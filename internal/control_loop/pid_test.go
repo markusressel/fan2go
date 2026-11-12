@@ -32,43 +32,63 @@ func cycle(loop *PidControlLoop, clock *fakeNow, target float64) float64 {
 	return out
 }
 
-func TestPidControlLoop_FirstCycles(t *testing.T) {
+func TestPidControlLoop_FirstCycleStartsAtTarget(t *testing.T) {
 	// GIVEN
 	loop, clock := newDefaultPidLoopWithFakeClock()
 
 	// WHEN / THEN
-	// the first cycle only uses the P term: P * (target - lastOutput) = 0.05 * (200 - 0)
-	assert.InDelta(t, 10.0, cycle(loop, clock, 200), 1e-9)
-	// second cycle (measured = 10): P 0.05*190 = 9.5, I 0 (the error is integrated only after
-	// the output is computed), D -0.01*(10-0)/0.2 = -0.5 => 9.0; integral becomes 190*0.2 = 38
-	assert.InDelta(t, 9.0, cycle(loop, clock, 200), 1e-9)
-	// third cycle (measured = 9): P 0.05*191 = 9.55, I 0.4*38 = 15.2, D -0.01*(9-10)/0.2 = 0.05 => 24.8
-	assert.InDelta(t, 24.8, cycle(loop, clock, 200), 1e-9)
+	// the first cycle applies the target directly, instead of ramping up from 0
+	assert.Equal(t, 200.0, cycle(loop, clock, 200))
+	// the PID loop was preset to that state (bumpless transfer), so it holds the output
+	for i := 0; i < 100; i++ {
+		assert.InDelta(t, 200.0, cycle(loop, clock, 200), 1, "cycle %d", i)
+	}
 }
 
-func TestPidControlLoop_ConvergesToTarget(t *testing.T) {
-	// GIVEN
-	loop, clock := newDefaultPidLoopWithFakeClock()
-	target := 200.0
+func TestPidControlLoop_FirstCycleIsClamped(t *testing.T) {
+	tests := []struct {
+		name     string
+		target   float64
+		expected float64
+	}{
+		{name: "above range", target: 300, expected: 255},
+		{name: "below range", target: -10, expected: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// GIVEN
+			loop, clock := newDefaultPidLoopWithFakeClock()
 
-	// WHEN
+			// WHEN / THEN
+			assert.Equal(t, tt.expected, cycle(loop, clock, tt.target))
+			for i := 0; i < 20; i++ {
+				assert.InDelta(t, tt.expected, cycle(loop, clock, tt.target), 1, "cycle %d", i)
+			}
+		})
+	}
+}
+
+func TestPidControlLoop_TargetStepUpIsSmoothed(t *testing.T) {
+	// GIVEN: a loop that started at 50
+	loop, clock := newDefaultPidLoopWithFakeClock()
+	assert.Equal(t, 50.0, cycle(loop, clock, 50))
+
+	// WHEN: the target steps up to 200
 	outputs := make([]float64, 0, 100)
 	for i := 0; i < 100; i++ {
-		outputs = append(outputs, cycle(loop, clock, target))
+		outputs = append(outputs, cycle(loop, clock, 200))
 	}
 
-	// THEN
-	// slow startup ramp with the default gains:
-	// ~88 % of the target after 5 s (25 cycles), > 99 % after 12 s (60 cycles)
-	assert.InDelta(t, 176.06, outputs[25], 0.01)
-	assert.GreaterOrEqual(t, outputs[60], 0.99*target)
-	for i := 60; i < len(outputs); i++ {
-		assert.InDelta(t, target, outputs[i], 0.01*target, "cycle %d", i)
-	}
-	// no overshoot beyond the target
+	// THEN: the output doesn't jump to the new target, but approaches it monotonically without overshoot.
+	// First cycle after the step (measured = 50): P 0.05*(200-50) = 7.5, I 0.4*(50/0.4) = 50, D 0 => 57.5
+	assert.InDelta(t, 57.5, outputs[0], 1e-9, "first cycle after the step only moves a little")
+	prev := 50.0
 	for i, out := range outputs {
-		assert.LessOrEqual(t, out, target, "cycle %d", i)
+		assert.Greater(t, out, prev-1e-9, "cycle %d", i)
+		assert.LessOrEqual(t, out, 200.0, "cycle %d", i)
+		prev = out
 	}
+	assert.InDelta(t, 200, outputs[len(outputs)-1], 0.02*200)
 }
 
 func TestPidControlLoop_OutputStaysWithinPwmRange(t *testing.T) {
@@ -113,7 +133,9 @@ func TestPidControlLoop_TargetStepDown(t *testing.T) {
 	}
 
 	// THEN: the output decreases smoothly (no jump), monotonically and without undershoot
-	assert.InDelta(t, 192.30, outputs[0], 0.01, "first cycle after the step only moves a little")
+	// the loop started at 200 and held it exactly, so (measured = 200):
+	// P 0.05*(50-200) = -7.5, I 0.4*(200/0.4) = 200, D 0 => 192.5
+	assert.InDelta(t, 192.5, outputs[0], 1e-9, "first cycle after the step only moves a little")
 	prev := last
 	for i, out := range outputs {
 		assert.Less(t, out, prev+1e-9, "cycle %d", i)
