@@ -150,7 +150,7 @@ database.
 In `autodetect` mode:
 
 - `setPwmToGetPwmMap`: if the fan has a [known hardware quirks](hardware-quirks.md) entry with a readback formula
-  (and `setPwmToGetPwmMap` is not configured, not even as `autodetect`), the map comes from that formula, without a
+  (and `quirks.enabled` is not `false`), the map comes from that formula, without a
   sweep and without the database. Otherwise `computeSetPwmToGetPwmMapAutomatically` writes every value 0..255, waits `pwmSetDelay` and
   reads `pwm` back. Values whose write fails are left out. Without a readable `pwm` (or with
   `fan init --assume-pwm-map-identity`), it assumes a 1:1 map.

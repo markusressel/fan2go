@@ -409,8 +409,7 @@ fans:
     # Modes:
     #
     # autodetect (default): sweep all PWM values and record what the fan reports back.
-    # An explicit autodetect also takes precedence over a known readback formula (see below).
-    # setPwmToGetPwmMap: autodetect
+    setPwmToGetPwmMap: autodetect
     #
     # identity: assume the fan reports back exactly what was set (1:1 mapping).
     # Equivalent to the --assume-pwm-map-identity flag on `fan2go fan init`.
@@ -430,7 +429,7 @@ fans:
     #     255: 255
     #
     # For some devices fan2go knows the readback formula of the driver (see "Known hardware quirks"),
-    # and uses it instead of autodetect when setPwmToGetPwmMap is omitted.
+    # and uses it instead of the sweep when setPwmToGetPwmMap is omitted or autodetect.
     # (Optional) Known hardware quirks of the device that fan2go applies to this fan (hwmon fans only),
     # see "Known hardware quirks". Set enabled: false to not apply them.
     # quirks:
@@ -1121,7 +1120,8 @@ applied entry at startup, and `fan2go detect` shows it in the `Quirks` column.
 | `thinkpad`     | ThinkPad (`thinkpad`)                                      | hint about `thinkpad_acpi fan_control=1`; `config validate` advice for its 8 fan levels |
 | `nzxtsmart2`   | NZXT RGB & Fan Controller, Smart Device v2 (`nzxtsmart2`)  | `setPwmToGetPwmMap` from the driver formula (1% steps); hint about fans connected after boot |
 
-A configured `setPwmToGetPwmMap` (also `autodetect`) takes precedence. To not apply an entry to a fan, set
+A configured `setPwmToGetPwmMap` map (`identity`, `linear` or `values`) takes precedence; `autodetect` uses the
+formula. To not apply an entry to a fan (and measure the map instead), set
 `quirks.enabled: false` on it. When an entry is added or changed, the fans it applies to are analyzed once more.
 Details, sources, and recipes for devices without an entry (e.g. Dell laptops, AMD GPUs) are in
 [docs/hardware-quirks.md](docs/hardware-quirks.md).

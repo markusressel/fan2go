@@ -67,7 +67,9 @@ func TestComputeSetPwmToGetPwmMap_KnownReadbackFormula_ExplicitConfigWins(t *tes
 		expectedAt64      int
 	}{
 		{"identity", &configuration.SetPwmToGetPwmMapConfig{Identity: &configuration.SetPwmToGetPwmMapIdentityConfig{}}, false, false, 64},
-		{"explicit autodetect", &configuration.SetPwmToGetPwmMapConfig{Autodetect: &configuration.SetPwmToGetPwmMapAutodetectConfig{}}, false, true, 64},
+		{"linear", &configuration.SetPwmToGetPwmMapConfig{Linear: &configuration.SetPwmToGetPwmMapLinearConfig{0: 0, 255: 255}}, false, false, 64},
+		// autodetect is the same as no setPwmToGetPwmMap: the formula is used
+		{"explicit autodetect", &configuration.SetPwmToGetPwmMapConfig{Autodetect: &configuration.SetPwmToGetPwmMapAutodetectConfig{}}, false, false, 85},
 		{"--assume-pwm-map-identity", nil, true, false, 64},
 	}
 	for _, tt := range tests {
@@ -226,7 +228,7 @@ func TestRunInitializationIfNeeded_ReadbackFormulaOverriddenByConfig_NoNewAnalys
 	// GIVEN: data from before the entry existed, but the config sets setPwmToGetPwmMap, so the formula isn't used
 	log := &writeLog{}
 	fan := newQuirkInitTestFan(log, testQuirk)
-	fan.SetPwmToGetPwmMap = &configuration.SetPwmToGetPwmMapConfig{Autodetect: &configuration.SetPwmToGetPwmMapAutodetectConfig{}}
+	fan.SetPwmToGetPwmMap = &configuration.SetPwmToGetPwmMapConfig{Identity: &configuration.SetPwmToGetPwmMapIdentityConfig{}}
 	p := newFakePersistence()
 	savedCurve := map[int]float64{0: 0, 255: 1000}
 	p.rpmData["fan"] = savedCurve
@@ -239,4 +241,22 @@ func TestRunInitializationIfNeeded_ReadbackFormulaOverriddenByConfig_NoNewAnalys
 	require.NoError(t, err)
 	assert.Equal(t, savedCurve, p.rpmData["fan"])
 	assert.Empty(t, log.get())
+}
+
+func TestComputeSetPwmToGetPwmMap_QuirksDisabled_ExplicitAutodetectSweeps(t *testing.T) {
+	defer setUpInitTestConfig(true)()
+
+	// GIVEN: no entry applies (e.g. quirks.enabled: false), setPwmToGetPwmMap: autodetect
+	log := &writeLog{}
+	fan := newQuirkInitTestFan(log, nil)
+	fan.SetPwmToGetPwmMap = &configuration.SetPwmToGetPwmMapConfig{Autodetect: &configuration.SetPwmToGetPwmMapAutodetectConfig{}}
+	controller := newInitTestController(newFakePersistence(), fan)
+
+	// WHEN
+	err := controller.computeSetPwmToGetPwmMap(context.Background())
+
+	// THEN: the fan is swept
+	require.NoError(t, err)
+	assert.NotEmpty(t, log.get())
+	assert.Equal(t, 64, controller.setPwmToGetPwmMap[64])
 }

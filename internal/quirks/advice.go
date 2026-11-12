@@ -58,14 +58,15 @@ func (e *Entry) Check(ctx AdviceContext) []Advice {
 	return result
 }
 
-// adviseReadbackFormula: an explicit setPwmToGetPwmMap replaces the driver formula of the entry.
+// adviseReadbackFormula: a configured setPwmToGetPwmMap (identity, linear or values) replaces the driver formula of
+// the entry.
 func adviseReadbackFormula(e *Entry, ctx AdviceContext) []Advice {
-	if e.Readback == nil || ctx.Fan.SetPwmToGetPwmMap == nil {
+	if e.Readback == nil || !hasSetPwmToGetPwmMap(ctx.Fan) {
 		return nil
 	}
 	return []Advice{{AdviceTip, fmt.Sprintf(
 		"fan %s: setPwmToGetPwmMap is set, but fan2go knows the readback formula of the %s driver "+
-			"(known hardware quirk '%s'). Remove setPwmToGetPwmMap to use it, so fan2go doesn't have to measure it.",
+			"(known hardware quirk '%s'). Remove setPwmToGetPwmMap (or set it to autodetect) to use the exact formula instead.",
 		ctx.Fan.ID, e.Description, e.ID)}}
 }
 

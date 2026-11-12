@@ -48,10 +48,11 @@ An entry (`quirks.Entry`) only has the fields that its devices need:
 
 From highest to lowest:
 
-1. Explicit per-fan config: `setPwmToGetPwmMap` in any mode, including an explicit `autodetect`. Also the
+1. Explicit per-fan config: `setPwmToGetPwmMap` with `identity`, `linear` or `values`. Also the
    `fan init --assume-pwm-map-identity` flag, but only for that run of `fan init`: the daemon uses the formula
-   again. Set `setPwmToGetPwmMap: identity` to keep the identity.
-2. `quirks.enabled: false` on the fan: no entry is applied to it.
+   again. Set `setPwmToGetPwmMap: identity` to keep the identity. `setPwmToGetPwmMap: autodetect` is the same as
+   no `setPwmToGetPwmMap`: the formula is used.
+2. `quirks.enabled: false` on the fan: no entry is applied to it, so `autodetect` measures the map with the sweep.
 3. The built-in entry.
 4. Generic behaviour.
 
@@ -80,7 +81,7 @@ Each entry owns its advice (`Entry.Advice`, a list of `quirks.AdviceFunc`). The 
 
 | Function | Entries | Level | Condition |
 |---|---|---|---|
-| `adviseReadbackFormula` | `corsaircpro`, `aquacomputer`, `nzxtsmart2` | tip | `setPwmToGetPwmMap` is configured although the formula is known |
+| `adviseReadbackFormula` | `corsaircpro`, `aquacomputer`, `nzxtsmart2` | tip | `setPwmToGetPwmMap` is set to `identity`, `linear` or `values` although the formula is known |
 | `adviseSmoothingResolution` | `corsaircpro`, `thinkpad`, `nzxtsmart2` | tip | A configured `controlAlgorithm.direct.deadband` is below one output step, or `rampUp`/`rampDown` moves less than one step per `adjustmentTickRate` cycle. One step is `WriteStep()` in written PWM units (ThinkPad 32, Corsair 2). One step in curve units is at least as large, so the tip only fires when the setting is certainly finer than one step. The default deadband of a fan without `controlAlgorithm` is not checked. |
 | `adviseOnlyPwmControlMode` | `nzxtsmart2` | warning | `controlMode.active` or `controlMode.onExit.mode` is something other than `pwm`/`1` |
 | `adviseThinkpadFanControl` | `thinkpad` | warning / tip | `/sys/module/thinkpad_acpi/parameters/fan_control` is `N` (warning). If it can't be read, a tip names the parameter. |
@@ -93,7 +94,8 @@ runtime. fan2go doesn't change the settings itself: smoothing defaults are not s
 The analysis data of a hwmon fan (RPM curve, `setPwmToGetPwmMap`, `pwmMap`) is stored with the id and version of
 the entry whose readback formula it was measured with. They are kept in the bucket `fanAnalysisInfo`, as
 `{"quirk": "corsaircpro", "quirkVersion": 1}`, written after a successful analysis. If the formula isn't used (no
-`Readback`, a configured `setPwmToGetPwmMap`, or `fan init --assume-pwm-map-identity`), the record is `("", 0)`:
+`Readback`, a `setPwmToGetPwmMap` with `identity`/`linear`/`values`, or `fan init --assume-pwm-map-identity`), the
+record is `("", 0)`:
 hints, levels and advice don't affect the analysis.
 
 Before it loads the saved data, `runInitializationIfNeeded` compares the stored values with the current entry. Data

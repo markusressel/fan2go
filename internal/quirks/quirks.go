@@ -151,9 +151,16 @@ func (e *Entry) WriteStep() float64 {
 }
 
 // UsesReadback returns whether fan2go uses the Readback formula of the entry for the given fan config
-// (it has one, and neither setPwmToGetPwmMap nor assumePwmMapIdentity overrides it).
+// (it has one, and neither a configured setPwmToGetPwmMap nor assumePwmMapIdentity overrides it).
+// setPwmToGetPwmMap: autodetect counts as not configured.
 func (e *Entry) UsesReadback(config configuration.FanConfig, assumePwmMapIdentity bool) bool {
-	return e != nil && e.Readback != nil && config.SetPwmToGetPwmMap == nil && !assumePwmMapIdentity
+	return e != nil && e.Readback != nil && !hasSetPwmToGetPwmMap(config) && !assumePwmMapIdentity
+}
+
+// hasSetPwmToGetPwmMap returns whether the fan config sets a setPwmToGetPwmMap (identity, linear or values).
+// autodetect is the same as no setPwmToGetPwmMap.
+func hasSetPwmToGetPwmMap(config configuration.FanConfig) bool {
+	return config.SetPwmToGetPwmMap != nil && config.SetPwmToGetPwmMap.Autodetect == nil
 }
 
 // IssueLink returns the first fan2go issue in Sources, or the first source if there is none.
@@ -175,7 +182,7 @@ func (e *Entry) AppliedMessage(config configuration.FanConfig) string {
 	var effects []string
 	if e.Readback != nil {
 		effect := "set->get PWM map from the driver formula, no set/get sweep"
-		if config.SetPwmToGetPwmMap != nil {
+		if hasSetPwmToGetPwmMap(config) {
 			effect += " (overridden by config: setPwmToGetPwmMap)"
 		}
 		effects = append(effects, effect)

@@ -156,6 +156,9 @@ func TestAppliedMessage(t *testing.T) {
 	assert.Contains(t, msg, "quirks.enabled: false")
 	assert.NotContains(t, msg, "overridden")
 
+	config.SetPwmToGetPwmMap = &configuration.SetPwmToGetPwmMapConfig{Autodetect: &configuration.SetPwmToGetPwmMapAutodetectConfig{}}
+	assert.NotContains(t, e.AppliedMessage(config), "overridden")
+
 	config.SetPwmToGetPwmMap = &configuration.SetPwmToGetPwmMapConfig{Identity: &configuration.SetPwmToGetPwmMapIdentityConfig{}}
 	assert.Contains(t, e.AppliedMessage(config), "overridden by config: setPwmToGetPwmMap")
 
@@ -173,6 +176,9 @@ func TestUsesReadback(t *testing.T) {
 	assert.False(t, none.UsesReadback(config, false))
 
 	config.SetPwmToGetPwmMap = &configuration.SetPwmToGetPwmMapConfig{Autodetect: &configuration.SetPwmToGetPwmMapAutodetectConfig{}}
+	assert.True(t, corsair.UsesReadback(config, false), "autodetect is the same as no setPwmToGetPwmMap")
+
+	config.SetPwmToGetPwmMap = &configuration.SetPwmToGetPwmMapConfig{Linear: &configuration.SetPwmToGetPwmMapLinearConfig{0: 0, 255: 255}}
 	assert.False(t, corsair.UsesReadback(config, false))
 }
 
@@ -191,7 +197,11 @@ func TestAdvice_ReadbackFormula(t *testing.T) {
 	config := hwmonFanConfig("d5next")
 	assert.Empty(t, e.Check(AdviceContext{Fan: config}))
 
+	// autodetect is the same as no setPwmToGetPwmMap: the formula is used
 	config.SetPwmToGetPwmMap = &configuration.SetPwmToGetPwmMapConfig{Autodetect: &configuration.SetPwmToGetPwmMapAutodetectConfig{}}
+	assert.Empty(t, e.Check(AdviceContext{Fan: config}))
+
+	config.SetPwmToGetPwmMap = &configuration.SetPwmToGetPwmMapConfig{Values: &configuration.SetPwmToGetPwmMapValuesConfig{0: 0, 255: 255}}
 	advice := e.Check(AdviceContext{Fan: config})
 	require.Len(t, advice, 1)
 	assert.Equal(t, AdviceTip, advice[0].Level)

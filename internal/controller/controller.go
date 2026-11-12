@@ -1739,8 +1739,8 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMap(ctx context.Context) (er
 		// cfg.Autodetect != nil → fall through to persistence / auto-detect
 	}
 
-	// the readback formula of a known driver, unless setPwmToGetPwmMap (also autodetect) is configured
-	// or the identity is requested explicitly
+	// the readback formula of a known driver, unless the identity is requested explicitly
+	// (identity, linear and values were handled above; autodetect counts as not configured)
 	if entry := fans.KnownQuirksOf(f.fan); entry.UsesReadback(f.fan.GetConfig(), f.assumePwmMapIdentity) {
 		ui.Info("Fan %s: Using the set→get PWM map of the driver formula (known hardware quirk '%s')", f.fan.GetId(), entry.ID)
 		f.setPwmToGetPwmMap = entry.SetPwmToGetPwmMap()

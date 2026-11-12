@@ -30,6 +30,7 @@ func TestKnownQuirksAdvice(t *testing.T) {
 		fakeController("nct6798-isa-0290", "nct6798"),
 	}
 	identity := &configuration.SetPwmToGetPwmMapConfig{Identity: &configuration.SetPwmToGetPwmMapIdentityConfig{}}
+	autodetect := &configuration.SetPwmToGetPwmMapConfig{Autodetect: &configuration.SetPwmToGetPwmMapAutodetectConfig{}}
 	disabledQuirks := &configuration.QuirksConfig{}
 	disabledQuirks.Enabled.SetOverride(false)
 	config := configuration.Configuration{
@@ -38,6 +39,8 @@ func TestKnownQuirksAdvice(t *testing.T) {
 			{ID: "cpu", HwMon: &configuration.HwMonFanConfig{Platform: "thinkpad"},
 				ControlAlgorithm: &configuration.ControlAlgorithmConfig{Direct: &configuration.DirectControlAlgorithmConfig{Deadband: 2.55}}},
 			{ID: "front", HwMon: &configuration.HwMonFanConfig{Platform: "corsaircpro"}, SetPwmToGetPwmMap: identity},
+			// autodetect is the same as no setPwmToGetPwmMap: no advice
+			{ID: "top", HwMon: &configuration.HwMonFanConfig{Platform: "corsaircpro"}, SetPwmToGetPwmMap: autodetect},
 			// no entry, not found, quirks disabled, not hwmon: no advice
 			{ID: "case", HwMon: &configuration.HwMonFanConfig{Platform: "nct6798"}, SetPwmToGetPwmMap: identity},
 			{ID: "missing", HwMon: &configuration.HwMonFanConfig{Platform: "d5next"}, SetPwmToGetPwmMap: identity},

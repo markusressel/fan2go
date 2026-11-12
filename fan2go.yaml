@@ -116,11 +116,11 @@ fans:
         192: 255
     # (Optional) Configure how fan2go determines the mapping from a PWM value it
     # sets to the value the fan hardware reports back. If omitted, fan2go
-    # auto-detects this during fan initialization, or uses the readback formula of the
-    # driver for devices with known hardware quirks (see README, "Known hardware quirks").
-    # An explicit value (also autodetect) takes precedence over the known formula.
+    # auto-detects this during fan initialization. For devices with known hardware quirks
+    # (see README, "Known hardware quirks"), autodetect uses the readback formula of the
+    # driver instead; identity, linear and values take precedence over it.
     # Modes: autodetect | identity | linear | values
-    # setPwmToGetPwmMap: autodetect
+    setPwmToGetPwmMap: autodetect
     # (Optional) Set enabled: false to not apply the known hardware quirks of the device
     # to this fan (hwmon fans only).
     # quirks:
