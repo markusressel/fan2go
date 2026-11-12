@@ -1082,7 +1082,8 @@ func parseControlModeValue(value configuration.ControlModeValue) (fans.ControlMo
 }
 
 // takeManualControl switches the fan to manual control (see trySetManualPwm).
-// An error of trySetManualPwm is ignored if the fan is in PWM mode anyway.
+// An error of trySetManualPwm is ignored if the fan is in PWM mode anyway (e.g. a read-only pwm_enable
+// that is 1 already). Otherwise the returned error means that fan2go can't control the fan.
 func takeManualControl(fan fans.Fan) error {
 	// TODO: check if fan.Supports(fans.FeatureControlModeWrite) - or is it ok if it doesn't and our
 	//       default assumption is that it will always be in manual mode then?
@@ -1095,12 +1096,16 @@ func takeManualControl(fan fans.Fan) error {
 		cm, e := fan.GetControlMode()
 		// if the control mode is PWM even though trySetManualPwm() failed, ignore that error
 		if e != nil || cm != fans.ControlModePWM {
-			return err
+			return fmt.Errorf("fan2go can't control the fan: %w", err)
 		}
+		ui.Debug("Fan %s: is in manual PWM mode already, ignoring: %v", fan.GetId(), err)
 	}
 	return nil
 }
 
+// trySetManualPwm writes the control mode fan2go uses while it controls the fan: controlMode.active,
+// default pwm (hwmon: pwm_enable=1). It doesn't fall back to another mode if that fails: disabled
+// (pwm_enable=0) is rejected by some drivers, and means full speed without PWM control on most others.
 func trySetManualPwm(fan fans.Fan) error {
 	if !fan.Supports(fans.FeatureControlModeWrite) {
 		return nil
@@ -1119,16 +1124,23 @@ func trySetManualPwm(fan fans.Fan) error {
 
 	err := fan.SetControlMode(targetMode)
 	if err != nil {
-		ui.Error("Unable to set Fan Mode of '%s' to \"%d\": %v", fan.GetId(), targetMode, err)
-		// Fall back to disabled only when using default pwm mode (preserve explicit config)
-		if targetMode == fans.ControlModePWM {
-			err = fan.SetControlMode(fans.ControlModeDisabled)
-			if err != nil {
-				ui.Error("Unable to set Fan Mode of '%s' to \"%d\": %v", fan.GetId(), fans.ControlModeDisabled, err)
-			}
-		}
+		return fmt.Errorf("can't switch fan %s to control mode %s: %w", fan.GetId(), controlModeName(targetMode), err)
 	}
-	return err
+	return nil
+}
+
+// controlModeName returns the name of mode for log and error messages, e.g. "pwm (1)".
+func controlModeName(mode fans.ControlMode) string {
+	switch mode {
+	case fans.ControlModeDisabled:
+		return "disabled (0)"
+	case fans.ControlModePWM:
+		return "pwm (1)"
+	case fans.ControlModeAutomatic:
+		return "auto"
+	default:
+		return strconv.Itoa(int(mode))
+	}
 }
 
 // stopAfterUpdateError handles an error of UpdateFanSpeed, which stops the update loop:
@@ -1849,7 +1861,11 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically(ctx context
 	defer unlock()
 
 	f.markMayWriteToFan()
-	_ = trySetManualPwm(f.fan)
+	// the sweep is meaningless if fan2go can't control the fan
+	err = takeManualControl(f.fan)
+	if err != nil {
+		return err
+	}
 
 	setPwmToGetPwmMap := map[int]int{}
 	for i := fans.MinPwmValue; i <= fans.MaxPwmValue; i++ {

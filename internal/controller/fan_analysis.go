@@ -64,9 +64,10 @@ func (f *FanCurveAnalyzer) RunInitializationSequence(ctx context.Context) (rpmCu
 	}
 	ui.Info("Fan %s: Measuring RPM curve (two-phase adaptive sweep)...", fan.GetId())
 
-	err = trySetManualPwm(fan)
+	// the measurement is meaningless (and would be persisted) if fan2go can't control the fan
+	err = takeManualControl(fan)
 	if err != nil {
-		ui.Warning("Could not enable manual fan mode on %s, trying to continue anyway...", fan.GetId())
+		return nil, err
 	}
 
 	distinct := f.fanController.targetValuesWithDistinctPWMValue

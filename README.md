@@ -431,7 +431,8 @@ fans:
     # Both fields are optional; omitting controlMode entirely preserves existing behavior.
     #
     # active: the control mode to set when fan2go takes control of this fan.
-    #   Accepts: "pwm" (default, with "disabled" fallback), "disabled", "auto", or an integer.
+    #   Accepts: "pwm" (default), "disabled", "auto", or an integer. If the mode can't be set,
+    #   fan2go doesn't control the fan (there is no fallback to another mode).
     #   On hwmon fans, integers >= 3 are written to pwmX_enable as is (e.g. a driver specific mode like 5);
     #   0, 1 and 2 mean disabled, pwm and auto. Nvidia fans don't support integers >= 3.
     # onExit: what to do when fan2go exits.

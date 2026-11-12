@@ -164,28 +164,42 @@ config while the RPM monitor read it (#544).
 reload. The check always expects manual PWM mode. With `controlMode.active` set to anything other than `pwm`, it
 re-applies the configured mode on every check (harmless, but needless writes; noted in #543).
 
-### Control modes: take manual control, fall back to `disabled`
+### Control modes: take manual control, no fallback
 
-**Decision**: `takeManualControl` writes `controlMode.active` (default `pwm`) through `fan.SetControlMode`. If
-writing `pwm` fails, `trySetManualPwm` tries `disabled` (`pwm_enable=0`, full speed on hwmon) instead. Any other
-`active` mode has no fallback. If the write fails but the fan reads back as manual PWM anyway, the error is ignored.
-If none of this works, `Run` returns the error and does not control the fan. Fans that cannot write a control mode
-(file, cmd, hwmon without `pwm_enable`) skip this step.
+**Decision**: `takeManualControl` writes `controlMode.active` (default `pwm`) through `fan.SetControlMode`. There
+is no fallback to another mode: if the write fails and the fan doesn't read back as manual PWM anyway, the error
+(`fan2go can't control the fan: can't switch fan X to control mode pwm (1): <cause>`) is returned. `Run` then stops
+with state `stopped_error` and that error (status, `fan2go_controller_state`, `/controller`), hands the fan back
+(see below), and the daemon warns and notifies; other fans keep running. If the write fails but the fan reads back
+as manual PWM (e.g. a read-only `pwm_enable` that is 1 already), the error is ignored. When the recovery after
+`onSensorFailure: restore` can't take manual control again, the fan stays handed back (see "Controller state"). The fan analysis and the
+set→get PWM sweep take manual control the same way and fail with that error instead of measuring a fan that fan2go
+doesn't control. Fans that cannot write a control mode (file, cmd, hwmon without `pwm_enable`) skip this step.
 
 On hwmon, `SetControlMode` reads `pwm_enable` back to verify it. Any value `>= 2` counts as automatic; the last
 automatic value seen (e.g. 5 on nct6775) is remembered and written when fan2go hands the fan back to automatic.
 Integer `active` values `>= 3` are written as is. A write-only `pwm_enable` (e.g. `dell_smm_hwmon`, #229) is
 accepted without verification.
 
-**Why**: fan2go cannot set the speed unless the driver is in manual mode. The `disabled` fallback dates back to
-2022; the reason is not documented. It likely aims at drivers that accept `pwm_enable=0` but not 1, so that the fan
-at least runs at full speed instead of being left in an unknown state.
+**Why**: fan2go cannot set the speed unless the driver is in manual mode. Up to 0.16.0, a failed write of `pwm`
+fell back to `disabled` (`pwm_enable=0`). That fallback came with the first working version (2021, 052cb34) without a
+documented reason, and no issue names a device that needs it. Per the kernel hwmon docs and driver sources, `0` is
+not supported by `dell_smm_hwmon`, `f71882fg` (`EINVAL`) and `it87` on IT8603E/IT8623E, so the fallback only
+replaced the real error with a second one. On most other drivers (e.g. `nct6775`, other `it87` chips) `0` means full
+speed, and PWM writes have no effect: the controller kept running and reported the fan as controlled while it ran at full speed. A
+controller that can't control its fan must say so.
 
-**Who benefits**: nct6775-style drivers with several automatic modes; write-only (#229) or missing (#116) `pwm_enable`.
+**Who benefits**: Users whose fan can't be switched to manual mode (missing permissions, `thinkpad_acpi` without
+`fan_control=1`): they see the real error, the status shows that fan2go doesn't control the fan, and the fan
+stays in its original mode instead of running at full speed. Drivers that reject `0` (`dell_smm_hwmon`, `f71882fg`)
+log only the real error.
 
-**Trade-offs**: If the fallback to `disabled` succeeds, `takeManualControl` returns no error and the controller
-keeps running, although on most drivers PWM writes have no effect in that mode. The fan then runs at full speed
-while fan2go believes it controls it.
+**Alternatives considered**: Keeping the fallback for drivers where `0` is known to work: on all of them `0` is
+full speed without PWM control, which is not "controlled" either. Users who want that can set
+`controlMode.active: disabled` explicitly.
+
+**Trade-offs**: On a driver that rejects `1` but accepts `0`, the fan used to run at full speed; now it is handed
+back to its original (usually automatic) mode and fan2go doesn't control it. This is a breaking change.
 
 ### Snapshot the original state, restore it exactly once
 
@@ -509,8 +523,7 @@ threshold 50 RPM, stall reaction 3 RPM polling periods, PWM write failure timeou
 
 - `startPwm` is not used at runtime; without config values `minPwm` equals the measured `startPwm`, and there is no
   jump-start from standstill (#30).
-- A successful fallback to `disabled` hides a failed switch to `pwm` mode; the `fanModeChangedByThirdParty` check
-  expects PWM mode even with another `controlMode.active`.
+- The `fanModeChangedByThirdParty` check expects PWM mode even with another `controlMode.active`.
 - A stopped controller (`ErrPwmWriteFailed`, `ErrFanStalledAtMaxPwm`, panic) is not restarted, and the daemon keeps
   running even if no fan is controlled anymore.
 - Also see the trade-offs above: `minPwmOffset` is not persisted, stall detection skips alternating targets and
