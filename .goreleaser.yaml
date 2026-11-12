@@ -1,0 +1,226 @@
+# GoReleaser configuration for fan2go releases (https://goreleaser.com).
+#
+# The Go workflow (.github/workflows/go.yml) runs this on an amd64 Ubuntu 24.04 runner; foreign architectures are
+# cross-compiled with cgo against the multiarch libsensors-dev packages (.github/scripts/install-cross-toolchains.sh).
+# Every binary is checked by .github/scripts/check-binary.sh (glibc floor, libsensors, NVML symbols, smoke test).
+#
+# Local snapshot build (needs the same toolchains, see the install script):
+#   goreleaser release --snapshot --clean
+version: 2
+
+project_name: fan2go
+
+before:
+  hooks:
+    # the source archive ships the vendored modules, so it builds offline (go build uses vendor/ automatically)
+    - go mod vendor
+
+builds:
+  - &build
+    id: fan2go
+    main: .
+    binary: fan2go
+    env:
+      - CGO_ENABLED=1
+      # go-nvml calls deprecated NVML functions, which floods the build log with warnings
+      - CGO_CFLAGS=-O2 -g -Wno-deprecated-declarations
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - ppc64le
+      - s390x
+      - riscv64
+    goamd64:
+      - v1
+    flags:
+      - -trimpath
+    tags:
+      - netgo
+    ldflags:
+      - -s -w
+      - -X github.com/markusressel/fan2go/cmd/global.Version={{ .Version }}
+      - -X github.com/markusressel/fan2go/cmd/global.Commit={{ .ShortCommit }}
+      - -X github.com/markusressel/fan2go/cmd/global.Date={{ .CommitDate }}
+      # go-nvml leaves the NVML symbols unresolved at link time and loads libnvidia-ml.so.1 with dlopen() at runtime.
+      # Lazy binding makes sure the binary still starts on machines without the NVIDIA driver.
+      - -extldflags=-Wl,-z,lazy
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    overrides: &cross-cc
+      - goos: linux
+        goarch: arm64
+        env:
+          - CC=aarch64-linux-gnu-gcc
+      - goos: linux
+        goarch: ppc64le
+        env:
+          - CC=powerpc64le-linux-gnu-gcc
+      - goos: linux
+        goarch: s390x
+        env:
+          - CC=s390x-linux-gnu-gcc
+      - goos: linux
+        goarch: riscv64
+        env:
+          - CC=riscv64-linux-gnu-gcc
+    hooks:
+      post:
+        - cmd: ./.github/scripts/check-binary.sh "{{ .Path }}" "{{ .Arch }}" nvml
+          output: true
+
+  - <<: *build
+    id: fan2go-no-nvml
+    tags:
+      - netgo
+      - disable_nvml
+    ldflags:
+      - -s -w
+      - -X github.com/markusressel/fan2go/cmd/global.Version={{ .Version }}
+      - -X github.com/markusressel/fan2go/cmd/global.Commit={{ .ShortCommit }}
+      - -X github.com/markusressel/fan2go/cmd/global.Date={{ .CommitDate }}
+    overrides: *cross-cc
+    hooks:
+      post:
+        - cmd: ./.github/scripts/check-binary.sh "{{ .Path }}" "{{ .Arch }}" no-nvml
+          output: true
+
+  # The NVML build again, for the .rpm packages: Fedora and openSUSE ship libsensors 3.6 with the soname
+  # libsensors.so.4 (Debian, Ubuntu and Arch Linux: libsensors.so.5). The headers and symbols are identical, only the
+  # soname differs, so the binary's dependency is renamed to libsensors.so.4.
+  - <<: *build
+    id: fan2go-rpm
+    overrides: *cross-cc
+    hooks:
+      post:
+        - cmd: go run ./.github/scripts/replace-needed.go "{{ .Path }}" libsensors.so.5 libsensors.so.4
+          # the tool runs on the build machine, not on the target
+          env:
+            - GOOS=
+            - GOARCH=
+            - CGO_ENABLED=0
+          output: true
+        - cmd: ./.github/scripts/check-binary.sh "{{ .Path }}" "{{ .Arch }}" nvml libsensors.so.4
+          output: true
+
+archives:
+  # raw binaries with the asset names of earlier releases: fan2go-linux-<arch>[-no-nvml]
+  - id: binary
+    ids:
+      - fan2go
+    formats:
+      - binary
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+  - id: binary-no-nvml
+    ids:
+      - fan2go-no-nvml
+    formats:
+      - binary
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}-no-nvml"
+
+nfpms:
+  # Both package formats ship the NVML build: it runs without the NVIDIA driver and supports NVIDIA GPUs where the
+  # driver is installed.
+  - &package
+    id: deb
+    ids:
+      - fan2go
+    formats:
+      - deb
+    package_name: fan2go
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Markus Ressel
+    homepage: https://github.com/markusressel/fan2go
+    maintainer: Markus Ressel <markus9100@gmail.com>
+    description: |-
+      Dynamic fan speed control daemon based on temperature sensors
+      fan2go controls hwmon, NVIDIA and command-based fans with configurable curves and control algorithms.
+    license: AGPL-3.0-only
+    section: utils
+    priority: optional
+    bindir: /usr/bin
+    mtime: "{{ .CommitDate }}"
+    contents:
+      - src: fan2go.service
+        dst: /usr/lib/systemd/system/fan2go.service
+        file_info:
+          mode: 0644
+      - src: fan2go.yaml
+        dst: /etc/fan2go/fan2go.yaml
+        type: config|noreplace
+        file_info:
+          mode: 0644
+      - src: README.md
+        dst: /usr/share/doc/fan2go/README.md
+        file_info:
+          mode: 0644
+      - src: LICENSE
+        dst: /usr/share/doc/fan2go/copyright
+        packager: deb
+        file_info:
+          mode: 0644
+      - src: LICENSE
+        dst: /usr/share/licenses/fan2go/LICENSE
+        type: license
+        packager: rpm
+        file_info:
+          mode: 0644
+    scripts:
+      postinstall: packaging/nfpm/postinstall.sh
+      preremove: packaging/nfpm/preremove.sh
+      postremove: packaging/nfpm/postremove.sh
+    dependencies:
+      - libc6 (>= 2.34)
+      - libsensors5
+    suggests:
+      - libnotify-bin
+
+  - <<: *package
+    id: rpm
+    ids:
+      - fan2go-rpm
+    formats:
+      - rpm
+    dependencies:
+      - glibc >= 2.34
+      # the library and its config file, which libsensors fails to initialize without. Fedora/RHEL: lm_sensors-libs
+      # and lm_sensors (the config isn't in -libs); openSUSE: libsensors4 (both).
+      - libsensors.so.4()(64bit)
+      - /etc/sensors3.conf
+    suggests:
+      - libnotify
+
+source:
+  enabled: true
+  name_template: "{{ .ProjectName }}-{{ .Version }}-source"
+  prefix_template: "{{ .ProjectName }}-{{ .Version }}/"
+  files:
+    - vendor/modules.txt
+    - vendor/**/*
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot+{{ .ShortCommit }}"
+
+git:
+  # sort 1.0.0-rc.1 before 1.0.0 when looking for the previous tag
+  prerelease_suffix: "-"
+
+changelog:
+  # the release notes come from Release Drafter
+  disable: true
+
+release:
+  github:
+    owner: markusressel
+    name: fan2go
+  # The release already exists when this runs: publishing the Release Drafter draft creates the tag (see RELEASING.md).
+  # Keep its notes and only attach the assets.
+  mode: keep-existing
+  name_template: "{{ .Tag }}"
+  prerelease: auto
+  # a failed release run can be re-run: assets it uploaded already are replaced
+  replace_existing_artifacts: true

@@ -8,6 +8,9 @@ on:
   pull_request:
     branches: [ master ]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Lint and Test
@@ -33,161 +36,130 @@ jobs:
       - name: Test
         run: make test
 
-  build:
-    name: Build linux/${{ matrix.goarch }}
-    runs-on: ${{ matrix.runner }}
+  # Builds everything a release ships (binaries, .deb/.rpm packages, source archive, checksums) without publishing it,
+  # so .goreleaser.yaml is exercised on every pull request and push. Every binary is checked by
+  # .github/scripts/check-binary.sh (glibc floor, libsensors, NVML symbols, qemu smoke test).
+  snapshot:
+    name: GoReleaser snapshot
+    runs-on: ubuntu-24.04
     needs: test
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - goarch: amd64
-            runner: ubuntu-latest
-            native: true
-            make_target: build
-
-          - goarch: arm64
-            runner: ubuntu-24.04-arm
-            native: true
-            make_target: build
-
-          - goarch: ppc64le
-            runner: ubuntu-24.04
-            native: false
-            make_target: build-cross
-            cc: powerpc64le-linux-gnu-gcc
-            dpkg_arch: ppc64el
-            cross_pkg: crossbuild-essential-ppc64el
-            libsensors_pkg: libsensors-dev:ppc64el
-            qemu_bin: qemu-ppc64le-static
-
-          - goarch: s390x
-            runner: ubuntu-24.04
-            native: false
-            make_target: build-cross
-            cc: s390x-linux-gnu-gcc
-            dpkg_arch: s390x
-            cross_pkg: crossbuild-essential-s390x
-            libsensors_pkg: libsensors-dev:s390x
-            qemu_bin: qemu-s390x-static
-
-          - goarch: riscv64
-            runner: ubuntu-24.04
-            native: false
-            make_target: build-cross
-            cc: riscv64-linux-gnu-gcc
-            dpkg_arch: riscv64
-            cross_pkg: crossbuild-essential-riscv64
-            libsensors_pkg: libsensors-dev:riscv64
-            qemu_bin: qemu-riscv64-static
+    if: github.ref_type != 'tag'
 
     steps:
-      - name: Install libsensors-dev (native)
-        if: matrix.native
-        run: sudo apt-get install -y libsensors-dev
-
-      - name: Set up multiarch and cross-compilation toolchain
-        if: ${{ !matrix.native }}
-        run: |
-          sudo dpkg --add-architecture ${{ matrix.dpkg_arch }}
-          # Replace the runner's ubuntu.sources with one pinned to amd64 only.
-          # The default file uses a mirrorlist URI that also serves ppc64el/s390x
-          # requests to security.ubuntu.com, which returns 404 for those arches.
-          sudo tee /etc/apt/sources.list.d/ubuntu.sources > /dev/null << 'EOF'
-          Types: deb
-          URIs: http://azure.archive.ubuntu.com/ubuntu
-          Suites: noble noble-updates noble-backports noble-security
-          Components: main restricted universe multiverse
-          Architectures: amd64
-          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-          EOF
-          # Add ports.ubuntu.com for the foreign arch
-          printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports\nSuites: noble noble-updates noble-security\nComponents: main restricted universe multiverse\nArchitectures: %s\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' "${{ matrix.dpkg_arch }}" | sudo tee /etc/apt/sources.list.d/ports-${{ matrix.dpkg_arch }}.sources
-          sudo apt-get update
-          sudo apt-get install -y ${{ matrix.cross_pkg }} ${{ matrix.libsensors_pkg }} qemu-user-static
-
       - name: Checkout the repository
-        uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version: '^1.23'
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Generate build files (${{ matrix.goarch }})
-        env:
-          CGO_ENABLED: "1"
-          CC: ${{ matrix.cc }}
-          GOOS: linux
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          OUTPUT_BIN="dist/fan2go-linux-${{ matrix.goarch }}"
-          # release builds take their version from the tag, so the Makefile default doesn't have to be bumped
-          VERSION_ARG=""
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            VERSION_ARG="VERSION=${GITHUB_REF_NAME}"
-          fi
-          make ${{ matrix.make_target }}          OUTPUT_BIN="${OUTPUT_BIN}" ${VERSION_ARG}
-          make ${{ matrix.make_target }}-no-nvml  OUTPUT_BIN="${OUTPUT_BIN}-no-nvml" ${VERSION_ARG}
-          file "${OUTPUT_BIN}"
-          file "${OUTPUT_BIN}-no-nvml"
+      - name: Install the cross-compilation toolchains
+        run: sudo .github/scripts/install-cross-toolchains.sh
 
-      - name: Smoke test (${{ matrix.goarch }})
-        env:
-          QEMU_BIN: ${{ matrix.qemu_bin }}
-        run: |
-          OUTPUT_BIN="dist/fan2go-linux-${{ matrix.goarch }}"
-          RUNNER="${QEMU_BIN}"
-          if [ "${{ matrix.native }}" = "true" ]; then
-            RUNNER=""
-          fi
-          ${RUNNER} "${OUTPUT_BIN}" version
-          ${RUNNER} "${OUTPUT_BIN}-no-nvml" version
-
-      - name: Nvml check (amd64 only)
-        if: matrix.goarch == 'amd64'
-        run: |
-          set -x
-          # make sure the no-nvml build *really* doesn't use nvml
-          # ("nvml" is printed by objdump at least once because of the filename,
-          #  but if nvml is linked, it has hundreds of occurrences)
-          test `objdump -T ./dist/fan2go-linux-amd64-no-nvml | grep -c nvml` -lt 3
-          # .. and that the regular build *does* have symbols with "nvml" in it
-          test `objdump -T ./dist/fan2go-linux-amd64 | grep -c nvml` -ge 3
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          name: fan2go-linux-${{ matrix.goarch }}
-          path: dist/fan2go-linux-${{ matrix.goarch }}*
+          go-version: stable
 
+      - name: Check the GoReleaser configuration
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: v2.20.2
+          args: check
+
+      - name: Build a snapshot
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: v2.20.2
+          args: release --snapshot --clean
+
+      - name: Upload the snapshot
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fan2go-snapshot
+          path: |
+            dist/SHA256SUMS
+            dist/*.deb
+            dist/*.rpm
+            dist/*-source.tar.gz
+            dist/fan2go_linux_*/fan2go
+            dist/fan2go-no-nvml_linux_*/fan2go
+          retention-days: 7
+
+  # Runs when a tag is pushed, i.e. when the maintainer publishes the Release Drafter draft (see RELEASING.md):
+  # builds the release, attaches the assets to the existing release (its notes are kept) and attests every asset.
   release:
     name: Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    needs: test
+    if: github.ref_type == 'tag'
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
     permissions:
-      contents: write
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+      contents: write # upload the release assets
+      id-token: write # sign the attestations (Sigstore, via GitHub OIDC)
+      attestations: write # store the attestations
 
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v8
+      - name: Checkout the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          path: dist/
-          merge-multiple: true
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Release
-        uses: softprops/action-gh-release@v3
+      - name: Install the cross-compilation toolchains
+        run: sudo .github/scripts/install-cross-toolchains.sh
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          files: |
-            dist/fan2go-linux-amd64
-            dist/fan2go-linux-amd64-no-nvml
-            dist/fan2go-linux-arm64
-            dist/fan2go-linux-arm64-no-nvml
-            dist/fan2go-linux-ppc64le
-            dist/fan2go-linux-ppc64le-no-nvml
-            dist/fan2go-linux-s390x
-            dist/fan2go-linux-s390x-no-nvml
-            dist/fan2go-linux-riscv64
-            dist/fan2go-linux-riscv64-no-nvml
+          go-version: stable
+          # no build cache for releases: the cache could be written by another workflow run
+          cache: false
+
+      # The assets belong to the release the maintainer published from the Release Drafter draft. A tag pushed
+      # without publishing would get a new release without notes, so stop here; publish the draft, then re-run.
+      - name: Check that the release is published
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          is_draft="$(gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
+            --json isDraft --jq .isDraft || true)"
+          if [ "${is_draft}" != "false" ]; then
+            echo "::error::No published release for tag ${GITHUB_REF_NAME}."
+            echo "Publish the Release Drafter draft for it, then re-run this job."
+            exit 1
+          fi
+
+      - name: Build and upload the release assets
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: v2.20.2
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # the tag of this run; with several tags on the commit (e.g. 1.0.0-rc.1 and 1.0.0), GoReleaser would pick one
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+
+      # SHA256SUMS lists every uploaded asset under its release asset name; add SHA256SUMS itself, so one attestation
+      # covers all assets.
+      - name: Collect the attestation subjects
+        run: |
+          cd dist
+          cp SHA256SUMS ../attestation-subjects.txt
+          sha256sum SHA256SUMS >> ../attestation-subjects.txt
+          cat ../attestation-subjects.txt
+
+      - name: Attest the release assets
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: attestation-subjects.txt
+
+      # for verification without the GitHub CLI, e.g. with cosign (see README)
+      - name: Upload the attestation bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          cp "${BUNDLE}" "fan2go-${GITHUB_REF_NAME}.sigstore.json"
+          gh release upload "${GITHUB_REF_NAME}" "fan2go-${GITHUB_REF_NAME}.sigstore.json" --clobber \
+            --repo "${GITHUB_REPOSITORY}"

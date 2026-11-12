@@ -62,10 +62,20 @@ For a breaking change:
    - check the proposed version against the rules above and correct it if needed (e.g. if a PR was labeled wrong),
    - set the tag to the version (e.g. `1.0.0`), targeting `master`, with the same release title, and publish.
 
-   Publishing creates the tag. Don't push the tag yourself: the Go workflow would then create a second release instead
-   of attaching the binaries to this one. The tag push triggers:
-   - the [Go workflow](.github/workflows/go.yml): builds the binaries (with the version from the tag) and attaches
-     them to the published release (a few minutes later), and
+   Publishing creates the tag. Don't push the tag yourself: the Go workflow then finds no published release for it and
+   fails. The tag push triggers:
+   - the [Go workflow](.github/workflows/go.yml): builds the release with [GoReleaser](.goreleaser.yaml) (with the
+     version from the tag) and attaches the assets to the published release (a few minutes later), keeping its title
+     and notes. The assets are the binaries (`fan2go-linux-<arch>[-no-nvml]`), the `.deb` and `.rpm` packages, a source
+     archive with vendored Go modules, `SHA256SUMS` and the attestation bundle `fan2go-<version>.sigstore.json`.
+     Every asset gets a signed build provenance attestation (see "Verify a download" in the [README](README.md)).
+     The workflow sets the release title to the tag and marks the release as a pre-release exactly if the tag has a
+     pre-release suffix (e.g. `1.0.0-rc.1`), so edit neither in the draft. If no published release exists for the
+     tag (e.g. the tag was pushed by hand), the workflow fails without uploading anything: publish the draft for the
+     tag, then re-run the failed job. If the workflow fails later, re-run it soon: assets that were already uploaded
+     are replaced with rebuilt ones (a much later re-run may build with a newer Go version and give different
+     checksums than files users already downloaded). Don't enable immutable releases for the repository: the assets
+     are attached after publishing, which an immutable release doesn't allow.
    - the [AUR Packages workflow](.github/workflows/aur-packages.yml): test-builds the `fan2go` (from the tag's source
      tarball) and `fan2go-git` packages from [`packaging/aur`](packaging/aur). It doesn't publish anything.
 

@@ -90,27 +90,109 @@ nix profile install nixpkgs#fan2go
 nix-env -f '<nixpkgs>' -iA fan2go
 ```
 
-### Debian / Ubuntu
+### Debian / Ubuntu (community package)
 
 See: https://github.com/johnwbyrd/fan2go-package/
 
 </details>
 
-### Manual
+### Debian / Ubuntu ![](https://img.shields.io/badge/.deb-A81D33?logo=debian&logoColor=white)
 
-Download the latest release from GitHub:
+Releases after `0.16.0` have `.deb` packages for `amd64`, `arm64`, `ppc64el`, `s390x` and `riscv64`. There is no
+package repository: download the package of the release and install it with apt, which also installs the dependencies
+(`libsensors5`). The packages need glibc 2.34 or newer (Debian 12, Ubuntu 22.04 or newer):
 
 ```shell
-# Install dependencies
-sudo pacman -S libnotify
+VERSION=1.0.0 # the release you want to install
+curl -LO "https://github.com/markusressel/fan2go/releases/download/${VERSION}/fan2go_${VERSION}_amd64.deb"
+sudo apt install "./fan2go_${VERSION}_amd64.deb"
+```
 
+For a pre-release, the package file names use `~` instead of `-` (e.g. `fan2go_1.0.0~rc.1_amd64.deb`).
+
+### Fedora / openSUSE ![](https://img.shields.io/badge/.rpm-51A2DA?logo=fedora&logoColor=white)
+
+Releases after `0.16.0` have `.rpm` packages for `x86_64`, `aarch64`, `ppc64le`, `s390x` and `riscv64`. They need
+glibc 2.34 or newer (Fedora 35, RHEL 9, openSUSE Leap 15.6 or newer) and install `lm_sensors-libs` and `lm_sensors`
+(Fedora/RHEL) or `libsensors4` (openSUSE):
+
+```shell
+VERSION=1.0.0 # the release you want to install
+curl -LO "https://github.com/markusressel/fan2go/releases/download/${VERSION}/fan2go-${VERSION}-1.x86_64.rpm"
+# Fedora
+sudo dnf install "./fan2go-${VERSION}-1.x86_64.rpm"
+# openSUSE (the packages are not GPG-signed, see "Verify a download" for how to check them instead)
+sudo zypper install --allow-unsigned-rpm "./fan2go-${VERSION}-1.x86_64.rpm"
+```
+
+The `.deb` and `.rpm` packages install:
+
+- the binary as `/usr/bin/fan2go` (with NVIDIA GPU support, see below),
+- the [systemd unit](#systemd) as `/usr/lib/systemd/system/fan2go.service`,
+- the [example configuration](/fan2go.yaml) as `/etc/fan2go/fan2go.yaml`. Your changes to this file are kept on
+  upgrades.
+
+The service is not enabled or started. Adapt `/etc/fan2go/fan2go.yaml` to your hardware first (see
+[Configuration](#configuration)), then enable it with `sudo systemctl enable --now fan2go`. Upgrades don't restart a
+running service; restart it yourself to run the new version. Removing the package stops and disables the service.
+Desktop notifications need `notify-send` (`libnotify-bin` on Debian/Ubuntu, `libnotify` on Fedora/openSUSE).
+
+### Binary
+
+Every release also has the plain binaries:
+
+- `fan2go-linux-<arch>`: with NVIDIA GPU support (NVML). It loads the NVIDIA driver's `libnvidia-ml.so.1` at
+  runtime if it is installed and runs without it.
+- `fan2go-linux-<arch>-no-nvml`: without NVIDIA GPU support.
+
+`<arch>` is one of `amd64`, `arm64`, `ppc64le`, `s390x` and `riscv64`. The binaries need glibc 2.34 or newer (e.g.
+Debian 12, Ubuntu 22.04, Fedora 35, RHEL 9 or newer) and `libsensors.so.5` (`libsensors5` on Debian/Ubuntu,
+`lm_sensors` on Arch Linux). Fedora, RHEL and openSUSE ship the same library as `libsensors.so.4`, so the plain
+binaries don't start there; use the `.rpm` package, which is built for it. `notify-send` (libnotify) is optional, for
+desktop notifications.
+
+```shell
 curl -L -o fan2go https://github.com/markusressel/fan2go/releases/latest/download/fan2go-linux-amd64
 chmod +x fan2go
 sudo cp ./fan2go /usr/bin/fan2go
 fan2go -h
 ```
 
-Or compile yourself:
+### Verify a download
+
+From the first release after `0.16.0` on, every release asset (binaries, packages, source archive and `SHA256SUMS`)
+has a signed [build provenance attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations):
+it proves that the file was built from this repository by its release workflow. Verify a file with the
+[GitHub CLI](https://cli.github.com/):
+
+```shell
+gh attestation verify fan2go-linux-amd64 --repo markusressel/fan2go
+# optionally, also require the release workflow as the signer
+gh attestation verify fan2go-linux-amd64 --repo markusressel/fan2go \
+  --signer-workflow markusressel/fan2go/.github/workflows/go.yml
+```
+
+Without the GitHub CLI, use [cosign](https://docs.sigstore.dev/cosign/) (2.4 or newer) and the attestation bundle
+`fan2go-<version>.sigstore.json` of the release:
+
+```shell
+VERSION=1.0.0
+curl -LO "https://github.com/markusressel/fan2go/releases/download/${VERSION}/fan2go-${VERSION}.sigstore.json"
+cosign verify-blob-attestation \
+  --bundle "fan2go-${VERSION}.sigstore.json" \
+  --new-bundle-format \
+  --type slsaprovenance1 \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "https://github.com/markusressel/fan2go/.github/workflows/go.yml@refs/tags/${VERSION}" \
+  fan2go-linux-amd64
+```
+
+`SHA256SUMS` lists the checksums of all other assets of a release: `sha256sum --ignore-missing -c SHA256SUMS`.
+
+### Compile yourself
+
+fan2go needs Go, a C compiler and the libsensors headers (`libsensors-dev` on Debian/Ubuntu, `lm_sensors-devel` on
+Fedora, `libsensors4-devel` on openSUSE, `lm_sensors` on Arch Linux):
 
 ```shell
 git clone https://github.com/markusressel/fan2go.git
@@ -119,6 +201,10 @@ make build
 sudo cp ./bin/fan2go /usr/bin/fan2go
 sudo chmod ug+x /usr/bin/fan2go
 ```
+
+Use `make build-no-nvml` for a build without NVIDIA GPU support. Releases after `0.16.0` also have a source archive
+with all Go modules vendored (`fan2go-<version>-source.tar.gz`): with Go 1.26 or newer, it builds without network
+access.
 
 ## Configuration
 
