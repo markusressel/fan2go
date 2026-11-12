@@ -410,6 +410,8 @@ fans:
     #   On hwmon fans, integers >= 3 are written to pwmX_enable as is (e.g. a driver specific mode like 5);
     #   0, 1 and 2 mean disabled, pwm and auto. Nvidia fans don't support integers >= 3.
     # onExit: what to do when fan2go exits.
+    #   This also applies when a fan controller stops because of an error. Further SIGINT/SIGTERM/SIGHUP
+    #   signals during shutdown are ignored until all fans are handled; use SIGKILL to force an exit.
     #   String shorthand:
     #     onExit: restore   # restore original control mode and PWM value (default).
     #                       # Values fan2go could not read when it started (e.g. a cmd fan without
@@ -718,8 +720,12 @@ Running external commands repeatedly through fan2go can have unintended side eff
 graphics, running `nvidia-settings` can cause the dedicated GPU to wake up, resulting in substantial increase in power
 consumption while on battery. Also, fan2go expects to be able to update sensor values with a minimal delay, so using a
 long running script or some network call with a long timeout could also cause problems. Each command is killed and
-treated as failed after its `timeout` (default: 2s). With great power comes great responsibility, always remember
-that :)
+treated as failed after its `timeout` (default: 2s). Each command runs in its own process group: on timeout, the whole
+process group is killed, including processes the command started in the background. A command that starts a
+long-running background process (e.g. a daemon) and exits in time is not killed. If the background process keeps the
+command's output open, fan2go uses the output shortly after the command itself has exited and closes its end of it, so
+the background process should redirect its output (e.g. to `/dev/null`). With great power comes great responsibility, always
+remember that :)
 
 ## Run
 
