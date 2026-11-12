@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/util"
@@ -16,21 +17,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// switchableCurve is a curve whose value and error can be changed while a controller evaluates it.
+// switchableCurve is a curve whose result (value and error) can be changed while a controller reads it.
 type switchableCurve struct {
-	mu          sync.Mutex
-	value       float64
-	err         error
+	mu    sync.Mutex
+	value float64
+	err   error
+	// number of reads of the result (see CurrentResult)
 	evaluations int
 }
 
 func (c *switchableCurve) GetId() string { return "curve" }
 
+// Evaluate panics: only the curve evaluator evaluates curves, a fan controller only reads their result.
 func (c *switchableCurve) Evaluate() (float64, error) {
+	panic("fan controllers must not evaluate curves")
+}
+
+// CurrentResult counts the reads of the result: the controller reads it once per update.
+func (c *switchableCurve) CurrentResult() curves.CurveResult {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.evaluations++
-	return c.value, c.err
+	return curves.CurveResult{Value: c.value, Err: c.err, EvaluatedAt: time.Unix(1, 0)}
 }
 
 func (c *switchableCurve) getEvaluations() int {

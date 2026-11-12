@@ -1,9 +1,11 @@
 package curves
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/ui"
@@ -14,6 +16,11 @@ type FunctionSpeedCurve struct {
 	Config   configuration.CurveConfig `json:"config"`
 	Value    float64                   `json:"value"`
 	registry RegistryReader
+	// clock is the time source for the time of the evaluation (nil means util.RealClock)
+	clock util.Clock
+
+	// last is the error and time of the last evaluation (guarded by mu, like Value)
+	last evaluation
 
 	mu sync.RWMutex
 }
@@ -22,40 +29,56 @@ func (c *FunctionSpeedCurve) BindRegistry(registry RegistryReader) {
 	c.registry = registry
 }
 
+// SetClock replaces the time source for the time of the evaluation. Intended for tests.
+func (c *FunctionSpeedCurve) SetClock(clock util.Clock) {
+	c.clock = clock
+}
+
 func (c *FunctionSpeedCurve) GetId() string {
 	return c.Config.ID
 }
 
+// dependencies returns the ids of the sub-curves, which must be evaluated before this curve.
+func (c *FunctionSpeedCurve) dependencies() []string {
+	return c.Config.Function.Curves
+}
+
+// Evaluate combines the results of the sub-curves (see CurrentResult). It doesn't evaluate them itself:
+// the CurveEvaluator evaluates them before this curve in the same cycle, so a sub-curve that is used by
+// more than one curve or fan is only evaluated once per cycle.
+// If a sub-curve result has an error (or a sub-curve hasn't been evaluated yet), the evaluation fails
+// with that error.
 func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
+	now := getClock(c.clock).Now()
+	value, err = c.evaluate()
+	return c.storeResult(value, err, now)
+}
+
+func (c *FunctionSpeedCurve) evaluate() (value float64, err error) {
 	if c.registry == nil {
-		return c.CurrentValue(), fmt.Errorf("no registry bound to speed curve '%s'", c.Config.ID)
+		return 0, fmt.Errorf("no registry bound to speed curve '%s'", c.Config.ID)
 	}
 	var curves []SpeedCurve
 	for _, curveId := range c.Config.Function.Curves {
 		curve, exists := c.registry.GetCurve(curveId)
 		if !exists || curve == nil {
-			return c.CurrentValue(), fmt.Errorf("sub-curve not found with id '%s'", curveId)
+			return 0, fmt.Errorf("sub-curve not found with id '%s'", curveId)
 		}
 		curves = append(curves, curve)
 	}
 
 	var values []float64
 	for _, curve := range curves {
-		// TODO: if the curve is also used in another fan controller, this will cause multiple calls to Evaluate
-		//  which messes up the algorithm since the controller expects that the curve is evaluated only
-		//  once per cycle,
-		//  The only way to fix this that comes to mind is to update the value of each curve in a separate
-		//  goroutine that runs independently and only retrieve its current value in the fan controller.
-		//  This might cause additional race-conditions though.
-		//  This would also allow external tools like fan2go-tui to show the current value of the curve
-		//  even if it is currently not used by any fan controller.
-		v, err := curve.Evaluate()
-		if err != nil {
+		result := curve.CurrentResult()
+		if result.Err != nil {
 			// an error of any sub-curve fails the whole curve (e.g. a maximum over two sensors
 			// must not ignore the one that can't be read)
-			return c.CurrentValue(), fmt.Errorf("curve %s: %w", c.Config.ID, err)
+			if errors.Is(result.Err, ErrCurveNotEvaluated) {
+				return 0, fmt.Errorf("curve %s: sub-curve %s: %w", c.Config.ID, curve.GetId(), result.Err)
+			}
+			return 0, fmt.Errorf("curve %s: %w", c.Config.ID, result.Err)
 		}
-		values = append(values, v)
+		values = append(values, result.Value)
 	}
 
 	switch c.Config.Function.Type {
@@ -95,12 +118,21 @@ func (c *FunctionSpeedCurve) Evaluate() (value float64, err error) {
 		value = avg
 	default:
 		// unreachable after config validation, but must not exit the process on the control path
-		return c.CurrentValue(), fmt.Errorf("unknown curve function %q in curve '%s'", c.Config.Function.Type, c.Config.ID)
+		return 0, fmt.Errorf("unknown curve function %q in curve '%s'", c.Config.Function.Type, c.Config.ID)
 	}
 
 	ui.Debug("Evaluating curve '%s'. Curve values: '%v' Desired speed: %.2f", c.Config.ID, values, value)
-	c.SetValue(value)
-	return value, err
+	return value, nil
+}
+
+func (c *FunctionSpeedCurve) storeResult(value float64, err error, now time.Time) (float64, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err == nil {
+		c.Value = value
+	}
+	c.last = evaluation{err: err, at: now}
+	return c.Value, err
 }
 
 func (c *FunctionSpeedCurve) SetValue(value float64) {
@@ -113,4 +145,10 @@ func (c *FunctionSpeedCurve) CurrentValue() float64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.Value
+}
+
+func (c *FunctionSpeedCurve) CurrentResult() CurveResult {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.last.result(c.Value)
 }

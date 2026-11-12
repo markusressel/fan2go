@@ -71,6 +71,10 @@ type FanController interface {
 	// UpdateCurve dynamically updates the curve reference
 	UpdateCurve(curve curves.SpeedCurve)
 
+	// SetCurveCycles sets the notifications of the curve evaluator (see curves.CurveEvaluator.Subscribe)
+	// that drive the update loop. Must be called before Run.
+	SetCurveCycles(cycles <-chan struct{})
+
 	// RunInitialization runs the fan initialization sequence.
 	RunInitialization(ctx context.Context) (map[int]float64, error)
 }
@@ -100,9 +104,14 @@ type DefaultFanController struct {
 	persistence persistence.Persistence
 	// the fan to control
 	fan fans.Fan
-	// the curve used to control the fan
+	// the curve used to control the fan. The controller only reads its result (see calculateTargetSpeed),
+	// the curve evaluator evaluates it.
 	curve curves.SpeedCurve
-	// rate to update the target fan speed
+	// curveCycles receives a notification after each cycle of the curve evaluator. The update loop updates
+	// the fan speed once per notification. If nil, the update loop uses its own ticker at updateRate instead
+	// (and something else has to evaluate the curve).
+	curveCycles <-chan struct{}
+	// rate to update the target fan speed, if there are no curveCycles
 	updateRate time.Duration
 	// the fan state as it was before the controller started (nil until captured)
 	originalFanState *FanStateSnapshot
@@ -272,6 +281,16 @@ func (f *DefaultFanController) UpdateCurve(curve curves.SpeedCurve) {
 	f.curveMutex.Lock()
 	defer f.curveMutex.Unlock()
 	f.curve = curve
+}
+
+func (f *DefaultFanController) getCurve() curves.SpeedCurve {
+	f.curveMutex.RLock()
+	defer f.curveMutex.RUnlock()
+	return f.curve
+}
+
+func (f *DefaultFanController) SetCurveCycles(cycles <-chan struct{}) {
+	f.curveCycles = cycles
 }
 
 func NewFanController(
@@ -539,8 +558,33 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 				f.restoreControlModeOnce()
 				return nil
 			}
-			tick := f.getClock().NewTicker(f.updateRate)
-			defer tick.Stop()
+			// the update loop acts once per cycle of the curve evaluator, right after it evaluated the curves
+			// (without an evaluator, on its own ticker)
+			// (exactly one of cycles and tickC is set, receiving from the nil one blocks forever)
+			cycles := f.curveCycles
+			var tickC <-chan time.Time
+			if cycles == nil {
+				tick := f.getClock().NewTicker(f.updateRate)
+				defer tick.Stop()
+				tickC = tick.C()
+			} else {
+				// the first update below uses the latest result anyway
+				select {
+				case <-cycles:
+				default:
+				}
+				// unless the evaluator hasn't evaluated the curve yet: wait for its first cycle then,
+				// instead of treating that as a curve failure
+				if errors.Is(f.getCurve().CurrentResult().Err, curves.ErrCurveNotEvaluated) {
+					select {
+					case <-controllerCtx.Done():
+						ui.Info("Fan %s: Stopping fan controller...", fan.GetId())
+						f.restoreControlModeOnce()
+						return nil
+					case <-cycles:
+					}
+				}
+			}
 
 			if err := f.UpdateFanSpeed(); err != nil && !errors.Is(err, ErrCurveEvaluation) {
 				f.stopAfterUpdateError(err)
@@ -550,16 +594,18 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 			for {
 				select {
 				case <-controllerCtx.Done():
+					// doesn't depend on the curve evaluator: it may have stopped already
 					ui.Info("Fan %s: Stopping fan controller...", fan.GetId())
 					f.restoreControlModeOnce()
 					return nil
-				case <-tick.C():
-					// a curve error doesn't stop the controller: UpdateFanSpeed applied the onSensorFailure
-					// action, and the next tick tries again
-					if err := f.UpdateFanSpeed(); err != nil && !errors.Is(err, ErrCurveEvaluation) {
-						f.stopAfterUpdateError(err)
-						return nil
-					}
+				case <-cycles:
+				case <-tickC:
+				}
+				// a curve error doesn't stop the controller: UpdateFanSpeed applied the onSensorFailure
+				// action, and the next cycle tries again
+				if err := f.UpdateFanSpeed(); err != nil && !errors.Is(err, ErrCurveEvaluation) {
+					f.stopAfterUpdateError(err)
+					return nil
 				}
 			}
 		}, func(err error) {
@@ -1260,19 +1306,17 @@ func (f *DefaultFanController) applyPwmMapForRestore(target int) int {
 }
 
 // Calculates the next speed for the fan of this controller by
-// - evaluating the associated curve
-// - cycling the control loop
+//   - reading the result of the associated curve from the last cycle of the curve evaluator
+//     (the controller never evaluates the curve itself, since other fans and curves may use it too)
+//   - cycling the control loop
 func (f *DefaultFanController) calculateTargetSpeed() (float64, error) {
-	f.curveMutex.RLock()
-	c := f.curve
-	f.curveMutex.RUnlock()
-	target, err := c.Evaluate()
-	if err != nil {
-		return 0, err
+	result := f.getCurve().CurrentResult()
+	if result.Err != nil {
+		return 0, result.Err
 	}
 
 	// the new target speed to set, which approaches the actual target based on the control loop
-	newTarget := f.controlLoop.Cycle(target)
+	newTarget := f.controlLoop.Cycle(result.Value)
 
 	return newTarget, nil
 }

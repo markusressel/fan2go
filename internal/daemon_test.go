@@ -48,12 +48,13 @@ fans:
 	configuration.CurrentConfig.FanController.AdjustmentTickRate = 200 * time.Millisecond
 
 	// WHEN
-	reg, controllers, err := reloadConfiguration(nil)
+	reg, controllers, evaluator, err := reloadConfiguration(nil)
 
 	// THEN
 	assert.ErrorContains(t, err, "fanController.adjustmentTickRate must be > 0")
 	assert.Nil(t, reg)
 	assert.Nil(t, controllers)
+	assert.Nil(t, evaluator)
 	assert.Equal(t, "current", configuration.CurrentConfig.DbPath)
 	assert.Equal(t, 200*time.Millisecond, configuration.CurrentConfig.FanController.AdjustmentTickRate)
 }
