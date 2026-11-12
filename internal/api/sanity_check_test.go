@@ -10,6 +10,7 @@ import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/control_loop"
 	"github.com/markusressel/fan2go/internal/controller"
+	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/registry"
 	"github.com/stretchr/testify/assert"
@@ -21,6 +22,9 @@ type constantCurve struct{}
 func (c constantCurve) GetId() string              { return "constant_curve" }
 func (c constantCurve) Evaluate() (float64, error) { return 100, nil }
 func (c constantCurve) CurrentValue() float64      { return 100 }
+func (c constantCurve) CurrentResult() curves.CurveResult {
+	return curves.CurveResult{Value: 100, EvaluatedAt: time.Unix(0, 0)}
+}
 
 // When the fan controller disables sanity checks at runtime (the fan can't read back its PWM value
 // or its control mode), the REST API shows them as runtime overrides in the fan config.

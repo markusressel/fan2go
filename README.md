@@ -681,7 +681,8 @@ to calculate its value, which allows you to create a completely custom behaviour
 It uses the last successful (raw) reading of the sensor monitor, which is at most one
 `tempSensorPollingRate` old, and only advances when a new reading has arrived, using the time
 between two readings for its I and D terms. Evaluating the curve more often than the sensor is
-polled therefore doesn't change its result.
+polled therefore doesn't change its result. The curve is evaluated once per [cycle](#cycle), even if
+several fans (or `function` curves) use it.
 Keep in mind though that the fan controller may also be PID based (depending on the
 specified `controlAlgorithm`) which would also affect how the curve is applied to the fan.
 
@@ -957,6 +958,10 @@ communication via websockets.
 | `/curve`      | GET  | Returns a list of all currently configured curves   |
 | `/curve/<id>` | GET  | Returns the curve with the given `id`, if it exists |
 
+A curve's `value` is the result of its last evaluation (see [Cycle](#cycle)). Once the curve has been evaluated,
+`evaluatedAt` contains the time of that evaluation. If the last evaluation failed (e.g. because a sensor value is
+stale), `error` contains the reason, and `value` is the value of the last successful evaluation.
+
 # How it works
 
 ## Device detection
@@ -1066,12 +1071,17 @@ fan, while respecting constraints like the minimum and maximum PWM values, as we
 
 ### Cycle
 
-A **cycle** refers to one iteration of a FanController's main control loop. fan2go creates one FanController per
-configured fan, each running its own independent control loop.
+A **cycle** refers to one iteration of fan2go's control loop. fan2go creates one FanController per configured fan.
 
-During each cycle, the FanController:
+At the start of each cycle, fan2go evaluates **every configured curve exactly once**, in dependency order (the curves
+of a `function` curve before the `function` curve itself). This includes curves that no fan uses, so the REST API and
+the statistics show live values for them too. A curve that is used by several fans (directly or through `function`
+curves) is evaluated only once per cycle, so all these fans see the same value, and a `pid` curve advances
+at most once per cycle, no matter how many fans use it.
 
-1. Evaluates the fan's associated curve to determine the target PWM value
+Right after that, each FanController:
+
+1. Takes the value of the fan's associated curve from this cycle as the target PWM value
 2. Runs the configured control algorithm (Direct or PID) to calculate the next PWM value
 3. Applies constraints such as min/max PWM and the `neverStop` flag
 4. Writes the PWM value to the hardware

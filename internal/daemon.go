@@ -7,12 +7,15 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"runtime/debug"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/controller"
+	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/registry"
@@ -31,7 +34,7 @@ func RunDaemon() {
 		ui.Fatal("Error initializing objects: %v", err)
 	}
 
-	fanControllers, err := initializeFanControllers(pers, fanMap, reg)
+	fanControllers, evaluator, err := initializeFanControllers(pers, fanMap, reg)
 	if err != nil {
 		ui.Fatal("Error initializing fan controllers: %v", err)
 	}
@@ -58,7 +61,7 @@ func RunDaemon() {
 
 	// === ACTOR 1: Orchestrator ===
 	g.Add(
-		func() error { return runOrchestrator(ctx, reloadChan, pers, reg, fanControllers) },
+		func() error { return runOrchestrator(ctx, reloadChan, pers, reg, fanControllers, evaluator) },
 		func(err error) { cancel() },
 	)
 
@@ -158,20 +161,20 @@ func checkProcessOwner() {
 	}
 }
 
-func runOrchestrator(ctx context.Context, reloadChan <-chan struct{}, pers persistence.Persistence, reg *registry.Registry, fanControllers map[fans.Fan]controller.FanController) error {
+func runOrchestrator(ctx context.Context, reloadChan <-chan struct{}, pers persistence.Persistence, reg *registry.Registry, fanControllers map[fans.Fan]controller.FanController, evaluator *curves.CurveEvaluator) error {
 	if len(reg.SnapshotFans()) == 0 {
 		ui.FatalWithoutStacktrace("No valid fan configurations, exiting.")
 	}
 
 	for {
 		// Run the active cycle. Blocks until app exit or reload signal.
-		appExiting := runOrchestratorCycle(ctx, reloadChan, reg, fanControllers)
+		appExiting := runOrchestratorCycle(ctx, reloadChan, reg, fanControllers, evaluator)
 		if appExiting {
 			return nil
 		}
 
 		// Handle Configuration Reload
-		newReg, newControllers, err := reloadConfiguration(pers)
+		newReg, newControllers, newEvaluator, err := reloadConfiguration(pers)
 		if err != nil {
 			ui.Error("Reload failed: %v. Keeping current configuration.", err)
 			continue
@@ -180,22 +183,30 @@ func runOrchestrator(ctx context.Context, reloadChan <-chan struct{}, pers persi
 		// Safely swap the active state to the new objects!
 		reg = newReg
 		fanControllers = newControllers
+		evaluator = newEvaluator
 		ui.Info("Configuration reloaded successfully. Starting new monitors and controllers...")
 	}
 }
 
-// runOrchestratorCycle manages the localized context for sensors and webservers.
+// runOrchestratorCycle manages the localized context for sensors, the curve evaluator, fan controllers and webservers.
 // It returns true if the application is shutting down, and false if a reload was requested.
-func runOrchestratorCycle(ctx context.Context, reloadChan <-chan struct{}, reg *registry.Registry, fanControllers map[fans.Fan]controller.FanController) bool {
+func runOrchestratorCycle(ctx context.Context, reloadChan <-chan struct{}, reg *registry.Registry, fanControllers map[fans.Fan]controller.FanController, evaluator *curves.CurveEvaluator) bool {
 	orchestratorCtx, cancelOrchestrator := context.WithCancel(ctx)
 	var orchestratorWg sync.WaitGroup
+	// the curve evaluator is stopped only after the fan controllers, which are driven by its cycles
+	// (they don't need it to stop and restore the fans, though)
+	evaluatorCtx, cancelEvaluator := context.WithCancel(context.WithoutCancel(ctx))
+	var evaluatorWg sync.WaitGroup
 
 	defer func() {
 		cancelOrchestrator()
 		orchestratorWg.Wait()
+		cancelEvaluator()
+		evaluatorWg.Wait()
 	}()
 
 	startSensorMonitors(orchestratorCtx, reg, &orchestratorWg)
+	startCurveEvaluator(evaluatorCtx, evaluator, &evaluatorWg)
 	startFanControllers(orchestratorCtx, fanControllers, &orchestratorWg)
 	startWebservers(orchestratorCtx, reg, &orchestratorWg)
 
@@ -208,20 +219,22 @@ func runOrchestratorCycle(ctx context.Context, reloadChan <-chan struct{}, reg *
 	}
 }
 
-func reloadConfiguration(pers persistence.Persistence) (*registry.Registry, map[fans.Fan]controller.FanController, error) {
+// reloadConfiguration reads and validates the config file, and creates the registry, the fan controllers
+// and the curve evaluator for it (new curves are evaluated by the new evaluator only).
+func reloadConfiguration(pers persistence.Persistence) (*registry.Registry, map[fans.Fan]controller.FanController, *curves.CurveEvaluator, error) {
 	ui.Info("Reloading configuration...")
 
 	err := configuration.ReadInConfig()
 	if err != nil {
-		return nil, nil, fmt.Errorf("error reading config file: %w", err)
+		return nil, nil, nil, fmt.Errorf("error reading config file: %w", err)
 	}
 	newConfig, err := configuration.LoadConfig()
 	if err != nil {
-		return nil, nil, fmt.Errorf("parsing failed: %w", err)
+		return nil, nil, nil, fmt.Errorf("parsing failed: %w", err)
 	}
 	err = configuration.ValidateConfig(&newConfig, configuration.GetFilePath())
 	if err != nil {
-		return nil, nil, fmt.Errorf("validation failed: %w", err)
+		return nil, nil, nil, fmt.Errorf("validation failed: %w", err)
 	}
 
 	oldConfig := configuration.CurrentConfig
@@ -230,17 +243,17 @@ func reloadConfiguration(pers persistence.Persistence) (*registry.Registry, map[
 	fanMap, newReg, err := InitializeObjects()
 	if err != nil {
 		configuration.CurrentConfig = oldConfig
-		return nil, nil, fmt.Errorf("error re-initializing objects: %w", err)
+		return nil, nil, nil, fmt.Errorf("error re-initializing objects: %w", err)
 	}
 
 	// Build brand new controllers mapped to the brand new fans!
-	newControllers, err := initializeFanControllers(pers, fanMap, newReg)
+	newControllers, newEvaluator, err := initializeFanControllers(pers, fanMap, newReg)
 	if err != nil {
 		configuration.CurrentConfig = oldConfig
-		return nil, nil, fmt.Errorf("error re-initializing controllers: %w", err)
+		return nil, nil, nil, fmt.Errorf("error re-initializing controllers: %w", err)
 	}
 
-	return newReg, newControllers, nil
+	return newReg, newControllers, newEvaluator, nil
 }
 
 func runSignalHandler(ctx context.Context, reloadChan chan<- struct{}) error {
@@ -306,6 +319,40 @@ func startSensorMonitors(ctx context.Context, reg *registry.Registry, wg *sync.W
 				ui.Warning("Sensor monitor exited with error: %v", err)
 			}
 		}()
+	}
+}
+
+// curveEvaluatorRestartDelay is the time to wait before restarting the curve evaluator after a panic
+const curveEvaluatorRestartDelay = time.Second
+
+// startCurveEvaluator runs the curve evaluator until ctx is done. If it stops because of a panic,
+// it is restarted, since the fan controllers only update the fans on its cycles.
+func startCurveEvaluator(ctx context.Context, evaluator *curves.CurveEvaluator, wg *sync.WaitGroup) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			runCurveEvaluator(ctx, evaluator)
+			select {
+			case <-ctx.Done():
+				ui.Info("Curve evaluator stopped.")
+				return
+			case <-time.After(curveEvaluatorRestartDelay):
+			}
+		}
+	}()
+}
+
+// runCurveEvaluator runs the evaluator until ctx is done or it panics. A panic is logged.
+func runCurveEvaluator(ctx context.Context, evaluator *curves.CurveEvaluator) {
+	defer func() {
+		if r := recover(); r != nil {
+			ui.Error("Panic in curve evaluator, restarting it: %v\n%s", r, debug.Stack())
+		}
+	}()
+	err := evaluator.Run(ctx)
+	if err != nil {
+		ui.Warning("Curve evaluator exited with error: %v", err)
 	}
 }
 

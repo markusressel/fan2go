@@ -77,7 +77,7 @@ func TestFunctionCurveSum(t *testing.T) {
 	reg.RegisterCurve(functionCurve)
 
 	// WHEN
-	result, err := functionCurve.Evaluate()
+	result, err := runEvaluatorCycle(t, reg, functionCurve)
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
@@ -137,7 +137,7 @@ func TestFunctionCurveDifference(t *testing.T) {
 	reg.RegisterCurve(functionCurve)
 
 	// WHEN
-	result, err := functionCurve.Evaluate()
+	result, err := runEvaluatorCycle(t, reg, functionCurve)
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
@@ -197,7 +197,7 @@ func TestFunctionCurveAverage(t *testing.T) {
 	reg.RegisterCurve(functionCurve)
 
 	// WHEN
-	result, err := functionCurve.Evaluate()
+	result, err := runEvaluatorCycle(t, reg, functionCurve)
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
@@ -257,7 +257,7 @@ func TestFunctionCurveDelta(t *testing.T) {
 	reg.RegisterCurve(functionCurve)
 
 	// WHEN
-	result, err := functionCurve.Evaluate()
+	result, err := runEvaluatorCycle(t, reg, functionCurve)
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
@@ -318,7 +318,7 @@ func TestFunctionCurveMinimum(t *testing.T) {
 	reg.RegisterCurve(functionCurve)
 
 	// WHEN
-	result, err := functionCurve.Evaluate()
+	result, err := runEvaluatorCycle(t, reg, functionCurve)
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
@@ -378,7 +378,7 @@ func TestFunctionCurveMaximum(t *testing.T) {
 	reg.RegisterCurve(functionCurve)
 
 	// WHEN
-	result, err := functionCurve.Evaluate()
+	result, err := runEvaluatorCycle(t, reg, functionCurve)
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
@@ -398,7 +398,7 @@ func TestFunctionCurveUnknownFunction_ReturnsError(t *testing.T) {
 	reg.RegisterCurve(functionCurve)
 
 	// WHEN
-	_, err := functionCurve.Evaluate()
+	_, err := runEvaluatorCycle(t, reg, functionCurve)
 
 	// THEN: an error is returned instead of exiting the process
 	assert.ErrorContains(t, err, "unknown curve function")

@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/control_loop"
@@ -40,17 +41,25 @@ func InitializeObjects() (fanMap map[configuration.FanConfig]fans.Fan, reg *regi
 	return fanMap, reg, nil
 }
 
+// initializeFanControllers creates the curve evaluator for all curves of reg, and a fan controller
+// for each fan, which is driven by the cycles of the evaluator.
 func initializeFanControllers(
 	pers persistence.Persistence,
 	fanMap map[configuration.FanConfig]fans.Fan,
 	reg *registry.Registry,
-) (result map[fans.Fan]controller.FanController, err error) {
+) (result map[fans.Fan]controller.FanController, evaluator *curves.CurveEvaluator, err error) {
+	updateRate := configuration.CurrentConfig.FanController.AdjustmentTickRate
+	evaluator, err = newCurveEvaluator(reg, updateRate)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	result = map[fans.Fan]controller.FanController{}
 	for config, fan := range fanMap {
-		updateRate := configuration.CurrentConfig.FanController.AdjustmentTickRate
 		controlLoop := createControlLoop(config)
 		curve, _ := reg.GetCurve(fan.GetCurveId())
 		fanController := controller.NewFanController(pers, fan, curve, controlLoop, updateRate, false)
+		fanController.SetCurveCycles(evaluator.Subscribe())
 		result[fan] = fanController
 	}
 
@@ -64,7 +73,21 @@ func initializeFanControllers(
 	fanCollector := statistics.NewFanCollector(result)
 	statistics.Register(fanCollector)
 
-	return result, nil
+	return result, evaluator, nil
+}
+
+// newCurveEvaluator returns the curve evaluator for all curves of reg, which evaluates them
+// every tickRate (fanController.adjustmentTickRate).
+func newCurveEvaluator(reg *registry.Registry, tickRate time.Duration) (*curves.CurveEvaluator, error) {
+	var curveList []curves.SpeedCurve
+	for _, curve := range reg.SnapshotCurves() {
+		curveList = append(curveList, curve)
+	}
+	evaluator, err := curves.NewCurveEvaluator(curveList, tickRate)
+	if err != nil {
+		return nil, fmt.Errorf("error initializing curve evaluator: %w", err)
+	}
+	return evaluator, nil
 }
 
 func createControlLoop(config configuration.FanConfig) control_loop.ControlLoop {

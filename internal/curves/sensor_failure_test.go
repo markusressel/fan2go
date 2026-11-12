@@ -39,6 +39,7 @@ func newSensorBoundCurves(t *testing.T, sensor sensors.Sensor, clock util.Clock)
 	}
 	function, err := NewSpeedCurve(createFunctionCurveConfig("function", configuration.FunctionMaximum, []string{"linear", "staircase"}))
 	require.NoError(t, err)
+	function.(interface{ SetClock(util.Clock) }).SetClock(clock)
 	reg.RegisterCurve(function)
 	return append(result, function)
 }
@@ -222,15 +223,26 @@ func TestFunctionCurve_SubCurveError_KeepsPreviousValue(t *testing.T) {
 	sensor := &MockSensor{ID: "sensor", MovingAvg: 70000, ReadingTime: clock.Now}
 	curves := newSensorBoundCurves(t, sensor, clock)
 	function := curves[len(curves)-1]
-	value, err := function.Evaluate()
+	// evaluates the sub-curves before the function curve, like the curve evaluator
+	evaluateAll := func() (float64, error) {
+		for _, curve := range curves[:len(curves)-1] {
+			_, _ = curve.Evaluate()
+		}
+		return function.Evaluate()
+	}
+	value, err := evaluateAll()
 	require.NoError(t, err)
 
 	sensor.NoReading = true
-	failedValue, err := function.Evaluate()
+	failedValue, err := evaluateAll()
 
 	assert.ErrorIs(t, err, sensors.ErrSensorStale)
 	assert.Equal(t, value, failedValue)
 	assert.Equal(t, value, function.CurrentValue())
+	result := function.CurrentResult()
+	assert.ErrorIs(t, result.Err, sensors.ErrSensorStale, "the result carries the error of the sub-curve")
+	assert.Equal(t, value, result.Value)
+	assert.Equal(t, clock.Now(), result.EvaluatedAt)
 }
 
 // The sensor monitor records readings while fan controllers evaluate a shared PID curve.

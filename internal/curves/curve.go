@@ -1,6 +1,7 @@
 package curves
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -10,16 +11,59 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 )
 
+// ErrCurveNotEvaluated is the error of the result of a curve that hasn't been evaluated yet.
+var ErrCurveNotEvaluated = errors.New("curve has not been evaluated yet")
+
+// CurveResult is the result of the last evaluation of a curve.
+type CurveResult struct {
+	// Value is the value of the curve in [0..255]. If Err is set, it is the value of the last
+	// successful evaluation, which must not be used for control.
+	Value float64
+	// Err is the error of the last evaluation, nil if it succeeded
+	Err error
+	// EvaluatedAt is the time of the last evaluation, zero if the curve hasn't been evaluated yet
+	EvaluatedAt time.Time
+}
+
 type SpeedCurve interface {
 	GetId() string
 	// Evaluate update the value of this SpeedCurve, by calculates a new value based on the current sensor values
-	// returns a value in [0..255].
+	// returns a value in [0..255], and stores the result (see CurrentResult).
 	// It doesn't read the sensors itself, but uses the values recorded by the sensor monitors.
 	// On error, it returns the previous value of the curve (see CurrentValue) together with the error,
 	// which wraps sensors.ErrSensorStale if a sensor value is stale. Callers must not use that value for control.
+	//
+	// In the daemon, only the CurveEvaluator calls Evaluate: once per cycle for every curve, in dependency order.
+	// Everything else (fan controllers, REST API, statistics) reads the stored result.
 	Evaluate() (value float64, err error)
 	// CurrentValue returns the current value of the curve, which was calculated by the previous call to Evaluate
 	CurrentValue() float64
+	// CurrentResult returns the result of the previous call to Evaluate.
+	// Before the first call, its Err is ErrCurveNotEvaluated.
+	CurrentResult() CurveResult
+}
+
+// evaluation is the error and time of the last evaluation of a curve.
+// The curves keep it next to their value, guarded by their mutex.
+type evaluation struct {
+	err error
+	at  time.Time
+}
+
+// result returns the CurveResult for the given current value of the curve.
+func (e evaluation) result(value float64) CurveResult {
+	if e.at.IsZero() {
+		return CurveResult{Value: value, Err: ErrCurveNotEvaluated}
+	}
+	return CurveResult{Value: value, Err: e.err, EvaluatedAt: e.at}
+}
+
+// resultStore is implemented by the curves of this package. The CurveEvaluator uses it to record
+// an evaluation that panicked as a failed result of the curve.
+type resultStore interface {
+	// storeResult stores the result of an evaluation at now: value (only if err is nil) and err.
+	// It returns the value of the curve after that (the previous value if err is set) and err.
+	storeResult(value float64, err error, now time.Time) (float64, error)
 }
 
 // getSensorReading looks up the sensor with the given id and returns its last successful reading,

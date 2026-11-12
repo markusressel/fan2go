@@ -12,6 +12,7 @@ import (
 	"github.com/markusressel/fan2go/internal/control_loop"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/util"
@@ -73,6 +74,12 @@ func (c MockCurve) CurrentValue() float64 {
 		return 0
 	}
 	return *c.Value
+}
+
+// CurrentResult returns the value (or error) of the mock as if the curve evaluator had just evaluated it.
+func (c MockCurve) CurrentResult() curves.CurveResult {
+	value, err := c.Evaluate()
+	return curves.CurveResult{Value: value, Err: err, EvaluatedAt: time.Unix(1, 0)}
 }
 
 // MockFan is safe for concurrent use: the RPM monitor and the update loop of a running
