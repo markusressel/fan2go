@@ -16,6 +16,9 @@ var (
 	ErrUnavailable = errors.New("libsensors is not available")
 	// ErrNoCgo is wrapped by the errors of a build without cgo, which can't load libsensors at all.
 	ErrNoCgo = errors.New("fan2go was built without cgo")
+	// ErrInit is returned by DetectedChips if libsensors was loaded, but can't be initialized, e.g. because
+	// ConfigFile has a syntax error or can't be read.
+	ErrInit = errors.New("libsensors can't be initialized")
 )
 
 // ConfigFile is the only libsensors configuration file fan2go uses. Unlike the sensors command, fan2go doesn't read

@@ -8,6 +8,14 @@
 # PORTS_MIRROR the mirror for the foreign architectures (default: ports.ubuntu.com).
 set -euo pipefail
 
+# The script replaces the apt sources, so only run it where that is intended
+# shellcheck source=/dev/null
+. /etc/os-release
+if [ "${ID:-}" != "ubuntu" ] || [ "${VERSION_CODENAME:-}" != "noble" ]; then
+  echo "install-cross-toolchains.sh: needs Ubuntu 24.04 (noble), e.g. a container (this is ${PRETTY_NAME:-unknown})" >&2
+  exit 1
+fi
+
 UBUNTU_MIRROR="${UBUNTU_MIRROR:-http://azure.archive.ubuntu.com/ubuntu}"
 PORTS_MIRROR="${PORTS_MIRROR:-http://ports.ubuntu.com/ubuntu-ports}"
 # Debian architecture names of the foreign targets (Go: arm64, ppc64le, s390x, riscv64)

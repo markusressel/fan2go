@@ -157,17 +157,25 @@ func DetectAndReadConfigFile() (string, error) {
 	err := ReadInConfig()
 	if err != nil {
 		if isConfigFileMissing(err) {
-			return "", fmt.Errorf("error reading config file: %w. %s", err, missingConfigFileHint)
+			return "", fmt.Errorf("error reading config file: %w. %s", err, missingConfigFileHint(err))
 		}
 		return "", fmt.Errorf("error reading config file: %w", err)
 	}
 	return GetFilePath(), nil
 }
 
-// missingConfigFileHint tells the user how to create a config file
-const missingConfigFileHint = "Create the config file /etc/fan2go/fan2go.yaml for your hardware " +
-	"(`fan2go detect` lists fans and sensors). The .deb and .rpm packages contain an example at " +
-	"/usr/share/doc/fan2go/fan2go.yaml.example, see also https://github.com/markusressel/fan2go#configuration"
+// missingConfigFileHint tells the user how to create the missing config file: the one given with --config, or
+// /etc/fan2go/fan2go.yaml if none was found in the search paths
+func missingConfigFileHint(err error) string {
+	path := "/etc/fan2go/fan2go.yaml"
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		path = pathErr.Path
+	}
+	return "Create the config file " + path + " for your hardware (`fan2go detect` lists fans and sensors). " +
+		"The .deb and .rpm packages contain an example at /usr/share/doc/fan2go/fan2go.yaml.example, " +
+		"see also https://github.com/markusressel/fan2go#configuration"
+}
 
 // isConfigFileMissing reports whether err means that no config file was found (searched paths) or that the given
 // config file doesn't exist

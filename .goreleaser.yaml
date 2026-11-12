@@ -5,7 +5,8 @@
 # Every binary is checked by .github/scripts/check-binary.sh (glibc floor, no libsensors link, NVML symbols, smoke
 # test).
 #
-# Local snapshot build (needs the same toolchains, see the install script):
+# Local snapshot build, in an Ubuntu 24.04 container with the same toolchains (the install script replaces the apt
+# sources, so don't run it on your machine):
 #   goreleaser release --snapshot --clean
 version: 2
 
@@ -200,9 +201,8 @@ changelog:
   disable: true
 
 release:
-  github:
-    owner: markusressel
-    name: fan2go
+  # the repository is taken from the git remote "origin" (in CI: the repository the workflow runs in, so a test
+  # release in a fork stays in the fork)
   # The release already exists when this runs: publishing the Release Drafter draft creates the tag (see RELEASING.md).
   # Keep its notes and only attach the assets.
   mode: keep-existing

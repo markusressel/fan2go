@@ -14,7 +14,8 @@ func TestDetectAndReadConfigFile_MissingFileHasHint(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
 	// GIVEN a config path that doesn't exist
-	viper.SetConfigFile(filepath.Join(t.TempDir(), "fan2go.yaml"))
+	path := filepath.Join(t.TempDir(), "fan2go.yaml")
+	viper.SetConfigFile(path)
 
 	// WHEN
 	_, err := DetectAndReadConfigFile()
@@ -22,6 +23,7 @@ func TestDetectAndReadConfigFile_MissingFileHasHint(t *testing.T) {
 	// THEN the error is a config error that tells the user how to create the config file
 	require.Error(t, err)
 	assert.True(t, IsConfigError(err))
+	assert.Contains(t, err.Error(), "Create the config file "+path+" ")
 	assert.Contains(t, err.Error(), "/usr/share/doc/fan2go/fan2go.yaml.example")
 }
 

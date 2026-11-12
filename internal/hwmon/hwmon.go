@@ -30,10 +30,15 @@ const (
 	BusTypeScsi    = lmsensors.BusTypeScsi
 )
 
-// sysfsRoot is the mount point of sysfs, used when libsensors is not available
-const sysfsRoot = "/sys"
-
-var libsensorsWarning, libsensorsInfo sync.Once
+// The functions detectChips uses; tests replace them.
+var (
+	// sysfsRoot is the mount point of sysfs, used when libsensors can't be used
+	sysfsRoot         = "/sys"
+	libsensorsChips   = lmsensors.DetectedChips
+	warnf             = ui.Warning
+	libsensorsWarning sync.Once
+	libsensorsInfo    sync.Once
+)
 
 // wantValue selects the subfeature values fan2go uses: initial values and limits of temperature and fan inputs
 func wantValue(t lmsensors.SubFeatureType) bool {
@@ -49,7 +54,7 @@ func wantValue(t lmsensors.SubFeatureType) bool {
 // detectChips returns the hwmon chips detected by libsensors, or, if libsensors can't be used, read directly from
 // sysfs (with a one-time warning)
 func detectChips() []lmsensors.Chip {
-	chips, err := lmsensors.DetectedChips(wantValue)
+	chips, err := libsensorsChips(wantValue)
 	if err == nil {
 		libsensorsInfo.Do(func() {
 			name, _ := lmsensors.Load()
@@ -58,21 +63,28 @@ func detectChips() []lmsensors.Chip {
 		})
 		return chips
 	}
-	libsensorsWarning.Do(func() {
-		hint := " Install libsensors (libsensors5 on Debian/Ubuntu, lm_sensors-libs on Fedora/RHEL, libsensors4 on " +
-			"openSUSE, lm_sensors on Arch Linux) to use it."
-		if errors.Is(err, lmsensors.ErrNoCgo) {
-			hint = ""
-		}
-		ui.Warning("Detecting hwmon chips directly in sysfs, because libsensors (lm-sensors) can't be used: %v. "+
-			"The ignore and compute statements of %s don't apply.%s", err, lmsensors.ConfigFile, hint)
-	})
+	libsensorsWarning.Do(func() { warnf("%s", libsensorsWarningText(err)) })
 	chips, err = lmsensors.SysfsChips(sysfsRoot, wantValue)
 	if err != nil {
 		ui.Error("Detecting hwmon chips in sysfs failed: %v", err)
 		return nil
 	}
 	return chips
+}
+
+// libsensorsWarningText explains why fan2go detects the hwmon chips without libsensors, and what to do about it
+func libsensorsWarningText(err error) string {
+	text := fmt.Sprintf("Detecting hwmon chips directly in sysfs, because libsensors (lm-sensors) can't be used: %v. "+
+		"The ignore and compute statements of %s don't apply.", err, lmsensors.ConfigFile)
+	switch {
+	case errors.Is(err, lmsensors.ErrInit):
+		text += fmt.Sprintf(" Fix or remove %s to use libsensors.", lmsensors.ConfigFile)
+	case errors.Is(err, lmsensors.ErrNoCgo):
+	default:
+		text += " Install libsensors (libsensors5 on Debian/Ubuntu, lm_sensors-libs on Fedora/RHEL, libsensors4 on " +
+			"openSUSE, lm_sensors on Arch Linux) to use it."
+	}
+	return text
 }
 
 type HwMonController struct {

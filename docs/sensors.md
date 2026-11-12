@@ -260,10 +260,10 @@ checks that the release binaries have no `NEEDED` entry for libsensors. libsenso
 `/etc/sensors3.conf` only, like before (gosensors did the same): `/etc/sensors.conf` and `/etc/sensors.d` are not
 read. If `/etc/sensors3.conf` doesn't exist, libsensors runs with an empty configuration (previously fan2go exited).
 
-If libsensors can't be loaded or initialized (or fan2go was built without cgo), fan2go logs one warning and
-enumerates `/sys/class/hwmon` itself (`lmsensors.SysfsChips`). The fallback mirrors libsensors 3.6.2: the same chip
-prefixes, bus types and addresses (so the same platform names), the same features in the same order, and the same
-value scaling. A test compares both on the machine that runs the tests, if libsensors is installed.
+If libsensors can't be loaded, or can't be initialized (e.g. `/etc/sensors3.conf` can't be read or has a syntax
+error), or fan2go was built without cgo, fan2go logs one warning with the reason and enumerates `/sys/class/hwmon`
+itself (`lmsensors.SysfsChips`). The fallback mirrors libsensors 3.6.2: the same chip prefixes, bus types and
+addresses (so the same platform names), the same features in the same order, and the same value scaling. A test compares both on the machine that runs the tests, if libsensors is installed.
 
 **Why**: Debian, Ubuntu and Arch Linux ship libsensors as `libsensors.so.5`, Fedora, RHEL and openSUSE ship the
 same library as `libsensors.so.4`. A binary linked against one soname doesn't start on the other distributions.

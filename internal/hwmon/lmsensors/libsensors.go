@@ -5,6 +5,7 @@ package lmsensors
 /*
 #cgo LDFLAGS: -ldl
 #include <dlfcn.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,17 +63,19 @@ static char *f2g_sensors_load(const char *name) {
 static const char *f2g_sensors_version(void) { return *f2g_version; }
 
 // f2g_sensors_init initializes libsensors with the given configuration file, or with an empty configuration if it
-// can't be opened (used_config is then 0). Returns 0 on success, a libsensors error code, or 1 if neither the
-// configuration file nor /dev/null can be opened.
-static int f2g_sensors_init(const char *config, int *used_config) {
+// doesn't exist (used_config is then 0). Returns 0 on success or a libsensors error code (negative). If the
+// configuration file (or /dev/null) can't be opened, open_errno is set to the errno of fopen() instead.
+static int f2g_sensors_init(const char *config, int *used_config, int *open_errno) {
 	*used_config = 1;
+	*open_errno = 0;
 	FILE *f = fopen(config, "r");
-	if (f == NULL) {
+	if (f == NULL && errno == ENOENT) {
 		*used_config = 0;
 		f = fopen("/dev/null", "r");
-		if (f == NULL) {
-			return 1;
-		}
+	}
+	if (f == NULL) {
+		*open_errno = errno;
+		return 0;
 	}
 	int res = f2g_init(f);
 	fclose(f);
@@ -96,6 +99,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"syscall"
 	"unsafe"
 )
 
@@ -154,7 +158,8 @@ func Version() string {
 // (features ignored in ConfigFile are left out). Values of the subfeatures selected by want are read through
 // libsensors, so compute statements of ConfigFile apply to them. If ConfigFile can't be opened, libsensors runs
 // without a configuration (see ConfigUsed).
-// The error wraps ErrUnavailable if libsensors can't be loaded or initialized.
+// The error wraps ErrUnavailable if libsensors can't be loaded, and ErrInit if it can't be initialized (e.g. if
+// ConfigFile exists but can't be read or parsed).
 func DetectedChips(want WantValue) ([]Chip, error) {
 	if _, err := Load(); err != nil {
 		return nil, err
@@ -165,14 +170,13 @@ func DetectedChips(want WantValue) ([]Chip, error) {
 
 	cConfig := C.CString(ConfigFile)
 	defer C.free(unsafe.Pointer(cConfig))
-	var usedConfig C.int
-	res := C.f2g_sensors_init(cConfig, &usedConfig)
-	if res == 1 {
-		return nil, fmt.Errorf("%w: neither %s nor /dev/null can be opened", ErrUnavailable, ConfigFile)
+	var usedConfig, openErrno C.int
+	res := C.f2g_sensors_init(cConfig, &usedConfig, &openErrno)
+	if openErrno != 0 {
+		return nil, fmt.Errorf("%w: opening %s failed: %w", ErrInit, ConfigFile, syscall.Errno(openErrno))
 	}
 	if res != 0 {
-		return nil, fmt.Errorf("%w: initializing libsensors with %s failed: %s", ErrUnavailable, ConfigFile,
-			C.GoString(C.f2g_sensors_strerror(res)))
+		return nil, fmt.Errorf("%w with %s: %s", ErrInit, ConfigFile, C.GoString(C.f2g_sensors_strerror(res)))
 	}
 	defer C.f2g_sensors_cleanup()
 	configUsed = usedConfig != 0

@@ -297,12 +297,11 @@ func classifyDevice(sysfsRoot string, devName string, subsys string, hasSubsys b
 			return true
 		}
 	case "mdio_bus":
+		// sscanf(dev_name, "%*[^:]:%d", &addr)
 		chip.Addr = 0
-		if i := strings.Index(devName, ":"); i >= 0 {
-			if m := leadingIntRegex.FindString(devName[i+1:]); m != "" {
-				if a, err := strconv.ParseInt(m, 10, 32); err == nil {
-					chip.Addr = int32(a)
-				}
+		if m := mdioDeviceRegex.FindStringSubmatch(devName); m != nil {
+			if a, err := strconv.ParseInt(m[1], 10, 32); err == nil {
+				chip.Addr = int32(a)
 			}
 		}
 		chip.Bus = Bus{Type: BusTypeMdio, Nr: 0}
@@ -332,7 +331,7 @@ var (
 	platformDeviceRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+[.:]\s*([-+]?\d+)`)
 	// "%x" in libsensors
 	leadingHexRegex = regexp.MustCompile(`^\s*(?:0[xX])?[0-9a-fA-F]+`)
-	leadingIntRegex = regexp.MustCompile(`^[-+]?\d+`)
+	mdioDeviceRegex = regexp.MustCompile(`^[^:]+:\s*([-+]?\d+)`)
 )
 
 // scan parses s with format like sscanf and reports whether all values were parsed
@@ -351,7 +350,14 @@ type sysfsSubFeature struct {
 // readFeatures reads the features and subfeatures of the chip with attributes in dir, sorted like libsensors
 // (sensors_read_dynamic_chip): by feature type, channel and subfeature type
 func readFeatures(dir string, want WantValue) ([]Feature, error) {
-	entries, err := os.ReadDir(dir)
+	d, err := os.Open(dir)
+	if err != nil {
+		return nil, err
+	}
+	// unsorted, like readdir() in libsensors: of two names for the same subfeature (e.g. temp01_input and
+	// temp1_input), the first one in directory order wins
+	entries, err := d.ReadDir(-1)
+	_ = d.Close()
 	if err != nil {
 		return nil, err
 	}

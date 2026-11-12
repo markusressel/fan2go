@@ -1212,10 +1212,10 @@ statements hide sensors and fans from fan2go, and its `compute` statements apply
 reads during detection. Files in `/etc/sensors.d` are not read. fan2go reads and writes the sensor, fan and PWM
 values in sysfs directly.
 
-If libsensors is not installed, fan2go logs a warning once and finds the chips in `/sys/class/hwmon` itself, the same
-way libsensors 3.6.2 does. Everything works, but `/etc/sensors3.conf` doesn't apply. Note that sensor and fan
-`index` values count only the inputs that are not ignored, so an `ignore` statement can change them; `channel` is not
-affected. Use `fan2go detect` to check the result. See [docs/sensors.md](docs/sensors.md) for details.
+If libsensors is not installed, or `/etc/sensors3.conf` can't be read or parsed, fan2go logs a warning once and finds
+the chips in `/sys/class/hwmon` itself, the same way libsensors 3.6.2 does. Everything works, but
+`/etc/sensors3.conf` doesn't apply. Note that sensor and fan `index` values count only the inputs that are not
+ignored, so an `ignore` statement can change them; `channel` is not affected. Use `fan2go detect` to check the result. See [docs/sensors.md](docs/sensors.md) for details.
 
 ## Known hardware quirks
 
