@@ -11,6 +11,7 @@ import (
 	"slices"
 
 	"github.com/looplab/tarjan"
+	"github.com/markusressel/fan2go/internal/control_loop"
 	"github.com/markusressel/fan2go/internal/nvidia_base"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
@@ -40,6 +41,13 @@ func validateConfig(config *Configuration, path string) error {
 	if err != nil {
 		return err
 	}
+	// needs a valid adjustmentTickRate
+	err = validatePidControlAlgorithms(config)
+	if err != nil {
+		return err
+	}
+	// needs a valid sensorStaleTimeout
+	warnAboutCmdSensorTimeouts(config)
 
 	if containsCmdSensors(config) || containsCmdFan(config) {
 		if _, err := util.CheckFilePermissionsForExecution(path); err != nil {
@@ -109,6 +117,133 @@ func validateGlobals(config *Configuration) error {
 	}
 
 	return nil
+}
+
+// validateLinearCurveRange checks how a linear curve is defined: by steps, or by a min/max temperature.
+func validateLinearCurveRange(curveID string, linear *LinearCurveConfig) error {
+	if len(linear.Steps) > 0 {
+		if linear.Min != 0 || linear.Max != 0 {
+			ui.Warning("curve %s: both steps and min/max are set, min/max are ignored", curveID)
+		}
+		return nil
+	}
+	if linear.Min == 0 && linear.Max == 0 {
+		return fmt.Errorf("curve %s: linear curve needs either steps or min and max", curveID)
+	}
+	if linear.Min >= linear.Max {
+		return fmt.Errorf("curve %s: min (%d) must be < max (%d)", curveID, linear.Min, linear.Max)
+	}
+	return nil
+}
+
+// validatePidControlAlgorithmGains checks the gains of the pid control algorithm. The loop uses its own
+// previous output as the measured value, so without an I term its output collapses to p/(1+p) of the
+// curve value (e.g. about 5 % with p: 0.05).
+func validatePidControlAlgorithmGains(fanID, key string, p, i, d float64) error {
+	for _, gain := range []struct {
+		name  string
+		value float64
+	}{{"p", p}, {"i", i}, {"d", d}} {
+		if math.IsNaN(gain.value) || math.IsInf(gain.value, 0) {
+			return fmt.Errorf("fan %s: %s.%s must be a finite number, got %v", fanID, key, gain.name, gain.value)
+		}
+	}
+	if i <= 0 {
+		return fmt.Errorf("fan %s: %s.i must be > 0, got %v (omitted values are 0, the defaults are p: %v, i: %v, d: %v)",
+			fanID, key, i, control_loop.DefaultPidConfig.P, control_loop.DefaultPidConfig.I, control_loop.DefaultPidConfig.D)
+	}
+	return nil
+}
+
+// pidControlAlgorithmGains returns the gains of the pid control algorithm the fan uses, and the config key
+// they come from. ok is false if the fan uses another control algorithm. Mirrors the selection in
+// createControlLoop (internal/factory.go).
+func pidControlAlgorithmGains(fanConfig FanConfig) (p, i, d float64, key string, ok bool) {
+	if controlLoop := fanConfig.ControlLoop; controlLoop != nil { //nolint:all
+		return controlLoop.P, controlLoop.I, controlLoop.D, "controlLoop", true
+	}
+	if algorithm := fanConfig.ControlAlgorithm; algorithm != nil {
+		if algorithm.Pid != nil {
+			return algorithm.Pid.P, algorithm.Pid.I, algorithm.Pid.D, "controlAlgorithm.pid", true
+		}
+		if algorithm.Direct != nil {
+			return 0, 0, 0, "", false
+		}
+	}
+	defaults := control_loop.DefaultPidConfig
+	return defaults.P, defaults.I, defaults.D, "the default pid control algorithm", true
+}
+
+// validatePidControlAlgorithms checks that the pid control algorithm of each fan is stable with the
+// configured fanController.adjustmentTickRate (error), and warns if it overshoots. It also warns if the
+// algorithm is unstable at the time step a gap between two cycles counts as (control_loop.GapDt): a fan whose
+// every update takes longer than the gap threshold (e.g. a slow cmd fan) runs the loop at that step.
+// Each warning is logged once per distinct algorithm (e.g. once for all fans with the default one), with the
+// ids of its fans.
+func validatePidControlAlgorithms(config *Configuration) error {
+	type algorithm struct {
+		key     string
+		p, i, d float64
+	}
+	tickRate := config.FanController.AdjustmentTickRate
+	gapDt := control_loop.GapDt(tickRate)
+	// the algorithms in the order of their first fan, and the ids of their fans
+	var algorithms []algorithm
+	fanIds := map[algorithm][]string{}
+	for _, fanConfig := range config.Fans {
+		p, i, d, key, ok := pidControlAlgorithmGains(fanConfig)
+		if !ok {
+			continue
+		}
+		a := algorithm{key: key, p: p, i: i, d: d}
+		if _, seen := fanIds[a]; !seen {
+			if !control_loop.AnalyzePidStability(p, i, d, tickRate).Stable {
+				return fmt.Errorf("fan %s: %s (p: %v, i: %v, d: %v) is unstable with fanController.adjustmentTickRate %s, "+
+					"its output would oscillate between 0 and 255. Lower i (for a slow adjustmentTickRate) or d (for a fast one), "+
+					"change the adjustmentTickRate, or use controlAlgorithm: direct",
+					fanConfig.ID, key, p, i, d, tickRate)
+			}
+			algorithms = append(algorithms, a)
+		}
+		fanIds[a] = append(fanIds[a], fanConfig.ID)
+	}
+
+	for _, a := range algorithms {
+		label := "fan"
+		if len(fanIds[a]) > 1 {
+			label = "fans"
+		}
+		fans := strings.Join(fanIds[a], ", ")
+		if result := control_loop.AnalyzePidStability(a.p, a.i, a.d, tickRate); result.Overshoots() {
+			ui.Warning("%s %s: %s (p: %v, i: %v, d: %v) overshoots a change of the curve value by about %.0f%% with fanController.adjustmentTickRate %s. "+
+				"Lower i or d, or the adjustmentTickRate, to avoid this",
+				label, fans, a.key, a.p, a.i, a.d, result.Overshoot*100, tickRate)
+		}
+		if gapDt != tickRate && !control_loop.AnalyzePidStability(a.p, a.i, a.d, gapDt).Stable {
+			ui.Warning("%s %s: %s (p: %v, i: %v, d: %v) is unstable at a time step of %s. A fan whose updates take longer than "+
+				"the gap threshold (e.g. a slow cmd fan) runs the loop at this step, so its output would oscillate between 0 and 255. "+
+				"Lower i if this applies to your fan",
+				label, fans, a.key, a.p, a.i, a.d, gapDt)
+		}
+	}
+	return nil
+}
+
+// warnAboutCmdSensorTimeouts warns about cmd sensors whose command may run longer than the sensorStaleTimeout:
+// their value would become stale while the command is still running, so the fans using it would toggle
+// between their onSensorFailure action and the curve.
+func warnAboutCmdSensorTimeouts(config *Configuration) {
+	staleTimeout := config.GetSensorStaleTimeout()
+	for _, sensorConfig := range config.Sensors {
+		if sensorConfig.Cmd == nil {
+			continue
+		}
+		timeout := sensorConfig.Cmd.GetTimeout()
+		if timeout >= staleTimeout {
+			ui.Warning("sensor %s: cmd.timeout (%s) is not shorter than sensorStaleTimeout (%s), "+
+				"the sensor value may become stale before the command times out", sensorConfig.ID, timeout, staleTimeout)
+		}
+	}
 }
 
 func containsCmdFan(config *Configuration) bool {
@@ -255,7 +390,7 @@ func validateCurves(config *Configuration) error {
 			return fmt.Errorf("curve %s: only one curve type can be used per curve definition block", curveConfig.ID)
 		}
 		if subConfigs <= 0 {
-			return fmt.Errorf("curve %s: sub-configuration for curve is missing, use one of: linear | pid | function", curveConfig.ID)
+			return fmt.Errorf("curve %s: sub-configuration for curve is missing, use one of: linear | staircase | pid | function", curveConfig.ID)
 		}
 
 		if !isCurveConfigInUse(curveConfig, config.Curves, config.Fans) {
@@ -293,6 +428,10 @@ func validateCurves(config *Configuration) error {
 			if !sensorIdExists(curveConfig.Linear.Sensor, config) {
 				return fmt.Errorf("curve %s: no sensor definition with id '%s' found", curveConfig.ID, curveConfig.Linear.Sensor)
 			}
+
+			if err := validateLinearCurveRange(curveConfig.ID, curveConfig.Linear); err != nil {
+				return err
+			}
 		}
 
 		if curveConfig.Staircase != nil {
@@ -324,6 +463,11 @@ func validateCurves(config *Configuration) error {
 			}
 			if pidConfig.P == 0 && pidConfig.I == 0 && pidConfig.D == 0 {
 				return fmt.Errorf("curve %s: all PID constants are zero", curveConfig.ID)
+			}
+			// error = setPoint - temperature, so a curve that cools needs negative gains
+			if pidConfig.P >= 0 && pidConfig.I >= 0 && pidConfig.D >= 0 {
+				ui.Warning("curve %s: all PID constants are positive, so the curve value decreases when the temperature rises above the setPoint. "+
+					"Use negative values to cool (e.g. p: -0.05, i: -0.005, d: -0.005)", curveConfig.ID)
 			}
 		}
 
@@ -431,7 +575,22 @@ func validateFans(config *Configuration) error {
 				fanConfig.ID, fanConfig.OnSensorFailure, OnSensorFailureMax, OnSensorFailureRestore)
 		}
 
+		if fanConfig.ControlLoop != nil { //nolint:all
+			ui.Warning("fan %s: controlLoop is deprecated, use controlAlgorithm.pid instead", fanConfig.ID)
+			if fanConfig.ControlAlgorithm != nil {
+				return fmt.Errorf("fan %s: controlLoop and controlAlgorithm can't be used together, remove the deprecated controlLoop", fanConfig.ID)
+			}
+			controlLoop := fanConfig.ControlLoop //nolint:all
+			if err := validatePidControlAlgorithmGains(fanConfig.ID, "controlLoop", controlLoop.P, controlLoop.I, controlLoop.D); err != nil {
+				return err
+			}
+		}
+
 		if fanConfig.ControlAlgorithm != nil {
+			if fanConfig.ControlAlgorithm.Direct != nil && fanConfig.ControlAlgorithm.Pid != nil {
+				return fmt.Errorf("fan %s: controlAlgorithm can only be one of: direct | pid", fanConfig.ID)
+			}
+
 			if fanConfig.ControlAlgorithm.Direct != nil {
 				maxPwmChangePerCycle := fanConfig.ControlAlgorithm.Direct.MaxPwmChangePerCycle
 				if maxPwmChangePerCycle != nil && *maxPwmChangePerCycle <= 0 {
@@ -443,6 +602,9 @@ func validateFans(config *Configuration) error {
 				pidConfig := fanConfig.ControlAlgorithm.Pid
 				if pidConfig.P == 0 && pidConfig.I == 0 && pidConfig.D == 0 {
 					return fmt.Errorf("fan %s: all PID constants are zero", fanConfig.ID)
+				}
+				if err := validatePidControlAlgorithmGains(fanConfig.ID, "controlAlgorithm.pid", pidConfig.P, pidConfig.I, pidConfig.D); err != nil {
+					return err
 				}
 			}
 		}

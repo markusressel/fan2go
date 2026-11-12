@@ -140,7 +140,7 @@ documented. A simulation of the real `PidLoop` (step from 50 to 200, default val
 | `800ms` | Overshoot of about 1.5 PWM. |
 | `1s` | Overshoot of about 12 PWM (peak 211.6 for a target of 200). |
 | `2s` | Swings up to 255; takes about 50 s to settle. |
-| about `2.7s` and slower | Unstable. The output oscillates between the limits and never settles. |
+| about `2.64s` and slower | Unstable. The output oscillates between the limits and never settles. |
 
 The reason is the discrete update: the I term changes the output by `i * dt * err` per cycle. Once `i * dt`
 approaches 1, one cycle overcorrects. The D term acts as `d / dt` on the change of the loop's own output, so a large
@@ -149,8 +149,47 @@ approaches 1, one cycle overcorrects. The D term acts as `d / dt` on the change 
 **Who benefits**: Users on the default `200ms` cycle get a smooth, overshoot-free response.
 
 **Trade-offs**: Users who raise `adjustmentTickRate` (for example, to reduce CPU wakeups) change the behaviour of
-every fan that uses the `pid` algorithm. The README says to lower `i` accordingly. Nothing in the config validation
-warns about an unstable combination.
+every fan that uses the `pid` algorithm. The README says to lower `i` accordingly. Validation rejects unstable
+combinations and warns about overshoot (next decision).
+
+### Validation computes the stability of the PID algorithm
+
+**Decision** (maintainer decision): Validation rejects a `pid` algorithm whose gains are unstable with the
+configured `adjustmentTickRate`, and warns if it overshoots a change of the curve value by more than 1 %
+(`control_loop.AnalyzePidStability`, called by `validatePidControlAlgorithms` after the global timing checks). It
+checks every fan that uses the `pid` algorithm: `controlAlgorithm.pid`, the string `pid`, the deprecated
+`controlLoop`, and fans without `controlAlgorithm` (default values). `i` must be `> 0`.
+
+**Why**: The algorithm feeds its own output back, so inside `[0..255]` it is a linear discrete system that doesn't
+depend on the fan. With the curve value `r`, the output `y`, the I term `u` and `T = adjustmentTickRate`:
+
+```
+y[k] = p*(r - y[k-1]) + u[k-1] - (d/T)*(y[k-1] - y[k-2])
+u[k] = u[k-1] + i*T*(r - y[k-1])
+```
+
+The characteristic polynomial is `z³ + (p + d/T - 1)z² + (iT - p - 2d/T)z + d/T`. The loop is stable if all
+roots are strictly inside the unit circle (checked with the Jury criterion). `P(1) = iT`, so `i <= 0` is never
+stable: without an I term the output settles at `p / (1 + p)` of the curve value. The overshoot is measured on the
+simulated step response from a settled state, which is what the bumpless start gives. With the default values the
+loop is stable above about `21ms` and below about `2.64s`; below that, `d/T` is too large (a pole below `-1`),
+above that `iT` is (complex
+poles outside the unit circle). Overshoot above 1 % starts just above `800ms`.
+
+**Who benefits**: Users who change `adjustmentTickRate` or the gains learn about an oscillating config when it is
+loaded, not from the fan noise.
+
+**Trade-offs**: The model ignores the clamping to `[0..255]` and the anti-windup, which only matter once the
+output hits a limit, and assumes that a cycle takes exactly `adjustmentTickRate`. A fan whose every update takes
+longer than the gap threshold (e.g. a slow `cmd` fan) runs the loop at `max(1s, adjustmentTickRate)` instead (see
+"The PID algorithm doesn't integrate over a gap"). Validation therefore also checks that step
+(`control_loop.GapDt`), but only warns if the values are unstable there, because it only affects slow fans: for
+example, `p: 0.05, i: 1.25` is stable at `200ms` and unstable at `1s`. Configs that worked "well enough" with an oscillating fan are now rejected. The overshoot threshold of 1 % is a
+judgement call (about 2.5 PWM for a full-range step).
+
+**Alternatives considered**: A rule of thumb like `i * adjustmentTickRate < 1`. It ignores `p` and `d`, and misses
+the instability for small tick rates. Filling omitted gains with the defaults instead of rejecting `i: 0`: that
+would silently change working configs that rely on an omitted `p` or `d` being `0`.
 
 ### The PID algorithm starts at the curve value (#552)
 
@@ -167,8 +206,8 @@ matters for systems that reload the config often.
 **Alternatives considered**: Users who want a slow start can use `direct` with `maxPwmChangePerCycle` (named in the
 #552 upgrade notes).
 
-**Trade-offs**: With `i: 0` the preset can't hold the output, because only the I term holds a value at steady state.
-See "Known limitations".
+**Trade-offs**: With `i: 0` the preset couldn't hold the output, because only the I term holds a value at steady
+state. Validation rejects `i <= 0` (see "Validation computes the stability of the PID algorithm").
 
 ### The direct algorithm counts cycles, not time
 
@@ -240,7 +279,7 @@ max write failed during the failure, the loop still starts at max, which errs on
 
 **Decision**: If more than `max(2s, 5 x adjustmentTickRate)` passed since the last cycle, `PidControlLoop` counts the
 gap as `max(1s, adjustmentTickRate)`: it uses that as `dt` of the cycle (`PidLoop.ResumeAt`) and keeps its state.
-Both are computed from the tick rate passed to `NewPidControlLoop` (`maxCycleGap`, `gapDt`). `direct` needs no such
+Both are computed from the tick rate passed to `NewPidControlLoop` (`maxCycleGap`, `GapDt`). `direct` needs no such
 rule, it doesn't use time.
 
 **Why**: `PidLoop.LoopAt` integrates `err * dt` with no upper bound on `dt`. After a pause (a curve failure, a
@@ -266,7 +305,8 @@ Why 1 s: simulated with the default values and updates every 3 s, a step reaches
 
 1 s is well below the cycle time at which the default values start to oscillate (about 2.64 s). With a tick of
 1 s or more, a gap counts as one tick. A slow fan thus runs the loop at a step of `max(1s, adjustmentTickRate)`, so
-the `pid` values must also be stable at that step, not only at `adjustmentTickRate`.
+the `pid` values must also be stable at that step, not only at `adjustmentTickRate`. Validation warns if they aren't
+(see "Validation computes the stability of the PID algorithm").
 
 **Who benefits**: Everyone on the default algorithm. Normal operation is unchanged: evaluator cycles that are
 coalesced or slightly delayed stay far below the threshold as long as one update of the fan takes well under 2 s.
@@ -277,7 +317,8 @@ coalesced or slightly delayed stay far below the threshold as long as one update
   example above), which is a much smaller effect.
 - A fan whose every update takes longer than the threshold moves 1 s worth per update: it gets within 10% of a new
   curve value after about 4 updates, and may overshoot a step down by about 8%.
-- The 1 s fits the default values. With a larger `i`, it can overshoot more (bounded by the `[0..255]` clamp).
+- The 1 s fits the default values. With a larger `i`, a slow fan can overshoot more, or oscillate between `0` and
+  `255` without end if the values are unstable at 1 s (e.g. `p: 0.05, i: 1.25`); validation warns about the latter.
 
 ### PID is the default
 
@@ -319,21 +360,15 @@ fans:
 |---|---|---|
 | `controlAlgorithm` | `pid` with `p: 0.05`, `i: 0.4`, `d: 0.01` | String (`pid`, `direct`) or object. |
 | `controlAlgorithm.direct.maxPwmChangePerCycle` | not set (no limit) | Validation rejects values `<= 0`. In curve value units per cycle. |
-| `controlAlgorithm.pid.p`, `.i`, `.d` | see above; in the object form, omitted keys are `0` | Validation rejects only the case where all three are `0`. |
-| `controlLoop.p`, `.i`, `.d` | - | Deprecated. Creates a `pid` algorithm and logs a warning. Not validated. |
+| `controlAlgorithm.pid.p`, `.i`, `.d` | see above; in the object form, omitted keys are `0` | `i` must be `> 0`. Unstable combinations with `adjustmentTickRate` are rejected, overshoot causes a warning. |
+| `controlLoop.p`, `.i`, `.d` | - | Deprecated. Creates a `pid` algorithm, validation logs a warning. Validated like `controlAlgorithm.pid`. |
 | `fanController.adjustmentTickRate` (global) | `200ms` | Sets the cycle rate. Changes the ramp speed of `direct` and the response of `pid`. |
 
-If both `direct` and `pid` are set in the object form, `pid` wins silently. The deprecated `controlLoop` takes
-precedence over `controlAlgorithm`.
+Validation rejects a `controlAlgorithm` with both `direct` and `pid`, and `controlLoop` together with
+`controlAlgorithm`.
 
 ## Known limitations and open questions
 
-- **No stability check for the cycle rate.** With the default values, `adjustmentTickRate` of about `2.7s` or
-  slower makes the `pid` algorithm oscillate forever. Overshoot already starts below `1s`.
-- **`i: 0` collapses the output.** The steady-state output of the `pid` algorithm comes from the I term. With `i: 0`
-  and `p: 0.05`, a constant curve value of 200 gives `200` on the first cycle, `0` on the second and then settles at
-  about `9.5` (`p / (1 + p)` of the curve value; with `d: 0.01` after a short swing: 20, 8, 10.2, ...). Validation
-  accepts this config. The deprecated `controlLoop` with all values `0` gives `0` after the first cycle.
 - **No feedback on the fan.** Neither algorithm corrects for a fan that doesn't reach the expected speed. The
   `neverStop` stall check in the fan controller is the only RPM-based correction.
 - **Values in the curve value space.** Both algorithms run before the scaling to `minPwm`..`maxPwm`. The meaning of
