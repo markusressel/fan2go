@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"github.com/pterm/pterm"
-	"os"
 	"sync"
 )
 
@@ -77,15 +76,4 @@ func Error(format string, a ...interface{}) {
 func ErrorAndNotify(title string, format string, a ...interface{}) {
 	Error(format, a...)
 	NotifyError(title, fmt.Sprintf(format, a...))
-}
-
-func FatalWithoutStacktrace(format string, a ...interface{}) {
-	NotifyError("Fatal Error", fmt.Sprintf(format, a...))
-	pterm.Fatal.WithFatal(false).Printfln(format, a...)
-	os.Exit(1)
-}
-
-func Fatal(format string, a ...interface{}) {
-	NotifyError("Fatal Error", fmt.Sprintf(format, a...))
-	pterm.Fatal.Printfln(format, a...)
 }

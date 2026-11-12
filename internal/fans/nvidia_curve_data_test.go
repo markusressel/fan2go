@@ -50,3 +50,45 @@ func TestNvidiaFan_AttachFanRpmCurveData_Twice_RecomputesStartPwm(t *testing.T) 
 	assert.NoError(t, err)
 	assert.Equal(t, 100, fan.GetStartPwm())
 }
+
+func TestNvidiaFan_AttachFanRpmCurveData_ClampsDerivedMinPwm(t *testing.T) {
+	// GIVEN: the measured start is above the configured maxPwm
+	maxPwm := 100
+	fan := &NvidiaFan{
+		Config: configuration.FanConfig{ID: "gpu", Nvidia: &configuration.NvidiaFanConfig{}, MaxPwm: &maxPwm},
+		MaxPwm: &maxPwm,
+	}
+	curveData := curveStartingAt(120)
+
+	// WHEN
+	err := fan.AttachFanRpmCurveData(&curveData)
+
+	// THEN: the configured maxPwm wins
+	assert.NoError(t, err)
+	assert.Equal(t, 100, fan.GetMinPwm())
+	assert.Equal(t, 100, fan.GetStartPwm())
+	assert.Equal(t, 100, fan.GetMaxPwm())
+}
+
+func TestNvidiaFan_AttachFanRpmCurveData_MaxPwmCanOnlyBeRaisedTo100(t *testing.T) {
+	// GIVEN: a configured startPwm above the measured maxPwm and above the nvidia limit of 100
+	startPwm := 150
+	fan := &NvidiaFan{
+		Config:   configuration.FanConfig{ID: "gpu", Nvidia: &configuration.NvidiaFanConfig{}, StartPwm: &startPwm},
+		StartPwm: &startPwm,
+	}
+	curveData := map[int]float64{0: 0, 30: 1000, 80: 2000}
+	warnings := captureWarnings(t)
+
+	// WHEN
+	err := fan.AttachFanRpmCurveData(&curveData)
+
+	// THEN: maxPwm is raised as far as possible, the derived minPwm is lowered to it, the configured startPwm is kept
+	assert.NoError(t, err)
+	assert.Equal(t, 100, fan.GetMaxPwm())
+	assert.Equal(t, 100, fan.GetMinPwm())
+	assert.Equal(t, 150, fan.GetStartPwm())
+	assert.Contains(t, warnings.String(), "Fan gpu: the derived maxPwm is below minPwm (150) or startPwm (150), using maxPwm 100")
+	assert.Contains(t, warnings.String(), "Fan gpu: the derived minPwm (150) is above maxPwm (100), using minPwm 100")
+	assert.Contains(t, warnings.String(), "Fan gpu: the configured startPwm (150) is above the highest possible maxPwm (100)")
+}

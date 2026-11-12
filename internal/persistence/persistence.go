@@ -47,6 +47,12 @@ type Persistence interface {
 	// pwmMapping must have exactly 256 elements (it's an array mapping PWM i to pwmMapping[i] for PWMs 0-255)
 	SaveFanPwmMap(fanId string, pwmMapping []int) (err error)
 	DeleteFanPwmMap(fanId string) (err error)
+
+	// the state of a fan before fan2go took control of it, see FanOriginalState
+	LoadFanOriginalState(fanId string) (FanOriginalState, error)
+	LoadFanOriginalStates() (map[string]FanOriginalState, error)
+	SaveFanOriginalState(fanId string, state FanOriginalState) error
+	DeleteFanOriginalState(fanId string) error
 }
 
 type persistence struct {
@@ -76,7 +82,12 @@ func (p persistence) Init() (err error) {
 }
 
 func (p persistence) openPersistence() (db *bolt.DB, err error) {
-	db, err = bolt.Open(p.dbPath, 0600, &bolt.Options{Timeout: 1 * time.Minute})
+	return p.openPersistenceWithTimeout(1 * time.Minute)
+}
+
+// openPersistenceWithTimeout opens the database, waiting at most timeout for its file lock.
+func (p persistence) openPersistenceWithTimeout(timeout time.Duration) (db *bolt.DB, err error) {
+	db, err = bolt.Open(p.dbPath, 0600, &bolt.Options{Timeout: timeout})
 	if err != nil {
 		return nil, err
 	}

@@ -27,6 +27,25 @@ type ReadingTracker struct {
 	last                Reading
 	hasReading          bool
 	consecutiveFailures int
+	totalFailures       int
+}
+
+// ReadingStatus is a consistent snapshot of the readings recorded by a ReadingTracker.
+type ReadingStatus struct {
+	// LastReading is the last successful reading, only valid if HasReading is true
+	LastReading Reading
+	// HasReading is false until the first successful reading
+	HasReading bool
+	// ConsecutiveFailures is the number of failed readings since the last successful one
+	ConsecutiveFailures int
+	// TotalFailures is the number of failed readings since the sensor was created
+	TotalFailures int
+}
+
+// IsStale returns true if the curves don't accept the value of the sensor at now (see FreshReading):
+// it has no successful reading yet, or its last successful reading is older than timeout.
+func (s ReadingStatus) IsStale(now time.Time, timeout time.Duration) bool {
+	return !s.HasReading || now.Sub(s.LastReading.Time) > timeout
 }
 
 // RecordReading stores a successful reading and resets the failure counter.
@@ -47,7 +66,20 @@ func (t *ReadingTracker) RecordFailure() (consecutiveFailures int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.consecutiveFailures++
+	t.totalFailures++
 	return t.consecutiveFailures
+}
+
+// GetReadingStatus returns a consistent snapshot of the recorded readings and failures.
+func (t *ReadingTracker) GetReadingStatus() ReadingStatus {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return ReadingStatus{
+		LastReading:         t.last,
+		HasReading:          t.hasReading,
+		ConsecutiveFailures: t.consecutiveFailures,
+		TotalFailures:       t.totalFailures,
+	}
 }
 
 // GetLastReading returns the last successful reading, and false if there is none yet.

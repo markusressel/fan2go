@@ -2,6 +2,7 @@ package control_loop
 
 import (
 	"math"
+	"time"
 
 	"github.com/markusressel/fan2go/internal/util"
 )
@@ -30,12 +31,8 @@ func NewDirectControlLoop(
 	}
 }
 
-// Reset forgets the last output, so the next Cycle applies its target directly.
-func (l *DirectControlLoop) Reset() {
-	l.lastOutput = math.NaN()
-}
-
-func (l *DirectControlLoop) Cycle(target float64) float64 {
+// Cycle applies the target, limited by maxPwmChangePerCycle (if set). The time is not used.
+func (l *DirectControlLoop) Cycle(_ time.Time, target float64) float64 {
 	if math.IsNaN(l.lastOutput) {
 		// first run, just apply the target (within sane bounds)
 		l.lastOutput = util.Coerce(target, 0, 255)
@@ -56,4 +53,14 @@ func (l *DirectControlLoop) Cycle(target float64) float64 {
 	l.lastOutput = result
 
 	return result
+}
+
+// Reset makes the next cycle apply its target directly, like the first cycle.
+func (l *DirectControlLoop) Reset() {
+	l.lastOutput = math.NaN()
+}
+
+// Preset makes the next cycle continue from value, so maxPwmChangePerCycle (if set) limits the change from it.
+func (l *DirectControlLoop) Preset(value float64) {
+	l.lastOutput = util.Coerce(value, 0, 255)
 }

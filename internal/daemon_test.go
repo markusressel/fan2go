@@ -13,6 +13,7 @@ import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/controller"
 	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/registry"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -55,7 +56,7 @@ func useConfigFile(t *testing.T, content string) string {
 	writeConfigFile(t, configPath, content)
 	viper.Reset()
 	t.Cleanup(viper.Reset)
-	configuration.InitConfig(configPath)
+	require.NoError(t, configuration.InitConfig(configPath))
 	return configPath
 }
 
@@ -375,4 +376,38 @@ func TestChangedSettingsThatNeedARestart(t *testing.T) {
 	assert.Empty(t, changedSettingsThatNeedARestart(startup, changed, changed), "unchanged by this reload")
 	assert.Equal(t, []string{"dbPath"}, changedSettingsThatNeedARestart(startup, changed, configuration.Configuration{DbPath: "c.db"}))
 	assert.Empty(t, changedSettingsThatNeedARestart(startup, changed, startup), "back to the value in effect")
+}
+
+// runCountingController counts the calls of Run.
+type runCountingController struct {
+	controller.FanController
+	runs atomic.Int32
+}
+
+func (c *runCountingController) Run(ctx context.Context) error {
+	c.runs.Add(1)
+	<-ctx.Done()
+	return ctx.Err()
+}
+func (c *runCountingController) GetFanId() string     { return "fan" }
+func (c *runCountingController) IsInitializing() bool { return false }
+
+// A shutdown that arrives while a reload creates the new objects doesn't start another cycle
+// (which would take over the fans only to hand them back right away).
+func TestRunOrchestrator_CancelledContext_StartsNoCycle(t *testing.T) {
+	keepCurrentConfig(t)
+	configuration.CurrentConfig = configuration.Configuration{TempSensorPollingRate: time.Hour}
+	reg := registry.NewRegistry()
+	fan := &fans.FileFan{Config: configuration.FanConfig{ID: "fan"}}
+	reg.RegisterFan(fan)
+	evaluator, err := newCurveEvaluator(reg, time.Second)
+	require.NoError(t, err)
+	fanController := &runCountingController{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err = runOrchestrator(ctx, make(chan struct{}), nil, reg, map[fans.Fan]controller.FanController{fan: fanController}, evaluator)
+
+	assert.NoError(t, err)
+	assert.Equal(t, int32(0), fanController.runs.Load())
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
@@ -510,6 +511,17 @@ func (p mockPersistence) LoadFanPwmMap(fanId string) ([]int, error) {
 }
 func (p mockPersistence) SaveFanPwmMap(fanId string, pwmMap []int) (err error) { return nil }
 func (p mockPersistence) DeleteFanPwmMap(fanId string) (err error)             { return nil }
+
+func (p mockPersistence) LoadFanOriginalState(fanId string) (persistence.FanOriginalState, error) {
+	return persistence.FanOriginalState{}, os.ErrNotExist
+}
+func (p mockPersistence) LoadFanOriginalStates() (map[string]persistence.FanOriginalState, error) {
+	return map[string]persistence.FanOriginalState{}, nil
+}
+func (p mockPersistence) SaveFanOriginalState(fanId string, state persistence.FanOriginalState) error {
+	return nil
+}
+func (p mockPersistence) DeleteFanOriginalState(fanId string) error { return nil }
 
 func createOneToOnePwmMap() [256]int {
 	var pwmMap = [256]int{}

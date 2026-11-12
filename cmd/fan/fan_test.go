@@ -48,7 +48,7 @@ func useConfigFile(t *testing.T, content string) {
 	t.Cleanup(viper.Reset)
 	previousConfig := configuration.CurrentConfig
 	t.Cleanup(func() { configuration.CurrentConfig = previousConfig })
-	configuration.InitConfig(path)
+	require.NoError(t, configuration.InitConfig(path))
 }
 
 func TestGetFan_HwMonFanNotFound(t *testing.T) {

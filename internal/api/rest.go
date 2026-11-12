@@ -30,6 +30,7 @@ func CreateRestService(reg *registry.Registry) *echo.Echo {
 	registerFanEndpoints(echoRest, reg)
 	registerSensorEndpoints(echoRest, reg)
 	registerCurveEndpoints(echoRest, reg)
+	registerControllerEndpoints(echoRest, reg)
 	//registerWebsocketEndpoint(echoRest)
 
 	return echoRest
