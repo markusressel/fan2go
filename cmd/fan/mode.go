@@ -35,7 +35,7 @@ var modeCmd = &cobra.Command{
 				case "disabled":
 					controlMode = fans.ControlModeDisabled
 				default:
-					return fmt.Errorf("unknown mode: %s, must be a integer in (1..3) or one of: 'auto', 'pwm', 'disabled'", firstArg)
+					return fmt.Errorf("unknown mode: %s, must be an integer in (0..2) or one of: 'auto', 'pwm', 'disabled'", firstArg)
 				}
 			} else {
 				controlMode = fans.ControlMode(argAsInt)
@@ -43,7 +43,7 @@ var modeCmd = &cobra.Command{
 				case fans.ControlModeAutomatic, fans.ControlModePWM, fans.ControlModeDisabled:
 					break
 				default:
-					return fmt.Errorf("unknown mode: %d, must be a integer in (1..3) or one of: 'auto', 'pwm', 'disabled'", argAsInt)
+					return fmt.Errorf("unknown mode: %d, must be an integer in (0..2) or one of: 'auto', 'pwm', 'disabled'", argAsInt)
 				}
 			}
 			err = fan.SetControlMode(controlMode)

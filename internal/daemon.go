@@ -219,6 +219,10 @@ func reloadConfiguration(pers persistence.Persistence) (*registry.Registry, map[
 	if err != nil {
 		return nil, nil, fmt.Errorf("parsing failed: %w", err)
 	}
+	err = configuration.ValidateConfig(&newConfig, configuration.GetFilePath())
+	if err != nil {
+		return nil, nil, fmt.Errorf("validation failed: %w", err)
+	}
 
 	oldConfig := configuration.CurrentConfig
 	configuration.CurrentConfig = newConfig
