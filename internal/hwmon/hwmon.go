@@ -32,8 +32,13 @@ type HwMonController struct {
 	Name     string
 	DType    string
 	Modalias string
+	// Platform is the fan2go name of the chip (see computeIdentifier), as shown by `fan2go detect`
 	Platform string
-	Path     string
+	// LmSensorsName is the chip name as printed by libsensors (`sensors`). It differs from Platform
+	// for some chips, e.g. PCI devices with an address >= 0x1000 ("nvme-pci-5a00" vs. "nvme-pci-05a00").
+	// The platform of a fan or sensor config may match either of them.
+	LmSensorsName string
+	Path          string
 
 	// Fans (can be matched either by enumeration index or channel number)
 	Fans []*fans.HwMonFan
@@ -54,10 +59,6 @@ func GetChips() []*HwMonController {
 		var identifier = computeIdentifier(chip)
 		dType := getDeviceType(chip.Path)
 		modalias := getDeviceModalias(chip.Path)
-		platform := findPlatform(chip.Path)
-		if len(platform) <= 0 {
-			platform = identifier
-		}
 
 		fanSlice := GetFans(chip)
 		sensorMap := GetTempSensors(chip)
@@ -67,13 +68,14 @@ func GetChips() []*HwMonController {
 		}
 
 		c := &HwMonController{
-			Name:     identifier,
-			DType:    dType,
-			Modalias: modalias,
-			Platform: platform,
-			Path:     chip.Path,
-			Fans:     fanSlice,
-			Sensors:  sensorMap,
+			Name:          identifier,
+			DType:         dType,
+			Modalias:      modalias,
+			Platform:      identifier,
+			LmSensorsName: computeLmSensorsName(chip),
+			Path:          chip.Path,
+			Fans:          fanSlice,
+			Sensors:       sensorMap,
 		}
 		list = append(list, c)
 	}
@@ -323,20 +325,100 @@ func computeIdentifier(chip gosensors.Chip) (name string) {
 	return identifier
 }
 
-func findPlatform(devicePath string) string {
-	platformRegex := regexp.MustCompile(".*/platform/{}/.*")
-	return platformRegex.FindString(devicePath)
+// computeLmSensorsName returns the chip name as printed by libsensors (`sensors`), using the same formats as
+// libsensors' sensors_snprintf_chip_name, or "" for an unknown bus type.
+// Unlike computeIdentifier, it doesn't put the bus number in front of ISA and PCI addresses,
+// so both differ for addresses >= 0x1000 (e.g. "nvme-pci-5a00" vs. "nvme-pci-05a00").
+func computeLmSensorsName(chip gosensors.Chip) string {
+	prefix := chip.Prefix
+	if len(prefix) <= 0 {
+		return ""
+	}
+	switch chip.Bus.Type {
+	case BusTypeIsa:
+		return fmt.Sprintf("%s-isa-%04x", prefix, chip.Addr)
+	case BusTypePci:
+		return fmt.Sprintf("%s-pci-%04x", prefix, chip.Addr)
+	case BusTypeI2c:
+		return fmt.Sprintf("%s-i2c-%d-%02x", prefix, chip.Bus.Nr, chip.Addr)
+	case BusTypeSpi:
+		return fmt.Sprintf("%s-spi-%d-%x", prefix, chip.Bus.Nr, chip.Addr)
+	case BusTypeVirtual:
+		return fmt.Sprintf("%s-virtual-%x", prefix, chip.Addr)
+	case BusTypeAcpi:
+		return fmt.Sprintf("%s-acpi-%x", prefix, chip.Addr)
+	case BusTypeHid:
+		return fmt.Sprintf("%s-hid-%d-%x", prefix, chip.Bus.Nr, chip.Addr)
+	case BusTypeMdio:
+		return fmt.Sprintf("%s-mdio-%x", prefix, chip.Addr)
+	case BusTypeScsi:
+		return fmt.Sprintf("%s-scsi-%d-%x", prefix, chip.Bus.Nr, chip.Addr)
+	}
+	return ""
 }
 
-func UpdateFanConfigFromHwMonControllers(controllers []*HwMonController, config *configuration.FanConfig) error {
-	for _, controller := range controllers {
-		matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, controller.Platform)
-		if err != nil {
-			return fmt.Errorf("failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform)
+// platformNameKind selects which name of a HwMonController a platform regex is matched against
+type platformNameKind int
+
+const (
+	platformNameFan2go platformNameKind = iota
+	platformNameLmSensors
+)
+
+// controllerPlatformName returns the name of the given kind of the controller,
+// or "" if there is no such name or it is identical to the fan2go name
+func controllerPlatformName(controller *HwMonController, kind platformNameKind) string {
+	switch kind {
+	case platformNameLmSensors:
+		if controller.LmSensorsName == controller.Platform {
+			// already checked as the fan2go name
+			return ""
 		}
-		if !matched {
+		return controller.LmSensorsName
+	default:
+		return controller.Platform
+	}
+}
+
+// matchingControllers returns the controllers whose name of the given kind matches the given (case-insensitive)
+// platform regex, in their original order
+func matchingControllers(controllers []*HwMonController, platform string, kind platformNameKind) ([]*HwMonController, error) {
+	platformRegex, err := regexp.Compile("(?i)" + platform)
+	if err != nil {
+		return nil, err
+	}
+	var result []*HwMonController
+	for _, controller := range controllers {
+		name := controllerPlatformName(controller, kind)
+		if len(name) <= 0 {
 			continue
 		}
+		if platformRegex.MatchString(name) {
+			result = append(result, controller)
+		}
+	}
+	return result, nil
+}
+
+// UpdateFanConfigFromHwMonControllers resolves the hwmon fan of the given config and fills in its paths.
+// The platform regex of the config is matched against the fan2go names of the controllers first
+// and, only if no fan matched that way, against their libsensors names (see HwMonController.LmSensorsName),
+// so configs that match a fan2go name keep resolving to the same fan.
+func UpdateFanConfigFromHwMonControllers(controllers []*HwMonController, config *configuration.FanConfig) error {
+	for _, kind := range []platformNameKind{platformNameFan2go, platformNameLmSensors} {
+		matched, err := matchingControllers(controllers, config.HwMon.Platform, kind)
+		if err != nil {
+			return fmt.Errorf("failed to match platform regex of %s (%s) against the controller platforms: %v", config.ID, config.HwMon.Platform, err)
+		}
+		if updateFanConfigFromMatchingControllers(matched, config) {
+			return nil
+		}
+	}
+	return fmt.Errorf("no hwmon fan matched fan config: %+v", config)
+}
+
+func updateFanConfigFromMatchingControllers(controllers []*HwMonController, config *configuration.FanConfig) bool {
+	for _, controller := range controllers {
 		for _, fan := range controller.Fans {
 			controllerConfig := fan.Config.HwMon
 			if config.HwMon.Index > 0 && controllerConfig.Index != config.HwMon.Index {
@@ -352,21 +434,29 @@ func UpdateFanConfigFromHwMonControllers(controllers []*HwMonController, config 
 				config.HwMon.PwmChannel = controllerConfig.PwmChannel
 			}
 			setFanConfigPaths(config.HwMon)
+			return true
+		}
+	}
+	return false
+}
+
+// UpdateSensorConfigFromHwMonControllers resolves the hwmon sensor of the given config and fills in its input path.
+// The platform regex is matched like in UpdateFanConfigFromHwMonControllers.
+func UpdateSensorConfigFromHwMonControllers(controllers []*HwMonController, config *configuration.SensorConfig) error {
+	for _, kind := range []platformNameKind{platformNameFan2go, platformNameLmSensors} {
+		matched, err := matchingControllers(controllers, config.HwMon.Platform, kind)
+		if err != nil {
+			return fmt.Errorf("failed to match platform regex of %s (%s) against the controller platforms: %v", config.ID, config.HwMon.Platform, err)
+		}
+		if updateSensorConfigFromMatchingControllers(matched, config) {
 			return nil
 		}
 	}
-	return fmt.Errorf("no hwmon fan matched fan config: %+v", config)
+	return fmt.Errorf("no hwmon sensor matched sensor config: %+v", config)
 }
 
-func UpdateSensorConfigFromHwMonControllers(controllers []*HwMonController, config *configuration.SensorConfig) error {
+func updateSensorConfigFromMatchingControllers(controllers []*HwMonController, config *configuration.SensorConfig) bool {
 	for _, controller := range controllers {
-		matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, controller.Platform)
-		if err != nil {
-			return fmt.Errorf("failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform)
-		}
-		if !matched {
-			continue
-		}
 		for _, sensor := range controller.Sensors {
 			if config.HwMon.Index > 0 && sensor.Index != config.HwMon.Index {
 				continue
@@ -377,10 +467,10 @@ func UpdateSensorConfigFromHwMonControllers(controllers []*HwMonController, conf
 			config.HwMon.Index = sensor.Index
 			config.HwMon.Channel = sensor.Channel
 			config.HwMon.TempInput = sensor.Input
-			return nil
+			return true
 		}
 	}
-	return fmt.Errorf("no hwmon sensor matched sensor config: %+v", config)
+	return false
 }
 
 func setFanConfigPaths(config *configuration.HwMonFanConfig) {

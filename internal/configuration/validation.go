@@ -3,6 +3,7 @@ package configuration
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -121,6 +122,19 @@ func containsCmdSensors(config *Configuration) bool {
 	return false
 }
 
+// validateNvidiaDevice checks the nvidia.device of a fan or sensor config. It is a (case-insensitive) regex
+// that is matched against the device identifiers shown by `fan2go detect`, so an empty value would match
+// the first GPU.
+func validateNvidiaDevice(device string) error {
+	if len(strings.TrimSpace(device)) <= 0 {
+		return fmt.Errorf("nvidia.device must not be empty, use the identifier shown by 'fan2go detect', e.g. nvidia-10DE2489-0800")
+	}
+	if _, err := regexp.Compile("(?i)" + device); err != nil {
+		return fmt.Errorf("nvidia.device is not a valid regex: %v", err)
+	}
+	return nil
+}
+
 func validateSensors(config *Configuration) error {
 	sensorIds := []string{}
 
@@ -143,6 +157,9 @@ func validateSensors(config *Configuration) error {
 		if sensorConfig.Nvidia != nil {
 			if nvidia_base.IsNvmlSupported {
 				subConfigs++
+				if err := validateNvidiaDevice(sensorConfig.Nvidia.Device); err != nil {
+					return fmt.Errorf("sensor %s: %v", sensorConfig.ID, err)
+				}
 			} else {
 				return fmt.Errorf("sensor %s: This version of fan2go was built without NVIDIA (nvml) support", sensorConfig.ID)
 			}
@@ -367,6 +384,9 @@ func validateFans(config *Configuration) error {
 		if fanConfig.Nvidia != nil {
 			if nvidia_base.IsNvmlSupported {
 				subConfigs++
+				if err := validateNvidiaDevice(fanConfig.Nvidia.Device); err != nil {
+					return fmt.Errorf("fan %s: %v", fanConfig.ID, err)
+				}
 			} else {
 				return fmt.Errorf("fan %s: This version of fan2go was built without NVIDIA (nvml) support", fanConfig.ID)
 			}

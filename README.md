@@ -200,6 +200,7 @@ fans:
     hwmon:
       # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
       # "nouveau", "coretemp", "it8620", "corsaircpro-.*" etc.
+      # The chip name printed by `sensors` (lm-sensors) works too, see "Platform names" below.
       platform: nct6798
       # The channel of this fan's RPM sensor as displayed by `fan2go detect`
       rpmChannel: 1
@@ -213,6 +214,20 @@ fans:
     curve: cpu_curve
 ```
 
+##### Platform names
+
+`platform` is matched against the platform name shown by `fan2go detect` and, if no fan (or sensor) matches that
+way, against the chip name printed by `sensors` (lm-sensors). For most chips both names are identical. They differ
+e.g. for PCI devices with an address of `0x1000` or higher: `fan2go detect` shows `nvme-pci-05a00` while `sensors`
+prints `nvme-pci-5a00`. In that case `fan2go detect` shows both:
+
+```shell
+> Platform: nvme-pci-05a00 (sensors: nvme-pci-5a00)
+```
+
+Since `platform` is a regex that only has to match a part of the name, `nvme-pci-5a00` doesn't match
+`nvme-pci-05a00`, but it does match the `sensors` name, so both work.
+
 #### NVIDIA
 
 To use detected NVIDIA GPUs in your configuration, use the `nvidia` fan type:
@@ -221,7 +236,7 @@ To use detected NVIDIA GPUs in your configuration, use the `nvidia` fan type:
 fans:
   - id: gpufan1
     nvidia:
-      # A regex matching a nvidia device as displayed by `fan2go detect`
+      # A regex matching a nvidia device as displayed by `fan2go detect`, must not be empty.
       # the following matches all nvidia devices in your system
       # (good enough if you only have one), otherwise you could
       # also use nvidia-10DE2489-0800 or similar
@@ -479,6 +494,7 @@ sensors:
     hwmon:
       # A regex matching a controller platform displayed by `fan2go detect`, f.ex.:
       # "coretemp", "it8620", "corsaircpro-*" etc.
+      # The chip name printed by `sensors` (lm-sensors) works too, see "Platform names" in the fan section.
       platform: coretemp
       # The index of this sensor as displayed by `fan2go detect`
       index: 1
@@ -490,7 +506,7 @@ sensors:
 sensors:
   - id: gpu_temp
     nvidia:
-      # A regex matching a nvidia device as displayed by `fan2go detect`
+      # A regex matching a nvidia device as displayed by `fan2go detect`, must not be empty
       device: nvidia-10DE2489-0800
       # The index of this sensor as displayed by `fan2go detect`
       # (currently NVIDIA/nvml exposes only a single temperature sensor per GPU)
@@ -864,6 +880,9 @@ configuration and you are good to go:
 statistics:
   # Whether to enable the prometheus exporter or not
   enabled: true
+  # The host to listen for connections (default: 127.0.0.1, i.e. only local scrapes),
+  # use 0.0.0.0 to allow remote scrapes
+  host: 127.0.0.1
   # The port to expose the exporter on
   port: 9000
 ```
@@ -871,6 +890,19 @@ statistics:
 You can then see the metrics on [http://localhost:9000/metrics](http://localhost:9000/metrics) while the fan2go daemon
 is
 running.
+
+> [!NOTE]
+> Before fan2go 1.0.0, the exporter listened on all interfaces by default. If a Prometheus server on another machine
+> scrapes fan2go, set `host: 0.0.0.0` (or the address of a specific interface).
+
+The exported values are the ones fan2go maintains anyway, so a scrape doesn't read any sensor or fan:
+
+- `fan2go_sensor_value`: the moving average of the sensor, which is also what the curves use,
+- `fan2go_fan_pwm`: the PWM value fan2go last set to the fan (raw value, after applying the `pwmMap`); missing until
+  fan2go has set one,
+- `fan2go_fan_rpm`: the moving average of the fan's RPM; missing until fan2go starts monitoring the fan's RPM (after
+  the fan initialization),
+- `fan2go_curve_value`, and the `fan2go_controller_*` statistics.
 
 ## API
 

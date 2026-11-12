@@ -78,7 +78,7 @@ var detectCmd = &cobra.Command{
 				continue
 			}
 
-			ui.Printfln("> Platform: %s", controller.Platform)
+			ui.Printfln("> Platform: %s", platformText(controller))
 
 			var fanRows [][]string
 			for _, fan := range fanSlice {
@@ -224,6 +224,15 @@ var detectCmd = &cobra.Command{
 			printTables([]table.Table{fanTable, sensorTable})
 		}
 	},
+}
+
+// platformText returns the fan2go name of the controller, followed by its libsensors (`sensors`) name
+// if that differs. Both can be used as `platform` in the config.
+func platformText(controller *hwmon.HwMonController) string {
+	if len(controller.LmSensorsName) > 0 && controller.LmSensorsName != controller.Platform {
+		return fmt.Sprintf("%s (sensors: %s)", controller.Platform, controller.LmSensorsName)
+	}
+	return controller.Platform
 }
 
 func controlModeToString(mode fans.ControlMode) string {

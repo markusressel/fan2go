@@ -44,6 +44,14 @@ type FanController interface {
 
 	GetStatistics() FanControllerStatistics
 
+	// GetLastSetPwm returns the raw pwm value (after applying the pwmMap) that the controller
+	// last set to the fan, and false if it hasn't set one yet. Safe to call while the controller is running.
+	GetLastSetPwm() (int, bool)
+
+	// GetRpmAvg returns the RPM moving average of the fan, and false until the controller's RPM monitor
+	// has seeded it. Safe to call while the controller is running.
+	GetRpmAvg() (float64, bool)
+
 	UpdateFanSpeed() error
 
 	// UpdateCurve dynamically updates the curve reference
@@ -71,6 +79,9 @@ type DefaultFanController struct {
 	statsMutex sync.Mutex
 	// controller statistics
 	stats FanControllerStatistics
+	// the raw pwm value (after applying the pwmMap) that setTargetPwm last applied successfully,
+	// nil until then. Protected by statsMutex, read by the statistics collector.
+	lastSetPwm *int
 	// persistence where fan data is stored
 	persistence persistence.Persistence
 	// the fan to control
@@ -236,6 +247,33 @@ func (f *DefaultFanController) GetStatistics() FanControllerStatistics {
 	f.statsMutex.Lock()
 	defer f.statsMutex.Unlock()
 	return f.stats
+}
+
+// GetLastSetPwm returns the raw pwm value (after applying the pwmMap) that the controller
+// last set to the fan, and false if it hasn't set one yet.
+// Safe to call while the controller is running.
+func (f *DefaultFanController) GetLastSetPwm() (int, bool) {
+	f.statsMutex.Lock()
+	defer f.statsMutex.Unlock()
+	if f.lastSetPwm == nil {
+		return 0, false
+	}
+	return *f.lastSetPwm, true
+}
+
+// GetRpmAvg returns the RPM moving average of the fan, and false until the RPM monitor has seeded it
+// (it starts after the fan initialization). Safe to call while the controller is running.
+func (f *DefaultFanController) GetRpmAvg() (float64, bool) {
+	if !f.rpmAvgSeeded.Load() {
+		return 0, false
+	}
+	return f.fan.GetRpmAvg(), true
+}
+
+func (f *DefaultFanController) recordLastSetPwm(pwm int) {
+	f.statsMutex.Lock()
+	defer f.statsMutex.Unlock()
+	f.lastSetPwm = &pwm
 }
 
 func (f *DefaultFanController) prepareController() (err error) {
@@ -1036,10 +1074,15 @@ func (f *DefaultFanController) setTargetPwm(target int) (err error) {
 		current, err := f.getPwm()
 		if err == nil && expectedReportedPwmValue == current {
 			// nothing to do
+			f.recordLastSetPwm(pwmMappedValue)
 			return nil
 		}
 	}
-	return f.fan.SetPwm(pwmMappedValue)
+	err = f.fan.SetPwm(pwmMappedValue)
+	if err == nil {
+		f.recordLastSetPwm(pwmMappedValue)
+	}
+	return err
 }
 
 // ensureFanModeIsSetToExpectedMode makes sure that the fan control mode is set to the expected mode (manual PWM control),

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/markusressel/fan2go/internal/nvidia_base"
 	"github.com/pterm/pterm"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -1193,4 +1194,64 @@ func TestValidateConfig_ValidationGaps(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateNvidiaDevice(t *testing.T) {
+	tests := []struct {
+		name    string
+		device  string
+		wantErr string
+	}{
+		{name: "identifier", device: "nvidia-10DE2489-0800"},
+		{name: "regex", device: "nvidia-10DE.*"},
+		{name: "empty", device: "", wantErr: "nvidia.device must not be empty"},
+		{name: "whitespace", device: "  ", wantErr: "nvidia.device must not be empty"},
+		{name: "invalid regex", device: "nvidia-(", wantErr: "nvidia.device is not a valid regex"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateNvidiaDevice(tt.device)
+			if tt.wantErr != "" {
+				assert.ErrorContains(t, err, tt.wantErr)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateConfig_NvidiaDeviceIsEmpty(t *testing.T) {
+	if !nvidia_base.IsNvmlSupported {
+		t.Skip("built without nvml support, nvidia configs are rejected before the device is checked")
+	}
+
+	t.Run("fan", func(t *testing.T) {
+		config := Configuration{
+			Fans: []FanConfig{
+				{ID: "gpu_fan", Curve: "curve", Nvidia: &NvidiaFanConfig{Device: "", Index: 1}},
+			},
+			Curves: []CurveConfig{
+				{ID: "curve", Linear: &LinearCurveConfig{Sensor: "sensor", Min: 0, Max: 100}},
+			},
+			Sensors: []SensorConfig{
+				{ID: "sensor", File: &FileSensorConfig{Path: "/tmp/temp"}},
+			},
+		}
+
+		err := ValidateConfig(&config, "")
+
+		assert.EqualError(t, err, "fan gpu_fan: nvidia.device must not be empty, use the identifier shown by 'fan2go detect', e.g. nvidia-10DE2489-0800")
+	})
+
+	t.Run("sensor", func(t *testing.T) {
+		config := Configuration{
+			Sensors: []SensorConfig{
+				{ID: "gpu_temp", Nvidia: &NvidiaSensorConfig{Device: "", Index: 1}},
+			},
+		}
+
+		err := ValidateConfig(&config, "")
+
+		assert.EqualError(t, err, "sensor gpu_temp: nvidia.device must not be empty, use the identifier shown by 'fan2go detect', e.g. nvidia-10DE2489-0800")
+	})
 }

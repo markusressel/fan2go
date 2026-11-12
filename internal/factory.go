@@ -60,6 +60,9 @@ func initializeFanControllers(
 	controllerCollector := statistics.NewControllerCollector(fanControllers)
 	statistics.Register(controllerCollector)
 
+	fanCollector := statistics.NewFanCollector(result)
+	statistics.Register(fanCollector)
+
 	return result, nil
 }
 
@@ -159,8 +162,6 @@ func initializeFans(
 ) (map[configuration.FanConfig]fans.Fan, error) {
 	var result = map[configuration.FanConfig]fans.Fan{}
 
-	var fanList []fans.Fan
-
 	for _, config := range configs {
 		if config.HwMon != nil {
 			err := hwmon.UpdateFanConfigFromHwMonControllers(controllers, &config)
@@ -181,12 +182,7 @@ func initializeFans(
 		}
 		reg.RegisterFan(fan)
 		result[config] = fan
-
-		fanList = append(fanList, fan)
 	}
-
-	fanCollector := statistics.NewFanCollector(fanList)
-	statistics.Register(fanCollector)
 
 	return result, nil
 }

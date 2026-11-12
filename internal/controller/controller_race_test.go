@@ -95,6 +95,8 @@ func TestFanController_ConcurrentRpmMonitorUpdateAndStatistics_HwMonFan(t *testi
 		<-start
 		for i := 0; i < iterations; i++ {
 			_ = controller.GetStatistics()
+			_, _ = controller.GetLastSetPwm()
+			_, _ = controller.GetRpmAvg()
 		}
 	}()
 	close(start)
@@ -153,6 +155,8 @@ func TestFanController_Run_ConcurrentRpmMonitorAndStatistics(t *testing.T) {
 			t.Fatal("Run() did not return after the fan stalled at max pwm")
 		default:
 			_ = controller.GetStatistics()
+			_, _ = controller.GetLastSetPwm()
+			_, _ = controller.GetRpmAvg()
 			clock.Advance(time.Millisecond)
 		}
 	}
