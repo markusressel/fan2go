@@ -237,8 +237,9 @@ enforced by the type system. NVML code is excluded from the race-checked test ru
 
 **Decision:** Code that waits or measures time uses `util.Clock` (`Now`, `After`, `NewTicker`). Production uses
 `util.RealClock`; tests use `util.FakeClock`, which only moves on `Advance`. The fan controller, the sensor monitor,
-the curve evaluator, the control loops and the fan analysis take a clock. All waits in the controller are
-context-aware (`sleepWithContext`), so a shutdown during a startup delay or a PWM sweep returns right away (#542).
+the curve evaluator and the fan analysis take a clock; the control loops get the controller's time (`now`) on every
+`Cycle`. All waits in the controller are context-aware (`sleepWithContext`), so a shutdown during a startup delay
+or a PWM sweep returns right away (#542).
 User-facing delays are config keys: `fanResponseDelay` (number of seconds or a duration), `fanController.pwmSetDelay`
 (global and per fan), the `analysis.*` delays and the `timeout` of `cmd` fans and sensors.
 

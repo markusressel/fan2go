@@ -30,7 +30,7 @@ const minGapDt = time.Second
 // gapDt returns the time a gap between two cycles counts as: max(1s, tickRate). One tick would be safe, but it
 // makes a fan whose every update is a gap (e.g. a slow fan) converge very slowly: about 28 updates to 90% of a
 // step with the default values and a 200 ms tick, vs. 4 with 1 s. 1 s is well below the cycle time at which the
-// default values start to oscillate (about 2.7 s), and overshoots a step down by at most about 8%.
+// default values start to oscillate (about 2.64 s), and overshoots a step down by at most about 8%.
 func gapDt(tickRate time.Duration) time.Duration {
 	return max(minGapDt, tickRate)
 }

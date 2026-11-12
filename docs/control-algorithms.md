@@ -50,8 +50,8 @@ type ControlLoop interface {
 
 Each fan controller owns one `ControlLoop` instance, used only by its update loop (not safe for concurrent use).
 A new instance is created on every start and every successful config reload, so all algorithm state starts over
-then. If a reload fails, fan2go restarts the old fan controllers with their old `ControlLoop` instances, so the
-state is kept; the gap rule of the `pid` algorithm (below) keeps the restart pause from saturating it.
+then. If a reload fails, fan2go restarts the old fan controllers with their old `ControlLoop` instances (see
+[fan-controller.md](fan-controller.md) for the state that is reset then).
 
 ### Direct
 
@@ -244,11 +244,11 @@ Both are computed from the tick rate passed to `NewPidControlLoop` (`maxCycleGap
 rule, it doesn't use time.
 
 **Why**: `PidLoop.LoopAt` integrates `err * dt` with no upper bound on `dt`. After a pause (a curve failure, a
-failed reload restarting the old controllers after several seconds, a stalled update loop) the I term saturated at
-once: with the default values, output 100 before the gap and curve value 50 after a gap of 5 s or more gave
-`97.5`, then `0.0`, then a ramp back over about 10 s. Output 0 means PWM 0 for a fan without `neverStop`, so the
-fan stopped briefly. This is defence in depth next to the preset above: it also covers gaps without a failure.
-System suspend is not a gap: Go measures `dt` with a monotonic clock, which doesn't advance during suspend on Linux.
+stalled update loop) the I term saturated at once: with the default values, output 100 before the gap and curve
+value 50 after a gap of 5 s or more gave `97.5`, then `0.0`, then a ramp back over about 10 s. Output 0 means PWM 0
+for a fan without `neverStop`, so the fan stopped briefly. This is defence in depth next to the preset above: it
+also covers gaps without a failure. System suspend is not a gap: Go measures `dt` with a monotonic clock, which
+doesn't advance during suspend on Linux.
 
 Counting the gap as a short, fixed time, instead of holding the last output, keeps the loop moving towards the
 target when every cycle takes longer than the threshold. That happens if a single update of the fan takes more than
@@ -264,8 +264,9 @@ Why 1 s: simulated with the default values and updates every 3 s, a step reaches
 | `2s` (the threshold at `200ms`) | 3 / 12 | 17.5 |
 | `3s` (the whole update) | 2 / never settles | 0.0, oscillates |
 
-1 s is well below the cycle time at which the default values start to oscillate (about 2.7 s, see above). With a
-tick of 1 s or more, a gap counts as one tick.
+1 s is well below the cycle time at which the default values start to oscillate (about 2.64 s). With a tick of
+1 s or more, a gap counts as one tick. A slow fan thus runs the loop at a step of `max(1s, adjustmentTickRate)`, so
+the `pid` values must also be stable at that step, not only at `adjustmentTickRate`.
 
 **Who benefits**: Everyone on the default algorithm. Normal operation is unchanged: evaluator cycles that are
 coalesced or slightly delayed stay far below the threshold as long as one update of the fan takes well under 2 s.
