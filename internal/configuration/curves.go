@@ -25,6 +25,15 @@ type LinearCurveConfig struct {
 	// between 0 and 255 (0% is 0, 1% is 1; from there on it's interpolated linearly so 100% is 255).
 	// If a string only contains a number (without "%"), it's just converted to float
 	Steps map[int]float64 `json:"steps" mapstructure:"-"`
+	// Hysteresis configuration (optional)
+	Hysteresis *LinearHysteresisConfig `json:"hysteresis,omitempty"`
+}
+
+// LinearHysteresisConfig is the temperature hysteresis of a linear curve.
+type LinearHysteresisConfig struct {
+	// Down is the temperature drop in degrees (Celsius) that is ignored before the curve value decreases (0 = off).
+	// Beyond it, the curve follows the temperature with this offset.
+	Down float64 `json:"down,omitempty"`
 }
 
 type StaircaseCurveConfig struct {
@@ -82,4 +91,12 @@ type FunctionCurveConfig struct {
 	Type string `json:"type"`
 	// Curves is a list of other curve ids to use as input for the defined function type
 	Curves []string `json:"curves"`
+}
+
+// GetHysteresisDown returns hysteresis.down in degrees, or 0 if no hysteresis is configured.
+func (c LinearCurveConfig) GetHysteresisDown() float64 {
+	if c.Hysteresis == nil {
+		return 0
+	}
+	return c.Hysteresis.Down
 }

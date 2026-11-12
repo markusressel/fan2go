@@ -8,7 +8,7 @@ stalls, foreign changes and failures. When it stops, it hands the fan back. The 
 
 This document covers the controller after the fan is set up. The initial fan analysis, the detection of the
 `pwmMap` and `setPwmToGetPwmMap` and their persistence are described in [fan-analysis.md](fan-analysis.md).
-The control algorithms (`pid`, `direct`) are described in [control-algorithms.md](control-algorithms.md), sensor
+The control algorithms (`direct`, the default with a time constant and a deadband, and `pid`) are described in [control-algorithms.md](control-algorithms.md), sensor
 polling and staleness in [sensors.md](sensors.md), and curves and the curve evaluator in [curves.md](curves.md).
 
 ## How it works
@@ -322,8 +322,8 @@ next cycle tries again.
 - Recovery (`recoverFromCurveFailure`): after `restore`, take manual control again (like at startup) and arm a new
   `restoreOnce`. If that fails, the fan stays handed back and fan2go tries again on the next cycle.
   Before that, `calculateTargetSpeed` makes the control loop continue from the fan's speed: `Preset` at the curve
-  value of `maxPwm` after `max`, `Reset` (start at the target) after `restore`. So the fan ramps down from max
-  instead of jumping (see [control-algorithms.md](control-algorithms.md)).
+  value of `maxPwm` after `max`, `Reset` (start at the target) after `restore`. So the fan comes down from max
+  (with the time constant or ramps of the control algorithm) instead of jumping (see [control-algorithms.md](control-algorithms.md)).
 - Entering the failure state is logged and notified once, after the fan is in a safe state. Recovery is logged
   once. The stall detection is paused while the curve fails, because `UpdateFanSpeed` returns before it.
 
@@ -381,7 +381,10 @@ starts from standstill (zero-RPM mode) from being bumped at every start or reloa
 **Trade-offs**: A fan whose tach signal reports 0 RPM although it spins ends up at `maxPwm` and then uncontrolled;
 fan2go logs a hint to check the tach or disable `neverStop`. Detection is slow on purpose: from 1000 RPM with the
 defaults it takes 29 s until the average is below 50 RPM, plus 3 s per step. The check only runs while the target
-is constant, so a target that alternates between two values (e.g. PID jitter) mostly skips it (#547). The step is
+is constant, so a target that alternates between two values (e.g. PID jitter) mostly skips it (#547). The default
+control algorithm (low-pass plus deadband) keeps the target constant while the curve value jitters by less than
+1 %, so the check runs; a ramp or a low-pass pauses it while the target changes. The floor `minPwm + minPwmOffset`
+is applied after the control algorithm, so smoothing can't push a fan below it. The step is
 1 in the pre-`pwmMap` domain, so with a coarse `pwmMap` many steps may not change the raw value at all.
 
 ### RPM monitoring with an exponential moving average

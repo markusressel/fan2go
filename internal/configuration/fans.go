@@ -152,6 +152,22 @@ func (c FanConfig) GetOnSensorFailure() OnSensorFailureAction {
 	return c.OnSensorFailure
 }
 
+// GetControlAlgorithm returns the configured control algorithm (pid takes precedence if both are set,
+// which the validation rejects), or DefaultControlAlgorithmConfig if none is configured.
+// Exactly one of Pid and Direct is set in the result. Doesn't look at the deprecated ControlLoop,
+// which takes precedence over ControlAlgorithm.
+func (c FanConfig) GetControlAlgorithm() ControlAlgorithmConfig {
+	if c.ControlAlgorithm != nil {
+		if c.ControlAlgorithm.Pid != nil {
+			return ControlAlgorithmConfig{Pid: c.ControlAlgorithm.Pid}
+		}
+		if c.ControlAlgorithm.Direct != nil {
+			return ControlAlgorithmConfig{Direct: c.ControlAlgorithm.Direct}
+		}
+	}
+	return DefaultControlAlgorithmConfig()
+}
+
 type ControlAlgorithm string
 
 const (
@@ -165,8 +181,38 @@ type ControlAlgorithmConfig struct {
 }
 
 type DirectControlAlgorithmConfig struct {
-	// MaxPwmChangePerCycle defines the maximum change of the PWM value per cycle.
+	// MaxPwmChangePerCycle defines the maximum change of the curve value per cycle.
+	//
+	// Deprecated: depends on fanController.adjustmentTickRate, use RampUp and RampDown instead.
 	MaxPwmChangePerCycle *int `json:"maxPwmChangePerCycle,omitempty"`
+	// TimeConstant is the time constant of a first-order low-pass filter on the output (0 = off).
+	// A plain number is seconds.
+	TimeConstant SecondsOrDuration `json:"timeConstant,omitempty"`
+	// RampUp is the maximum increase of the output per second, in curve units (0 = unlimited).
+	RampUp CurveUnits `json:"rampUp,omitempty"`
+	// RampDown is the maximum decrease of the output per second, in curve units (0 = unlimited).
+	RampDown CurveUnits `json:"rampDown,omitempty"`
+	// Deadband is the smallest change of the output that is applied, in curve units (0 = off).
+	// Changes that reach 0 or 255, or that start or stop the fan, are always applied.
+	Deadband CurveUnits `json:"deadband,omitempty"`
+}
+
+const (
+	// DefaultDirectTimeConstant is the timeConstant of the default control algorithm
+	DefaultDirectTimeConstant = SecondsOrDuration(2 * time.Second)
+	// DefaultDirectDeadband is the deadband of the default control algorithm: 1%
+	DefaultDirectDeadband CurveUnits = 2.55
+)
+
+// DefaultControlAlgorithmConfig returns the control algorithm of a fan without controlAlgorithm (and without
+// the deprecated controlLoop): direct with a time constant of 2s and a deadband of 1%.
+func DefaultControlAlgorithmConfig() ControlAlgorithmConfig {
+	return ControlAlgorithmConfig{
+		Direct: &DirectControlAlgorithmConfig{
+			TimeConstant: DefaultDirectTimeConstant,
+			Deadband:     DefaultDirectDeadband,
+		},
+	}
 }
 
 type PidControlAlgorithmConfig struct {

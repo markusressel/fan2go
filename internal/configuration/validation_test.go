@@ -1296,6 +1296,9 @@ func TestValidateConfig_CurveAndControlAlgorithmGaps(t *testing.T) {
 		{name: "linear curve with min == max", curves: linearCurve("      min: 60\n      max: 60"), wantErr: "curve curve: min (60) must be < max (60)"},
 		{name: "linear curve with min > max", curves: linearCurve("      min: 80\n      max: 40"), wantErr: "curve curve: min (80) must be < max (40)"},
 		{name: "linear curve with empty steps", curves: linearCurve("      steps: {}"), wantErr: "curve curve: linear curve needs either steps or min and max"},
+		{name: "linear curve with hysteresis", curves: linearCurve("      min: 40\n      max: 80\n      hysteresis:\n        down: 2.5")},
+		{name: "linear curve with negative hysteresis", curves: linearCurve("      min: 40\n      max: 80\n      hysteresis:\n        down: -1"), wantErr: "curve curve: hysteresis.down must be a finite number >= 0, got -1"},
+		{name: "linear curve with NaN hysteresis", curves: linearCurve("      min: 40\n      max: 80\n      hysteresis:\n        down: .nan"), wantErr: "curve curve: hysteresis.down must be a finite number >= 0, got NaN"},
 		{name: "linear curve with steps and min/max", curves: linearCurve("      min: 40\n      max: 80\n      steps:\n        - 40: 0\n        - 80: 255"), wantWarning: "curve curve: both steps and min/max are set, min/max are ignored"},
 
 		// pid curves
@@ -1323,17 +1326,19 @@ func TestValidateConfig_CurveAndControlAlgorithmGaps(t *testing.T) {
 		{name: "controlLoop and controlAlgorithm", fanExtra: "    controlLoop:\n      p: 0.05\n      i: 0.4\n    controlAlgorithm: direct", wantErr: "fan fan: controlLoop and controlAlgorithm can't be used together, remove the deprecated controlLoop"},
 
 		// stability of the pid control algorithm
-		{name: "default pid control algorithm overshoots at 1s", globals: "fanController:\n  adjustmentTickRate: 1s", wantWarning: "fan fan: the default pid control algorithm (p: 0.05, i: 0.4, d: 0.01) overshoots a change of the curve value by about 8% with fanController.adjustmentTickRate 1s"},
-		{name: "default pid control algorithm is unstable at 3s", globals: "fanController:\n  adjustmentTickRate: 3s", wantErr: "fan fan: the default pid control algorithm (p: 0.05, i: 0.4, d: 0.01) is unstable with fanController.adjustmentTickRate 3s"},
-		{name: "default pid control algorithm is unstable at 10ms", globals: "fanController:\n  adjustmentTickRate: 10ms", wantErr: "fan fan: the default pid control algorithm (p: 0.05, i: 0.4, d: 0.01) is unstable with fanController.adjustmentTickRate 10ms"},
+		{name: "pid control algorithm with the default gains overshoots at 1s", globals: "fanController:\n  adjustmentTickRate: 1s", fanExtra: "    controlAlgorithm: pid", wantWarning: "fan fan: controlAlgorithm.pid (p: 0.05, i: 0.4, d: 0.01) overshoots a change of the curve value by about 8% with fanController.adjustmentTickRate 1s"},
+		{name: "pid control algorithm with the default gains is unstable at 10ms", globals: "fanController:\n  adjustmentTickRate: 10ms", fanExtra: "    controlAlgorithm: pid", wantErr: "fan fan: controlAlgorithm.pid (p: 0.05, i: 0.4, d: 0.01) is unstable with fanController.adjustmentTickRate 10ms"},
+		// without controlAlgorithm, a fan uses direct, which has no stability limit
+		{name: "default control algorithm isn't checked for stability at 3s", globals: "fanController:\n  adjustmentTickRate: 3s"},
+		{name: "default control algorithm isn't checked for stability at 10ms", globals: "fanController:\n  adjustmentTickRate: 10ms"},
 		{name: "explicit pid control algorithm is unstable", globals: "fanController:\n  adjustmentTickRate: 3s", fanExtra: "    controlAlgorithm: pid", wantErr: "fan fan: controlAlgorithm.pid (p: 0.05, i: 0.4, d: 0.01) is unstable"},
 		{name: "pid control algorithm with lower i is stable at 3s", globals: "fanController:\n  adjustmentTickRate: 3s", fanExtra: pidAlgorithm("        p: 0.05\n        i: 0.05\n        d: 0.01")},
 		{name: "pid control algorithm with a large i overshoots", fanExtra: pidAlgorithm("        p: 0.05\n        i: 4"), wantWarning: "fan fan: controlAlgorithm.pid (p: 0.05, i: 4, d: 0) overshoots"},
 		{name: "controlLoop is unstable", globals: "fanController:\n  adjustmentTickRate: 3s", fanExtra: "    controlLoop:\n      p: 0.05\n      i: 0.4", wantErr: "fan fan: controlLoop (p: 0.05, i: 0.4, d: 0) is unstable"},
-		{name: "deprecated controllerAdjustmentTickRate is used for the stability check", globals: "controllerAdjustmentTickRate: 3s", wantErr: "is unstable with fanController.adjustmentTickRate 3s"},
+		{name: "deprecated controllerAdjustmentTickRate is used for the stability check", globals: "controllerAdjustmentTickRate: 3s", fanExtra: "    controlAlgorithm: pid", wantErr: "is unstable with fanController.adjustmentTickRate 3s"},
 		// a slow fan runs the loop at a step of max(1s, adjustmentTickRate)
 		{name: "pid control algorithm unstable at the gap time step", fanExtra: pidAlgorithm("        p: 0.05\n        i: 1.25"), wantWarning: "fan fan: controlAlgorithm.pid (p: 0.05, i: 1.25, d: 0) is unstable at a time step of 1s"},
-		{name: "default pid control algorithm is stable at the gap time step", globals: "fanController:\n  adjustmentTickRate: 200ms"},
+		{name: "pid control algorithm with the default gains is stable at the gap time step", globals: "fanController:\n  adjustmentTickRate: 200ms", fanExtra: "    controlAlgorithm: pid"},
 		{name: "direct control algorithm isn't checked for stability", globals: "fanController:\n  adjustmentTickRate: 3s", fanExtra: "    controlAlgorithm: direct"},
 	}
 
@@ -1432,9 +1437,15 @@ func TestValidateConfig_OvershootWarningOncePerAlgorithm(t *testing.T) {
 	pterm.Warning = *pterm.Warning.WithWriter(&warnings)
 	t.Cleanup(func() { pterm.Warning = oldWarning })
 
-	// GIVEN: two fans with the default pid algorithm, and one with its own gains, all overshooting at 1s
-	yaml := validationGapsYaml("fanController:\n  adjustmentTickRate: 1s", "", "") + `
+	// GIVEN: two fans with the default pid gains, one with its own gains, all overshooting at 1s,
+	// and one with the default control algorithm (direct)
+	yaml := validationGapsYaml("fanController:\n  adjustmentTickRate: 1s", "    controlAlgorithm: pid", "") + `
   - id: fan2
+    curve: curve
+    file:
+      path: /dev/null
+    controlAlgorithm: pid
+  - id: fan4
     curve: curve
     file:
       path: /dev/null
@@ -1454,6 +1465,6 @@ func TestValidateConfig_OvershootWarningOncePerAlgorithm(t *testing.T) {
 	// THEN: one warning per distinct algorithm, with the ids of its fans
 	assert.NoError(t, err)
 	assert.Equal(t, 2, strings.Count(warnings.String(), "overshoots"), warnings.String())
-	assert.Contains(t, warnings.String(), "fans fan, fan2: the default pid control algorithm (p: 0.05, i: 0.4, d: 0.01) overshoots")
+	assert.Contains(t, warnings.String(), "fans fan, fan2: controlAlgorithm.pid (p: 0.05, i: 0.4, d: 0.01) overshoots")
 	assert.Contains(t, warnings.String(), "fan fan3: controlAlgorithm.pid (p: 0.05, i: 0.6, d: 0) overshoots")
 }
