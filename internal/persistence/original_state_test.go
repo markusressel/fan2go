@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"errors"
+	berrors "go.etcd.io/bbolt/errors"
 	"os"
 	"testing"
 	"time"
@@ -110,6 +111,6 @@ func TestPersistence_FanOriginalState_LockedDatabase(t *testing.T) {
 	for _, err := range []error{loadErr, saveErr, deleteErr} {
 		assert.Error(t, err)
 		assert.False(t, IsMissingOrCorrupt(err))
-		assert.True(t, errors.Is(err, bolt.ErrTimeout), "%v", err)
+		assert.True(t, errors.Is(err, berrors.ErrTimeout), "%v", err)
 	}
 }
