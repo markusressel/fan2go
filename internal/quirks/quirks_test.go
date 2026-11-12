@@ -227,14 +227,17 @@ func TestAdvice_SmoothingResolution(t *testing.T) {
 		{"thinkpad: no controlAlgorithm", thinkpad, nil, nil},
 		{"thinkpad: pid", thinkpad, &configuration.ControlAlgorithmConfig{Pid: &configuration.PidControlAlgorithmConfig{}}, nil},
 		{"thinkpad: deadband 1%", thinkpad, directConfig(configuration.DirectControlAlgorithmConfig{Deadband: 2.55}), []string{"deadband is 2.55", "8 output levels"}},
-		{"thinkpad: deadband just below one step", thinkpad, directConfig(configuration.DirectControlAlgorithmConfig{Deadband: 31.9}), []string{"at least 32 of 255"}},
+		{"thinkpad: deadband just below one step", thinkpad, directConfig(configuration.DirectControlAlgorithmConfig{Deadband: 31.9}), []string{"at least 32 of 255", "up to one level away from the curve"}},
 		{"thinkpad: deadband one step", thinkpad, directConfig(configuration.DirectControlAlgorithmConfig{Deadband: 32}), nil},
 		{"thinkpad: slow rampDown", thinkpad, directConfig(configuration.DirectControlAlgorithmConfig{RampDown: 5.1}), []string{"rampDown is 5.1 per second", "one every 6.3s"}},
 		{"thinkpad: fast rampUp", thinkpad, directConfig(configuration.DirectControlAlgorithmConfig{RampUp: 255}), nil},
 		{"corsair: deadband 1%", corsair, directConfig(configuration.DirectControlAlgorithmConfig{Deadband: 2.55}), nil},
-		{"corsair: deadband 0.5%", corsair, directConfig(configuration.DirectControlAlgorithmConfig{Deadband: 1.275}), []string{"101 output levels"}},
+		{"corsair: deadband 0.5%", corsair, directConfig(configuration.DirectControlAlgorithmConfig{Deadband: 1.275}), []string{"101 output levels", "use a deadband of at least 2"}},
 		{"corsair: deadband 2", corsair, directConfig(configuration.DirectControlAlgorithmConfig{Deadband: 2}), nil},
-		{"corsair: rampUp 1%/s", corsair, directConfig(configuration.DirectControlAlgorithmConfig{RampUp: 2.55}), []string{"rampUp is 2.55 per second"}},
+		// less than one step per cycle, but less than 2 s per step: not noticeable
+		{"corsair: rampUp 1%/s", corsair, directConfig(configuration.DirectControlAlgorithmConfig{RampUp: 2.55}), nil},
+		{"corsair: rampUp 0.5 per second", corsair, directConfig(configuration.DirectControlAlgorithmConfig{RampUp: 0.5}), []string{"rampUp is 0.5 per second", "one every 4s"}},
+		{"thinkpad: rampUp 20 per second", thinkpad, directConfig(configuration.DirectControlAlgorithmConfig{RampUp: 20}), nil},
 		{"corsair: rampUp 10%/s", corsair, directConfig(configuration.DirectControlAlgorithmConfig{RampUp: 25.5}), nil},
 	}
 	for _, tt := range tests {

@@ -50,7 +50,8 @@ From highest to lowest:
 
 1. Explicit per-fan config: `setPwmToGetPwmMap` with `identity`, `linear` or `values`. Also the
    `fan init --assume-pwm-map-identity` flag, but only for that run of `fan init`: the daemon uses the formula
-   again. Set `setPwmToGetPwmMap: identity` to keep the identity. `setPwmToGetPwmMap: autodetect` is the same as
+   again (without analyzing the fan again, see [Persistence](#persistence)). Set `setPwmToGetPwmMap: identity` to
+   keep the identity. `setPwmToGetPwmMap: autodetect` is the same as
    no `setPwmToGetPwmMap`: the formula is used.
 2. `quirks.enabled: false` on the fan: no entry is applied to it, so `autodetect` measures the map with the sweep.
 3. The built-in entry.
@@ -82,7 +83,7 @@ Each entry owns its advice (`Entry.Advice`, a list of `quirks.AdviceFunc`). The 
 | Function | Entries | Level | Condition |
 |---|---|---|---|
 | `adviseReadbackFormula` | `corsaircpro`, `aquacomputer`, `nzxtsmart2` | tip | `setPwmToGetPwmMap` is set to `identity`, `linear` or `values` although the formula is known |
-| `adviseSmoothingResolution` | `corsaircpro`, `thinkpad`, `nzxtsmart2` | tip | A configured `controlAlgorithm.direct.deadband` is below one output step, or `rampUp`/`rampDown` moves less than one step per `adjustmentTickRate` cycle. One step is `WriteStep()` in written PWM units (ThinkPad 32, Corsair 2). One step in curve units is at least as large, so the tip only fires when the setting is certainly finer than one step. The default deadband of a fan without `controlAlgorithm` is not checked. |
+| `adviseSmoothingResolution` | `corsaircpro`, `thinkpad`, `nzxtsmart2` | tip | A configured `controlAlgorithm.direct.deadband` is below one output step, or `rampUp`/`rampDown` moves less than one step per `adjustmentTickRate` cycle. One step is `WriteStep()` in written PWM units (ThinkPad 32, Corsair 2). One step in curve units is at least as large, so the tip only fires when the setting is certainly finer than one step. The deadband tip recommends one step only if that is at most 10% (25.5, the limit above which validation warns); otherwise it explains the trade-off. The ramp tip only fires if one step takes at least 2 s. The default deadband of a fan without `controlAlgorithm` is not checked. |
 | `adviseOnlyPwmControlMode` | `nzxtsmart2` | warning | `controlMode.active` or `controlMode.onExit.mode` is something other than `pwm`/`1` |
 | `adviseThinkpadFanControl` | `thinkpad` | warning / tip | `/sys/module/thinkpad_acpi/parameters/fan_control` is `N` (warning). If it can't be read, a tip names the parameter. |
 
@@ -94,9 +95,10 @@ runtime. fan2go doesn't change the settings itself: smoothing defaults are not s
 The analysis data of a hwmon fan (RPM curve, `setPwmToGetPwmMap`, `pwmMap`) is stored with the id and version of
 the entry whose readback formula it was measured with. They are kept in the bucket `fanAnalysisInfo`, as
 `{"quirk": "corsaircpro", "quirkVersion": 1}`, written after a successful analysis. If the formula isn't used (no
-`Readback`, a `setPwmToGetPwmMap` with `identity`/`linear`/`values`, or `fan init --assume-pwm-map-identity`), the
-record is `("", 0)`:
-hints, levels and advice don't affect the analysis.
+`Readback`, or a `setPwmToGetPwmMap` with `identity`/`linear`/`values`), the record is `("", 0)`: hints, levels and
+advice don't affect the analysis. `fan init --assume-pwm-map-identity` still records the entry: the flag only applies
+to that run, and the identity has the same keys (0..255) as the formula, so the measured data stays valid when the
+daemon uses the formula again.
 
 Before it loads the saved data, `runInitializationIfNeeded` compares the stored values with the current entry. Data
 without a record was measured without an entry, so it counts as `("", 0)`. If they differ, fan2go deletes the RPM
@@ -106,8 +108,12 @@ entry with a formula is added, its formula changes (version bump), it is removed
 missing/corrupt data stops the controller, like for the other analysis data. `fan2go fan init` and `fan reset` delete
 the record together with the other data.
 
+**Why the RPM curve too**: the curve was measured with the readback the old map predicted. A wrong map skips
+measurement points, a sweep with failed writes leaves values out of the map (and so out of the pwmMap), and a future
+formula may change the key set.
+
 **Trade-off**: after an upgrade that adds an entry with a formula, the fans of that device are analyzed once more,
-even if the old data was right.
+even if the old data was right (on Aquacomputer devices this takes longer, every PWM read and write waits 200 ms).
 
 ## Devices without an entry
 

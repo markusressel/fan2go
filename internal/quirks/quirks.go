@@ -203,6 +203,8 @@ func Lookup(name string, modalias string) *Entry {
 	return lookup(registry, name, modalias)
 }
 
+// lookup returns the most specific matching entry. Of several equally specific entries, the first one wins; the
+// registry must not contain such overlaps (TestRegistry_Invariants rejects equal match keys).
 func lookup(entries []*Entry, name string, modalias string) *Entry {
 	if name == "" {
 		return nil

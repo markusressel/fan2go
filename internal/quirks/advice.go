@@ -70,6 +70,14 @@ func adviseReadbackFormula(e *Entry, ctx AdviceContext) []Advice {
 		ctx.Fan.ID, e.Description, e.ID)}}
 }
 
+const (
+	// maxReasonableDeadband is the deadband above which config validation warns (10%), see
+	// configuration.validateDirectControlAlgorithm. The advice doesn't recommend a deadband above it.
+	maxReasonableDeadband = 25.5
+	// minNoticeableSecondsPerStep is the time per output step of a ramp from which the ramp advice is given
+	minNoticeableSecondsPerStep = 2.0
+)
+
 // adviseSmoothingResolution: a configured deadband or ramp of the direct control algorithm that is finer than one
 // output step of the device.
 func adviseSmoothingResolution(e *Entry, ctx AdviceContext) []Advice {
@@ -90,11 +98,18 @@ func adviseSmoothingResolution(e *Entry, ctx AdviceContext) []Advice {
 
 	var result []Advice
 	if deadband := direct.Deadband.Value(); deadband > 0 && deadband < step-epsilon {
-		result = append(result, Advice{AdviceTip, fmt.Sprintf(
+		message := fmt.Sprintf(
 			"fan %s: controlAlgorithm.direct.deadband is %.4g, but the %s has only %d output levels "+
 				"(one step is at least %.4g of 255, known hardware quirk '%s'). A deadband below one step doesn't keep "+
-				"the fan from switching between two levels; use a deadband of at least %.4g to avoid that.",
-			ctx.Fan.ID, deadband, e.Description, levels, step, e.ID, step)})
+				"the fan from switching between two neighbouring levels",
+			ctx.Fan.ID, deadband, e.Description, levels, step, e.ID)
+		if step <= maxReasonableDeadband {
+			message += fmt.Sprintf("; use a deadband of at least %.4g to avoid that.", step)
+		} else {
+			message += fmt.Sprintf(". A deadband of a full step (%.4g) would avoid that, but it can also keep the fan "+
+				"up to one level away from the curve.", step)
+		}
+		result = append(result, Advice{AdviceTip, message})
 	}
 	if tick := ctx.AdjustmentTickRate; tick > 0 {
 		for _, ramp := range []struct {
@@ -104,12 +119,17 @@ func adviseSmoothingResolution(e *Entry, ctx AdviceContext) []Advice {
 			if ramp.value <= 0 || ramp.value*tick.Seconds() >= step-epsilon {
 				continue
 			}
+			// only worth a tip if the steps are noticeably far apart in time
+			secondsPerStep := step / ramp.value
+			if secondsPerStep < minNoticeableSecondsPerStep {
+				continue
+			}
 			result = append(result, Advice{AdviceTip, fmt.Sprintf(
 				"fan %s: controlAlgorithm.direct.%s is %.4g per second, which is less than one output step "+
 					"(at least %.4g of 255) per cycle of %s on the %s (%d output levels, known hardware quirk '%s'). "+
 					"The fan still changes its speed in whole steps, at most one every %s.",
 				ctx.Fan.ID, ramp.name, ramp.value, step, tick, e.Description, levels, e.ID,
-				time.Duration(step/ramp.value*float64(time.Second)).Round(100*time.Millisecond))})
+				time.Duration(secondsPerStep*float64(time.Second)).Round(100*time.Millisecond))})
 		}
 	}
 	return result

@@ -761,6 +761,8 @@ func (f *DefaultFanController) runInitializationIfNeeded(ctx context.Context) (m
 // deleteAnalysisDataIfKnownQuirksChanged deletes the saved analysis data of the fan (RPM curve, setPwmToGetPwmMap,
 // pwmMap) if it was measured with another known hardware quirks readback formula than the one that applies now
 // (see analysisQuirkFingerprint), so it is measured again. Data without analysis info was measured without one.
+// The RPM curve and pwmMap are deleted too: they were measured with the readback the old map predicted (a wrong
+// map skips measurement points, a sweep with failed writes leaves keys out), and a formula may change the key set.
 func (f *DefaultFanController) deleteAnalysisDataIfKnownQuirksChanged() error {
 	fan := f.fan
 	id, version := f.analysisQuirkFingerprint()
@@ -794,8 +796,10 @@ func (f *DefaultFanController) deleteAnalysisDataIfKnownQuirksChanged() error {
 // analysisQuirkFingerprint returns the id and version of the known hardware quirks entry that the analysis data
 // of the fan depends on: the entry, if its readback formula is used as the setPwmToGetPwmMap, else ("", 0).
 func (f *DefaultFanController) analysisQuirkFingerprint() (id string, version int) {
+	// assumePwmMapIdentity (fan init) doesn't count: it only applies to that run, the daemon uses the formula again,
+	// and both have the same keys 0..255, so the RPM curve and pwmMap measured with it stay valid
 	entry := fans.KnownQuirksOf(f.fan)
-	if !entry.UsesReadback(f.fan.GetConfig(), f.assumePwmMapIdentity) {
+	if !entry.UsesReadback(f.fan.GetConfig(), false) {
 		return "", 0
 	}
 	return entry.Fingerprint()

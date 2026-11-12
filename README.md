@@ -1116,13 +1116,14 @@ applied entry at startup, and `fan2go detect` shows it in the `Quirks` column.
 | Entry          | Devices (hwmon name)                                       | Effect |
 |----------------|------------------------------------------------------------|--------|
 | `corsaircpro`  | Corsair Commander Pro, Obsidian 1000D (`corsaircpro`)      | `setPwmToGetPwmMap` from the driver formula (1% steps), no set/get sweep at the first start |
-| `aquacomputer` | Aquacomputer D5 Next, Octo, Quadro, Aquaero (`d5next`, `octo`, `quadro`, `aquaero`) | `setPwmToGetPwmMap: identity`, no set/get sweep (which takes minutes on these devices) |
+| `aquacomputer` | Aquacomputer D5 Next, Octo, Quadro, Aquaero (`d5next`, `octo`, `quadro`, `aquaero`) | set→get map from the driver formula (equal to the identity), no set/get sweep (which takes minutes on these devices) |
 | `thinkpad`     | ThinkPad (`thinkpad`)                                      | hint about `thinkpad_acpi fan_control=1`; `config validate` advice for its 8 fan levels |
 | `nzxtsmart2`   | NZXT RGB & Fan Controller, Smart Device v2 (`nzxtsmart2`)  | `setPwmToGetPwmMap` from the driver formula (1% steps); hint about fans connected after boot |
 
 A configured `setPwmToGetPwmMap` map (`identity`, `linear` or `values`) takes precedence; `autodetect` uses the
 formula. To not apply an entry to a fan (and measure the map instead), set
-`quirks.enabled: false` on it. When an entry is added or changed, the fans it applies to are analyzed once more.
+`quirks.enabled: false` on it. When an entry with a readback formula is added or its formula changes, the fans that use it are analyzed once
+more.
 Details, sources, and recipes for devices without an entry (e.g. Dell laptops, AMD GPUs) are in
 [docs/hardware-quirks.md](docs/hardware-quirks.md).
 

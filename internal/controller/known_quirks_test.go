@@ -260,3 +260,54 @@ func TestComputeSetPwmToGetPwmMap_QuirksDisabled_ExplicitAutodetectSweeps(t *tes
 	assert.NotEmpty(t, log.get())
 	assert.Equal(t, 64, controller.setPwmToGetPwmMap[64])
 }
+
+func TestRunInitialization_AssumePwmMapIdentity_SavesTheEntryFingerprint(t *testing.T) {
+	defer setUpInitTestConfig(true)()
+
+	// GIVEN: fan init --assume-pwm-map-identity on a fan with a readback formula
+	log := &writeLog{}
+	fan := newQuirkInitTestFan(log, testQuirk)
+	p := newFakePersistence()
+	initController := newInitTestController(p, fan)
+	initController.assumePwmMapIdentity = true
+
+	// WHEN
+	_, err := initController.RunInitializationAndRestore(context.Background())
+	require.NoError(t, err)
+
+	// THEN: the identity was used for this run, but the record is the entry's,
+	// so the daemon (which uses the formula) keeps the data
+	assert.Equal(t, 64, initController.setPwmToGetPwmMap[64])
+	assert.Equal(t, persistence.FanAnalysisInfo{Quirk: "testdevice", QuirkVersion: 2}, p.analysisInfos["fan"])
+	savedCurve := p.rpmData["fan"]
+	daemonController := newInitTestController(p, fan)
+	_, err = daemonController.runInitializationIfNeeded(context.Background())
+	require.NoError(t, err)
+	assert.Contains(t, p.rpmData, "fan")
+	assert.Equal(t, savedCurve, p.rpmData["fan"])
+}
+
+func TestRunInitialization_SaveRpmDataFails_NoAnalysisInfo(t *testing.T) {
+	defer setUpInitTestConfig(true)()
+
+	// GIVEN
+	log := &writeLog{}
+	fan := newQuirkInitTestFan(log, testQuirk)
+	p := &failingRpmSavePersistence{fakePersistence: newFakePersistence()}
+	controller := newInitTestController(p, fan)
+
+	// WHEN
+	_, _ = controller.RunInitializationAndRestore(context.Background())
+
+	// THEN
+	assert.NotContains(t, p.analysisInfos, "fan")
+}
+
+// failingRpmSavePersistence fails to save the RPM curve data.
+type failingRpmSavePersistence struct {
+	*fakePersistence
+}
+
+func (p *failingRpmSavePersistence) SaveFanRpmData(fans.Fan) error {
+	return errors.New("disk full")
+}
