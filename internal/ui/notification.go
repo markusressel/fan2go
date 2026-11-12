@@ -34,12 +34,21 @@ type pendingNotification struct {
 	icon    string
 }
 
+// maxPendingNotifications is the maximum number of notifications that are queued while no graphical session exists.
+// When it is exceeded, the oldest ones are dropped (they have been logged when they were raised).
+const maxPendingNotifications = 100
+
 var (
+	// pendingMu guards pendingNotifications and workerStarted. It is never held while running a command,
+	// so NotifySend doesn't block while the worker looks for sessions or sends notifications.
 	pendingMu            sync.Mutex
 	pendingNotifications []pendingNotification
 	workerStarted        bool
 
 	workerPollInterval = 1 * time.Second
+	// workerWait returns a channel that fires when the worker should look for a graphical session again,
+	// replaceable in tests
+	workerWait = func() <-chan time.Time { return time.After(workerPollInterval) }
 )
 
 func NotifyInfo(title, text string) {
@@ -58,7 +67,7 @@ func NotifySend(urgency, title, text, icon string) {
 	sessions := getDisplaySessions()
 	if len(sessions) == 0 {
 		pendingMu.Lock()
-		pendingNotifications = append(pendingNotifications, pendingNotification{
+		queueNotification(pendingNotification{
 			urgency: urgency,
 			title:   title,
 			text:    text,
@@ -196,35 +205,63 @@ var sendToSession = func(session displaySession, urgency, title, text, icon stri
 	}
 }
 
+// queueNotification adds notif to the pending notifications, dropping the oldest ones beyond
+// maxPendingNotifications. pendingMu must be held.
+func queueNotification(notif pendingNotification) {
+	pendingNotifications = append(pendingNotifications, notif)
+	if overflow := len(pendingNotifications) - maxPendingNotifications; overflow > 0 {
+		pendingNotifications = append([]pendingNotification(nil), pendingNotifications[overflow:]...)
+	}
+}
+
+// startNotificationWorker starts the worker that sends the pending notifications once a graphical session exists,
+// unless it runs already. pendingMu must be held.
 func startNotificationWorker() {
 	if workerStarted {
 		return
 	}
 	workerStarted = true
-	go func() {
-		for {
-			time.Sleep(workerPollInterval)
+	go runNotificationWorker()
+}
 
-			pendingMu.Lock()
-			if len(pendingNotifications) == 0 {
-				workerStarted = false
-				pendingMu.Unlock()
-				return
-			}
+// runNotificationWorker waits for a graphical session and sends the pending notifications to it.
+// It returns once no notification is pending anymore.
+func runNotificationWorker() {
+	for {
+		<-workerWait()
 
-			sessions := getDisplaySessions()
-			if len(sessions) > 0 {
-				for _, session := range sessions {
-					for _, notif := range pendingNotifications {
-						sendToSession(session, notif.urgency, notif.title, notif.text, notif.icon)
-					}
-				}
-				pendingNotifications = nil
-				workerStarted = false
-				pendingMu.Unlock()
-				return
-			}
+		pendingMu.Lock()
+		if len(pendingNotifications) == 0 {
+			workerStarted = false
 			pendingMu.Unlock()
+			return
 		}
-	}()
+		pendingMu.Unlock()
+
+		sessions := getDisplaySessions()
+		if len(sessions) == 0 {
+			continue
+		}
+
+		pendingMu.Lock()
+		queued := pendingNotifications
+		pendingNotifications = nil
+		pendingMu.Unlock()
+
+		for _, session := range sessions {
+			for _, notif := range queued {
+				sendToSession(session, notif.urgency, notif.title, notif.text, notif.icon)
+			}
+		}
+
+		pendingMu.Lock()
+		if len(pendingNotifications) == 0 {
+			// stop while holding the lock, so a notification queued from now on starts a new worker
+			workerStarted = false
+			pendingMu.Unlock()
+			return
+		}
+		// notifications were queued while sending, send them on the next round
+		pendingMu.Unlock()
+	}
 }

@@ -26,18 +26,37 @@ var rootCmd = &cobra.Command{
 	Short: "A daemon to control the fans of a computer.",
 	Long: `fan2go is a simple daemon that controls the fans
 on your computer based on temperature sensors.`,
+	// errors are printed by Execute (or logged before they are returned, see loggedError), not by cobra
+	SilenceErrors: true,
+	// runs after the flags and arguments have been parsed, for every command
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// cobra checks these only after this hook; check them first, so they still print the usage
+		if err := cmd.ValidateRequiredFlags(); err != nil {
+			return err
+		}
+		if err := cmd.ValidateFlagGroups(); err != nil {
+			return err
+		}
+		// errors from here on are no usage errors
+		cmd.SilenceUsage = true
+		if isHelpOrCompletion(cmd) {
+			// these don't use the config
+			return nil
+		}
+		return initConfigErr
+	},
 	// this is the default command to run when no subcommand is specified
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// errors returned from here on are no usage errors, and they are logged here already,
-		// so neither cobra nor Execute print them again. They still make fan2go exit with code 1.
-		cmd.SilenceUsage = true
-		cmd.SilenceErrors = true
-
+		// errors returned from here on are logged here already, so Execute doesn't print them again.
+		// They still set the exit code (see exitCode).
 		printHeader()
 
-		configPath := configuration.DetectAndReadConfigFile()
+		configPath, err := configuration.DetectAndReadConfigFile()
+		if err != nil {
+			errorAndNotify("Config Loading Error", "%v", err)
+			return loggedError{err}
+		}
 		ui.Info("Using configuration file at: %s", configPath)
-		var err error
 		configuration.CurrentConfig, err = configuration.LoadConfig()
 		if err != nil {
 			errorAndNotify("Config Loading Error", "%v", err)
@@ -49,10 +68,35 @@ on your computer based on temperature sensors.`,
 			return loggedError{err}
 		}
 
-		internal.RunDaemon()
+		err = runDaemon()
+		if err != nil {
+			title := "Fatal Error"
+			if configuration.IsConfigError(err) {
+				title = "Config Error"
+			}
+			errorAndNotify(title, "%v", err)
+			return loggedError{err}
+		}
 		return nil
 	},
 }
+
+// isHelpOrCompletion returns whether cmd is the help command or one of the shell completion commands
+func isHelpOrCompletion(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		switch c.Name() {
+		case "help", "completion", cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd:
+			return true
+		}
+	}
+	return false
+}
+
+// initConfigErr is the error of configuration.InitConfig, which runs before every command
+var initConfigErr error
+
+// runDaemon runs the daemon until it is stopped, replaceable in tests
+var runDaemon = internal.RunDaemon
 
 // errorAndNotify logs an error and sends a desktop notification about it, replaceable in tests
 var errorAndNotify = ui.ErrorAndNotify
@@ -110,22 +154,25 @@ func printHeader() {
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute() {
+// It returns the exit code for the process (see exitcodes.go).
+func Execute() int {
 	cobra.OnInitialize(func() {
-		configuration.InitConfig(global.CfgFile)
+		initConfigErr = configuration.InitConfig(global.CfgFile)
 		setupUi()
 	})
 
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	if err != nil {
 		printUnloggedError(os.Stderr, err)
-		os.Exit(1)
 	}
+	return exitCode(err)
 }
 
 // printUnloggedError prints the given error, unless it has been logged already (see loggedError)
 func printUnloggedError(w io.Writer, err error) {
 	var logged loggedError
 	if !errors.As(err, &logged) {
-		_, _ = fmt.Fprintln(w, err)
+		// not through pterm: some commands disable its output
+		_, _ = fmt.Fprintln(w, "Error:", err)
 	}
 }
