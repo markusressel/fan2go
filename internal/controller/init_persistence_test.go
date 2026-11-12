@@ -26,6 +26,9 @@ type fakePersistence struct {
 	setPwmToGetPwmMaps map[string]map[int]int
 	pwmMaps            map[string][]int
 	originalStates     map[string]persistence.FanOriginalState
+	analysisInfos      map[string]persistence.FanAnalysisInfo
+	// errors for the next LoadFanAnalysisInfo calls (nil: no error)
+	loadAnalysisInfoErrors []error
 
 	loadRpmDataErrors           []error
 	loadSetPwmToGetPwmMapErrors []error
@@ -45,6 +48,7 @@ func newFakePersistence() *fakePersistence {
 		setPwmToGetPwmMaps: map[string]map[int]int{},
 		pwmMaps:            map[string][]int{},
 		originalStates:     map[string]persistence.FanOriginalState{},
+		analysisInfos:      map[string]persistence.FanAnalysisInfo{},
 	}
 }
 
@@ -186,6 +190,33 @@ func (p *fakePersistence) DeleteFanOriginalState(fanId string) error {
 		return err
 	}
 	delete(p.originalStates, fanId)
+	return nil
+}
+
+func (p *fakePersistence) LoadFanAnalysisInfo(fanId string) (persistence.FanAnalysisInfo, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := popError(&p.loadAnalysisInfoErrors); err != nil {
+		return persistence.FanAnalysisInfo{}, err
+	}
+	info, ok := p.analysisInfos[fanId]
+	if !ok {
+		return persistence.FanAnalysisInfo{}, os.ErrNotExist
+	}
+	return info, nil
+}
+
+func (p *fakePersistence) SaveFanAnalysisInfo(fanId string, info persistence.FanAnalysisInfo) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.analysisInfos[fanId] = info
+	return nil
+}
+
+func (p *fakePersistence) DeleteFanAnalysisInfo(fanId string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.analysisInfos, fanId)
 	return nil
 }
 

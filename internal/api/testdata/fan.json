@@ -111,7 +111,9 @@
         "SysfsPath": "/sys/class/hwmon/hwmon4",
         "RpmInputPath": "/sys/class/hwmon/hwmon4/fan1_input",
         "PwmPath": "/sys/class/hwmon/hwmon4/pwm1",
-        "PwmEnablePath": "/sys/class/hwmon/hwmon4/pwm1_enable"
+        "PwmEnablePath": "/sys/class/hwmon/hwmon4/pwm1_enable",
+        "HwmonName": "",
+        "Modalias": ""
       }
     },
     "minPwm": 30,

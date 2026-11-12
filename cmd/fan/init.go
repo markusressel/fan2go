@@ -60,6 +60,9 @@ var initCmd = &cobra.Command{
 		if err = p.DeleteFanPwmMap(fan.GetId()); err != nil {
 			return err
 		}
+		if err = p.DeleteFanAnalysisInfo(fan.GetId()); err != nil {
+			return err
+		}
 
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()

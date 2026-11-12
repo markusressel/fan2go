@@ -522,6 +522,13 @@ func (p mockPersistence) SaveFanOriginalState(fanId string, state persistence.Fa
 	return nil
 }
 func (p mockPersistence) DeleteFanOriginalState(fanId string) error { return nil }
+func (p mockPersistence) LoadFanAnalysisInfo(fanId string) (persistence.FanAnalysisInfo, error) {
+	return persistence.FanAnalysisInfo{}, os.ErrNotExist
+}
+func (p mockPersistence) SaveFanAnalysisInfo(fanId string, info persistence.FanAnalysisInfo) error {
+	return nil
+}
+func (p mockPersistence) DeleteFanAnalysisInfo(fanId string) error { return nil }
 
 func createOneToOnePwmMap() [256]int {
 	var pwmMap = [256]int{}

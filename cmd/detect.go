@@ -12,6 +12,7 @@ import (
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/hwmon"
 	"github.com/markusressel/fan2go/internal/nvidia"
+	"github.com/markusressel/fan2go/internal/quirks"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/mgutz/ansi"
 	"github.com/spf13/cobra"
@@ -81,6 +82,11 @@ var detectCmd = &cobra.Command{
 
 			ui.Printfln("> Platform: %s", platformText(controller))
 
+			quirksText := "-"
+			if entry := quirks.Lookup(controller.HwmonName, controller.Modalias); entry != nil {
+				quirksText = entry.ID
+			}
+
 			var fanRows [][]string
 			for _, fan := range fanSlice {
 
@@ -116,10 +122,10 @@ var detectCmd = &cobra.Command{
 					}
 				}
 				fanRows = append(fanRows, []string{
-					"", strconv.Itoa(fan.Index), pwmChannelText, rpmChannelText, fan.Label, rpmText, pwmText, fmt.Sprintf("%v", controlModeText),
+					"", strconv.Itoa(fan.Index), pwmChannelText, rpmChannelText, fan.Label, rpmText, pwmText, fmt.Sprintf("%v", controlModeText), quirksText,
 				})
 			}
-			var fanHeaders = []string{"Fans   ", "Index", "PWM Channel", "RPM Channel", "Label", "RPM", "PWM", "Mode"}
+			var fanHeaders = []string{"Fans   ", "Index", "PWM Channel", "RPM Channel", "Label", "RPM", "PWM", "Mode", "Quirks"}
 
 			fanTable := table.Table{
 				Headers: fanHeaders,
