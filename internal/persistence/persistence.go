@@ -19,6 +19,18 @@ const (
 	BucketFanSetPwmToSetPwmMap = "fanSetPwmToGetPwmMap"
 )
 
+// ErrCorruptData is returned by the Load* functions if the stored data of a fan can't be read.
+// The corrupt entry has been deleted (if possible) by then, so callers should treat it like
+// missing data (os.ErrNotExist), e.g. by running the fan initialization again.
+var ErrCorruptData = errors.New("corrupt data")
+
+// IsMissingOrCorrupt returns true if err means that there is no usable stored data:
+// it doesn't exist (os.ErrNotExist) or it was corrupt (ErrCorruptData).
+// Any other error (e.g. the database can't be opened) means the data may exist, but couldn't be read.
+func IsMissingOrCorrupt(err error) bool {
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, ErrCorruptData)
+}
+
 type Persistence interface {
 	Init() error
 
@@ -134,19 +146,38 @@ func (p persistence) LoadFanRpmData(fan fans.Fan) (map[int]float64, error) {
 
 		err := json.Unmarshal(v, &fanCurveDataMap)
 		if err != nil {
-			// if we cannot read the saved data, delete it
 			ui.Warning("Unable to unmarshal saved fan data for %s: %v", key, err)
-			err := b.Delete([]byte(key))
-			if err != nil {
-				ui.Error("Unable to delete corrupt data key %s: %v", key, err)
-			}
-			return nil
+			return fmt.Errorf("%w: fan data of %s: %v", ErrCorruptData, key, err)
 		}
 
-		return err
+		return nil
 	})
+	if errors.Is(err, ErrCorruptData) {
+		// if we cannot read the saved data, delete it
+		// (in a separate, writable transaction: View transactions are read-only)
+		deleteCorruptKey(db, BucketFans, key)
+		return nil, err
+	}
+	if err != nil {
+		return nil, err
+	}
 
-	return fanCurveDataMap, err
+	return fanCurveDataMap, nil
+}
+
+// deleteCorruptKey deletes the corrupt entry key from bucket, logging (but otherwise ignoring) errors:
+// the entry is overwritten anyway, once the data has been computed again.
+func deleteCorruptKey(db *bolt.DB, bucket string, key string) {
+	err := db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
+		if b == nil {
+			return nil
+		}
+		return b.Delete([]byte(key))
+	})
+	if err != nil {
+		ui.Error("Unable to delete corrupt data key %s: %v", key, err)
+	}
 }
 
 func (p persistence) DeleteFanRpmData(fan fans.Fan) error {
@@ -205,17 +236,20 @@ func (p persistence) loadFanSetPwmToGetPwmMap(db *bolt.DB, fanId string) (map[in
 
 		err := json.Unmarshal(v, &pwmMap)
 		if err != nil {
-			// if we cannot read the saved data, delete it
-			ui.Warning("Unable to unmarshal saved pwmMap data for %s: %v", key, err)
-			err := b.Delete([]byte(key))
-			if err != nil {
-				ui.Error("Unable to delete corrupt data key %s: %v", key, err)
-			}
-			return nil
+			ui.Warning("Unable to unmarshal saved setPwmToGetPwmMap data for %s: %v", key, err)
+			return fmt.Errorf("%w: setPwmToGetPwmMap of %s: %v", ErrCorruptData, key, err)
 		}
 
-		return err
+		return nil
 	})
+	if errors.Is(err, ErrCorruptData) {
+		// if we cannot read the saved data, delete it
+		deleteCorruptKey(db, BucketFanSetPwmToSetPwmMap, key)
+		return nil, err
+	}
+	if err != nil {
+		return nil, err
+	}
 
 	if pwmMap != nil && len(pwmMap) <= 0 {
 		// remove invalid data from the db
@@ -224,7 +258,7 @@ func (p persistence) loadFanSetPwmToGetPwmMap(db *bolt.DB, fanId string) (map[in
 		return nil, os.ErrNotExist
 	}
 
-	return pwmMap, err
+	return pwmMap, nil
 }
 
 // SaveFanSetPwmToGetPwmMap saves the "pwm requested" -> "actual pwm" map of the given fan to persistence
@@ -340,22 +374,26 @@ func (p persistence) LoadFanPwmMap(fanId string) ([]int, error) {
 
 		err := json.Unmarshal(v, &pwmMapping)
 		if err != nil {
-			// if we cannot read the saved data, delete it
 			ui.Warning("Unable to unmarshal saved pwmMap data for %s: %v", key, err)
-			err := b.Delete([]byte(key))
-			if err != nil {
-				ui.Error("Unable to delete corrupt data key %s: %v", key, err)
-			}
-			return nil
+			return fmt.Errorf("%w: pwmMap of %s: %v", ErrCorruptData, key, err)
+		}
+		if len(pwmMapping) != 256 {
+			ui.Warning("Saved pwmMap data for %s has %d elements instead of 256", key, len(pwmMapping))
+			return fmt.Errorf("%w: pwmMap of %s has %d elements instead of 256", ErrCorruptData, key, len(pwmMapping))
 		}
 
-		return err
+		return nil
 	})
-	if len(pwmMapping) != 256 {
-		return nil, fmt.Errorf("PWM mapping in DB had %d elements instead of 256", len(pwmMapping))
+	if errors.Is(err, ErrCorruptData) {
+		// if we cannot read the saved data, delete it
+		deleteCorruptKey(db, BucketFanPwmMap, key)
+		return nil, err
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	return pwmMapping, err
+	return pwmMapping, nil
 }
 
 func (p persistence) DeleteFanPwmMap(fanId string) error {

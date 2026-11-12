@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
@@ -187,9 +186,7 @@ func (fan *NvidiaFan) GetStartPwm() int {
 	if fan.StartPwm != nil {
 		return *fan.StartPwm
 	} else {
-		// returning MaxPwmValue will make ComputePwmBoundaries()
-		// set the StartPwm measured by fan init
-		// (otherwise it assumes that the user configured MaxPwm in the config)
+		// not computed from curve data yet, and not configured
 		return MaxPwmValue
 	}
 }
@@ -268,17 +265,20 @@ func (fan *NvidiaFan) GetFanRpmCurveData() *map[int]float64 {
 }
 
 func (fan *NvidiaFan) AttachFanRpmCurveData(curveData *map[int]float64) (err error) {
+	// no curve data (e.g. the fan has no RPM sensor, so it can't be measured): like HwMonFan,
+	// keep the configured (or default) PWM boundaries
+	fan.mu.Lock()
 	if curveData == nil || len(*curveData) <= 0 {
-		ui.Error("Can't attach empty fan curve data to fan %s", fan.GetId())
-		return os.ErrInvalid
+		fan.FanCurveData = nil
+		fan.mu.Unlock()
+		return nil
 	}
 
 	data := copyCurveData(curveData)
-	fan.mu.Lock()
 	fan.FanCurveData = data
 	fan.mu.Unlock()
 
-	startPwm, maxPwm := ComputePwmBoundariesFromCurveData(*data, fan.GetStartPwm())
+	startPwm, maxPwm := ComputePwmBoundariesFromCurveData(*data, configuredStartPwm(fan))
 	fan.SetStartPwm(startPwm, false)
 	fan.SetMaxPwm(maxPwm, false)
 
