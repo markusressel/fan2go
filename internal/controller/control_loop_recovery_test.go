@@ -205,7 +205,7 @@ func TestFanController_Pid_RecoveryFromRestore_StartsAtTheCurveValue(t *testing.
 		updateAndTick(t, controller, clock)
 	}
 	require.Equal(t, fans.ControlModeAutomatic, fan.ControlMode)
-	require.NoError(t, fan.MockFan.SetPwm(120))
+	require.NoError(t, fan.SetPwm(120))
 
 	// WHEN: the curve recovers at a lower value, but manual control can't be taken back at first
 	fan.failNextManualModeWrites(1)
