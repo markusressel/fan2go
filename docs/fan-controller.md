@@ -240,7 +240,11 @@ PWM is only written when the fan is not handed back to automatic.
   or a stop before it touched the fan (`handbackPending`).
 - The entry stores a hardware key built from stable config values (hwmon `platform/index/pwmChannel`, nvidia
   `device/index`, file `path`, cmd `setPwm` command), not from resolved sysfs paths. An entry whose key doesn't match
-  the fan config is logged, deleted, and the read state is used.
+  the fan config is logged, deleted, and the read state is used. Editing these values (e.g. the `platform` regex)
+  without changing the hardware also drops the entry.
+- Corrupt entries (unparsable, PWM outside 0..255, control mode other than 0, 1, 2) are deleted and ignored.
+- `controlMode.onExit.controlMode` that can't be parsed counts as an incomplete restore. A fan that can't write
+  its control mode counts as complete (nothing more can be done).
 - Entries of fans that are no longer configured are logged once and deleted at daemon start (see
   [daemon.md](daemon.md)).
 - Database errors never stop a controller. A load error (e.g. the database is locked): the read state is used,
@@ -264,7 +268,9 @@ fan2go touched the fan). An `ExecStopPost` helper that restores without a new st
 
 **Trade-offs**: A fan left behind by a killed run is only restored when fan2go stops the next time, not right
 after the kill. If the user changes the fan state between the kill and the next start, the saved state still wins.
-Without a working database, the behaviour is the old one. Running `fan2go fan init` while the daemon controls the
+Without a working database, the behaviour is the old one. A fan whose restore always fails (e.g. a driver that
+rejects automatic mode) keeps its entry, so every start logs the "didn't hand the fan back completely" warning; the
+saved state is still its true original. Running `fan2go fan init` while the daemon controls the
 same fan uses and then deletes the daemon's entry; that combination is not supported anyway.
 
 ### Panics, signals and hanging commands must not skip the restore
@@ -457,7 +463,10 @@ threshold 50 RPM, stall reaction 3 RPM polling periods, PWM write failure timeou
 - A stopped controller (`ErrPwmWriteFailed`, `ErrFanStalledAtMaxPwm`, panic) is not restarted, and the daemon keeps
   running even if no fan is controlled anymore.
 - After a failed reload, the old controller objects run again with the state of their previous run (failure
-  states, `minPwmOffset`, stall timers, RPM average). Only `restoreOnce` and `mayHaveWrittenToFan` are reset.
+  states, `minPwmOffset`, stall timers, RPM average) and keep their snapshot. Only `restoreOnce`,
+  `mayHaveWrittenToFan` (set again if the last restore was incomplete, `handbackPending`) and
+  `originalFanStateSaveFailed` are reset. The saved original state is saved again at the next takeover if the last
+  restore deleted it.
 - Also see the trade-offs above: `minPwmOffset` is not persisted, stall detection skips alternating targets and
   steps before the `pwmMap`, a fan left behind by SIGKILL is only restored on the next exit, one global update
-rate, a ~3.2 s handback on every reload.
+  rate, a ~3.2 s handback on every reload.

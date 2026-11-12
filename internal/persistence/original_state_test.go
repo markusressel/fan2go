@@ -64,6 +64,7 @@ func TestPersistence_LoadFanOriginalState_CorruptData(t *testing.T) {
 		"not json":     "{",
 		"invalid pwm":  `{"hardware":"x","controlMode":2,"pwm":300}`,
 		"invalid mode": `{"hardware":"x","controlMode":-1,"pwm":10}`,
+		"driver mode":  `{"hardware":"x","controlMode":5,"pwm":10}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			// GIVEN
@@ -72,16 +73,18 @@ func TestPersistence_LoadFanOriginalState_CorruptData(t *testing.T) {
 			putRaw(t, dbPath, BucketFanOriginalState, "gpu", []byte(`{"hardware":"y","controlMode":null,"pwm":null}`))
 
 			// WHEN
-			all, err := p.LoadFanOriginalStates()
-			// THEN: the corrupt entry is skipped
-			require.NoError(t, err)
-			assert.Equal(t, map[string]FanOriginalState{"gpu": {Hardware: "y"}}, all)
-
-			// WHEN
-			_, err = p.LoadFanOriginalState("cpu")
+			_, err := p.LoadFanOriginalState("cpu")
 			// THEN: reported as corrupt and deleted
 			assert.ErrorIs(t, err, ErrCorruptData)
 			assert.True(t, IsMissingOrCorrupt(err))
+			assert.Nil(t, getRaw(t, dbPath, BucketFanOriginalState, "cpu"))
+
+			// WHEN
+			putRaw(t, dbPath, BucketFanOriginalState, "cpu", []byte(value))
+			all, err := p.LoadFanOriginalStates()
+			// THEN: the corrupt entry is skipped and deleted
+			require.NoError(t, err)
+			assert.Equal(t, map[string]FanOriginalState{"gpu": {Hardware: "y"}}, all)
 			assert.Nil(t, getRaw(t, dbPath, BucketFanOriginalState, "cpu"))
 		})
 	}

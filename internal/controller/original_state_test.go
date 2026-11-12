@@ -406,3 +406,58 @@ func TestOriginalStateHardwareKey(t *testing.T) {
 		Cmd: &configuration.CmdFanConfig{SetPwm: &configuration.ExecConfig{Exec: "/usr/bin/set", Args: []string{"--fan", "1"}}},
 	}))
 }
+
+// After a failed reload, the daemon runs the same controller objects again.
+func TestFanController_RunAgainAfterIncompleteRestore_KeepsAndUsesSavedState(t *testing.T) {
+	// GIVEN: a run whose restore was incomplete
+	fan := &failingModeFan{panickingFan: newPanickingFan()}
+	p := newFakePersistence()
+	test := startOriginalStateRun(t, fan, p, "")
+	fan.setFailModeWrites(true)
+	test.stop()
+	fan.setFailModeWrites(false)
+	_, ok := p.originalState("fan")
+	require.True(t, ok)
+
+	// WHEN: the same controller runs again, and stops during the warm-up
+	ctx, cancel := context.WithCancel(context.Background())
+	done := startRun(test.controller, ctx)
+	test.clock.BlockUntil(1)
+	cancel()
+	require.Error(t, awaitRun(t, done))
+
+	// THEN: the fan isn't in its original state, so it is restored anyway, and the entry deleted
+	assert.Equal(t, fans.ControlModeAutomatic, fan.ControlMode)
+	_, ok = p.originalState("fan")
+	assert.False(t, ok)
+	assert.Equal(t, 1, p.originalStateSaves)
+}
+
+func TestFanController_RunAgainAfterCompleteRestore_SavesStateAgain(t *testing.T) {
+	// GIVEN: a run whose restore was complete
+	fan := newPanickingFan()
+	p := newFakePersistence()
+	test := startOriginalStateRun(t, fan, p, "")
+	test.stop()
+	_, ok := p.originalState("fan")
+	require.False(t, ok)
+
+	// WHEN: the same controller runs again
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	test.done = startRun(test.controller, ctx)
+	test.cancel = cancel
+	advanceThroughRunStartup(t, test.clock)
+	test.curve.set(60, nil)
+	test.awaitPwm(60)
+
+	// THEN: the original state is saved again before fan2go takes control
+	saved, ok := p.originalState("fan")
+	require.True(t, ok)
+	assert.Equal(t, intPointer(int(fans.ControlModeAutomatic)), saved.ControlMode)
+	assert.Equal(t, 2, p.originalStateSaves)
+
+	test.stop()
+	_, ok = p.originalState("fan")
+	assert.False(t, ok)
+}

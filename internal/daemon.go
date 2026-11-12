@@ -39,7 +39,7 @@ func RunDaemon() {
 		ui.Fatal("Error initializing fan controllers: %v", err)
 	}
 
-	forgetOriginalStatesOfUnconfiguredFans(pers, fanMap)
+	forgetOriginalStatesOfUnconfiguredFans(pers, configuration.CurrentConfig.Fans)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -92,10 +92,11 @@ func RunDaemon() {
 }
 
 // forgetOriginalStatesOfUnconfiguredFans deletes the saved original states (see controller.FanStateSnapshot)
-// of fans that are not configured anymore. Such a state means that fan2go didn't hand the fan back the last time
-// it ran (e.g. it was killed), so it is logged as a warning, once. Controllers delete the state of their own fan
+// of fans that are not in the config anymore (fans that are configured, but couldn't be created, keep theirs).
+// Such a state means that fan2go didn't hand the fan back completely the last time it ran (e.g. it was killed),
+// so it is logged as a warning, once. Controllers delete the state of their own fan
 // when they hand it back, so this is only needed at startup. Best effort: errors are logged.
-func forgetOriginalStatesOfUnconfiguredFans(pers persistence.Persistence, fanMap map[configuration.FanConfig]fans.Fan) {
+func forgetOriginalStatesOfUnconfiguredFans(pers persistence.Persistence, fanConfigs []configuration.FanConfig) {
 	if err := pers.Init(); err != nil {
 		ui.Warning("Cannot check the saved original fan states: %v", err)
 		return
@@ -106,14 +107,14 @@ func forgetOriginalStatesOfUnconfiguredFans(pers persistence.Persistence, fanMap
 		return
 	}
 	configured := map[string]bool{}
-	for _, fan := range fanMap {
-		configured[fan.GetId()] = true
+	for _, fanConfig := range fanConfigs {
+		configured[fanConfig.ID] = true
 	}
 	for id, state := range states {
 		if configured[id] {
 			continue
 		}
-		ui.Warning("Fan %s is not configured anymore, but fan2go didn't hand it back the last time it ran (killed or crashed?). Check the fan (%s), its original state was: %s. Deleting the saved state.",
+		ui.Warning("Fan %s is not configured anymore, but fan2go didn't hand it back completely the last time it ran (killed, crashed or incomplete restore?). Check the fan (%s), its original state was: %s. Deleting the saved state.",
 			id, state.Hardware, controller.FormatFanOriginalState(state))
 		if err := pers.DeleteFanOriginalState(id); err != nil {
 			ui.Warning("Cannot delete the saved original state of fan %s: %v", id, err)

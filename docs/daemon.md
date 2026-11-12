@@ -40,9 +40,10 @@ Details of the individual subsystems are in their own documents:
 7. If no fan is left after step 4, the orchestrator exits with code 1 ("No valid fan configurations, exiting.").
 
 Between steps 5 and 6, `forgetOriginalStatesOfUnconfiguredFans` deletes the saved original states (see
-[fan-controller.md](fan-controller.md)) of fans that are not configured anymore. Such an entry means that an earlier
-run was killed while it controlled the fan, so each one is logged once as a warning, with the saved control mode and
-PWM, so the user can check that fan. This runs only at startup: on reload, the stopped controllers delete the entries
+[fan-controller.md](fan-controller.md)) of fans whose id is not in the config anymore. Fans that are configured but
+couldn't be created (e.g. their hwmon chip wasn't found) keep theirs. Such an entry means that an earlier run didn't
+hand the fan back completely (it was killed, or its restore failed), so each one is logged once as a warning, with the
+saved control mode and PWM, so the user can check that fan. This runs only at startup: on reload, the stopped controllers delete the entries
 of their fans when they hand them back.
 
 Each fan controller first creates the database directory (`Persistence.Init`). Then it waits before it touches its

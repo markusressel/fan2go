@@ -34,7 +34,8 @@ type FanOriginalState struct {
 }
 
 func (s FanOriginalState) validate() error {
-	if s.ControlMode != nil && *s.ControlMode < 0 {
+	// only fans.ControlModeDisabled, ControlModePWM and ControlModeAutomatic are saved
+	if s.ControlMode != nil && (*s.ControlMode < 0 || *s.ControlMode > 2) {
 		return fmt.Errorf("invalid control mode %d", *s.ControlMode)
 	}
 	if s.Pwm != nil && (*s.Pwm < 0 || *s.Pwm > 255) {
@@ -98,7 +99,7 @@ func (p persistence) LoadFanOriginalState(fanId string) (FanOriginalState, error
 }
 
 // LoadFanOriginalStates loads the saved original states of all fans, by fan id.
-// Corrupt entries are skipped (and logged).
+// Corrupt entries are skipped, logged and deleted.
 func (p persistence) LoadFanOriginalStates() (map[string]FanOriginalState, error) {
 	db, err := p.openPersistenceWithTimeout(originalStateDbTimeout)
 	if err != nil {
@@ -107,6 +108,7 @@ func (p persistence) LoadFanOriginalStates() (map[string]FanOriginalState, error
 	defer func() { _ = db.Close() }()
 
 	result := map[string]FanOriginalState{}
+	var corrupt []string
 	err = db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BucketFanOriginalState))
 		if b == nil {
@@ -116,12 +118,17 @@ func (p persistence) LoadFanOriginalStates() (map[string]FanOriginalState, error
 			state, err := decodeFanOriginalState(string(k), v)
 			if err == nil {
 				result[string(k)] = state
+			} else {
+				corrupt = append(corrupt, string(k))
 			}
 			return nil
 		})
 	})
 	if err != nil {
 		return nil, err
+	}
+	for _, key := range corrupt {
+		deleteCorruptKey(db, BucketFanOriginalState, key)
 	}
 	return result, nil
 }

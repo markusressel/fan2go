@@ -51,7 +51,7 @@ func (f *DefaultFanController) useSavedOriginalFanState() {
 		switch {
 		case errors.Is(err, os.ErrNotExist):
 		case errors.Is(err, persistence.ErrCorruptData):
-			ui.Warning("Fan %s: Saved original state is corrupt and was deleted, using the current state as original: %v", fan.GetId(), err)
+			// logged by the persistence
 		default:
 			// the saved state may exist: don't overwrite or delete it, the next run may be able to use it
 			f.originalFanStateUnusable = true
@@ -71,7 +71,7 @@ func (f *DefaultFanController) useSavedOriginalFanState() {
 		return
 	}
 
-	ui.Warning("Fan %s: fan2go didn't hand the fan back the last time it ran (killed or crashed?). Using the saved original state (%s) instead of the current state (%s)",
+	ui.Warning("Fan %s: fan2go didn't hand the fan back completely the last time it ran (killed, crashed or incomplete restore?). Using the saved original state (%s) instead of the current state (%s)",
 		fan.GetId(), FormatFanOriginalState(saved), FormatFanOriginalState(toFanOriginalState(current, hardware)))
 	f.originalFanState = fromFanOriginalState(saved)
 	if keeper, ok := fan.(fans.AutomaticControlModeKeeper); ok && saved.AutomaticControlMode != nil &&

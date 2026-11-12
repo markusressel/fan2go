@@ -1260,6 +1260,7 @@ func (f *DefaultFanController) restoreControlMode() (handedOver bool, complete b
 			parsedControlMode, err := parseControlModeValue(*onExit.ControlMode)
 			if err != nil {
 				ui.Warning("Fan %s: Error parsing controlMode.onExit.controlMode: %v", f.fan.GetId(), err)
+				complete = false
 			} else {
 				controlModeToSet = &parsedControlMode
 			}
