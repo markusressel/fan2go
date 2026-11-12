@@ -335,13 +335,21 @@ next cycle tries again.
 - `restore`: hand the fan back once, with the same logic as on exit. It only counts as success if the fan ends up
   in a control mode other than manual PWM (`restoreControlMode` returns `handedOver`). Otherwise (`onExit: none`,
   only `onExit.speed`, original mode manual, mode unknown or not writable), the fan is set to `maxPwm` like `max`.
-- Recovery (`recoverFromCurveFailure`): after `restore`, take manual control again (like at startup) and arm a new
-  `restoreOnce`. If that fails, the fan stays handed back and fan2go tries again on the next cycle.
+- Recovery (`recoverFromCurveFailure`): after `restore`, save the original state again (`markMayWriteToFan`), arm a
+  new `restoreOnce` and take manual control again (like at startup). If that fails, the fan stays handed back, the
+  state stays `sensor_failure_restored` with the error, and fan2go tries again on every cycle. The first failed
+  attempt is warned about and notified once; the following ones are only logged at debug level. Only after manual
+  control was taken again (logged once), a later failed attempt notifies again; a new curve failure in between
+  doesn't (its error replaces the one in the state). `restoreOnce` is armed before the attempt, because the failed
+  write may have changed the fan anyway. A stop while the fan stays handed back therefore runs the usual restore
+  (see "Snapshot the original state"): it writes the original mode (or `controlMode.onExit`) again, falls back to
+  max speed if that fails, and deletes the saved original state if the restore is complete, instead of leaving it
+  in the database.
   Before that, `calculateTargetSpeed` makes the control loop continue from the fan's speed: `Preset` at the curve
   value of `maxPwm` after `max`, `Reset` (start at the target) after `restore`. So the fan comes down from max
   (with the time constant or ramps of the control algorithm) instead of jumping (see [control-algorithms.md](control-algorithms.md)).
 - Entering the failure state is logged and notified once, after the fan is in a safe state. Recovery is logged
-  once. The stall detection is paused while the curve fails, because `UpdateFanSpeed` returns before it.
+  once, and so is a recovery that can't take manual control again (see above). The stall detection is paused while the curve fails, because `UpdateFanSpeed` returns before it.
 
 **Why**: Before #551, a sensor failure did one of three things depending on the curve type: stop the controller
 (PID), keep the last value forever (linear, staircase), or treat a read error as 0 °C (file sensor). None was

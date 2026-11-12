@@ -230,3 +230,91 @@ func TestFanController_SensorFailure_Restore_RecoveryWithRejectedPwmMode_StaysHa
 	test.stop()
 	assert.NotContains(t, fan.getAttempts(), fans.ControlModeDisabled)
 }
+
+// Taking manual control again after onSensorFailure: restore is retried on every update. The user is warned
+// and notified once per failure, not on every update, and the saved original state doesn't outlive the run.
+func TestFanController_SensorFailure_Restore_RejectedPwmMode_NotifiesOncePerFailureAndLeavesNoSavedState(t *testing.T) {
+	// GIVEN: a fan that was handed back after a curve failure (notification 1)
+	fan := &pwmModeRejectingFan{panickingFan: newPanickingFan()}
+	p := newFakePersistence()
+	test := startOriginalStateRun(t, fan, p, configuration.OnSensorFailureRestore)
+	test.curve.set(0, errStale)
+	test.awaitNotified(1)
+
+	// WHEN: the curve recovers, but the driver rejects the manual PWM mode for many updates
+	fan.setRejectPwm(true)
+	test.curve.set(80, nil)
+	test.awaitNotified(2)
+	test.tick(20)
+
+	// THEN: the user is notified once, and fan2go keeps retrying
+	notified := test.getNotified()
+	require.Len(t, notified, 2)
+	assert.Contains(t, notified[1], "manual control can't be taken again")
+	attempts := 0
+	for _, mode := range fan.getAttempts() {
+		if mode == fans.ControlModePWM {
+			attempts++
+		}
+	}
+	assert.Greater(t, attempts, 20)
+
+	// WHEN: manual control can be taken again, and the next failure has the same problem
+	fan.setRejectPwm(false)
+	test.awaitPwm(80)
+	assertState(t, test.controller, status.StateRunning, "")
+	test.curve.set(0, errStale)
+	test.awaitNotified(3)
+	fan.setRejectPwm(true)
+	test.curve.set(80, nil)
+	test.awaitNotified(4)
+	test.tick(20)
+
+	// THEN: the new failure is notified once again
+	assert.Len(t, test.getNotified(), 4)
+
+	// WHEN: fan2go stops while the fan is handed back
+	test.stop()
+
+	// THEN: the stop restored the fan to its original mode, and no saved original state is left behind
+	attemptsAtExit := fan.getAttempts()
+	assert.Equal(t, fans.ControlModeAutomatic, attemptsAtExit[len(attemptsAtExit)-1])
+	mode, err := fan.GetControlMode()
+	require.NoError(t, err)
+	assert.Equal(t, fans.ControlModeAutomatic, mode)
+	_, ok := p.originalState("fan")
+	assert.False(t, ok, "the saved original state must be deleted after a clean stop")
+	assert.NotContains(t, fan.getAttempts(), fans.ControlModeDisabled)
+}
+
+// A new Run (e.g. after a failed config reload) warns again if it can't take manual control back, even if the
+// previous Run stopped while it couldn't either.
+func TestFanController_SensorFailure_Restore_RejectedPwmMode_NewRunNotifiesAgain(t *testing.T) {
+	// GIVEN: a Run that stopped while it couldn't take manual control back (notifications 1 and 2)
+	fan := &pwmModeRejectingFan{panickingFan: newPanickingFan()}
+	test := startOriginalStateRun(t, fan, newFakePersistence(), configuration.OnSensorFailureRestore)
+	test.curve.set(0, errStale)
+	test.awaitNotified(1)
+	fan.setRejectPwm(true)
+	test.curve.set(80, nil)
+	test.awaitNotified(2)
+	test.stop()
+
+	// WHEN: the same controller runs again, and the same happens
+	fan.setRejectPwm(false)
+	test.curve.set(50, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	test.cancel = cancel
+	test.done = startRun(test.controller, ctx)
+	advanceThroughRunStartup(t, test.clock)
+	test.awaitPwm(50)
+	test.curve.set(0, errStale)
+	test.awaitNotified(3)
+	fan.setRejectPwm(true)
+	test.curve.set(80, nil)
+
+	// THEN: the user is notified again
+	test.awaitNotified(4)
+	assert.Contains(t, test.getNotified()[3], "manual control can't be taken again")
+	test.stop()
+}
