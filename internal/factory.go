@@ -14,6 +14,7 @@ import (
 	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/statistics"
 	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 )
 
 func InitializeObjects() (fanMap map[configuration.FanConfig]fans.Fan, reg *registry.Registry, err error) {
@@ -123,11 +124,15 @@ func initializeSensors(
 		}
 		sensorList = append(sensorList, sensor)
 
+		// seed the moving average with a first reading. If that fails, the sensor has no reading,
+		// so it is stale until the sensor monitor reads it successfully (instead of starting at 0).
 		currentValue, err := sensor.GetValue()
 		if err != nil {
 			ui.Warning("Error reading sensor %s: %v", config.ID, err)
+		} else {
+			sensor.SetMovingAvg(currentValue)
+			sensor.RecordReading(sensors.Reading{Value: currentValue, Time: util.RealClock.Now()})
 		}
-		sensor.SetMovingAvg(currentValue)
 
 		reg.RegisterSensor(sensor)
 	}

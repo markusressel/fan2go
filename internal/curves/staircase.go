@@ -8,6 +8,7 @@ import (
 	"github.com/markusressel/fan2go/internal/ui"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/util"
 )
 
 type StaircaseSpeedCurve struct {
@@ -17,7 +18,15 @@ type StaircaseSpeedCurve struct {
 
 	LastTemp int
 
+	// clock is the time source for the staleness check of the sensor value (nil means util.RealClock)
+	clock util.Clock
+
 	mu sync.RWMutex
+}
+
+// SetClock replaces the time source for the staleness check of the sensor value. Intended for tests.
+func (c *StaircaseSpeedCurve) SetClock(clock util.Clock) {
+	c.clock = clock
 }
 
 func (c *StaircaseSpeedCurve) BindRegistry(registry RegistryReader) {
@@ -30,11 +39,11 @@ func (c *StaircaseSpeedCurve) GetId() string {
 
 func (c *StaircaseSpeedCurve) Evaluate() (value float64, err error) {
 	if c.registry == nil {
-		return c.Value, fmt.Errorf("no registry bound to speed curve '%s'", c.Config.ID)
+		return c.CurrentValue(), fmt.Errorf("no registry bound to speed curve '%s'", c.Config.ID)
 	}
-	sensor, exists := c.registry.GetSensor(c.Config.Staircase.Sensor)
-	if !exists || sensor == nil {
-		return c.Value, fmt.Errorf("sensor not found with id '%s'", c.Config.Staircase.Sensor)
+	sensor, _, err := getSensorReading(c.registry, c.Config.Staircase.Sensor, getClock(c.clock).Now())
+	if err != nil {
+		return c.CurrentValue(), fmt.Errorf("curve %s: %w", c.Config.ID, err)
 	}
 
 	measured := sensor.GetMovingAvg()

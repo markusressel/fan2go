@@ -52,10 +52,23 @@ func (p *PidLoop) SetClock(now func() time.Time) {
 	p.now = now
 }
 
-// Loop advances the pid loop
+// Reset makes the next Loop/LoopAt call initialize the loop again, as if it was new.
+func (p *PidLoop) Reset() {
+	p.lastTime = time.Time{}
+	p.lastMeasured = 0
+	p.integral = 0
+	p.lastOutput = 0
+}
+
+// Loop advances the pid loop, using the current time of its clock (see SetClock) as the time of the measurement
 func (p *PidLoop) Loop(target float64, measured float64) float64 {
+	return p.LoopAt(p.now(), target, measured)
+}
+
+// LoopAt advances the pid loop with a measurement taken at loopTime.
+// The time between two measurements is used as dt; if it is not positive, the last output is returned.
+func (p *PidLoop) LoopAt(loopTime time.Time, target float64, measured float64) float64 {
 	initialized := !p.lastTime.IsZero()
-	loopTime := p.now()
 	if !initialized {
 		p.lastMeasured = measured
 		p.lastTime = loopTime

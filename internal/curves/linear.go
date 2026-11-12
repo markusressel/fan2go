@@ -14,8 +14,15 @@ type LinearSpeedCurve struct {
 	Config   configuration.CurveConfig `json:"config"`
 	Value    float64                   `json:"value"`
 	registry RegistryReader
+	// clock is the time source for the staleness check of the sensor value (nil means util.RealClock)
+	clock util.Clock
 
 	mu sync.RWMutex
+}
+
+// SetClock replaces the time source for the staleness check of the sensor value. Intended for tests.
+func (c *LinearSpeedCurve) SetClock(clock util.Clock) {
+	c.clock = clock
 }
 
 func (c *LinearSpeedCurve) BindRegistry(registry RegistryReader) {
@@ -28,11 +35,11 @@ func (c *LinearSpeedCurve) GetId() string {
 
 func (c *LinearSpeedCurve) Evaluate() (value float64, err error) {
 	if c.registry == nil {
-		return c.Value, fmt.Errorf("no registry bound to speed curve '%s'", c.Config.ID)
+		return c.CurrentValue(), fmt.Errorf("no registry bound to speed curve '%s'", c.Config.ID)
 	}
-	sensor, exists := c.registry.GetSensor(c.Config.Linear.Sensor)
-	if !exists || sensor == nil {
-		return c.Value, fmt.Errorf("sensor not found with id '%s'", c.Config.Linear.Sensor)
+	sensor, _, err := getSensorReading(c.registry, c.Config.Linear.Sensor, getClock(c.clock).Now())
+	if err != nil {
+		return c.CurrentValue(), fmt.Errorf("curve %s: %w", c.Config.ID, err)
 	}
 	var avgTemp = sensor.GetMovingAvg()
 
@@ -41,7 +48,7 @@ func (c *LinearSpeedCurve) Evaluate() (value float64, err error) {
 		interpolatedCurveValue, err := util.CalculateInterpolatedCurveValue(steps, util.InterpolationTypeLinear, avgTemp/1000)
 		if err != nil {
 			ui.Error("Error calculating interpolated curve value for sensor '%s': %v", sensor.GetId(), err)
-			return 0, err
+			return c.CurrentValue(), err
 		}
 		value = interpolatedCurveValue
 	} else {

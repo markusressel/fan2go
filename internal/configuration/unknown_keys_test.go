@@ -46,7 +46,7 @@ func TestGetValidKeys(t *testing.T) {
 	cfg := Configuration{}
 	keys := getValidKeys(reflect.TypeOf(cfg))
 
-	expected := []string{"dbpath", "runfaninitializationinparallel", "maxrpmdiffforsettledfan", "fanresponsedelay", "tempsensorpollingrate", "temprollingwindowsize", "rpmpollingrate", "rpmrollingwindowsize", "controlleradjustmenttickrate", "analysis", "fancontroller", "fans", "sensors", "curves", "api", "statistics", "profiling"}
+	expected := []string{"dbpath", "runfaninitializationinparallel", "maxrpmdiffforsettledfan", "fanresponsedelay", "tempsensorpollingrate", "temprollingwindowsize", "sensorstaletimeout", "rpmpollingrate", "rpmrollingwindowsize", "controlleradjustmenttickrate", "analysis", "fancontroller", "fans", "sensors", "curves", "api", "statistics", "profiling"}
 
 	if len(keys) != len(expected) {
 		t.Errorf("getValidKeys() returned %d keys, want %d", len(keys), len(expected))

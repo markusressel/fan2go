@@ -7,12 +7,15 @@ import (
 	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
+	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/stretchr/testify/assert"
 )
 
 // panickingSensor panics on the first panicCount reads, and returns value afterward.
 // Every read is announced on reads.
 type panickingSensor struct {
+	sensors.ReadingTracker
+
 	panicCount int
 	value      float64
 	reads      chan struct{}

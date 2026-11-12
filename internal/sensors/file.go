@@ -1,8 +1,8 @@
 package sensors
 
 import (
+	"fmt"
 	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"os/user"
 	"path/filepath"
@@ -13,6 +13,8 @@ import (
 type FileSensor struct {
 	Config    configuration.SensorConfig `json:"configuration"`
 	MovingAvg float64                    `json:"movingAvg"`
+
+	ReadingTracker
 
 	mu sync.Mutex
 }
@@ -43,8 +45,8 @@ func (sensor *FileSensor) GetValue() (float64, error) {
 
 	integer, err := util.ReadIntFromFile(filePath)
 	if err != nil {
-		ui.Warning("Unable to read int from file sensor: %s", filePath)
-		return 0, nil
+		// a failed read must never look like a valid reading (e.g. 0 °C)
+		return 0, fmt.Errorf("sensor %s: unable to read int from file %s: %w", sensor.GetId(), filePath, err)
 	}
 
 	result := float64(integer)

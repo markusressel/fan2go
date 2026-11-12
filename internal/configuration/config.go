@@ -28,6 +28,10 @@ type Configuration struct {
 
 	TempSensorPollingRate time.Duration `json:"tempSensorPollingRate"`
 	TempRollingWindowSize int           `json:"tempRollingWindowSize"`
+	// SensorStaleTimeout is the time after the last successful reading of a sensor after which its value
+	// is considered stale, and the curves using it can't be evaluated anymore.
+	// nil means unset, see GetSensorStaleTimeout for the effective value.
+	SensorStaleTimeout *time.Duration `json:"sensorStaleTimeout,omitempty"`
 
 	RpmPollingRate       time.Duration `json:"rpmPollingRate"`
 	RpmRollingWindowSize int           `json:"rpmRollingWindowSize"`
@@ -48,6 +52,23 @@ type Configuration struct {
 }
 
 var CurrentConfig Configuration
+
+const (
+	// minDefaultSensorStaleTimeout is the lower bound of the default sensorStaleTimeout
+	minDefaultSensorStaleTimeout = 10 * time.Second
+	// defaultSensorStaleTimeoutPollingPeriods is the number of tempSensorPollingRate periods
+	// of the default sensorStaleTimeout
+	defaultSensorStaleTimeoutPollingPeriods = 10
+)
+
+// GetSensorStaleTimeout returns the effective sensorStaleTimeout: the configured value, or
+// max(10s, 10 * tempSensorPollingRate) if it is not set.
+func (c *Configuration) GetSensorStaleTimeout() time.Duration {
+	if c.SensorStaleTimeout != nil {
+		return *c.SensorStaleTimeout
+	}
+	return max(minDefaultSensorStaleTimeout, defaultSensorStaleTimeoutPollingPeriods*c.TempSensorPollingRate)
+}
 
 // InitConfig reads in config file and ENV variables if set.
 func InitConfig(cfgFile string) {

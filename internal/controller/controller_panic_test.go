@@ -9,6 +9,7 @@ import (
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/control_loop"
+	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
@@ -152,7 +153,7 @@ func setUpRunTestConfig(rpmPollingRate time.Duration) func() {
 	}
 }
 
-func newRunTestController(fan fans.Fan, curve MockCurve, updateRate time.Duration, clock *util.FakeClock) *DefaultFanController {
+func newRunTestController(fan fans.Fan, curve curves.SpeedCurve, updateRate time.Duration, clock *util.FakeClock) *DefaultFanController {
 	controller := NewFanController(
 		mockPersistence{hasSavedPwmData: true},
 		fan,
@@ -324,11 +325,12 @@ func TestFanController_Run_PanicBeforeControlLoop_RestoresFanAndReturnsError(t *
 	assert.Equal(t, []fans.ControlMode{fans.ControlModeAutomatic}, fan.getControlModeWrites())
 }
 
-func TestFanController_Run_UpdateError_RestoresFanBeforeNotifying(t *testing.T) {
+func TestFanController_Run_CurveError_OnSensorFailureRestore_RestoresFanBeforeNotifying(t *testing.T) {
 	defer setUpRunTestConfig(time.Hour)()
 
-	// GIVEN: a curve that fails to evaluate
+	// GIVEN: a curve that fails to evaluate, on a fan that is handed back on sensor failures
 	fan := newPanickingFan()
+	fan.onSensorFailure = configuration.OnSensorFailureRestore
 	clock := util.NewFakeClock(time.Unix(1000, 0))
 	controller := newRunTestController(fan, MockCurve{ID: "curve", Err: errors.New("evaluation failed")}, time.Millisecond, clock)
 	var writesWhenNotified [][]fans.ControlMode
@@ -338,18 +340,25 @@ func TestFanController_Run_UpdateError_RestoresFanBeforeNotifying(t *testing.T) 
 		defer notifiedMu.Unlock()
 		writesWhenNotified = append(writesWhenNotified, fan.getControlModeWrites())
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 
 	// WHEN
-	done := startRun(controller, context.Background())
+	done := startRun(controller, ctx)
 	advanceThroughRunStartup(t, clock)
-	err := awaitRun(t, done)
+	require.Eventually(t, func() bool {
+		notifiedMu.Lock()
+		defer notifiedMu.Unlock()
+		return len(writesWhenNotified) > 0
+	}, 5*time.Second, time.Millisecond)
 
-	// THEN: the controller stops, and the fan was already restored when the user was notified
-	assert.NoError(t, err)
+	// THEN: the fan was already restored when the user was notified
 	notifiedMu.Lock()
-	defer notifiedMu.Unlock()
-	require.Len(t, writesWhenNotified, 1)
 	assert.Equal(t, []fans.ControlMode{fans.ControlModePWM, fans.ControlModeAutomatic}, writesWhenNotified[0])
+	notifiedMu.Unlock()
+
+	// and the controller keeps running
+	cancel()
+	assert.NoError(t, awaitRun(t, done))
 }
 
 func TestFanController_Run_Cancelled_RestoresFanOnce(t *testing.T) {

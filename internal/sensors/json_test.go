@@ -12,6 +12,10 @@ func exportedFields(t reflect.Type) []string {
 	var result []string
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
+		if field.Anonymous && field.Type == reflect.TypeOf(ReadingTracker{}) {
+			// has no exported fields, so it adds nothing to the JSON of a sensor
+			continue
+		}
 		if field.IsExported() {
 			result = append(result, field.Name+" "+field.Type.String()+" `"+string(field.Tag)+"`")
 		}

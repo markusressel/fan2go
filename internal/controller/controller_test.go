@@ -13,33 +13,37 @@ import (
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/sensors"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type MockSensor struct {
+	sensors.ReadingTracker
+
 	ID        string
 	Name      string
 	MovingAvg float64
 }
 
-func (sensor MockSensor) GetId() string {
+func (sensor *MockSensor) GetId() string {
 	return sensor.ID
 }
 
-func (sensor MockSensor) GetLabel() string {
+func (sensor *MockSensor) GetLabel() string {
 	return sensor.Name
 }
 
-func (sensor MockSensor) GetConfig() configuration.SensorConfig {
+func (sensor *MockSensor) GetConfig() configuration.SensorConfig {
 	panic("not implemented")
 }
 
-func (sensor MockSensor) GetValue() (result float64, err error) {
+func (sensor *MockSensor) GetValue() (result float64, err error) {
 	return sensor.MovingAvg, nil
 }
 
-func (sensor MockSensor) GetMovingAvg() (avg float64) {
+func (sensor *MockSensor) GetMovingAvg() (avg float64) {
 	return sensor.MovingAvg
 }
 
@@ -90,6 +94,7 @@ type MockFan struct {
 	ControlModeConfig                            *configuration.ControlModeConfig
 	PwmSetDelay                                  *time.Duration
 	setPwmAlwaysFails                            bool
+	onSensorFailure                              configuration.OnSensorFailureAction
 	// sanity checks disabled at runtime via DisableSanityCheck
 	disabledSanityChecks []fans.SanityCheck
 
@@ -257,6 +262,7 @@ func (fan *MockFan) GetConfig() configuration.FanConfig {
 		ControlMode:            fan.ControlModeConfig,
 		PwmSetDelay:            fan.PwmSetDelay,
 		UseUnscaledCurveValues: fan.useUnscaledCurveValues,
+		OnSensorFailure:        fan.onSensorFailure,
 		HwMon:                  nil, // Not used in this mock
 		File:                   nil, // Not used in this mock
 		Cmd:                    nil, // Not used in this mock
@@ -1013,7 +1019,9 @@ func advanceThroughRunStartup(t *testing.T, clock *util.FakeClock) {
 	clock.Advance(defaultStartupUpdateDelay)
 }
 
-func TestFanController_RunStopsOnCurveEvaluationError(t *testing.T) {
+// A curve error doesn't stop the controller anymore: with the default onSensorFailure (max),
+// the fan is set to its maxPwm and the controller keeps running.
+func TestFanController_RunKeepsRunningOnCurveEvaluationError(t *testing.T) {
 	originalConfig := configuration.CurrentConfig
 	defer func() {
 		configuration.CurrentConfig = originalConfig
@@ -1029,7 +1037,7 @@ func TestFanController_RunStopsOnCurveEvaluationError(t *testing.T) {
 
 	fan := &MockFan{
 		ID:                     "fan",
-		PWM:                    100,
+		PWM:                    50,
 		MinPWM:                 20,
 		MaxPWM:                 100,
 		RPM:                    1000,
@@ -1057,18 +1065,31 @@ func TestFanController_RunStopsOnCurveEvaluationError(t *testing.T) {
 		startupUpdateDelay:  defaultStartupUpdateDelay,
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- controller.Run(context.Background())
+		done <- controller.Run(ctx)
 	}()
 
 	advanceThroughRunStartup(t, clock)
 
+	// the fan goes to its maxPwm
+	require.Eventually(t, func() bool { pwm, _ := fan.GetPwm(); return pwm == 100 }, 5*time.Second, time.Millisecond)
+
+	// and the controller keeps running: it keeps the fan at its maxPwm on the following ticks
+	require.NoError(t, fan.SetPwm(30))
+	require.Eventually(t, func() bool {
+		clock.Advance(time.Millisecond)
+		pwm, _ := fan.GetPwm()
+		return pwm == 100
+	}, 5*time.Second, time.Millisecond)
+
+	cancel()
 	select {
 	case err := <-done:
 		assert.NoError(t, err)
 	case <-time.After(5 * time.Second):
-		t.Fatal("Run() did not return after curve evaluation error")
+		t.Fatal("Run() did not return")
 	}
 }
 

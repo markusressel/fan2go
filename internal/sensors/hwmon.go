@@ -17,6 +17,8 @@ type HwmonSensor struct {
 	Config    configuration.SensorConfig `json:"configuration"`
 	MovingAvg float64                    `json:"movingAvg"`
 
+	ReadingTracker
+
 	mu sync.Mutex
 }
 
