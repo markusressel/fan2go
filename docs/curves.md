@@ -78,7 +78,8 @@ when it starts. After each cycle it sends a notification to every subscriber. Ea
 
 `StaircaseSpeedCurve` (#486) uses the sensor's moving average and does not interpolate. It picks the highest step
 whose temperature is at or below the average and returns that step's value. Below the lowest step it returns `0`.
-It keeps the temperature of the selected step in `LastTemp` (also shown in the REST API).
+It keeps the temperature of the selected step in `LastTemp`. The REST API shows it as `lastTemp`, and omits it
+before the first evaluation and while the temperature is below the lowest step (internally `math.MinInt`).
 
 `hysteresis.down` delays a step down: the curve only moves to a lower step once the temperature has fallen
 `down` degrees below the temperature of the current step (`LastTemp`). Moving up has no hysteresis.
@@ -237,8 +238,10 @@ value (the old behaviour, not fail-safe).
 **Trade-offs**:
 
 - One flaky sensor in a function curve drives every fan that uses that function curve to `maxPwm`.
-- Keeping the last value on error means `CurrentValue()` (used by the Prometheus collector) reports a stale value
-  without saying so. The REST API shows the `error` field next to `value`.
+- Keeping the last value on error means `CurrentValue()` reports a stale value without saying so. The REST API shows
+  the `error` field next to `value`. The Prometheus collector reads `CurrentResult()`: it exports
+  `fan2go_curve_error` (1 while the last evaluation failed) and omits `fan2go_curve_value` then, so a dashboard
+  doesn't show the old value while the fans run at max.
 - There is no hysteresis for a sensor that flaps between stale and fresh.
 
 ### Panics are contained per curve
@@ -345,10 +348,6 @@ Related global and fan options:
 - The staircase hysteresis truncates the measured temperature to whole degrees, so the curve steps down after a drop
   of up to one degree less than `down`. Example: step 50, `down: 5`, it steps down at 45.9 °C.
 - `fan2go curve list` prints nothing for `staircase` curves, and no graph for `min`/`max` linear curves.
-- The Prometheus curve metric shows the last successful value while the curve fails. There is no metric for the
-  error.
-- The staircase `LastTemp` field in the REST API is the smallest `int` value when the temperature is below the
-  lowest step or before the first evaluation.
 - One tick rate for all curves and fans. A per-fan or event-driven pipeline was left out of #553.
 - A reload resets all curve state, even for unchanged curves.
 - A flapping sensor (stale, fresh, stale) notifies on every flap and, with `onSensorFailure: restore`, switches the

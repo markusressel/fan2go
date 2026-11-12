@@ -4,15 +4,26 @@ import (
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/qdm12/reprint"
 
+	"github.com/markusressel/fan2go/internal/controller/status"
 	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/sensors"
 )
 
+// FanController is the part of a fan controller (controller.FanController) the registry provides,
+// so the registry doesn't depend on the controller package.
+type FanController interface {
+	GetFanId() string
+	// GetStatus returns the current state of the controller, safe to call while it is running
+	GetStatus() status.Status
+}
+
 type Registry struct {
 	fans    cmap.ConcurrentMap[string, fans.Fan]
 	sensors cmap.ConcurrentMap[string, sensors.Sensor]
 	curves  cmap.ConcurrentMap[string, curves.SpeedCurve]
+	// fan controllers by the id of the fan they control
+	fanControllers cmap.ConcurrentMap[string, FanController]
 }
 
 func NewRegistry() *Registry {
@@ -20,6 +31,8 @@ func NewRegistry() *Registry {
 		fans:    cmap.New[fans.Fan](),
 		sensors: cmap.New[sensors.Sensor](),
 		curves:  cmap.New[curves.SpeedCurve](),
+
+		fanControllers: cmap.New[FanController](),
 	}
 }
 
@@ -72,4 +85,19 @@ func (r *Registry) SnapshotCurves() map[string]curves.SpeedCurve {
 		return map[string]curves.SpeedCurve{}
 	}
 	return reprint.This(r.curves.Items()).(map[string]curves.SpeedCurve)
+}
+
+// Fan controllers
+func (r *Registry) RegisterFanController(fanController FanController) {
+	r.fanControllers.Set(fanController.GetFanId(), fanController)
+}
+
+// GetFanController returns the controller of the fan with the given id.
+func (r *Registry) GetFanController(fanId string) (FanController, bool) {
+	return r.fanControllers.Get(fanId)
+}
+
+// SnapshotFanControllers returns all fan controllers by the id of the fan they control.
+func (r *Registry) SnapshotFanControllers() map[string]FanController {
+	return r.fanControllers.Items()
 }

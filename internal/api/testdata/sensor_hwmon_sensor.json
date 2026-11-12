@@ -2,7 +2,7 @@
   "label": "Package id 0",
   "index": 1,
   "channel": 1,
-  "string": "/sys/class/hwmon/hwmon2/temp1_input",
+  "input": "/sys/class/hwmon/hwmon2/temp1_input",
   "max": 100000,
   "min": 0,
   "configuration": {
@@ -14,5 +14,8 @@
       "TempInput": "/sys/class/hwmon/hwmon2/temp1_input"
     }
   },
-  "movingAvg": 45250.5
+  "movingAvg": 45250.5,
+  "consecutiveFailures": 0,
+  "readFailures": 0,
+  "stale": true
 }

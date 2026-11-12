@@ -3,10 +3,12 @@ package curves
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -44,7 +46,45 @@ func TestCurves_JsonSnapshotTypesMatchCurveTypes(t *testing.T) {
 	assert.Equal(t, withEvaluationFields(exportedFields(reflect.TypeOf(LinearSpeedCurve{}))), exportedFields(reflect.TypeOf(curveJson{})))
 	assert.Equal(t, withEvaluationFields(exportedFields(reflect.TypeOf(PidSpeedCurve{}))), exportedFields(reflect.TypeOf(curveJson{})))
 	assert.Equal(t, withEvaluationFields(exportedFields(reflect.TypeOf(FunctionSpeedCurve{}))), exportedFields(reflect.TypeOf(curveJson{})))
-	assert.Equal(t, withEvaluationFields(exportedFields(reflect.TypeOf(StaircaseSpeedCurve{}))), exportedFields(reflect.TypeOf(staircaseCurveJson{})))
+	// except LastTemp: the snapshot has the json name lastTemp, and omits math.MinInt (no step)
+	staircaseFields := exportedFields(reflect.TypeOf(StaircaseSpeedCurve{}))
+	assert.Equal(t, "LastTemp int ``", staircaseFields[len(staircaseFields)-1])
+	expectedStaircaseFields := append(withEvaluationFields(staircaseFields[:len(staircaseFields)-1]), "LastTemp *int `json:\"lastTemp,omitempty\"`")
+	assert.Equal(t, expectedStaircaseFields, exportedFields(reflect.TypeOf(staircaseCurveJson{})))
+}
+
+func TestStaircaseCurve_Json_LastTemp(t *testing.T) {
+	steps := map[int]float64{40: 100, 60: 200}
+	tests := []struct {
+		name     string
+		lastTemp int
+		expected any
+	}{
+		{name: "no step (before the first evaluation, or below the lowest step)", lastTemp: math.MinInt, expected: nil},
+		{name: "step", lastTemp: 40, expected: 40.0},
+		{name: "step 0 is not omitted", lastTemp: 0, expected: 0.0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			curve := &StaircaseSpeedCurve{
+				Config:   configuration.CurveConfig{ID: "staircase", Staircase: &configuration.StaircaseCurveConfig{Sensor: "s", Steps: steps}},
+				LastTemp: tt.lastTemp,
+			}
+
+			data, err := json.Marshal(curve)
+			require.NoError(t, err)
+
+			var fields map[string]any
+			require.NoError(t, json.Unmarshal(data, &fields))
+			assert.NotContains(t, fields, "LastTemp")
+			value, ok := fields["lastTemp"]
+			if tt.expected == nil {
+				assert.False(t, ok, "lastTemp must be omitted: %s", data)
+			} else {
+				assert.Equal(t, tt.expected, value)
+			}
+		})
+	}
 }
 
 // The REST API shows the result of the last evaluation of a curve: its value, error and time.

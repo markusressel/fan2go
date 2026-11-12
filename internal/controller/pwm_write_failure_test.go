@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/markusressel/fan2go/internal/controller/status"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
@@ -178,6 +179,8 @@ func TestFanController_Run_PersistentWriteFailure_RestoresAndStopsOnce(t *testin
 	require.Len(t, notified, 1)
 	assert.ErrorIs(t, notified[0], ErrPwmWriteFailed)
 	assert.Equal(t, []fans.ControlMode{fans.ControlModePWM, fans.ControlModeAutomatic}, writesWhenNotified[0])
+	// Run returning nil doesn't overwrite why the controller stopped
+	assertState(t, controller, status.StateStoppedPwmWriteFailed, ErrPwmWriteFailed.Error())
 }
 
 func TestFanController_UpdateFanSpeed_WriteFailuresBeforeCurveFailure_DontCountAfterRecovery(t *testing.T) {

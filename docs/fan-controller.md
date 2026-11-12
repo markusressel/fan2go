@@ -342,8 +342,43 @@ startup. Snapping to the input fixes averages that stayed just below a constant 
 
 **Who benefits**: `neverStop` users; users of the RPM values in the statistics and REST API.
 
-**Trade-offs**: `rpmRollingWindowSize` is not a window, despite its name. RPM read errors are logged on every poll,
-unlike temperature sensors, whose monitor logs only the first failure and the recovery ([sensors.md](sensors.md)).
+Like the sensor monitor ([sensors.md](sensors.md)), it logs only the first failed reading of a series and the
+recovery (with the number of failed readings), not every poll (`rpmReadFailures`).
+
+**Trade-offs**: `rpmRollingWindowSize` is not a window, despite its name. A tach that fails for a long time is only
+visible in the first log line; there is no metric for failed RPM reads yet.
+
+### Controller state
+
+**Decision**: Each controller keeps its state (`controller/status.State`), the time it entered it and the error that
+caused it, under `statsMutex`. `GetStatus` returns a snapshot. The Prometheus metric `fan2go_controller_state{id,state}`
+and the REST API (`/controller`, `/controller/<fan id>`) show it.
+
+| State | Meaning |
+|---|---|
+| `stopped` | Not started yet, or stopped cleanly (shutdown, reload, cancelled during startup) |
+| `initializing` | `Run` started: sensor warm-up, fan initialization, `setPwm -> getPwm` detection, until the first update |
+| `running` | Normal control (set by the first update that could evaluate the curve) |
+| `sensor_failure_max` | The curve fails, the fan is held at `maxPwm` (`onSensorFailure: max`, or `restore` that couldn't hand the fan over) |
+| `sensor_failure_restored` | The curve fails, the fan was handed back (`onSensorFailure: restore`) |
+| `stopped_pwm_write_failed` | Stopped after `ErrPwmWriteFailed` |
+| `stopped_stalled` | Stopped after `ErrFanStalledAtMaxPwm` |
+| `stopped_error` | `Run` returned another error (e.g. initialization, manual control, panic) |
+
+The update loop records the reason when it stops the controller (`stopAfterUpdateError`); `Run` doesn't overwrite
+it when it returns. A `Run` that starts again (after a failed reload) starts with `initializing`. While the curve
+fails, every update sets the `sensor_failure_*` state again. `running` is only set by an update that could evaluate
+the curve, so a controller whose curve still fails when `Run` starts again re-enters the failure state on its first
+update, without reporting `running` in between: alerts on the failure state don't resolve and fire again. If the
+curve recovers but manual control can't be taken again, the state stays `sensor_failure_restored` with that error.
+
+**Why**: Before, a fan in a failure state or a stopped controller was only visible in the log and a desktop
+notification. Headless users couldn't alert on it.
+
+**Who benefits**: Users who monitor fan2go with Prometheus, and UI clients of the REST API.
+
+**Trade-offs**: The state is per run of the controller; a reload creates new controllers that start at `stopped`.
+The metric has one series per state and controller (8 per fan).
 
 ### Locking: leaf locks in the fans, snapshots for JSON
 

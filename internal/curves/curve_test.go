@@ -64,3 +64,8 @@ func (sensor MockSensor) RecordFailure() int {
 func (sensor MockSensor) GetConsecutiveFailures() int {
 	return 0
 }
+
+func (sensor MockSensor) GetReadingStatus() sensors.ReadingStatus {
+	reading, ok := sensor.GetLastReading()
+	return sensors.ReadingStatus{LastReading: reading, HasReading: ok}
+}

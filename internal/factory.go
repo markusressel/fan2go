@@ -16,13 +16,12 @@ import (
 	"github.com/markusressel/fan2go/internal/statistics"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func InitializeObjects() (fanMap map[configuration.FanConfig]fans.Fan, reg *registry.Registry, err error) {
 	controllers := hwmon.GetChips()
 	reg = registry.NewRegistry()
-
-	statistics.UnregisterAll()
 
 	config := configuration.CurrentConfig
 	err = initializeSensors(controllers, reg, config.Sensors)
@@ -63,17 +62,40 @@ func initializeFanControllers(
 		result[fan] = fanController
 	}
 
-	var fanControllers = []controller.FanController{}
 	for _, c := range result {
-		fanControllers = append(fanControllers, c)
+		reg.RegisterFanController(c)
 	}
-	controllerCollector := statistics.NewControllerCollector(fanControllers)
-	statistics.Register(controllerCollector)
 
-	fanCollector := statistics.NewFanCollector(result)
-	statistics.Register(fanCollector)
+	// only now that all objects of the (new) config exist: a failed reload keeps the collectors
+	// of the old objects, which keep running
+	err = statistics.ReplaceAll(createCollectors(reg, result))
+	if err != nil {
+		return nil, nil, fmt.Errorf("error registering the statistics collectors: %w", err)
+	}
 
 	return result, evaluator, nil
+}
+
+// createCollectors returns the statistics collectors for the sensors and curves of reg and the given fan controllers.
+func createCollectors(reg *registry.Registry, fanControllers map[fans.Fan]controller.FanController) []prometheus.Collector {
+	var sensorList []sensors.Sensor
+	for _, sensor := range reg.SnapshotSensors() {
+		sensorList = append(sensorList, sensor)
+	}
+	var curveList []curves.SpeedCurve
+	for _, curve := range reg.SnapshotCurves() {
+		curveList = append(curveList, curve)
+	}
+	var controllerList []controller.FanController
+	for _, c := range fanControllers {
+		controllerList = append(controllerList, c)
+	}
+	return []prometheus.Collector{
+		statistics.NewSensorCollector(sensorList),
+		statistics.NewCurveCollector(curveList),
+		statistics.NewControllerCollector(controllerList),
+		statistics.NewFanCollector(fanControllers),
+	}
 }
 
 // newCurveEvaluator returns the curve evaluator for all curves of reg, which evaluates them
@@ -129,10 +151,11 @@ func initializeSensors(
 	reg *registry.Registry,
 	configs []configuration.SensorConfig,
 ) error {
-	var sensorList []sensors.Sensor
 	for _, config := range configs {
+		var hwmonSensor *sensors.HwmonSensor
 		if config.HwMon != nil {
-			err := hwmon.UpdateSensorConfigFromHwMonControllers(controllers, &config)
+			var err error
+			hwmonSensor, err = hwmon.FindSensorForConfig(controllers, &config)
 			if err != nil {
 				errMsg := fmt.Sprintf("couldn't find sensor for %s: %v. Skipping.", config.ID, err)
 				ui.Warning("%s", errMsg)
@@ -148,7 +171,12 @@ func initializeSensors(
 			ui.NotifyError("Sensor Skipped", errMsg)
 			continue
 		}
-		sensorList = append(sensorList, sensor)
+		if s, ok := sensor.(*sensors.HwmonSensor); ok && hwmonSensor != nil {
+			// as detected by hwmon (not part of the config)
+			s.Label = hwmonSensor.Label
+			s.Min = hwmonSensor.Min
+			s.Max = hwmonSensor.Max
+		}
 
 		// seed the moving average with a first reading. If that fails, the sensor has no reading,
 		// so it is stale until the sensor monitor reads it successfully (instead of starting at 0).
@@ -163,25 +191,17 @@ func initializeSensors(
 		reg.RegisterSensor(sensor)
 	}
 
-	sensorCollector := statistics.NewSensorCollector(sensorList)
-	statistics.Register(sensorCollector)
-
 	return nil
 }
 
 func initializeCurves(reg *registry.Registry, configs []configuration.CurveConfig) error {
-	var curveList []curves.SpeedCurve
 	for _, config := range configs {
 		curve, err := curves.NewSpeedCurve(config)
 		if err != nil {
 			return fmt.Errorf("unable to process curve configuration: %s: %v", config.ID, err)
 		}
-		curveList = append(curveList, curve)
 		reg.RegisterCurve(curve)
 	}
-
-	curveCollector := statistics.NewCurveCollector(curveList)
-	statistics.Register(curveCollector)
 
 	return nil
 }

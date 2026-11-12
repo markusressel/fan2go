@@ -963,12 +963,30 @@ running.
 
 The exported values are the ones fan2go maintains anyway, so a scrape doesn't read any sensor or fan:
 
-- `fan2go_sensor_value`: the moving average of the sensor, which is also what the curves use,
+- `fan2go_sensor_value`: the moving average of the sensor, which is also what the curves use; missing until the
+  first successful reading of the sensor,
+- `fan2go_sensor_stale`: 1 while the sensor value is stale (no successful reading yet, or the last one is older than
+  `sensorStaleTimeout`), so the curves that use it fail; 0 otherwise,
+- `fan2go_sensor_last_reading_timestamp_seconds`: the Unix time of the last successful reading of the sensor; missing
+  until the first one,
+- `fan2go_sensor_read_failures_total`: the number of failed readings of the sensor since fan2go started (or
+  reloaded its config),
 - `fan2go_fan_pwm`: the PWM value fan2go last set to the fan (raw value, after applying the `pwmMap`); missing until
   fan2go has set one,
 - `fan2go_fan_rpm`: the moving average of the fan's RPM; missing until fan2go starts monitoring the fan's RPM (after
   the fan initialization),
-- `fan2go_curve_value`, and the `fan2go_controller_*` statistics.
+- `fan2go_curve_value`: the value of the curve; missing while the curve can't be evaluated (e.g. a sensor is
+  stale), since the fans don't follow it then,
+- `fan2go_curve_error`: 1 while the curve can't be evaluated (the fans that use it apply their `onSensorFailure`
+  action), 0 otherwise; missing before the first evaluation,
+- `fan2go_controller_state{id, state}`: 1 for the current state of the fan controller, 0 for the others. The states
+  are `initializing`, `running`, `sensor_failure_max` (the curve fails, the fan runs at its max PWM),
+  `sensor_failure_restored` (the curve fails, the fan was handed back), `stopped_pwm_write_failed`,
+  `stopped_stalled` (a `neverStop` fan didn't spin even at its max PWM), `stopped_error` and `stopped`,
+- and the other `fan2go_controller_*` statistics.
+
+For example, `fan2go_sensor_stale == 1` or `fan2go_controller_state{state=~"stopped_.+|sensor_failure_.+"} == 1` can
+be used as alerts.
 
 ## API
 
@@ -1014,6 +1032,20 @@ communication via websockets.
 |---------------|------|-----------------------------------------------------|
 | `/curve`      | GET  | Returns a list of all currently configured curves   |
 | `/curve/<id>` | GET  | Returns the curve with the given `id`, if it exists |
+
+#### Fan controllers
+
+| Endpoint                | Type | Description                                                                 |
+|-------------------------|------|-----------------------------------------------------------------------------|
+| `/controller`           | GET  | Returns the state of all fan controllers, by fan `id`                       |
+| `/controller/<fan id>`  | GET  | Returns the state of the controller of the fan with the given `id`, if any  |
+
+A controller state has the fields `fanId`, `state` (the same states as the `fan2go_controller_state` metric),
+`since` (when the controller entered the state) and `error` (why it is in a failure state or stopped).
+
+Sensors include their reading status: `lastReadingTime` (missing until the first successful reading),
+`consecutiveFailures`, `readFailures` and `stale`. Curves include the `error` and the time (`evaluatedAt`) of their
+last evaluation.
 
 A curve's `value` is the result of its last evaluation (see [Cycle](#cycle)). Once the curve has been evaluated,
 `evaluatedAt` contains the time of that evaluation. If the last evaluation failed (e.g. because a sensor value is

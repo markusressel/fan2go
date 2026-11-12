@@ -1,7 +1,10 @@
 package statistics
 
 import (
+	"strings"
+
 	"github.com/markusressel/fan2go/internal/controller"
+	"github.com/markusressel/fan2go/internal/controller/status"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -13,6 +16,7 @@ type ControllerCollector struct {
 	unexpectedPwmValueCount *prometheus.Desc
 	increasedMinPwmCount    *prometheus.Desc
 	minPwmOffset            *prometheus.Desc
+	state                   *prometheus.Desc
 }
 
 func NewControllerCollector(controllers []controller.FanController) *ControllerCollector {
@@ -30,6 +34,10 @@ func NewControllerCollector(controllers []controller.FanController) *ControllerC
 			"Offset applied to the original minPwm of the fan due to a stalling fan",
 			[]string{"id"}, nil,
 		),
+		state: prometheus.NewDesc(prometheus.BuildFQName(namespace, controllerSubsystem, "state"),
+			"State of the fan controller: 1 for the current state, 0 for all others ("+allStatesText()+")",
+			[]string{"id", "state"}, nil,
+		),
 	}
 }
 
@@ -37,6 +45,7 @@ func (collector *ControllerCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- collector.unexpectedPwmValueCount
 	ch <- collector.increasedMinPwmCount
 	ch <- collector.minPwmOffset
+	ch <- collector.state
 }
 
 // Collect implements required collect function for all prometheus collectors
@@ -49,5 +58,18 @@ func (collector *ControllerCollector) Collect(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(collector.increasedMinPwmCount, prometheus.CounterValue, float64(contr.GetStatistics().IncreasedMinPwmCount), fanId)
 			ch <- prometheus.MustNewConstMetric(collector.minPwmOffset, prometheus.GaugeValue, float64(contr.GetStatistics().MinPwmOffset), fanId)
 		}
+		current := contr.GetStatus().State
+		for _, state := range status.AllStates {
+			ch <- prometheus.MustNewConstMetric(collector.state, prometheus.GaugeValue, boolToFloat(state == current), contr.GetFanId(), string(state))
+		}
 	}
+}
+
+// allStatesText returns all controller states, separated by commas.
+func allStatesText() string {
+	var states []string
+	for _, state := range status.AllStates {
+		states = append(states, string(state))
+	}
+	return strings.Join(states, ", ")
 }

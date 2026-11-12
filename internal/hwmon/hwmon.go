@@ -443,19 +443,26 @@ func updateFanConfigFromMatchingControllers(controllers []*HwMonController, conf
 // UpdateSensorConfigFromHwMonControllers resolves the hwmon sensor of the given config and fills in its input path.
 // The platform regex is matched like in UpdateFanConfigFromHwMonControllers.
 func UpdateSensorConfigFromHwMonControllers(controllers []*HwMonController, config *configuration.SensorConfig) error {
+	_, err := FindSensorForConfig(controllers, config)
+	return err
+}
+
+// FindSensorForConfig resolves the hwmon sensor of the given config like UpdateSensorConfigFromHwMonControllers,
+// and also returns the matched sensor (with its label, min and max as detected).
+func FindSensorForConfig(controllers []*HwMonController, config *configuration.SensorConfig) (*sensors.HwmonSensor, error) {
 	for _, kind := range []platformNameKind{platformNameFan2go, platformNameLmSensors} {
 		matched, err := matchingControllers(controllers, config.HwMon.Platform, kind)
 		if err != nil {
-			return fmt.Errorf("failed to match platform regex of %s (%s) against the controller platforms: %v", config.ID, config.HwMon.Platform, err)
+			return nil, fmt.Errorf("failed to match platform regex of %s (%s) against the controller platforms: %v", config.ID, config.HwMon.Platform, err)
 		}
-		if updateSensorConfigFromMatchingControllers(matched, config) {
-			return nil
+		if sensor := updateSensorConfigFromMatchingControllers(matched, config); sensor != nil {
+			return sensor, nil
 		}
 	}
-	return fmt.Errorf("no hwmon sensor matched sensor config: %+v", config)
+	return nil, fmt.Errorf("no hwmon sensor matched sensor config: %+v", config)
 }
 
-func updateSensorConfigFromMatchingControllers(controllers []*HwMonController, config *configuration.SensorConfig) bool {
+func updateSensorConfigFromMatchingControllers(controllers []*HwMonController, config *configuration.SensorConfig) *sensors.HwmonSensor {
 	for _, controller := range controllers {
 		for _, sensor := range controller.Sensors {
 			if config.HwMon.Index > 0 && sensor.Index != config.HwMon.Index {
@@ -467,10 +474,10 @@ func updateSensorConfigFromMatchingControllers(controllers []*HwMonController, c
 			config.HwMon.Index = sensor.Index
 			config.HwMon.Channel = sensor.Channel
 			config.HwMon.TempInput = sensor.Input
-			return true
+			return sensor
 		}
 	}
-	return false
+	return nil
 }
 
 func setFanConfigPaths(config *configuration.HwMonFanConfig) {
