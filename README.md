@@ -807,9 +807,9 @@ fan2go reloads its configuration when the content of the config file changes, or
   the new config.
 - While a fan is being analyzed for the first time, the reload waits until the analysis has finished, so the
   analysis isn't started over.
-- `dbPath` and `profiling` only take effect after a restart; a reload logs a warning if they changed.
-- If the config file can't be watched (e.g. because the inotify limits are reached), fan2go warns once and keeps
-  running; `SIGHUP` still works.
+- `dbPath` and `profiling` only take effect after a restart; a reload that changes them logs a warning.
+- If the config file can't be watched (e.g. because the inotify limits are reached, or the config directory was
+  replaced), fan2go warns once and keeps running; `SIGHUP` still works.
 
 ## As a Service
 

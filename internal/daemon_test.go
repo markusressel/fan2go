@@ -348,3 +348,31 @@ func TestSettingsThatNeedARestart(t *testing.T) {
 	newConfig.Profiling.Port = 1
 	assert.Empty(t, settingsThatNeedARestart(disabled, newConfig))
 }
+
+// If a reload request and the shutdown arrive at the same time, the shutdown wins: the fans aren't handed
+// over to new controllers that would stop right away.
+func TestWaitForReload_ShutdownWinsOverASimultaneousReload(t *testing.T) {
+	useConfigFile(t, validTestConfig)
+	for range 20 {
+		reloadChan := make(chan struct{}, 1)
+		reloadChan <- struct{}{}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		config, appExiting := waitForReload(ctx, reloadChan, controllersOf(newFakeReloadController("fan", false)), util.NewFakeClock(time.Unix(1000, 0)))
+
+		assert.True(t, appExiting)
+		assert.Nil(t, config)
+	}
+}
+
+// A changed restart-only setting is warned about on the reload that changes it, not again on later reloads.
+func TestChangedSettingsThatNeedARestart(t *testing.T) {
+	startup := configuration.Configuration{DbPath: "a.db"}
+	changed := configuration.Configuration{DbPath: "b.db"}
+
+	assert.Equal(t, []string{"dbPath"}, changedSettingsThatNeedARestart(startup, startup, changed))
+	assert.Empty(t, changedSettingsThatNeedARestart(startup, changed, changed), "unchanged by this reload")
+	assert.Equal(t, []string{"dbPath"}, changedSettingsThatNeedARestart(startup, changed, configuration.Configuration{DbPath: "c.db"}))
+	assert.Empty(t, changedSettingsThatNeedARestart(startup, changed, startup), "back to the value in effect")
+}

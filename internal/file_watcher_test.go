@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -66,16 +67,19 @@ func startFileWatcherTest(t *testing.T, setUp func(dir string) (configPath strin
 func (test *fileWatcherTest) awaitWatching() {
 	test.t.Helper()
 	marker := filepath.Join(test.markerDir, "marker")
+	seen := make(chan string, 1)
 	require.Eventually(test.t, func() bool {
 		writeConfigFile(test.t, marker, "x")
 		select {
 		case what := <-test.actions:
-			require.Equal(test.t, "ignored:marker", what)
+			// only marker events can arrive before the watcher saw the marker (asserted below)
+			seen <- what
 			return true
 		default:
 			return false
 		}
 	}, 5*time.Second, 10*time.Millisecond)
+	require.Equal(test.t, "ignored:marker", <-seen)
 	// drop the events of the remaining marker writes
 	require.NoError(test.t, os.Remove(marker))
 	test.awaitAction("ignored:marker")
@@ -264,4 +268,46 @@ func TestRunFileWatcher_SetupError_WarnsAndRunsUntilCancelled(t *testing.T) {
 
 	cancel()
 	assert.NoError(t, receive(t, done, "runFileWatcher"))
+}
+
+// If the config directory itself is removed or renamed, inotify drops the watch: the watcher reports that
+// as an error (so runFileWatcher warns that the automatic reload is disabled).
+func TestWatchConfigFile_ConfigDirectoryRemovedOrRenamed_ReturnsError(t *testing.T) {
+	for _, change := range []string{"removed", "renamed"} {
+		t.Run(change, func(t *testing.T) {
+			parent := t.TempDir()
+			dir := filepath.Join(parent, "fan2go")
+			require.NoError(t, os.Mkdir(dir, 0o700))
+			configPath := filepath.Join(dir, "fan2go.yaml")
+			writeConfigFile(t, configPath, "version: 1\n")
+			done := make(chan error, 1)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			watching := make(chan struct{})
+			var once sync.Once
+			configWatchHook = func(what string) { once.Do(func() { close(watching) }) }
+			t.Cleanup(func() { configWatchHook = nil })
+			go func() {
+				done <- watchConfigFile(ctx, configPath, make(chan struct{}, 10), util.NewFakeClock(time.Unix(1000, 0)))
+			}()
+			// wait until the watcher reports an event, so it watches the directory
+			require.Eventually(t, func() bool {
+				writeConfigFile(t, filepath.Join(dir, "marker"), "x")
+				select {
+				case <-watching:
+					return true
+				default:
+					return false
+				}
+			}, 5*time.Second, 10*time.Millisecond)
+
+			if change == "removed" {
+				require.NoError(t, os.RemoveAll(dir))
+			} else {
+				require.NoError(t, os.Rename(dir, dir+".old"))
+			}
+
+			assert.ErrorContains(t, receive(t, done, "the watcher to stop"), "was removed or renamed")
+		})
+	}
 }

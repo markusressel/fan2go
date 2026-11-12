@@ -9,6 +9,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -190,6 +191,10 @@ func watchConfigFile(ctx context.Context, configPath string, reloadChan chan<- s
 			if !ok {
 				return errors.New("the file watcher stopped (event channel closed)")
 			}
+			if filepath.Clean(event.Name) == dir && (event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename)) {
+				// inotify drops the watch then, and a new directory at the same path isn't watched
+				return fmt.Errorf("the config directory %s was removed or renamed", dir)
+			}
 			if !w.isRelevant(event) {
 				hook("ignored:" + filepath.Base(event.Name))
 				continue
@@ -310,12 +315,13 @@ func runOrchestrator(ctx context.Context, reloadChan <-chan struct{}, pers persi
 		}
 
 		// Handle Configuration Reload
+		previousConfig := configuration.CurrentConfig
 		newReg, newControllers, newEvaluator, err := applyConfiguration(pers, *newConfig)
 		if err != nil {
 			notifyError("Config Reload Failed", "Reload failed: %v. Keeping current configuration.", err)
 			continue
 		}
-		warnAboutSettingsThatNeedARestart(startupConfig, *newConfig)
+		warnAboutSettingsThatNeedARestart(startupConfig, previousConfig, *newConfig)
 
 		// Safely swap the active state to the new objects!
 		reg = newReg
@@ -405,6 +411,10 @@ func waitForReload(ctx context.Context, reloadChan <-chan struct{}, fanControlle
 			continue
 		}
 
+		if ctx.Err() != nil {
+			// the shutdown wins, also if the reload request arrived at the same time
+			return nil, true
+		}
 		initializing := initializingFans(fanControllers)
 		if len(initializing) == 0 {
 			return pending, false
@@ -477,12 +487,26 @@ func applyConfiguration(pers persistence.Persistence, newConfig configuration.Co
 	return newReg, newControllers, newEvaluator, nil
 }
 
-// warnAboutSettingsThatNeedARestart warns about each setting that differs between the config the daemon
-// was started with and newConfig, but is only applied on startup.
-func warnAboutSettingsThatNeedARestart(startupConfig configuration.Configuration, newConfig configuration.Configuration) {
-	for _, key := range settingsThatNeedARestart(startupConfig, newConfig) {
+// warnAboutSettingsThatNeedARestart warns about each setting that is only applied on startup, and that
+// newConfig changed: it differs from the previous config and from the config the daemon was started with.
+// (A setting that a later reload doesn't change again isn't warned about again.)
+func warnAboutSettingsThatNeedARestart(startupConfig configuration.Configuration, previousConfig configuration.Configuration, newConfig configuration.Configuration) {
+	for _, key := range changedSettingsThatNeedARestart(startupConfig, previousConfig, newConfig) {
 		ui.Warning("Config key '%s' changed, restart fan2go to apply it. The value fan2go was started with stays in effect until then.", key)
 	}
+}
+
+// changedSettingsThatNeedARestart returns the keys of settingsThatNeedARestart(startupConfig, newConfig)
+// that also differ between previousConfig and newConfig.
+func changedSettingsThatNeedARestart(startupConfig configuration.Configuration, previousConfig configuration.Configuration, newConfig configuration.Configuration) []string {
+	changed := settingsThatNeedARestart(previousConfig, newConfig)
+	var keys []string
+	for _, key := range settingsThatNeedARestart(startupConfig, newConfig) {
+		if slices.Contains(changed, key) {
+			keys = append(keys, key)
+		}
+	}
+	return keys
 }
 
 // settingsThatNeedARestart returns the config keys that differ between startupConfig and newConfig,
