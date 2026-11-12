@@ -1,0 +1,51 @@
+{
+  "cmd_sensor": {
+    "name": "cmd",
+    "configuration": {
+      "id": "cmd_sensor",
+      "cmd": {
+        "exec": "/usr/bin/temp",
+        "args": [
+          "--json"
+        ]
+      }
+    },
+    "movingAvg": 38000
+  },
+  "disk_sensor": {
+    "configuration": {
+      "id": "disk_sensor",
+      "disk": {
+        "device": "/dev/sda"
+      }
+    },
+    "movingAvg": 35000
+  },
+  "file_sensor": {
+    "configuration": {
+      "id": "file_sensor",
+      "file": {
+        "path": "/tmp/file_sensor"
+      }
+    },
+    "movingAvg": 40000
+  },
+  "hwmon_sensor": {
+    "label": "Package id 0",
+    "index": 1,
+    "channel": 1,
+    "string": "/sys/class/hwmon/hwmon2/temp1_input",
+    "max": 100000,
+    "min": 0,
+    "configuration": {
+      "id": "hwmon_sensor",
+      "hwMon": {
+        "platform": "coretemp",
+        "index": 1,
+        "channel": 1,
+        "TempInput": "/sys/class/hwmon/hwmon2/temp1_input"
+      }
+    },
+    "movingAvg": 45250.5
+  }
+}

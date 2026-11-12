@@ -1,0 +1,13 @@
+{
+  "config": {
+    "id": "function_curve",
+    "function": {
+      "type": "maximum",
+      "curves": [
+        "linear_curve",
+        "staircase_curve"
+      ]
+    }
+  },
+  "value": 40
+}

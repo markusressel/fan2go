@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -68,6 +69,8 @@ func (c MockCurve) CurrentValue() float64 {
 	return *c.Value
 }
 
+// MockFan is safe for concurrent use: the RPM monitor and the update loop of a running
+// controller access it from different goroutines.
 type MockFan struct {
 	ID                                           string
 	ControlMode                                  fans.ControlMode
@@ -85,14 +88,16 @@ type MockFan struct {
 	ControlModeConfig                            *configuration.ControlModeConfig
 	PwmSetDelay                                  *time.Duration
 	setPwmAlwaysFails                            bool
+
+	mu sync.Mutex
 }
 
-func (fan MockFan) GetStartPwm() int {
+func (fan *MockFan) GetStartPwm() int {
 	return 0
 }
 
 func (fan *MockFan) GetLabel() string {
-	return "Mock Fan " + fan.ID
+	return "Mock Fan " + fan.GetId()
 }
 
 func (fan *MockFan) GetIndex() int {
@@ -103,15 +108,25 @@ func (fan *MockFan) SetStartPwm(pwm int, force bool) {
 	panic("not supported")
 }
 
-func (fan MockFan) GetMinPwm() int {
+func (fan *MockFan) GetMinPwm() int {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	return fan.MinPWM
 }
 
 func (fan *MockFan) SetMinPwm(pwm int, force bool) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	fan.MinPWM = pwm
 }
 
-func (fan MockFan) GetMaxPwm() int {
+func (fan *MockFan) GetMaxPwm() int {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
+	return fan.getMaxPwm()
+}
+
+func (fan *MockFan) getMaxPwm() int {
 	if fan.MaxPWM == 0 { // test didn't set an explicit value, use default
 		return fans.MaxPwmValue
 	} else {
@@ -123,11 +138,15 @@ func (fan *MockFan) SetMaxPwm(pwm int, force bool) {
 	panic("not supported")
 }
 
-func (fan MockFan) GetRpm() (int, error) {
+func (fan *MockFan) GetRpm() (int, error) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	return fan.RPM, nil
 }
 
-func (fan MockFan) GetRpmAvg() float64 {
+func (fan *MockFan) GetRpmAvg() float64 {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	return float64(fan.RPM)
 }
 
@@ -135,11 +154,15 @@ func (fan *MockFan) SetRpmAvg(rpm float64) {
 	_ = rpm
 }
 
-func (fan MockFan) GetPwm() (result int, err error) {
+func (fan *MockFan) GetPwm() (result int, err error) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	return fan.PWM, nil
 }
 
 func (fan *MockFan) SetPwm(pwm int) (err error) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	if fan.setPwmAlwaysFails {
 		return errors.New("write rejected by hardware")
 	}
@@ -147,56 +170,83 @@ func (fan *MockFan) SetPwm(pwm int) (err error) {
 	return nil
 }
 
-func (fan MockFan) GetFanRpmCurveData() *map[int]float64 {
-	return fan.speedCurve
+func (fan *MockFan) GetFanRpmCurveData() *map[int]float64 {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
+	if fan.speedCurve == nil {
+		return nil
+	}
+	// return a copy, like the real fans do
+	result := make(map[int]float64, len(*fan.speedCurve))
+	for pwm, rpm := range *fan.speedCurve {
+		result[pwm] = rpm
+	}
+	return &result
 }
 
 func (fan *MockFan) AttachFanRpmCurveData(curveData *map[int]float64) (err error) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	fan.speedCurve = curveData
 	return err
 }
 
 func (fan *MockFan) UpdateFanRpmCurveValue(pwm int, rpm float64) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	if (fan.speedCurve) == nil {
 		fan.speedCurve = &map[int]float64{}
 	}
 	(*fan.speedCurve)[pwm] = rpm
 }
 
-func (fan MockFan) GetControlMode() (fans.ControlMode, error) {
+func (fan *MockFan) GetControlMode() (fans.ControlMode, error) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	return fan.ControlMode, nil
 }
 
 func (fan *MockFan) SetControlMode(value fans.ControlMode) (err error) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	fan.ControlMode = value
 	return nil
 }
 
-func (fan MockFan) GetId() string {
+func (fan *MockFan) GetId() string {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	return fan.ID
 }
 
-func (fan MockFan) GetName() string {
-	return fan.ID
+func (fan *MockFan) GetName() string {
+	return fan.GetId()
 }
 
-func (fan MockFan) GetCurveId() string {
+func (fan *MockFan) GetCurveId() string {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	return fan.curveId
 }
 
-func (fan MockFan) ShouldNeverStop() bool {
+func (fan *MockFan) ShouldNeverStop() bool {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	return fan.shouldNeverStop
 }
 
-func (fan MockFan) GetConfig() configuration.FanConfig {
+func (fan *MockFan) GetConfig() configuration.FanConfig {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	startPwm := 0
-	maxPwm := fan.GetMaxPwm()
+	minPwm := fan.MinPWM
+	maxPwm := fan.getMaxPwm()
 	return configuration.FanConfig{
 		ID:                     fan.ID,
 		Curve:                  fan.curveId,
 		NeverStop:              fan.shouldNeverStop,
 		StartPwm:               &startPwm,
-		MinPwm:                 &fan.MinPWM,
+		MinPwm:                 &minPwm,
 		MaxPwm:                 &maxPwm,
 		PwmMap:                 fan.PwmMap,
 		SetPwmToGetPwmMap:      fan.SetPwmToGetPwmMap,
@@ -227,11 +277,11 @@ func (fan MockFan) GetConfig() configuration.FanConfig {
 	}
 }
 
-func (fan MockFan) SetConfig(config configuration.FanConfig) {
+func (fan *MockFan) SetConfig(config configuration.FanConfig) {
 	// Not needed for this mock
 }
 
-func (fan MockFan) Supports(feature fans.FeatureFlag) bool {
+func (fan *MockFan) Supports(feature fans.FeatureFlag) bool {
 	return true
 }
 

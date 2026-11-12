@@ -1,0 +1,15 @@
+{
+  "config": {
+    "id": "linear_curve",
+    "linear": {
+      "sensor": "hwmon_sensor",
+      "min": 30,
+      "max": 80,
+      "steps": {
+        "30": 0,
+        "80": 255
+      }
+    }
+  },
+  "value": 10
+}

@@ -50,11 +50,14 @@ func (c *StaircaseSpeedCurve) Evaluate() (value float64, err error) {
 		targetTemp = c.LastTemp
 	}
 
-	c.LastTemp = targetTemp
 	value = steps[targetTemp]
 
 	ui.Debug("Evaluating curve '%s'. Sensor '%s' temp '%.0f°'. Desired speed: %.2f", c.Config.ID, sensor.GetId(), measured/1000, value)
-	c.SetValue(value)
+	// LastTemp is written under the lock (together with the value), since the REST API reads it
+	c.mu.Lock()
+	c.LastTemp = targetTemp
+	c.Value = value
+	c.mu.Unlock()
 	return value, nil
 }
 

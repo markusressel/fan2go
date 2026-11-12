@@ -3,6 +3,7 @@
 package sensors
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -92,4 +93,29 @@ func (sensor *NvidiaSensor) SetMovingAvg(avg float64) {
 	sensor.mu.Lock()
 	defer sensor.mu.Unlock()
 	sensor.MovingAvg = avg
+}
+
+// nvidiaSensorJson has the same fields and json tags as NvidiaSensor, without the mutex and device handles.
+type nvidiaSensorJson struct {
+	Label     string                     `json:"label"`
+	Index     int                        `json:"index"`
+	Max       int                        `json:"max"`
+	Min       int                        `json:"min"`
+	Config    configuration.SensorConfig `json:"configuration"`
+	MovingAvg float64                    `json:"movingAvg"`
+}
+
+// MarshalJSON serializes a snapshot of the sensor that is taken under its lock.
+func (sensor *NvidiaSensor) MarshalJSON() ([]byte, error) {
+	sensor.mu.Lock()
+	snapshot := nvidiaSensorJson{
+		Label:     sensor.Label,
+		Index:     sensor.Index,
+		Max:       sensor.Max,
+		Min:       sensor.Min,
+		Config:    sensor.Config,
+		MovingAvg: sensor.MovingAvg,
+	}
+	sensor.mu.Unlock()
+	return json.Marshal(snapshot)
 }

@@ -1,0 +1,60 @@
+{
+  "function_curve": {
+    "config": {
+      "id": "function_curve",
+      "function": {
+        "type": "maximum",
+        "curves": [
+          "linear_curve",
+          "staircase_curve"
+        ]
+      }
+    },
+    "value": 40
+  },
+  "linear_curve": {
+    "config": {
+      "id": "linear_curve",
+      "linear": {
+        "sensor": "hwmon_sensor",
+        "min": 30,
+        "max": 80,
+        "steps": {
+          "30": 0,
+          "80": 255
+        }
+      }
+    },
+    "value": 10
+  },
+  "pid_curve": {
+    "config": {
+      "id": "pid_curve",
+      "pid": {
+        "sensor": "cmd_sensor",
+        "setPoint": 60,
+        "p": 0.03,
+        "i": 0.002,
+        "d": 0.0005
+      }
+    },
+    "value": 30
+  },
+  "staircase_curve": {
+    "config": {
+      "id": "staircase_curve",
+      "staircase": {
+        "sensor": "file_sensor",
+        "hysteresis": {
+          "down": 2
+        },
+        "steps": {
+          "40": 100,
+          "60": 200
+        }
+      }
+    },
+    "value": 20,
+    "LastTemp": -9223372036854775808
+  }
+}

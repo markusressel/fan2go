@@ -43,12 +43,6 @@ type mockFanRecordingWrites struct {
 	controlModeWrites []fans.ControlMode
 }
 
-// GetId only reads the ID: the promoted MockFan.GetId copies the whole struct, which races with
-// writes of the update loop when the RPM monitor logs its shutdown.
-func (fan *mockFanRecordingWrites) GetId() string {
-	return fan.ID
-}
-
 func (fan *mockFanRecordingWrites) SetPwm(pwm int) error {
 	fan.pwmWrites = append(fan.pwmWrites, pwm)
 	if fan.clock != nil {

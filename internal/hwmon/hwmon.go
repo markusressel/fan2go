@@ -36,7 +36,7 @@ type HwMonController struct {
 	Path     string
 
 	// Fans (can be matched either by enumeration index or channel number)
-	Fans []fans.HwMonFan
+	Fans []*fans.HwMonFan
 	// Sensors maps from hwmon channel number -> HwmonSensor instance
 	Sensors map[int]*sensors.HwmonSensor
 }
@@ -164,8 +164,8 @@ var (
 	SubFeatureTypeFanMode gosensors.SubFeatureType = 1920
 )
 
-func GetFans(chip gosensors.Chip) []fans.HwMonFan {
-	var result = []fans.HwMonFan{}
+func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
+	var result = []*fans.HwMonFan{}
 
 	features := chip.GetFeatures()
 	for j := 0; j < len(features); j++ {
@@ -233,7 +233,7 @@ func GetFans(chip gosensors.Chip) []fans.HwMonFan {
 
 		label := getLabel(chip.Path, feature.Name)
 
-		fan := fans.HwMonFan{
+		fan := &fans.HwMonFan{
 			Config: configuration.FanConfig{
 				ID:     label,
 				MinPwm: &min,

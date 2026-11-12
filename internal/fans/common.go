@@ -189,3 +189,31 @@ func ComputePwmBoundariesFromCurveData(pwmRpmMap map[int]float64, userStartPwm i
 
 	return startPwm, maxPwm
 }
+
+func copyIntPtr(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	result := *value
+	return &result
+}
+
+func copyBoolPtr(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	result := *value
+	return &result
+}
+
+// copyCurveData returns a copy of the given fan curve data, or nil.
+func copyCurveData(curveData *map[int]float64) *map[int]float64 {
+	if curveData == nil {
+		return nil
+	}
+	result := make(map[int]float64, len(*curveData))
+	for pwm, rpm := range *curveData {
+		result[pwm] = rpm
+	}
+	return &result
+}

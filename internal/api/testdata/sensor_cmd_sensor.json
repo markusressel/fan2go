@@ -1,0 +1,13 @@
+{
+  "name": "cmd",
+  "configuration": {
+    "id": "cmd_sensor",
+    "cmd": {
+      "exec": "/usr/bin/temp",
+      "args": [
+        "--json"
+      ]
+    }
+  },
+  "movingAvg": 38000
+}

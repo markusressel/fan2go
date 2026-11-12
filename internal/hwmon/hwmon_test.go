@@ -190,9 +190,9 @@ func TestUpdateFanConfigFromHwMonControllers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.tn, func(t *testing.T) {
 			// GIVEN
-			fanSlice := []fans.HwMonFan{}
+			fanSlice := []*fans.HwMonFan{}
 			for _, c := range tt.hwMonConfigs {
-				fanSlice = append(fanSlice, fans.HwMonFan{
+				fanSlice = append(fanSlice, &fans.HwMonFan{
 					Config: configuration.FanConfig{
 						HwMon: &c,
 					},

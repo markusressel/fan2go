@@ -3,9 +3,11 @@
 package fans
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"github.com/markusressel/fan2go/internal/configuration"
@@ -32,6 +34,54 @@ type NvidiaFan struct {
 
 	device    nvml.Device
 	rawDevice nvidia_base.RawNvmlDevice
+
+	// mu protects the mutable fields above (everything except the device handles and the
+	// Can* flags, which are only written by Init before the fan is shared), since the fan is
+	// accessed from different goroutines.
+	// It is a leaf lock: no nvml calls and no calls to other fan methods while holding it.
+	mu sync.RWMutex
+}
+
+// nvidiaFanJson has the same fields and json tags as NvidiaFan, without the mutex and device handles.
+type nvidiaFanJson struct {
+	Label        string                  `json:"label"`
+	Index        int                     `json:"index"`
+	RpmMovingAvg float64                 `json:"rpmMovingAvg"`
+	Config       configuration.FanConfig `json:"config"`
+	MinPwm       *int                    `json:"minPwm"`
+	StartPwm     *int                    `json:"startPwm"`
+	MaxPwm       *int                    `json:"maxPwm"`
+	FanCurveData *map[int]float64        `json:"fanCurveData"`
+	Rpm          int                     `json:"rpm"`
+	Pwm          int                     `json:"pwm"`
+
+	RunAtMaxSpeed     bool
+	CanReadRPM        bool
+	CanReadPWM        bool
+	CanSetControlMode bool
+}
+
+// MarshalJSON serializes a snapshot of the fan that is taken under its lock.
+func (fan *NvidiaFan) MarshalJSON() ([]byte, error) {
+	fan.mu.RLock()
+	snapshot := nvidiaFanJson{
+		Label:             fan.Label,
+		Index:             fan.Index,
+		RpmMovingAvg:      fan.RpmMovingAvg,
+		Config:            fan.Config,
+		MinPwm:            copyIntPtr(fan.MinPwm),
+		StartPwm:          copyIntPtr(fan.StartPwm),
+		MaxPwm:            copyIntPtr(fan.MaxPwm),
+		FanCurveData:      copyCurveData(fan.FanCurveData),
+		Rpm:               fan.Rpm,
+		Pwm:               fan.Pwm,
+		RunAtMaxSpeed:     fan.RunAtMaxSpeed,
+		CanReadRPM:        fan.CanReadRPM,
+		CanReadPWM:        fan.CanReadPWM,
+		CanSetControlMode: fan.CanSetControlMode,
+	}
+	fan.mu.RUnlock()
+	return json.Marshal(snapshot)
 }
 
 func CreateNvidiaFan(config configuration.FanConfig) (Fan, error) {
@@ -59,6 +109,7 @@ func nvError(errCode nvml.Return) error {
 	return errors.New(nvml.ErrorString(errCode))
 }
 
+// getNvFanIndex reads Index without the lock: it is only written before the fan is shared.
 func (fan *NvidiaFan) getNvFanIndex() int {
 	// fan indices in fan2go are 1-based, here we start at 0.
 	return fan.Index - 1
@@ -95,18 +146,26 @@ func (fan *NvidiaFan) Init() error {
 }
 
 func (fan *NvidiaFan) GetId() string {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Config.ID
 }
 
 func (fan *NvidiaFan) GetLabel() string {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Label
 }
 
 func (fan *NvidiaFan) GetIndex() int {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Index
 }
 
 func (fan *NvidiaFan) GetMinPwm() int {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	if fan.MinPwm != nil {
 		return *fan.MinPwm
 	}
@@ -115,12 +174,16 @@ func (fan *NvidiaFan) GetMinPwm() int {
 }
 
 func (fan *NvidiaFan) SetMinPwm(pwm int, force bool) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	if fan.Config.MinPwm == nil || force {
 		fan.MinPwm = &pwm
 	}
 }
 
 func (fan *NvidiaFan) GetStartPwm() int {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	if fan.StartPwm != nil {
 		return *fan.StartPwm
 	} else {
@@ -132,12 +195,16 @@ func (fan *NvidiaFan) GetStartPwm() int {
 }
 
 func (fan *NvidiaFan) SetStartPwm(pwm int, force bool) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	if fan.Config.StartPwm == nil || force {
 		fan.StartPwm = &pwm
 	}
 }
 
 func (fan *NvidiaFan) GetMaxPwm() int {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	if fan.MaxPwm != nil {
 		return *fan.MaxPwm
 	} else {
@@ -146,6 +213,8 @@ func (fan *NvidiaFan) GetMaxPwm() int {
 }
 
 func (fan *NvidiaFan) SetMaxPwm(pwm int, force bool) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	if fan.Config.MaxPwm == nil || force {
 		pwm = min(pwm, 100) // can't be > 100
 		fan.MaxPwm = &pwm
@@ -154,17 +223,21 @@ func (fan *NvidiaFan) SetMaxPwm(pwm int, force bool) {
 
 func (fan *NvidiaFan) GetRpm() (int, error) {
 	if !fan.CanReadRPM {
-		return -1, fmt.Errorf("fan %d (%s) doesn't support reading RPM", fan.Index, fan.GetId())
+		return -1, fmt.Errorf("fan %d (%s) doesn't support reading RPM", fan.GetIndex(), fan.GetId())
 	}
 	rpm, err := nvidia_base.NvmlGetFanSpeedRPM(fan.rawDevice, fan.getNvFanIndex())
 	return rpm, nvError(err)
 }
 
 func (fan *NvidiaFan) GetRpmAvg() float64 {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.RpmMovingAvg
 }
 
 func (fan *NvidiaFan) SetRpmAvg(rpm float64) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	fan.RpmMovingAvg = rpm
 }
 
@@ -186,8 +259,12 @@ func (fan *NvidiaFan) SetPwm(pwm int) (err error) {
 	return nvError(ret)
 }
 
+// GetFanRpmCurveData returns a copy of the fan curve data, so callers can read it
+// while the fan is updated from another goroutine.
 func (fan *NvidiaFan) GetFanRpmCurveData() *map[int]float64 {
-	return fan.FanCurveData
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
+	return copyCurveData(fan.FanCurveData)
 }
 
 func (fan *NvidiaFan) AttachFanRpmCurveData(curveData *map[int]float64) (err error) {
@@ -196,9 +273,12 @@ func (fan *NvidiaFan) AttachFanRpmCurveData(curveData *map[int]float64) (err err
 		return os.ErrInvalid
 	}
 
-	fan.FanCurveData = curveData
+	data := copyCurveData(curveData)
+	fan.mu.Lock()
+	fan.FanCurveData = data
+	fan.mu.Unlock()
 
-	startPwm, maxPwm := ComputePwmBoundaries(fan)
+	startPwm, maxPwm := ComputePwmBoundariesFromCurveData(*data, fan.GetStartPwm())
 	fan.SetStartPwm(startPwm, false)
 	fan.SetMaxPwm(maxPwm, false)
 
@@ -209,6 +289,8 @@ func (fan *NvidiaFan) AttachFanRpmCurveData(curveData *map[int]float64) (err err
 }
 
 func (fan *NvidiaFan) UpdateFanRpmCurveValue(pwm int, rpm float64) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	if fan.FanCurveData == nil {
 		fan.FanCurveData = &map[int]float64{}
 	}
@@ -216,10 +298,14 @@ func (fan *NvidiaFan) UpdateFanRpmCurveValue(pwm int, rpm float64) {
 }
 
 func (fan *NvidiaFan) GetCurveId() string {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Config.Curve
 }
 
 func (fan *NvidiaFan) ShouldNeverStop() bool {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Config.NeverStop
 }
 
@@ -231,7 +317,10 @@ func (fan *NvidiaFan) GetControlMode() (ControlMode, error) {
 	}
 	ctrlMode := ControlModeAutomatic // "hardware auto pwm control" as default assumption
 	if policy == nvml.FAN_POLICY_MANUAL {
-		if fan.RunAtMaxSpeed {
+		fan.mu.RLock()
+		runAtMaxSpeed := fan.RunAtMaxSpeed
+		fan.mu.RUnlock()
+		if runAtMaxSpeed {
 			ctrlMode = ControlModeDisabled // "max speed" - "no control" in hwmon backend
 		} else {
 			ctrlMode = ControlModePWM // manual PWM control
@@ -246,7 +335,9 @@ func (fan *NvidiaFan) SetControlMode(value ControlMode) (err error) {
 	var ret nvml.Return
 	switch value {
 	case ControlModeDisabled:
+		fan.mu.Lock()
 		fan.RunAtMaxSpeed = true
+		fan.mu.Unlock()
 		ret = nvml.DeviceSetFanSpeed_v2(device, fanIdx, 100)
 	case ControlModePWM:
 		ret = device.SetFanControlPolicy(fanIdx, nvml.FAN_POLICY_MANUAL)
@@ -265,13 +356,18 @@ func (fan *NvidiaFan) SetControlMode(value ControlMode) (err error) {
 }
 
 func (fan *NvidiaFan) GetConfig() configuration.FanConfig {
+	fan.mu.RLock()
+	defer fan.mu.RUnlock()
 	return fan.Config
 }
 
 func (fan *NvidiaFan) SetConfig(config configuration.FanConfig) {
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
 	fan.Config = config
 }
 
+// Supports reads the Can* flags without the lock: they are only written by Init, before the fan is shared.
 func (fan *NvidiaFan) Supports(feature FeatureFlag) bool {
 	switch feature {
 	case FeatureControlModeWrite:
