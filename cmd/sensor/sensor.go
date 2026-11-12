@@ -2,7 +2,6 @@ package sensor
 
 import (
 	"fmt"
-	"regexp"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/hwmon"
@@ -67,21 +66,8 @@ func getSensor(id string) (sensors.Sensor, error) {
 		availableSensorIds = append(availableSensorIds, config.ID)
 		if config.ID == id {
 			if config.HwMon != nil {
-				for _, controller := range controllers {
-					matched, err := regexp.MatchString("(?i)"+config.HwMon.Platform, controller.Platform)
-					if err != nil {
-						return nil, fmt.Errorf("failed to match platform regex of %s (%s) against controller platform %s", config.ID, config.HwMon.Platform, controller.Platform)
-					}
-					if matched {
-						sensor, exists := controller.Sensors[config.HwMon.Index]
-						if exists {
-							if len(sensor.Input) <= 0 {
-								return nil, fmt.Errorf("unable to find temp input for sensor %s", id)
-							}
-							config.HwMon.TempInput = sensor.Input
-							break
-						}
-					}
+				if err := resolveHwmonSensorConfig(controllers, &config); err != nil {
+					return nil, err
 				}
 			}
 
@@ -95,4 +81,17 @@ func getSensor(id string) (sensors.Sensor, error) {
 	}
 
 	return nil, fmt.Errorf("no sensor with id found: %s, options: %s", id, availableSensorIds)
+}
+
+// resolveHwmonSensorConfig fills in the sysfs temp input of a hwmon sensor
+// config, matching it by index or by channel exactly like the daemon does
+// (see hwmon.UpdateSensorConfigFromHwMonControllers).
+func resolveHwmonSensorConfig(controllers []*hwmon.HwMonController, config *configuration.SensorConfig) error {
+	if err := hwmon.UpdateSensorConfigFromHwMonControllers(controllers, config); err != nil {
+		return fmt.Errorf("unable to find hwmon sensor %s: %w", config.ID, err)
+	}
+	if len(config.HwMon.TempInput) <= 0 {
+		return fmt.Errorf("unable to find temp input for sensor %s", config.ID)
+	}
+	return nil
 }
