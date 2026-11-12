@@ -132,7 +132,8 @@ type DefaultFanController struct {
 	// the fan state as it was before the controller started (nil until captured)
 	originalFanState *FanStateSnapshot
 	// restoreOnce makes Run restore the fan settings only once, no matter whether it stops normally,
-	// because of an error or because of a panic (see restoreControlModeOnce). Replaced on every Run.
+	// because of an error or because of a panic (see restoreControlModeOnce). Replaced on every Run, and
+	// whenever the update loop takes manual control again after onSensorFailure: restore (also if that fails).
 	restoreOnce *sync.Once
 	// errorNotifier logs an error and notifies the user about it (nil means ui.ErrorAndNotify),
 	// replaceable in tests
@@ -246,6 +247,9 @@ type DefaultFanController struct {
 	// sensorFailureMaxWriteFailed is true once setting the max PWM failed in the current failure state
 	// (only used by the update loop)
 	sensorFailureMaxWriteFailed bool
+	// retakeManualControlFailed is true once taking manual control again after onSensorFailure: restore failed,
+	// until it succeeds (only used by the update loop). The user is warned and notified only once per failure.
+	retakeManualControlFailed bool
 	// pwmWriteFailures tracks consecutive failures to set the PWM value of the curve (only used by the update loop)
 	pwmWriteFailures consecutiveFailures
 	// thirdPartyPwmChanges tracks consecutive updates where the PWM value of the fan didn't match the
@@ -689,6 +693,7 @@ func (f *DefaultFanController) resetRuntimeState() {
 	f.lastFanModeCheckTime = time.Unix(0, 0)
 	f.sensorFailureAction = ""
 	f.sensorFailureMaxWriteFailed = false
+	f.retakeManualControlFailed = false
 	f.pwmWriteFailures = consecutiveFailures{}
 	f.thirdPartyPwmChanges = consecutiveFailures{}
 	if f.controlLoop != nil {
@@ -1232,15 +1237,32 @@ func (f *DefaultFanController) recoverFromCurveFailure() bool {
 	case "":
 		return true
 	case configuration.OnSensorFailureRestore:
-		// the handback deleted the saved original state
+		// the handback deleted the saved original state: save it again before writing to the fan
 		f.markMayWriteToFan()
+		// fan2go may have written to the fan, so it must be restored when the controller stops, also if taking
+		// manual control fails (the write may have changed the fan anyway): the stop runs the usual restore,
+		// which deletes the saved original state if it is complete
+		f.restoreOnce = &sync.Once{}
 		if err := takeManualControl(f.fan); err != nil {
-			ui.Debug("Fan %s: Can't take manual control again: %v", f.fan.GetId(), err)
-			f.setState(status.StateSensorFailureRestored, fmt.Errorf("the curve can be evaluated again, but manual control can't be taken again: %w", err))
+			err = fmt.Errorf("the curve can be evaluated again, but manual control can't be taken again: %w", err)
+			f.setState(status.StateSensorFailureRestored, err)
+			if !f.retakeManualControlFailed {
+				// once per failure, it is retried on every update
+				f.retakeManualControlFailed = true
+				notify := f.errorNotifier
+				if notify == nil {
+					notify = ui.WarningAndNotify
+				}
+				notify("Fan Control Error", "Fan %s: %v; the fan stays handed back, fan2go retries on every update", f.fan.GetId(), err)
+			} else {
+				ui.Debug("Fan %s: Can't take manual control again: %v", f.fan.GetId(), err)
+			}
 			return false
 		}
-		// fan2go controls the fan again, so it must be restored when the controller stops
-		f.restoreOnce = &sync.Once{}
+		if f.retakeManualControlFailed {
+			f.retakeManualControlFailed = false
+			ui.Info("Fan %s: Manual control taken again", f.fan.GetId())
+		}
 	}
 	f.sensorFailureAction = ""
 	f.sensorFailureMaxWriteFailed = false
@@ -1259,7 +1281,7 @@ func (f *DefaultFanController) restoreControlModeOnce() {
 
 // restoreControlModeOnceForSensorFailure is restoreControlModeOnce, and returns true if this call restored
 // the fan settings and handed the fan over to a control mode other than manual PWM (see restoreControlMode).
-// After a successful restore, the update loop arms a new restoreOnce once it controls the fan again.
+// After a successful restore, the update loop arms a new restoreOnce before it takes manual control again.
 func (f *DefaultFanController) restoreControlModeOnceForSensorFailure() (restored bool) {
 	return f.restoreControlModeOnceAndForget(true)
 }
