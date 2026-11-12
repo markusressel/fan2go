@@ -328,7 +328,7 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 	case ControlModePWM:
 		pwmEnabledValue = 1
 	case ControlModeAutomatic:
-		if lastKnownAutomaticControlMode := fan.getLastKnownAutomaticControlMode(); lastKnownAutomaticControlMode != nil {
+		if lastKnownAutomaticControlMode := fan.GetLastKnownAutomaticControlMode(); lastKnownAutomaticControlMode != nil {
 			// if we have a last known automatic control mode, use that
 			pwmEnabledValue = *lastKnownAutomaticControlMode
 		} else {
@@ -374,11 +374,24 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 	return nil
 }
 
-// getLastKnownAutomaticControlMode returns a copy of the last known automatic control mode (or nil).
-func (fan *HwMonFan) getLastKnownAutomaticControlMode() *int {
+var _ AutomaticControlModeKeeper = (*HwMonFan)(nil)
+
+// GetLastKnownAutomaticControlMode returns a copy of the last known automatic control mode (or nil).
+func (fan *HwMonFan) GetLastKnownAutomaticControlMode() *int {
 	fan.mu.RLock()
 	defer fan.mu.RUnlock()
 	return copyIntPtr(fan.lastKnownAutomaticControlMode)
+}
+
+// SetLastKnownAutomaticControlMode sets the pwm_enable value to write for ControlModeAutomatic.
+// Values < 2 are ignored, since they aren't automatic modes.
+func (fan *HwMonFan) SetLastKnownAutomaticControlMode(value int) {
+	if value < 2 {
+		return
+	}
+	fan.mu.Lock()
+	defer fan.mu.Unlock()
+	fan.lastKnownAutomaticControlMode = &value
 }
 
 func (fan *HwMonFan) GetConfig() configuration.FanConfig {

@@ -111,6 +111,17 @@ type Fan interface {
 	Supports(feature FeatureFlag) bool
 }
 
+// AutomaticControlModeKeeper is implemented by fans whose driver has several automatic control modes
+// (hwmon: every pwmX_enable value >= 2). SetControlMode(ControlModeAutomatic) writes the last known one.
+type AutomaticControlModeKeeper interface {
+	// GetLastKnownAutomaticControlMode returns the driver value of the last automatic control mode that was
+	// read from (or written to) the fan, nil if none is known.
+	GetLastKnownAutomaticControlMode() *int
+	// SetLastKnownAutomaticControlMode sets the driver value to write for ControlModeAutomatic,
+	// e.g. the one saved before fan2go took control of the fan in an earlier run.
+	SetLastKnownAutomaticControlMode(value int)
+}
+
 func NewFan(config configuration.FanConfig) (Fan, error) {
 	if config.HwMon != nil {
 		return &HwMonFan{

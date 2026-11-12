@@ -39,6 +39,8 @@ func RunDaemon() {
 		ui.Fatal("Error initializing fan controllers: %v", err)
 	}
 
+	forgetOriginalStatesOfUnconfiguredFans(pers, fanMap)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -87,6 +89,36 @@ func RunDaemon() {
 
 	ui.Info("Done.")
 	os.Exit(0)
+}
+
+// forgetOriginalStatesOfUnconfiguredFans deletes the saved original states (see controller.FanStateSnapshot)
+// of fans that are not configured anymore. Such a state means that fan2go didn't hand the fan back the last time
+// it ran (e.g. it was killed), so it is logged as a warning, once. Controllers delete the state of their own fan
+// when they hand it back, so this is only needed at startup. Best effort: errors are logged.
+func forgetOriginalStatesOfUnconfiguredFans(pers persistence.Persistence, fanMap map[configuration.FanConfig]fans.Fan) {
+	if err := pers.Init(); err != nil {
+		ui.Warning("Cannot check the saved original fan states: %v", err)
+		return
+	}
+	states, err := pers.LoadFanOriginalStates()
+	if err != nil {
+		ui.Warning("Cannot check the saved original fan states: %v", err)
+		return
+	}
+	configured := map[string]bool{}
+	for _, fan := range fanMap {
+		configured[fan.GetId()] = true
+	}
+	for id, state := range states {
+		if configured[id] {
+			continue
+		}
+		ui.Warning("Fan %s is not configured anymore, but fan2go didn't hand it back the last time it ran (killed or crashed?). Check the fan (%s), its original state was: %s. Deleting the saved state.",
+			id, state.Hardware, controller.FormatFanOriginalState(state))
+		if err := pers.DeleteFanOriginalState(id); err != nil {
+			ui.Warning("Cannot delete the saved original state of fan %s: %v", id, err)
+		}
+	}
 }
 
 func runFileWatcher(ctx context.Context, configPath string, reloadChan chan<- struct{}) error {
