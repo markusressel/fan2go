@@ -230,3 +230,21 @@ func TestRestApi_ConcurrentUpdatesDuringGet(t *testing.T) {
 	wg.Wait()
 	// THEN (no race reported)
 }
+
+// The API is read-only: write methods on the resource paths are rejected.
+func TestRestApi_WriteMethodsAreNotAllowed(t *testing.T) {
+	rest := CreateRestService(createTestRegistry(t))
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodPost, "/fan/"}, {http.MethodDelete, "/fan/hwmon_fan/"},
+		{http.MethodPost, "/sensor/"}, {http.MethodDelete, "/sensor/file_sensor/"},
+		{http.MethodPost, "/curve/"}, {http.MethodDelete, "/curve/linear_curve/"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			rec := httptest.NewRecorder()
+			rest.ServeHTTP(rec, req)
+			assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+		})
+	}
+}

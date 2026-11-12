@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/labstack/echo/v5"
@@ -18,8 +17,6 @@ func registerFanEndpoints(rest *echo.Echo, reg *registry.Registry) {
 	group.GET("/:"+urlParamId+"/", func(c *echo.Context) error {
 		return getFan(c, reg)
 	})
-	group.POST("/", createFan)
-	group.DELETE("/:"+urlParamId+"/", deleteFan)
 }
 
 // returns a list of all currently configured fans
@@ -36,12 +33,4 @@ func getFan(c *echo.Context, reg *registry.Registry) error {
 	} else {
 		return c.JSONPretty(http.StatusOK, data, indentationChar)
 	}
-}
-
-func deleteFan(c *echo.Context) error {
-	return returnError(c, errors.New("not yet supported"))
-}
-
-func createFan(c *echo.Context) error {
-	return returnError(c, errors.New("not yet supported"))
 }
