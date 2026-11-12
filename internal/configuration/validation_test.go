@@ -1169,6 +1169,8 @@ func TestValidateConfig_ValidationGaps(t *testing.T) {
 		{name: "startPwm > maxPwm", fanExtra: "    startPwm: 200\n    maxPwm: 100", wantErr: "fan fan: startPwm (200) must be <= maxPwm (100)"},
 		{name: "minPwm == startPwm == maxPwm is allowed", fanExtra: "    minPwm: 100\n    startPwm: 100\n    maxPwm: 100"},
 		{name: "minPwm > startPwm is only a warning", fanExtra: "    minPwm: 100\n    startPwm: 50", wantWarning: "fan fan: suspicious pwm config: minPwm (100) > startPwm (50)"},
+		{name: "minPwm < startPwm without neverStop is only a warning", fanExtra: "    minPwm: 50\n    startPwm: 100", wantWarning: "fan fan: minPwm (50) < startPwm (100) without neverStop"},
+		{name: "minPwm < startPwm with neverStop is allowed", fanExtra: "    minPwm: 50\n    startPwm: 100\n    neverStop: true"},
 		{name: "pwmMap linear value out of range", fanExtra: "    pwmMap:\n      linear:\n        0: 0\n        128: 999", wantErr: "fan 'fan': pwmMap linear value 999 (key 128) is out of range [0..255]"},
 		{name: "pwmMap values value out of range", fanExtra: "    pwmMap:\n      values:\n        0: -1\n        255: 255", wantErr: "fan 'fan': pwmMap values value -1 (key 0) is out of range [0..255]"},
 		{name: "setPwmToGetPwmMap linear value out of range", fanExtra: "    setPwmToGetPwmMap:\n      linear:\n        0: 0\n        255: 256", wantErr: "fan 'fan': setPwmToGetPwmMap linear value 256 (key 255) is out of range [0..255]"},
@@ -1198,6 +1200,7 @@ func TestValidateConfig_ValidationGaps(t *testing.T) {
 				assert.Contains(t, warnings.String(), tt.wantWarning)
 			} else {
 				assert.NotContains(t, warnings.String(), "suspicious pwm config")
+				assert.NotContains(t, warnings.String(), "without neverStop")
 			}
 		})
 	}

@@ -73,6 +73,10 @@ type Entry struct {
 	Levels int
 	// Hint is added to the error when fan2go can't take control of the fan.
 	Hint string
+	// FirmwareMayStopFan means that the firmware of the device may keep the fan stopped although fan2go writes
+	// a positive PWM value (e.g. a zero RPM mode that stays active in manual mode). The stall check of fans
+	// without neverStop (sanityCheck.fanStalled) is then off by default, see StallCheckEnabled.
+	FirmwareMayStopFan bool
 	// Advice checks a fan config for settings that don't work well with this device, see Check.
 	Advice []AdviceFunc
 }
@@ -163,6 +167,29 @@ func hasSetPwmToGetPwmMap(config configuration.FanConfig) bool {
 	return config.SetPwmToGetPwmMap != nil && config.SetPwmToGetPwmMap.Autodetect == nil
 }
 
+// StallCheckEnabled returns whether the stall check of fans without neverStop (sanityCheck.fanStalled) is enabled
+// for the given fan config and its registry entry (nil for none): an explicit sanityCheck.fanStalled.enabled wins.
+// Otherwise the check is on, unless the entry has FirmwareMayStopFan.
+func StallCheckEnabled(config configuration.FanConfig, e *Entry) bool {
+	enabled := config.SanityCheck.FanStalled.Enabled
+	if enabled.IsSet() {
+		return enabled.Get()
+	}
+	return e == nil || !e.FirmwareMayStopFan
+}
+
+// QuirksText returns the short description of the entry for the Quirks column of `fan2go detect`: its id, and
+// the fields that change the defaults of fan2go.
+func (e *Entry) QuirksText() string {
+	if e == nil {
+		return "-"
+	}
+	if e.FirmwareMayStopFan {
+		return e.ID + " (firmware may stop fan)"
+	}
+	return e.ID
+}
+
 // IssueLink returns the first fan2go issue in Sources, or the first source if there is none.
 func (e *Entry) IssueLink() string {
 	for _, s := range e.Sources {
@@ -189,6 +216,13 @@ func (e *Entry) AppliedMessage(config configuration.FanConfig) string {
 	}
 	if e.Hint != "" {
 		effects = append(effects, "a hint if fan2go can't take control of the fan")
+	}
+	if e.FirmwareMayStopFan {
+		effect := "the device firmware may keep the fan stopped, so the stall check (sanityCheck.fanStalled) is off by default"
+		if enabled := config.SanityCheck.FanStalled.Enabled; enabled.IsSet() && enabled.Get() {
+			effect += " (overridden by config: sanityCheck.fanStalled.enabled)"
+		}
+		effects = append(effects, effect)
 	}
 	if len(effects) == 0 {
 		effects = append(effects, "only advice in 'fan2go config validate'")

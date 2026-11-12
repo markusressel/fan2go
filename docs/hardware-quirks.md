@@ -17,7 +17,8 @@ device it identifies exactly. It never guesses from observed behaviour.
 4. The controller uses the entry as described in [Fields](#fields).
 5. `fan2go config validate` matches the configured fans against the hardware in the same way. For every fan with an
    entry, it prints the entry's advice (tips and warnings). See [Advice](#advice-in-fan2go-config-validate).
-6. `fan2go detect` shows the entry id in the `Quirks` column. The REST API shows
+6. `fan2go detect` shows the entry id in the `Quirks` column, followed by `(firmware may stop fan)` for an entry
+   with `FirmwareMayStopFan`. The REST API shows
    `"quirks": {"id": ..., "version": ...}` in the JSON of a hwmon fan with an entry.
 
 ## Entries
@@ -41,6 +42,7 @@ An entry (`quirks.Entry`) only has the fields that its devices need:
 | `Readback` | `computeSetPwmToGetPwmMap` | The set→get PWM map comes from the formula. fan2go doesn't write 0..255 to measure it, and doesn't store it in the database (like a configured `setPwmToGetPwmMap`). `Entry.OutputLevels()` returns the distinct values, i.e. the real output levels of the device. |
 | `Levels` | advice | The number of output levels, if it is known but the readback formula isn't (ThinkPad: 8). `Entry.LevelCount()` returns it, or the number of `OutputLevels()`. `Entry.WriteStep()` is the smallest change of the written value that can change the output: the shortest inner run of written values with the same readback (Corsair: 2), or `256 / Levels` (ThinkPad: 32). |
 | `Hint` | `takeManualControl` | Appended to the error when fan2go can't switch the fan to manual control: `... (known hardware quirk 'thinkpad': ...)`. |
+| `FirmwareMayStopFan` | stall check, `fan2go config validate` | The device firmware may keep the fan stopped although fan2go writes a positive PWM value. The stall check of fans without `neverStop` (`sanityCheck.fanStalled`, see [fan-controller.md](fan-controller.md#stall-check-for-fans-without-neverstop)) is off by default for the fans of the device; an explicit `sanityCheck.fanStalled.enabled` wins. The INFO line names it, and `config validate` prints a tip (see below). No entry sets it yet (see [Devices without an entry](#devices-without-an-entry)). |
 | `Advice` | `fan2go config validate` | Functions that check a fan config for settings that don't work well with the device. |
 | `ID`, `Version` | logs, `detect`, REST, database | `Version` is incremented on every change of `Readback` (see [Persistence](#persistence)). |
 
@@ -86,6 +88,7 @@ Each entry owns its advice (`Entry.Advice`, a list of `quirks.AdviceFunc`). The 
 | `adviseSmoothingResolution` | `corsaircpro`, `thinkpad`, `nzxtsmart2` | tip | A configured `controlAlgorithm.direct.deadband` is below one output step, or `rampUp`/`rampDown` moves less than one step per `adjustmentTickRate` cycle. One step is `WriteStep()` in written PWM units (ThinkPad 32, Corsair 2). One step in curve units is at least as large, so the tip only fires when the setting is certainly finer than one step. The deadband tip recommends one step only if that is at most 10% (25.5, the limit above which validation warns); otherwise it explains the trade-off. The ramp tip only fires if one step takes at least 2 s. The default deadband of a fan without `controlAlgorithm` is not checked. |
 | `adviseOnlyPwmControlMode` | `nzxtsmart2` | warning | `controlMode.active` or `controlMode.onExit.mode` is something other than `pwm`/`1` |
 | `adviseThinkpadFanControl` | `thinkpad` | warning / tip | `/sys/module/thinkpad_acpi/parameters/fan_control` is `N` (warning). If it can't be read, a tip names the parameter. |
+| `adviseFirmwareMayStopFan` | every entry with `FirmwareMayStopFan` (added by `Check`, not listed in `Advice`) | tip | A fan without `neverStop`: without `sanityCheck.fanStalled.enabled`, the tip says the check is off and how to enable it; with `enabled: true`, it says the check may report a fan the firmware stopped on purpose. |
 
 **Why**: the registry knows the device, so it can explain why a setting won't work before the daemon fails at
 runtime. fan2go doesn't change the settings itself: smoothing defaults are not set by entries.
@@ -126,6 +129,17 @@ handled with the regular config:
   BIOS keeps changing the speed until its control is disabled (e.g. with `dell-bios-fan-control`).
 - **AMD GPUs (`amdgpu`)**: the reported PWM may not follow the written value (#148, #196). Use
   `setPwmToGetPwmMap: identity` and disable the `pwmValueChangedByThirdParty` sanity check.
+  The zero RPM mode of newer GPUs (`gpu_od/fan_ctrl/fan_zero_rpm_enable`) is not a `FirmwareMayStopFan` entry: the
+  driver source doesn't show that it can stop the fan in manual mode. In the kernel tree the registry is pinned to,
+  `pwm1_enable=1` switches off the firmware fan control (`smu_v13_0_set_fan_control_mode` calls
+  `smu_v13_0_auto_fan_control(smu, 0)`), and a `pwm1` write programs a static duty cycle into the fan controller
+  (`smu_v13_0_set_fan_speed_pwm`, `FDO_PWM_MODE_STATIC`). The zero RPM setting is only a value in the overdrive table
+  of the firmware's own fan control (`FanZeroRpmEnable`). Older GPUs (`smu7_thermal.c`) enable zero RPM only when they
+  start the firmware fan control, and stop it on a `pwm1` write. SMU 14.0.2 GPUs have no writable `pwm1`. If your
+  GPU's fan stops in manual mode anyway, set `sanityCheck.fanStalled.enabled: false` for it.
+  Sources: [`smu_v13_0.c` `smu_v13_0_set_fan_speed_pwm`](https://github.com/torvalds/linux/blob/ee83899302a0457a3ba47464a13e8682bd7ba27d/drivers/gpu/drm/amd/pm/swsmu/smu13/smu_v13_0.c#L972),
+  [`smu_v13_0_set_fan_control_mode`](https://github.com/torvalds/linux/blob/ee83899302a0457a3ba47464a13e8682bd7ba27d/drivers/gpu/drm/amd/pm/swsmu/smu13/smu_v13_0.c#L1001),
+  [`smu7_thermal.c`](https://github.com/torvalds/linux/blob/ee83899302a0457a3ba47464a13e8682bd7ba27d/drivers/gpu/drm/amd/pm/powerplay/hwmgr/smu7_thermal.c#L176), [`amdgpu_pm.c` `pwm1`](https://github.com/torvalds/linux/blob/ee83899302a0457a3ba47464a13e8682bd7ba27d/drivers/gpu/drm/amd/pm/amdgpu_pm.c#L3069).
 - **Corsair Commander Pro, fans that don't stop at 0 %** (#316): this depends on the fan. Set `minPwm` or a `pwmMap`
   so that stopping writes a value that the fan reacts to.
 - **Out-of-tree NCT6687D driver** (`nct6687`): older versions cached register values for 1 s (#272, #358). The

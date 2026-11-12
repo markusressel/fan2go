@@ -18,6 +18,13 @@
           "Present": false,
           "RuntimeOverride": false
         }
+      },
+      "fanStalled": {
+        "enabled": {
+          "Value": false,
+          "Present": false,
+          "RuntimeOverride": false
+        }
       }
     },
     "cmd": {

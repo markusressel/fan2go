@@ -496,6 +496,16 @@ fans:
         enabled: true
         # (Optional) Throttle duration for the execution of this check.
         throttleDuration: 10s
+      # (Optional) Control the behavior of the "fanStalled" sanity check
+      # This check warns (and notifies) once when a fan without neverStop doesn't spin (avg. RPM < 50),
+      # although fan2go has set a PWM value of at least its minPwm for a few RPM polling periods.
+      # It only applies to fans with an RPM sensor whose tach has been seen working (RPM >= 50 in the
+      # fan curve data, or since fan2go started controlling the fan or reloaded its config).
+      # fan2go doesn't change the PWM value because of it.
+      # Default: true, except for devices whose firmware may keep the fan stopped (see docs/hardware-quirks.md).
+      fanStalled:
+        # (Optional) Whether to enable this check or not
+        enabled: true
 ```
 
 ### Sensors
@@ -1029,6 +1039,8 @@ The exported values are the ones fan2go maintains anyway, so a scrape doesn't re
   stale), since the fans don't follow it then,
 - `fan2go_curve_error`: 1 while the curve can't be evaluated (the fans that use it apply their `onSensorFailure`
   action), 0 otherwise; missing before the first evaluation,
+- `fan2go_controller_stall_count`: the number of times a fan without `neverStop` was found stalled (see
+  [Monitoring](#monitoring)),
 - `fan2go_controller_state{id, state}`: 1 for the current state of the fan controller, 0 for the others. The states
   are `initializing`, `running`, `sensor_failure_max` (the curve fails, the fan runs at its max PWM),
   `sensor_failure_restored` (the curve fails, the fan was handed back), `stopped_pwm_write_failed`,
@@ -1185,6 +1197,16 @@ gets 3 `rpmPollingRate` periods to react, both after fan2go starts controlling i
 fan2go increases it (again). If the fan still doesn't spin at its `maxPwm`, fan2go stops controlling it and restores
 the state it had before fan2go took control. A fan whose RPM sensor reports 0 RPM even though it spins (e.g. a missing
 or broken tach signal) therefore ends up uncontrolled: check the tach signal, or disable `neverStop` for such a fan.
+
+For a fan without `neverStop` that has an RPM sensor, fan2go warns and sends a notification once when the fan doesn't
+spin (RPM average and last reading below 50 RPM), although fan2go has set a PWM value of at least the fan's `minPwm`
+(and the fan had 3 `rpmPollingRate` periods to react to it). fan2go doesn't change the PWM value because of this,
+and logs when the fan spins again. The check only applies once the fan's tach has been seen working (at least 50 RPM
+in the fan's curve data, or since fan2go started controlling the fan or reloaded its config), so a fan header
+without a tach signal isn't reported. A common
+cause is a configured `minPwm` below the PWM value the fan needs to start: fan2go doesn't give a stopped fan a higher
+PWM value to start it, so raise `minPwm` or set `neverStop: true`. If something else stops the fan on purpose
+(e.g. the firmware of the device), disable the check with `sanityCheck.fanStalled.enabled: false`.
 
 ### Sensor failures
 

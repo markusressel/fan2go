@@ -82,10 +82,7 @@ var detectCmd = &cobra.Command{
 
 			ui.Printfln("> Platform: %s", platformText(controller))
 
-			quirksText := "-"
-			if entry := quirks.Lookup(controller.HwmonName, controller.Modalias); entry != nil {
-				quirksText = entry.ID
-			}
+			quirksText := quirks.Lookup(controller.HwmonName, controller.Modalias).QuirksText()
 
 			var fanRows [][]string
 			for _, fan := range fanSlice {

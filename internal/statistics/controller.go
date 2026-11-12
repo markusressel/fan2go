@@ -16,6 +16,7 @@ type ControllerCollector struct {
 	unexpectedPwmValueCount *prometheus.Desc
 	increasedMinPwmCount    *prometheus.Desc
 	minPwmOffset            *prometheus.Desc
+	stallCount              *prometheus.Desc
 	state                   *prometheus.Desc
 }
 
@@ -34,6 +35,10 @@ func NewControllerCollector(controllers []controller.FanController) *ControllerC
 			"Offset applied to the original minPwm of the fan due to a stalling fan",
 			[]string{"id"}, nil,
 		),
+		stallCount: prometheus.NewDesc(prometheus.BuildFQName(namespace, controllerSubsystem, "stall_count"),
+			"Counter for stalls of a fan without neverStop: the fan didn't spin although its PWM value was at least its minPwm",
+			[]string{"id"}, nil,
+		),
 		state: prometheus.NewDesc(prometheus.BuildFQName(namespace, controllerSubsystem, "state"),
 			"State of the fan controller: 1 for the current state, 0 for all others ("+allStatesText()+")",
 			[]string{"id", "state"}, nil,
@@ -45,6 +50,7 @@ func (collector *ControllerCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- collector.unexpectedPwmValueCount
 	ch <- collector.increasedMinPwmCount
 	ch <- collector.minPwmOffset
+	ch <- collector.stallCount
 	ch <- collector.state
 }
 
@@ -54,9 +60,11 @@ func (collector *ControllerCollector) Collect(ch chan<- prometheus.Metric) {
 		switch contr.(type) {
 		case *controller.DefaultFanController:
 			fanId := contr.GetFanId()
-			ch <- prometheus.MustNewConstMetric(collector.unexpectedPwmValueCount, prometheus.CounterValue, float64(contr.GetStatistics().UnexpectedPwmValueCount), fanId)
-			ch <- prometheus.MustNewConstMetric(collector.increasedMinPwmCount, prometheus.CounterValue, float64(contr.GetStatistics().IncreasedMinPwmCount), fanId)
-			ch <- prometheus.MustNewConstMetric(collector.minPwmOffset, prometheus.GaugeValue, float64(contr.GetStatistics().MinPwmOffset), fanId)
+			stats := contr.GetStatistics()
+			ch <- prometheus.MustNewConstMetric(collector.unexpectedPwmValueCount, prometheus.CounterValue, float64(stats.UnexpectedPwmValueCount), fanId)
+			ch <- prometheus.MustNewConstMetric(collector.increasedMinPwmCount, prometheus.CounterValue, float64(stats.IncreasedMinPwmCount), fanId)
+			ch <- prometheus.MustNewConstMetric(collector.minPwmOffset, prometheus.GaugeValue, float64(stats.MinPwmOffset), fanId)
+			ch <- prometheus.MustNewConstMetric(collector.stallCount, prometheus.CounterValue, float64(stats.StallCount), fanId)
 		}
 		current := contr.GetStatus().State
 		for _, state := range status.AllStates {
