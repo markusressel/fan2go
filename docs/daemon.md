@@ -29,13 +29,14 @@ Details of the individual subsystems are in their own documents:
    - Sensors: hwmon sensors are resolved against the scanned chips. A sensor that can't be resolved or created is
      skipped with a warning and a notification. Every created sensor gets a first reading to seed its moving average;
      if that fails, the sensor stays stale until the sensor monitor reads it.
-   - Curves: an error here aborts the startup with exit code 78, like errors of step 5.
+   - Curves: an error here aborts the startup with exit code 78, like curve evaluator errors in step 5.
    - Fans: like sensors, a fan that can't be resolved or created is skipped with a warning and a notification.
    - NVIDIA devices are resolved the same way, through NVML (only in builds with NVML support).
 5. **Create the fan controllers and the curve evaluator** (`initializeFanControllers`). The evaluator gets all curves.
    Each fan gets a `controller.DefaultFanController` that subscribes to the evaluator's cycles. The fan controllers
    are added to the registry (for the REST API), and only then the Prometheus collectors of all new objects replace
-   the previous ones (`statistics.ReplaceAll`).
+   the previous ones (`statistics.ReplaceAll`). A curve evaluator error (e.g. a curve dependency cycle) exits with
+   code 78, a collector registration error with code 1.
 6. **Subscribe to the signals** (`subscribeSignals`), before any fan controller starts. From here on, `SIGINT`/`SIGTERM`
    never kill the process with their default action.
 7. **Start the actors** (`RunDaemon`, an `oklog/run` group): the orchestrator, the signal handler, the config file
@@ -163,12 +164,13 @@ apart from that warning.
 | Code | Meaning |
 |---|---|
 | 0 | Stopped normally (`SIGINT`/`SIGTERM`), or the command succeeded |
-| 1 | Any other error: no fan left after skipping missing hardware, a failing file watcher, an invalid command line, errors of other commands |
+| 1 | Any other error: no fan left after skipping missing hardware, the statistics collectors can't be registered, a failing file watcher, an invalid command line, errors of other commands |
 | 78 | Config error (`EX_CONFIG` from `sysexits.h`): the config file can't be found, read, decoded or validated, or the daemon can't create its curves or the curve evaluator from it |
 
 Errors caused by the config are marked as `configuration.ConfigError` (`InitConfig`, `ReadInConfig`, `LoadConfig`,
-`ValidateConfig` and the object creation in `RunDaemon`; sensors and fans that can't be created are skipped there,
-so only curve and evaluator errors remain). The other commands create single objects for display (e.g.
+`ValidateConfig`, and the curve and curve evaluator creation in `RunDaemon`; sensors and fans that can't be created
+are skipped there). An error registering the Prometheus collectors (`statistics.ReplaceAll` in
+`initializeFanControllers`) is not caused by the config and exits with 1. The other commands create single objects for display (e.g.
 `fan2go fan curve`); an error there exits with 1. Every command returns its errors to cobra (`RunE`); `cmd.Execute` prints
 errors that weren't logged yet and maps them to the exit code (`exitCode`); `main` shuts NVML down and calls `os.Exit`.
 No other code calls `os.Exit` or a panicking log function. The codes are the same for all commands, e.g.
