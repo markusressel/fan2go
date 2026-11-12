@@ -162,23 +162,18 @@ func pidControlAlgorithmGains(fanConfig FanConfig) (p, i, d float64, key string,
 	if controlLoop := fanConfig.ControlLoop; controlLoop != nil { //nolint:all
 		return controlLoop.P, controlLoop.I, controlLoop.D, "controlLoop", true
 	}
-	if algorithm := fanConfig.ControlAlgorithm; algorithm != nil {
-		if algorithm.Pid != nil {
-			return algorithm.Pid.P, algorithm.Pid.I, algorithm.Pid.D, "controlAlgorithm.pid", true
-		}
-		if algorithm.Direct != nil {
-			return 0, 0, 0, "", false
-		}
+	// without controlAlgorithm, the fan uses the default (direct), see GetControlAlgorithm
+	if algorithm := fanConfig.GetControlAlgorithm(); algorithm.Pid != nil {
+		return algorithm.Pid.P, algorithm.Pid.I, algorithm.Pid.D, "controlAlgorithm.pid", true
 	}
-	defaults := control_loop.DefaultPidConfig
-	return defaults.P, defaults.I, defaults.D, "the default pid control algorithm", true
+	return 0, 0, 0, "", false
 }
 
 // validatePidControlAlgorithms checks that the pid control algorithm of each fan is stable with the
 // configured fanController.adjustmentTickRate (error), and warns if it overshoots. It also warns if the
 // algorithm is unstable at the time step a gap between two cycles counts as (control_loop.GapDt): a fan whose
 // every update takes longer than the gap threshold (e.g. a slow cmd fan) runs the loop at that step.
-// Each warning is logged once per distinct algorithm (e.g. once for all fans with the default one), with the
+// Each warning is logged once per distinct algorithm (e.g. once for all fans with the same gains), with the
 // ids of its fans.
 func validatePidControlAlgorithms(config *Configuration) error {
 	type algorithm struct {
@@ -587,14 +582,19 @@ func validateFans(config *Configuration) error {
 		}
 
 		if fanConfig.ControlAlgorithm != nil {
+			if fanConfig.ControlAlgorithm.Direct == nil && fanConfig.ControlAlgorithm.Pid == nil {
+				// e.g. "direct:" without a value: it would silently get the default (smoothing), not the pass-through
+				return fmt.Errorf("fan %s: controlAlgorithm is empty, use one of: direct | pid "+
+					"(controlAlgorithm: direct applies the curve value without smoothing; omit controlAlgorithm for the default)", fanConfig.ID)
+			}
 			if fanConfig.ControlAlgorithm.Direct != nil && fanConfig.ControlAlgorithm.Pid != nil {
 				return fmt.Errorf("fan %s: controlAlgorithm can only be one of: direct | pid", fanConfig.ID)
 			}
 
 			if fanConfig.ControlAlgorithm.Direct != nil {
-				maxPwmChangePerCycle := fanConfig.ControlAlgorithm.Direct.MaxPwmChangePerCycle
-				if maxPwmChangePerCycle != nil && *maxPwmChangePerCycle <= 0 {
-					return fmt.Errorf("fan %s: invalid maxPwmChangePerCycle, must be > 0", fanConfig.ID)
+				err := validateDirectControlAlgorithm(fanConfig.ID, *fanConfig.ControlAlgorithm.Direct, config.FanController.AdjustmentTickRate)
+				if err != nil {
+					return err
 				}
 			}
 
@@ -844,4 +844,92 @@ func validateControlModeValue(fanID, field, s string) error {
 	default:
 		return fmt.Errorf("fan '%s': invalid %s %q (valid: auto, pwm, disabled, or integer)", fanID, field, s)
 	}
+}
+
+const (
+	// minReasonableTimeConstant is the timeConstant of the direct control algorithm below which validation warns
+	// (e.g. "2ms" instead of "2s")
+	minReasonableTimeConstant = 100 * time.Millisecond
+	// maxReasonableTimeConstant is the timeConstant of the direct control algorithm above which validation warns
+	maxReasonableTimeConstant = time.Minute
+	// maxReasonableFullRampUp is the time a full increase (0 to 255) may take with rampUp before validation warns
+	maxReasonableFullRampUp = time.Minute
+	// maxReasonableDeadband is the deadband (10%) above which validation warns
+	maxReasonableDeadband = 25.5
+)
+
+// validateDirectControlAlgorithm checks the options of the direct control algorithm of a fan.
+// tickRate is fanController.adjustmentTickRate (validated later, it may be <= 0 here).
+func validateDirectControlAlgorithm(fanID string, direct DirectControlAlgorithmConfig, tickRate time.Duration) error {
+	const key = "controlAlgorithm.direct"
+
+	timeConstant := direct.TimeConstant.Duration()
+	if timeConstant < 0 {
+		return fmt.Errorf("fan %s: %s.timeConstant must be >= 0, got %s", fanID, key, timeConstant)
+	}
+	if timeConstant > 0 && timeConstant < minReasonableTimeConstant {
+		ui.Warning("fan %s: %s.timeConstant is %s, which smooths almost nothing (a plain number is seconds, "+
+			"e.g. 2 or \"2s\")", fanID, key, timeConstant)
+	}
+	if timeConstant > maxReasonableTimeConstant {
+		ui.Warning("fan %s: %s.timeConstant is %s, the fan will react very slowly to temperature changes",
+			fanID, key, timeConstant)
+	}
+
+	for _, rate := range []struct {
+		name  string
+		value CurveUnits
+	}{{"rampUp", direct.RampUp}, {"rampDown", direct.RampDown}} {
+		if err := validateCurveUnits(fanID, key+"."+rate.name, rate.value); err != nil {
+			return err
+		}
+	}
+	if direct.RampUp > 0 {
+		if fullRamp := time.Duration(255 / direct.RampUp.Value() * float64(time.Second)); fullRamp > maxReasonableFullRampUp {
+			ui.Warning("fan %s: %s.rampUp is %v per second, so a full increase of the fan speed takes %s, "+
+				"which delays cooling", fanID, key, direct.RampUp.Value(), fullRamp.Round(time.Second))
+		}
+	}
+
+	if err := validateCurveUnits(fanID, key+".deadband", direct.Deadband); err != nil {
+		return err
+	}
+	if direct.Deadband >= 255 {
+		return fmt.Errorf("fan %s: %s.deadband must be < 255 (100%%), got %v", fanID, key, direct.Deadband.Value())
+	}
+	if direct.Deadband > maxReasonableDeadband {
+		ui.Warning("fan %s: %s.deadband is %v (more than 10%%), the fan speed may stay noticeably off the curve",
+			fanID, key, direct.Deadband.Value())
+	}
+
+	maxPwmChangePerCycle := direct.MaxPwmChangePerCycle //nolint:staticcheck // deprecated, but still supported
+	if maxPwmChangePerCycle != nil {
+		if *maxPwmChangePerCycle <= 0 {
+			return fmt.Errorf("fan %s: invalid maxPwmChangePerCycle, must be > 0", fanID)
+		}
+		if direct.RampUp > 0 || direct.RampDown > 0 {
+			return fmt.Errorf("fan %s: %s.maxPwmChangePerCycle can't be combined with rampUp or rampDown, "+
+				"remove the deprecated maxPwmChangePerCycle", fanID, key)
+		}
+		if tickRate > 0 {
+			perSecond := float64(*maxPwmChangePerCycle) / tickRate.Seconds()
+			ui.Warning("fan %s: %s.maxPwmChangePerCycle is deprecated, because it depends on fanController.adjustmentTickRate. "+
+				"With the current adjustmentTickRate of %s, %d per cycle is %v per second: "+
+				"use rampUp: %v and rampDown: %v instead",
+				fanID, key, tickRate, *maxPwmChangePerCycle, perSecond, perSecond, perSecond)
+		}
+	}
+	return nil
+}
+
+// validateCurveUnits checks that a CurveUnits value (a rate or a deadband) is >= 0 and finite.
+func validateCurveUnits(fanID string, key string, value CurveUnits) error {
+	v := value.Value()
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return fmt.Errorf("fan %s: %s must be a finite number, got %v", fanID, key, v)
+	}
+	if v < 0 {
+		return fmt.Errorf("fan %s: %s must be >= 0, got %v", fanID, key, v)
+	}
+	return nil
 }
