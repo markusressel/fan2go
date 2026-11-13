@@ -104,6 +104,12 @@ so as settled). It needs 3 stable checks in a row. If
   (`fans.MaxPwmRpmRatio`), 255 if there is none.
 - `minPwm`: set to `startPwm` (there is no separate measurement yet, see #30).
 
+A flat curve is the exception: if the RPM of target values 1..255 (target value 0 is ignored, many fans stop there)
+varies by at most `max(5% of the peak RPM, 2 * maxRpmDiffForSettledFan)`, the fan doesn't react to PWM (e.g. a header
+without working PWM/DC control). The 98% rule would give a `maxPwm` of 1 then, so `maxPwm` is the full range (255;
+nvidia: 100) instead (`fans.ComputeFanPwmBoundariesFromCurveData`, also shown by `fan init` and `fan curve`), and both
+`fan init` and every daemon start log a warning (`fans.IsFlatRpmCurve`). Fans without an RPM sensor are not checked.
+
 After the PWM mappings are known, `alignDerivedMaxPwmWithOutputLevels` checks the derived `maxPwm` against the output
 levels of the fan: target values whose raw values read back the same are one level. The curve between two measured
 points is interpolated, so inside a level it can reach 98% although the level doesn't (8 levels: the curve reaches

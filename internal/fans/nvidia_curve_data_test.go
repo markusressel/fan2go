@@ -92,3 +92,19 @@ func TestNvidiaFan_AttachFanRpmCurveData_MaxPwmCanOnlyBeRaisedTo100(t *testing.T
 	assert.Contains(t, warnings.String(), "Fan gpu: the derived minPwm (150) is above maxPwm (100), using minPwm 100")
 	assert.Contains(t, warnings.String(), "Fan gpu: the configured startPwm (150) is above the highest possible maxPwm (100)")
 }
+
+func TestNvidiaFan_AttachFanRpmCurveData_FlatCurve_MaxPwmIs100(t *testing.T) {
+	// GIVEN: a fan that doesn't react to the fan speed setting (values are percent)
+	fan := &NvidiaFan{Config: configuration.FanConfig{ID: "gpu", Nvidia: &configuration.NvidiaFanConfig{}}, CanReadRPM: true}
+	curve := map[int]float64{0: 0}
+	for pwm := 1; pwm <= 100; pwm++ {
+		curve[pwm] = 1500
+	}
+
+	// WHEN
+	require.NoError(t, fan.AttachFanRpmCurveData(&curve))
+
+	// THEN: the full range of the fan
+	assert.Equal(t, 1, fan.GetStartPwm())
+	assert.Equal(t, 100, fan.GetMaxPwm())
+}
