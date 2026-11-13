@@ -23,6 +23,21 @@ type FanAnalysisInfo struct {
 	// it was read back, measured during the analysis. nil if it wasn't measured (e.g. data saved by an older
 	// version, or a fan whose PWM can't be read). It doesn't invalidate the analysis data when it changes.
 	ReadbackDelayMillis *int64 `json:"readbackDelayMillis,omitempty"`
+	// BreakawayPwm is the lowest PWM value (before the pwmMap) that started the fan from standstill during the
+	// analysis. nil if it wasn't measured (e.g. data saved by an older version, a fan that doesn't stop, or
+	// kickStart.mode isn't auto). It doesn't invalidate the analysis data when it changes.
+	BreakawayPwm *int `json:"breakawayPwm,omitempty"`
+	// TachIntervalMillis is the time (in milliseconds) between two updates of the RPM value the fan reports,
+	// measured during the breakaway measurement. nil if it wasn't measured. Used to time the kick start.
+	TachIntervalMillis *int64 `json:"tachIntervalMillis,omitempty"`
+	// SpinUpMillis is the time (in milliseconds) from writing the breakaway PWM value (once the fan reported it)
+	// to the first RPM reading that showed the fan spinning, when it started from standstill. nil if it wasn't
+	// measured. Used to time the kick start.
+	SpinUpMillis *int64 `json:"spinUpMillis,omitempty"`
+	// CoastDownMillis is the longest time (in milliseconds) the fan took from a write of a PWM value that stops it
+	// until its RPM readings showed it standing still, measured during the breakaway measurement. nil if it wasn't
+	// measured. Used to time the kick start.
+	CoastDownMillis *int64 `json:"coastDownMillis,omitempty"`
 }
 
 // SaveFanAnalysisInfo saves the analysis info of the given fan, overwriting a saved one.

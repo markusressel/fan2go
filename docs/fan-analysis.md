@@ -27,16 +27,18 @@ Run
  │        │                            probe readback delay + sweep 0..255│
  │        │         pwmMap:            config | db | one value per level  │
  │        │      FanCurveAnalyzer.RunInitializationSequence              │
- │        │         start boundary ─► max boundary ─► interior ─► cleanup│
+ │        │         start boundary ─► breakaway (kickStart auto) ─►      │
+ │        │         max boundary ─► interior ─► cleanup                  │
  │        │      AttachFanRpmCurveData, SaveFanRpmData,                  │
- │        │      SaveFanAnalysisInfo (quirk, readback delay)             │
+ │        │      SaveFanAnalysisInfo (quirk, readback delay, breakaway,  │
+ │        │                     tach interval, spin-up, coast-down)      │
  │        ├─ missing (file, cmd fan) ─► save the fixed linear curve      │
  │        └─ other error (e.g. db locked) ─► stop with an error          │
  ├─ AttachFanRpmCurveData  ◄────────────────────────────────────────────┘
  │      derives startPwm, maxPwm (and minPwm = startPwm) unless configured
  ├─ computeFanSpecificMappings   (loads the saved mappings; sweeps again if
  │                                 setPwmToGetPwmMap is missing or corrupt)
- ├─ alignDerivedMaxPwmWithOutputLevels, loadReadbackDelay
+ ├─ alignDerivedMaxPwmWithOutputLevels, loadReadbackDelay, loadKickStartInfo
  └─ takeManualControl, control loop  (see fan-controller.md)
 ```
 
@@ -56,7 +58,7 @@ Main types and data:
 
 `RunInitializationSequence` skips the measurement for fans without an RPM sensor and returns no curve data. Otherwise
 it switches the fan to manual mode (`takeManualControl`; if that fails, the analysis fails, see
-[fan-controller.md](fan-controller.md)) and runs four phases over the distinct target values:
+[fan-controller.md](fan-controller.md)) and runs these phases over the distinct target values:
 
 1. **Start boundary** (`detectStartBoundary`): binary search for the lowest target value at which the fan spins.
    "Spinning" means at least 50 RPM (`rpmNoiseThreshold`, `fans.IsRpmLikelySpinning`). Each step waits for the fan to
@@ -64,6 +66,9 @@ it switches the fan to manual mode (`takeManualControl`; if that fails, the anal
    because the fan doesn't report the expected PWM (see below), the search tries the next higher and then the next
    lower value in its window first; only if all three are skipped, it continues above the probe. If no value spins,
    the analysis fails with "unable to detect start boundary, no spinning PWM found".
+   Then, only with `kickStart.mode: auto`, **breakaway** (`measureBreakawayPwm`): the lowest target value that
+   starts the fan from standstill, and the tach interval and spin-up delay of the fan, for the kick start. See
+   [Measure the breakaway PWM value](#measure-the-breakaway-pwm-value).
 2. **Max boundary** (`detectMaxBoundary`, `confirmMaxBoundary`): a fast scan of the top distinct values (the top 65,
    or from the start boundary if that is higher) in steps of `analysis.coarseStep`, each with a plain
    `fanResponseDelay` wait. It then walks down from the top, measuring every value not yet measured, until one reaches
@@ -102,7 +107,9 @@ so as settled). It needs 3 stable checks in a row. If
 - `startPwm`: the lowest target value with at least 50 RPM.
 - `maxPwm`: the lowest target value (at or above `startPwm`) with at least 98% of the peak RPM
   (`fans.MaxPwmRpmRatio`), 255 if there is none.
-- `minPwm`: set to `startPwm` (there is no separate measurement yet, see #30).
+- `minPwm`: set to `startPwm`.
+- The breakaway PWM value is not a boundary: it is stored in the `fanAnalysisInfo` record and only used for the kick
+  start (see [fan-controller.md](fan-controller.md#kick-start-from-standstill)).
 
 A flat curve is the exception: if the RPM of target values 1..255 (target value 0 is ignored, many fans stop there)
 varies by at most `max(5% of the peak RPM, 2 * maxRpmDiffForSettledFan)`, the fan doesn't react to PWM (e.g. a header
@@ -296,6 +303,69 @@ check is skipped for that long after every write, so with a target that changes 
 the analysis saves the delay: a sweep that runs at startup because only the saved `setPwmToGetPwmMap` is missing
 (e.g. it was corrupt) measures it, but doesn't save it.
 
+### Measure the breakaway PWM value
+
+**Decision**: With `kickStart.mode: auto` (the default), the analysis measures the lowest target value that starts the
+fan from standstill (`measureBreakawayPwm` in `internal/controller/fan_analysis_breakaway.go`), right after the start
+boundary, while the fan runs slowly and stops quickly. On the way it measures how the fan and its tach respond, for
+the timing of the kick start:
+
+1. Skip it if the start boundary is the lowest distinct value: the fan doesn't stop, so it never has to start.
+2. Stop the fan (the lowest distinct value) and wait until at least 3 RPM readings in a row (100 ms apart), spanning
+   at least max(1 s, 2 tach intervals), are below 50 RPM. Then pause for half the coast-down time (from the write
+   until the fan counted as stopped), 2–10 s, so a large fan that coasts too slowly for its tach doesn't count as
+   stopped. If it doesn't stop within `analysis.settleTimeout` (30 s if that is 0), skip the measurement.
+3. Coarse search: try the start boundary, then every 16th of the distinct values above it, without stopping in
+   between. Each try first waits until the fan reports the written value (up to `fanResponseDelay`, for drivers
+   that apply a value late), then gives the fan max(6 s, 3 tach intervals) to start: BLDC fans with locked-rotor
+   protection only retry every few seconds. A try counts as started if 2 readings in a row show at least 50 RPM (a
+   failed reading breaks the row); a spinning reading at the end of the window gets up to 2 more tach intervals to be
+   confirmed.
+   The value below the start boundary can't start the fan (it doesn't even keep it spinning).
+4. Refine: bisect between the last value that didn't start the fan and the first that did, from standstill (step 2)
+   each time, until they are at most a quarter of a coarse step apart (4 of 256 values). The result must have
+   started the fan from standstill; a coarse result that doesn't (a fan that started late in the previous try) is
+   moved up by that tolerance and tried again. The result errs on the high side.
+
+Measured on the way:
+
+- the **tach interval**: the median time between two changes of the reported RPM value (needs at least 3
+  intervals). A driver that caches the tach value for a second reports a new value only once a second;
+- the **spin-up delay**: the time from the readback of the result to the first spinning reading, from standstill;
+- the **coast-down time**: the longest time from a stopping write until the fan counted as stopped.
+
+They are saved as `breakawayPwm` (target value, before the `pwmMap`), `tachIntervalMillis`, `spinUpMillis` and
+`coastDownMillis` in the `fanAnalysisInfo` record, and loaded by the daemon (`loadKickStartInfo`; the tach interval
+and spin-up delay are capped at 10 s, the coast-down time at 30 s, a capped value is logged at INFO). A fan that
+didn't stop or didn't start at all gets no breakaway value. A record without the values (data from an older version,
+or analyzed with `kickStart.mode` `fixed` or `off`) is valid: the kick start uses its fallback value and default
+timing then (tach interval 1 s, spin-up delay 2 s, coast-down 5 s, see
+[fan-controller.md](fan-controller.md#kick-start-from-standstill)). The fields can be added by a later separate
+measurement of `minPwm`/`startPwm` without a format change.
+
+**Why**: The start boundary is found by a binary search that moves the PWM value up and down, so it is closer to the
+value that keeps a spinning fan turning than to the one that starts it (see
+[Adaptive boundary search](#adaptive-boundary-search-instead-of-a-full-sweep)). For a large, slow fan the two were
+32 and 116. The kick start needs the latter, and the smallest one that works, so it isn't louder than needed. Fixed
+waits don't fit all fans: a slow tach or a slow-starting fan makes a short wait report a value that is too high (or a
+failed kick at runtime), and a long wait for every fan makes the analysis and every failed kick slow.
+
+**Who benefits**: Users of fans with static friction: they start reliably with a short, small kick.
+
+**Alternatives considered**: Bisecting from standstill over the whole range (every successful try needs a stop with a
+wait, which takes long for large fans; the coarse ascent only stops after the first success). Using the curve
+measurement itself (it never starts from a known standstill). Learning only at runtime (the first starts would fail
+or be loud). A separate measurement of the tach interval (it would need its own steady phase; the breakaway
+measurement reads the RPM every 100 ms anyway).
+
+**Trade-offs**: The analysis takes longer. A fan that starts at its start boundary costs one stop (about 3–15 s
+depending on how fast it spins down) and one try (about 1–3 s). A fan whose breakaway value is far above its start
+boundary (e.g. 116 and 40) costs about 5 failed tries of 6 s and 3–4 more stops: about 50 s for a fan that stops at
+once, up to about 2 minutes for a large fan that coasts for 10–15 s (each stop then takes about 20 s: coast-down, the
+standstill readings and a pause of half the coast-down). The tach interval is
+only measured where the breakaway is (`kickStart.mode: auto`, a fan that stops). The value depends on the rotor
+position and temperature; the kick start adds a margin and raises the value at runtime when a kick fails.
+
 ### Adaptive boundary search instead of a full sweep
 
 **Decision**: The RPM curve is measured with a binary search for the start boundary, a top-band scan for the max
@@ -313,8 +383,8 @@ monotonic, full-range curve has no gaps or spikes.
 
 - The binary search assumes "spins at PWM x" is monotonic and has no hysteresis. In practice a fan that slows down
   keeps spinning at lower PWM values than it needs to start from standstill. The search moves up and down, so the
-  measured start boundary is a mix of both. fan2go therefore uses the same value for `minPwm` and `startPwm`; #30 is
-  still open.
+  measured start boundary is a mix of both. fan2go therefore uses the same value for `minPwm` and `startPwm`. The
+  PWM value that starts the fan from standstill is measured separately for the kick start (see below).
 - Only the measured points are real data; the rest is interpolated and smoothed.
 
 ### Noise-aware, robust per-point measurement
@@ -381,7 +451,7 @@ Data format: five buckets, keyed by fan `id`, values are JSON:
 | `fanSetPwmToGetPwmMap` | set PWM to reported PWM                  | `{"0":0,"1":1,...}`           |
 | `fanPwmMapping`        | `pwmMap`, an array of exactly 256 values | `[0,1,2,...,255]`             |
 | `fanOriginalState`     | state before fan2go took control, only while it controls the fan | `{"hardware":"hwmon:nct6798/0/pwm1","controlMode":2,"automaticControlMode":5,"pwm":120}` |
-| `fanAnalysisInfo`      | known hardware quirks entry the analysis data of a hwmon fan was measured with ([details](hardware-quirks.md#persistence)), and the measured readback delay (fans whose PWM can be read back) | `{"quirk":"corsaircpro","quirkVersion":1,"readbackDelayMillis":0}` |
+| `fanAnalysisInfo`      | known hardware quirks entry the analysis data of a hwmon fan was measured with ([details](hardware-quirks.md#persistence)), the measured readback delay (fans whose PWM can be read back), and the measured breakaway PWM value, tach interval, spin-up delay and coast-down time | `{"quirk":"corsaircpro","quirkVersion":1,"readbackDelayMillis":0,"breakawayPwm":116,"tachIntervalMillis":1000,"spinUpMillis":1800,"coastDownMillis":6500}` |
 
 A fan without an RPM sensor stores `null` in `fans`: it counts as "analyzed, no curve" as long as the fan has no
 RPM sensor. If a hwmon or nvidia fan has one later (a fixed `rpmChannel`, a driver that was loaded late), the `null`
@@ -448,9 +518,11 @@ if it is killed in between, the record is missing, and a fan with a known hardwa
 
 ### No continuous re-analysis at runtime
 
-**Decision**: The saved curve and the derived boundaries don't change while fan2go runs. The only runtime adaptation is
-the `neverStop` stall detection: if a fan with `neverStop: true` stalls, the controller raises an in-memory offset on
-`minPwm` by 1. It is not persisted and is lost on restart or reload (see [Fan controller](fan-controller.md)).
+**Decision**: The saved curve, the derived boundaries and the breakaway PWM value don't change while fan2go runs. The
+runtime adaptations are in memory only: the `neverStop` stall detection (if a fan with `neverStop: true` stalls, the
+controller raises an in-memory offset on `minPwm` by 1), and the kick start (a kick that doesn't start the fan raises
+the kick value for the rest of the run). They are not persisted and are lost on restart or reload (see
+[Fan controller](fan-controller.md)).
 `Fan.UpdateFanRpmCurveValue` exists, but nothing calls it.
 
 **Why**: The reason isn't documented. Likely: the curve is measured under controlled conditions (settle waits, median
@@ -487,14 +559,18 @@ Per-fan keys:
 | `minPwm`, `startPwm`, `maxPwm` | measured | override the values derived from the curve               |
 | `pwmSetDelay`       | global value | per-fan override of `fanController.pwmSetDelay`                   |
 | `quirks.enabled`    | `true`       | `false` doesn't apply the [known hardware quirks](hardware-quirks.md) of the device |
+| `kickStart.mode`    | `auto`       | only `auto` measures the breakaway PWM value, tach interval and spin-up delay ([fan-controller.md](fan-controller.md#kick-start-from-standstill)) |
 
 CLI: `fan2go fan --id <id> init [--fan-response-delay <delay>] [--assume-pwm-map-identity]`,
 `fan2go fan --id <id> reset`, `fan2go fan --id <id> curve`.
 
 ## Known limitations and open questions
 
-- `minPwm` and `startPwm` are not measured separately (#30). The binary search mixes start-from-standstill and
-  keep-spinning behaviour.
+- `minPwm` and `startPwm` are not measured separately. The binary search mixes start-from-standstill and
+  keep-spinning behaviour. The breakaway PWM value is measured separately, but only used for the kick start.
+- The breakaway measurement is skipped with `kickStart.mode` `fixed` or `off`; switching to `auto` later uses the
+  fallback kick value and the default kick timing until the next `fan init`. Data analyzed by an older version has
+  no breakaway value or timing either.
 - A fan that spins at PWM 0 gets RPM 0 stored for PWM 0 anyway, and its `startPwm` becomes the next measured value.
 - Saved data is keyed by fan `id` and not invalidated when the hardware or the `pwmMap` config changes (only a
   changed known hardware quirks entry invalidates it).
@@ -512,5 +588,6 @@ CLI: `fan2go fan --id <id> init [--fan-response-delay <delay>] [--assume-pwm-map
   (a reload logs a warning if `dbPath` changed).
 - `fanResponseDelay` has no per-fan override; the settle sample interval (500 ms), the 50 RPM noise threshold, the
   98% max ratio and the 2 s readback delay cap are hard-coded.
-- The RPM curve is never updated at runtime; the `neverStop` `minPwm` offset is not persisted.
+- The RPM curve is never updated at runtime; the `neverStop` `minPwm` offset and a kick value raised at runtime are
+  not persisted.
 - Entries of fans removed from the config stay in the database.

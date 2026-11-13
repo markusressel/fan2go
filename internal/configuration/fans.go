@@ -122,6 +122,9 @@ type FanConfig struct {
 	// OnSensorFailure defines what fan2go does with the fan while its curve can't be evaluated
 	// (e.g. because a sensor can't be read or its value is stale). Defaults to max.
 	OnSensorFailure OnSensorFailureAction `json:"onSensorFailure,omitempty"`
+	// KickStart configures the kick that starts the fan from standstill (see KickStartConfig).
+	// nil means the defaults (mode auto).
+	KickStart *KickStartConfig `json:"kickStart,omitempty"`
 	// HwMon, File and Cmd are the different ways to configure the respective fan types.
 	HwMon  *HwMonFanConfig  `json:"hwMon,omitempty"`
 	Nvidia *NvidiaFanConfig `json:"nvidia,omitempty"`
@@ -145,6 +148,58 @@ const (
 	// OnSensorFailureRestore hands the fan back like on exit (see controlMode.onExit).
 	OnSensorFailureRestore OnSensorFailureAction = "restore"
 )
+
+// KickStartMode selects how fan2go starts a fan from standstill.
+type KickStartMode string
+
+const (
+	// KickStartAuto supervises fans whose RPM sensor works when they start from standstill, kicks them at a PWM
+	// value learned from the fan analysis (or a default), and raises it while the fan doesn't start. Fans without a
+	// working RPM sensor are only kicked if a kick value is configured (kickStart.pwm, or startPwm above minPwm).
+	KickStartAuto KickStartMode = "auto"
+	// KickStartFixed kicks the fan at the configured pwm, also fans without an RPM sensor.
+	KickStartFixed KickStartMode = "fixed"
+	// KickStartOff never kicks the fan: it gets its target PWM value right away.
+	KickStartOff KickStartMode = "off"
+)
+
+const (
+	// MinKickStartDuration is the shortest time a kick is held: a shorter kickStart.duration is raised to it
+	MinKickStartDuration = SecondsOrDuration(time.Second)
+	// MaxKickStartDuration is the longest kickStart.duration that is accepted
+	MaxKickStartDuration = SecondsOrDuration(60 * time.Second)
+)
+
+// KickStartConfig configures the kick that starts a fan from standstill: when fan2go sets a PWM value that
+// should make a stopped fan spin, it first sets a higher PWM value (the kick), because a fan needs more power
+// to start than to keep spinning (see docs/fan-controller.md).
+type KickStartConfig struct {
+	// Mode is auto (default), fixed or off.
+	Mode KickStartMode `json:"mode,omitempty"`
+	// Pwm is the PWM value (before the pwmMap) of the kick. Required for mode fixed. With mode auto, it is the first
+	// kick value (raised if it doesn't start the fan), and makes auto kick fans without a working RPM sensor.
+	Pwm *int `json:"pwm,omitempty"`
+	// Duration (0: derived) is, with a working RPM sensor, the time after which a kick that didn't start the fan
+	// counts as failed (at least the time derived from the measured timing of the fan, and at least 4s). Without
+	// one, the time a kick is held (default 3s, at least 1s). A plain number is seconds.
+	Duration SecondsOrDuration `json:"duration,omitempty"`
+}
+
+// GetKickStart returns the kickStart config of the fan with the default mode filled in.
+func (c FanConfig) GetKickStart() KickStartConfig {
+	result := KickStartConfig{}
+	if c.KickStart != nil {
+		result = *c.KickStart
+		if result.Pwm != nil {
+			pwm := *result.Pwm
+			result.Pwm = &pwm
+		}
+	}
+	if result.Mode == "" {
+		result.Mode = KickStartAuto
+	}
+	return result
+}
 
 // GetOnSensorFailure returns the configured onSensorFailure action, or OnSensorFailureMax if it is not set.
 func (c FanConfig) GetOnSensorFailure() OnSensorFailureAction {

@@ -25,7 +25,8 @@ polling and staleness in [sensors.md](sensors.md), and curves and the curve eval
   run.Group:                                                          clamp, scale to [minPwm..maxPwm]
     RPM monitor goroutine (every rpmPollingRate)                      neverStop floor + stall detection
       measureRpm -> exponential moving average                        setTargetPwm -> pwmMap -> fan.SetPwm
-    update loop goroutine (startupUpdateDelay 1s, then per cycle)     checkStall (fans without neverStop)
+    update loop goroutine (startupUpdateDelay 1s, then per cycle)     kick start from standstill (kickStart)
+                                                                      checkStall (fans without neverStop)
                                                                       handlePwmWriteResult
   restoreControlModeOnce on every exit path
 ```
@@ -39,7 +40,8 @@ Main types and state:
 - `lastTarget` is the last target fan2go wrote, before the `pwmMap`. `lastSetPwm` is the raw value after the
   `pwmMap`, exposed to statistics through `GetLastSetPwm`.
 - `minPwmOffset`, `pwmFloorSetAt`, `rpmAvgSeeded` (stall detection); `stallCheckSince`, `stallCheckTarget`,
-  `stallReported`, `lastRpmReading`, `rpmSpinSeen`, `rpmReadFailing` (stall check of fans without `neverStop`); `sensorFailureAction`, `pwmWriteFailures`,
+  `stallReported`, `lastRpmReading`, `rpmSpinSeen`, `rpmReadFailing` (stall check of fans without `neverStop`); `kick`,
+  `rpmSample`, `breakawayPwm`, `tachInterval`, `spinUpDelay`, `coastDown` (kick start from standstill); `sensorFailureAction`, `pwmWriteFailures`,
   `thirdPartyPwmChanges` (failure states of the update loop).
 - `clock` (`util.Clock`) is the time source for all waits, tickers and timestamps.
 
@@ -99,7 +101,9 @@ deterministic tests under `-race`); users (shutdown isn't delayed by waits).
 3. With `useUnscaledCurveValues`, the output is used as is, but a value between 1 and `minPwm` becomes 0, because
    the fan would not spin at that value anyway.
 4. With `neverStop`, the target is raised to at least `minPwm + minPwmOffset` (see stall detection).
-5. `setTargetPwm` maps the target through the `pwmMap` (`applyPwmMapToTarget`) and writes the raw value.
+5. If the fan has to start from standstill, the kick start replaces the target with a higher one for a while
+   (see [Kick start from standstill](#kick-start-from-standstill)).
+6. `setTargetPwm` maps the target through the `pwmMap` (`applyPwmMapToTarget`) and writes the raw value.
 
 `minPwm`, `startPwm` and `maxPwm` come from the config if set, otherwise from the saved fan analysis
 (`AttachFanRpmCurveData`). Without config values, `minPwm` is set to the measured `startPwm`. `startPwm` itself
@@ -112,8 +116,8 @@ fan allows (nvidia: 100); derived values still above it are lowered. After the P
 derived `maxPwm` to the first output level that reaches 98% of the peak RPM
 (`alignDerivedMaxPwmWithOutputLevels`, see [fan-analysis.md](fan-analysis.md)). The derived `maxPwm` is only the
 top of the scaling: the fail-safe paths (`onSensorFailure: max` and the `neverStop` stall check) use the configured
-`maxPwm`, or full speed (255; nvidia: 100) without one (`fans.FailSafeMaxPwm`). fan2go has no
-"jump-start" from standstill (open issue #30). File and cmd fans always report `minPwm` 0 and `maxPwm` 255; nvidia
+`maxPwm`, or full speed (255; nvidia: 100) without one (`fans.FailSafeMaxPwm`). A fan that has to start from
+standstill gets a kick first (see [Kick start from standstill](#kick-start-from-standstill)). File and cmd fans always report `minPwm` 0 and `maxPwm` 255; nvidia
 fans default to `maxPwm` 100, because NVML speeds are percent.
 
 **Why**: Curves describe the cooling demand on a fixed `0..255` (or `0..100%`) scale, independent of the fan.
@@ -403,7 +407,9 @@ and after each raise, the fan gets 3 `rpmPollingRate` periods to react (`minPwmI
 fail-safe speed (the configured `maxPwm`, else 255; nvidia: 100), `UpdateFanSpeed` returns
 `ErrFanStalledAtMaxPwm`, and the controller restores the fan and stops. The offset is in the statistics
 (`MinPwmOffset`, `IncreasedMinPwmCount`), but it is not persisted. Without an RPM sensor, `neverStop` only sets
-the PWM floor, and fan2go logs a warning at startup.
+the PWM floor, and fan2go logs a warning at startup. A fan that stands still when the controller starts is kicked
+first (see [Kick start from standstill](#kick-start-from-standstill)); the detection is paused during the kick and
+gives the fan its reaction period after it, so the offset is only raised if the kicks didn't start the fan.
 
 **Why**: The old check was `avg <= 0`. An exponential moving average never reaches 0 from a positive value, so
 the detection never fired for hwmon and nvidia fans, while file and cmd fans reacted to a single 0 reading (#547).
@@ -454,14 +460,13 @@ RPM source, NVIDIA fans that can't read the RPM) are never checked.
 
 **Why**: The only stall check used to be the `neverStop` one. A fan without it could read 0 RPM even at `maxPwm`
 while the controller reported `running`, without a log line or notification. Typical causes are a broken or blocked
-fan, or a configured `minPwm` below the PWM the fan needs to start (fan2go doesn't use `startPwm` at runtime, so a
-stopped fan isn't kicked).
+fan, or a configured `minPwm` below the PWM the fan needs to start (with `kickStart.mode: off`, or a kick that
+didn't start the fan).
 
 **Who benefits**: Users without `neverStop` who want to know that a fan stopped working.
 
 **Alternatives considered**: Raising the offset like `neverStop` (it would stop the controller at `maxPwm`, which
-breaks setups with an RPM input that has no tach connected), and a start kick with `startPwm` (#30). Both are out of
-scope. Only checking the RPM average would report a fan that spins up slowly (e.g. 100 RPM after a start, the
+breaks setups with an RPM input that has no tach connected). A start kick is a separate feature (see below). Only checking the RPM average would report a fan that spins up slowly (e.g. 100 RPM after a start, the
 average needs about 7 polls to reach 50 RPM), so the last reading must show a stopped fan too.
 
 **Trade-offs**: A fan that a third party (e.g. the device firmware) stops on purpose while fan2go writes a positive
@@ -469,6 +474,170 @@ PWM value is reported; disable the check for it. A tach that worked once and the
 stall. Like for `neverStop`, the first report takes a while: from 1000 RPM with the defaults, the average needs 29 s
 to drop below 50 RPM. A target that alternates at `minPwm` (e.g. PID jitter) keeps restarting the reaction period,
 and so does a fan whose reported PWM never matches the expected value while `pwmValueChangedByThirdParty` is on.
+
+### Kick start from standstill
+
+**Decision**: Every start of a fan from standstill is supervised for a short while. A fan that stands still gets a
+kick: a higher PWM value until it spins, then its normal target (`kickStart` in `internal/controller/kick_start.go`,
+issue #30). `UpdateFanSpeed` calls it after the scaling and the `neverStop` floor, before the `neverStop` stall
+detection and the write.
+
+When the supervision starts (all must hold):
+
+- the new target (before the `pwmMap`) should make the fan spin: it is above 0, and the `pwmMap` doesn't map it to 0;
+- the last target didn't, or there is none yet in this run of the controller (first update after a start or reload).
+  A target that changes while the fan is supposed to spin never starts a supervision, even if the fan stopped: that
+  is a target below what the fan needs to keep spinning, and kicking it would make it start and stop over and over.
+  The stall checks handle that case. The supervision is armed again only by a target that stops the fan;
+- the fan has an RPM sensor that has been seen working: an analyzed fan (hwmon, nvidia) whose RPM curve has a
+  spinning point, or any fan that the RPM monitor saw spinning in this run (the curve data of file and cmd fans is
+  not measured). For fans without one, see below.
+
+How a start is supervised:
+
+- **Kick right away** if a direct RPM reading and the last 2 samples of the RPM monitor all show standstill (below
+  50 RPM, `fans.IsRpmLikelySpinning`) and the kick value is above the target. At the first update of a run, the
+  monitor usually has only one sample: the start is watched instead, and a fan that stands still when fan2go starts
+  is kicked about 3–6 s later.
+- **Otherwise the target is set and watched** (`kickPhaseWatching`): a single reading can be stale (a driver that
+  caches the tach value), show a coasting fan, or be garbage (e.g. another program reading the same chip at the same
+  time: one reading of all channels was wrong, 57 RPM for a fan at 800 RPM). If 2 samples in a row, taken after the
+  fan could react (`responseDelay` after the write), show standstill, the fan is kicked. This also covers a kick
+  value that isn't above the target (e.g. a configured `startPwm` that is also `minPwm`): the target is tried first,
+  and if it doesn't start the fan, `mode: auto` kicks one step above it.
+- **During a kick** (`kickPhaseKicking`), the kick value is held until 2 samples in a row, taken after the readback
+  delay, show the fan spinning. A single spinning reading doesn't end it. Then the target is written through the
+  normal path (the control algorithm kept running during the kick), and the start is watched again. There is no ramp
+  from the kick value down to the target: the fan slows down by its inertia. A kick that starts the fan takes 1–3 s,
+  depending on the fan and its tach.
+- **A start succeeds** once 2 samples in a row, taken after the coast-down allowance plus the response delay, show
+  the fan spinning at its target. A fan that slowly coasts to a stop is still seen spinning before that. Without such
+  samples, the supervision ends unjudged after `coastDown + 2 × watch window`.
+- **A fan that stops at its target after a kick made it spin** didn't fail to start: the target doesn't keep it
+  spinning. It wasn't up to speed yet, or the target is below the PWM value that keeps the fan spinning (e.g. a
+  configured `minPwm` that is too low). It gets one more kick in this start, one step higher (`mode: fixed`: at the
+  same value). If the fan then keeps spinning, `mode: auto` uses that value for later starts. If it stops again, the
+  start ends, and fan2go warns once per run that the target is below what keeps the fan spinning (raise `minPwm`, or
+  set `neverStop: true`). Starts at that target or below aren't supervised for the rest of the run (`tooLowTarget`,
+  kept across an error restart of the controller, reset by a reload); a higher target, e.g. after `minPwm` was raised
+  or the `neverStop` floor rose, is supervised again. Neither counts as a failed kick, raises the kick value by
+  itself, or disables the kick start: a too-low target costs at most 2 kicks per run, never an escalation to full
+  speed.
+- A kick that didn't start the fan counts as failed after `kickTimeout`, and only if 2 samples in a row show the fan
+  standing still and reading the RPM doesn't fail. While the samples can't judge the kick (reading the RPM fails, or
+  they disagree), it is held, but at most `3 × kickTimeout`: then the fan gets its target unjudged, like a fan
+  without an RPM sensor.
+- A target that stops the fan ends the supervision; it doesn't count as failed. A curve failure ends it too, the
+  `onSensorFailure` action decides the PWM value then.
+- A kick is counted and its timer starts only after the write succeeded. A failed write changes nothing.
+
+The RPM monitor stores each new reading as one immutable sample (`rpmSample`: value, time, the number of samples in
+a row with the same state, the time of the previous one), so the update loop never mixes the value of one reading
+with the time of another. A reading other than 0 that repeats the value of the last sample within 3/4 of the tach
+interval (at least 2.5 s, at most 5 s) is not a new sample: a driver that caches the RPM value reports the same
+sample (also a wrong one) again, while the value of a spinning fan changes from one tach update to the next. A
+reading of 0 is always a new sample, so a stopped fan is seen at once, also with a slow tach. Samples are judged by
+the time they were taken, not by their number: a sample taken before the fan could react doesn't count (for a
+standstill verdict, the last sample must be taken after `responseDelay`, the one before after `responseDelay -
+tachInterval`). Samples taken between two updates count too (an update loop slower than the RPM monitor).
+
+Timing (derived from what the analysis measured, see
+[fan-analysis.md](fan-analysis.md#measure-the-breakaway-pwm-value); defaults for data without it):
+
+- `tachInterval` = the measured tach update interval (default 1 s), at least `rpmPollingRate`;
+- `responseDelay` = readback delay + spin-up delay (measured, default 2 s) + `tachInterval`;
+- watch window = `responseDelay + 2 × tachInterval` (5 s with the defaults);
+- `kickTimeout` = max(watch window, 4 s, `kickStart.duration`);
+- `coastDown` = the longest coast-down time measured by the analysis (default 5 s, at most 30 s): the allowance
+  before spinning samples confirm a start.
+
+Measured values above their limits (10 s; coast-down 30 s) are capped, and logged at INFO.
+
+The kick value (before the `pwmMap`):
+
+- `mode: fixed` uses `kickStart.pwm`.
+- `mode: auto` uses, in this order, `kickStart.pwm`, a configured `startPwm` (its documented meaning is "the lowest
+  PWM value at which the fan starts from standstill"), the breakaway PWM value measured by the analysis plus a margin
+  of 1/32 of the full range (8; nvidia: 4), or, without a measured value (data from an older version, `fan init` not
+  run yet), `startPwm + (max - startPwm) / 4`. The first kick value of a run is logged at INFO once the fan is kicked.
+- Every kick is at most `fans.FailSafeMaxPwm` (the configured `maxPwm`, else full speed). The target is written
+  instead of the kick value if it rises above it. On it87 chips that report `pwm_enable` 0 at PWM 255 (see
+  [hardware-quirks.md](hardware-quirks.md)), a kick at full speed is not mistaken for a third party.
+
+When a start fails:
+
+- `mode: auto` raises the kick value by 1/8 of the full range (32; nvidia: 13; at least to the next value with
+  another raw value in the `pwmMap`) and kicks again right away, up to `fans.FailSafeMaxPwm`. The raised value is
+  kept for the rest of the run, so later starts use it at once. After 5 kicks in a row that started the fan at the
+  first attempt, a raised value is lowered by half a step again: never below the first value of the run, and never
+  to (or within half a step above) a value that failed in this run.
+- If even the kick at `fans.FailSafeMaxPwm` fails, `mode: auto` gives up: it logs a warning and doesn't kick the fan
+  again until its config is reloaded or fan2go restarts (this survives the restart of the controller after an error).
+  A broken tach would otherwise get a full-speed burst at every start. The fan gets its target, and the stall checks
+  take over.
+- `mode: fixed` doesn't raise `kickStart.pwm`: it logs a warning and the fan gets its target.
+
+Fans whose RPM can't be checked (no RPM sensor, or one not seen working): fan2go can't see standstill, so it assumes
+it at every start from a stopping target and at the first update of a run. With an explicit kick value (`mode: fixed`,
+or `mode: auto` with `kickStart.pwm` or a configured `startPwm` above `minPwm`), the fan is kicked at it for
+`kickStart.duration` (default 3 s, at least 1 s). Without one, `mode: auto` doesn't kick it and logs that once at
+INFO, pointing to `kickStart.pwm` and `mode: fixed`.
+
+Interaction with the other checks:
+
+- While a start is supervised, neither the `neverStop` stall detection (and its `minPwm` raise) nor `checkStall` run.
+  When the supervision ends, both give the fan their full reaction period again (`pwmFloorSetAt`,
+  `restartStallReactionPeriod`). So a fan with `neverStop` gets kicked first, and its `minPwm` offset is only raised
+  if the kicks failed.
+- The kick is written through `setTargetPwm` like any target, so `lastTarget` is the kick value and the
+  `pwmValueChangedByThirdParty` check compares the readback with it: no false third-party warnings.
+- Statistics: `KickStartCount` (every kick, also raised ones), `FailedKickStartCount`, `KickStartPwm` (value of the
+  last kick, 0 if none in this run); metrics `fan2go_controller_kick_start_count`,
+  `fan2go_controller_failed_kick_start_count`, `fan2go_controller_kick_start_pwm`. Kicks are logged at DEBUG, the
+  first kick value of a run and a raised or lowered value at INFO, giving up as a WARNING.
+
+**Why**: Fans have static friction: the PWM value that starts a stopped fan (breakaway) is often much higher than the
+one that keeps it spinning, and the analysis measures the start boundary while it moves the PWM value up and down, so
+it is closer to the latter. A large, slow case fan that spins down to PWM 32 needed PWM 116 to start. fan2go set it
+to its `startPwm` 45 from standstill, and it stayed at 0 RPM. Without `neverStop`, it stayed stopped (the stall check
+reported it). With `neverStop`, the stall detection raised `minPwm` by 1 every 3 s until PWM 116, logged every step,
+and kept the higher floor for the run.
+
+Tach readings are slow and sometimes wrong: some drivers update the RPM value only every second or two, a fan takes
+a while to spin up (BLDC fans with locked-rotor protection retry only every few seconds), and a chip read by two
+programs at once can return a garbage value. So no decision is made on a single reading, and the timing comes from
+the measured fan instead of fixed values.
+
+**Who benefits**: Users of large or slow fans, fans with a zero-RPM mode (curves that stop the fan), and `neverStop`
+users whose fan stands still when fan2go takes over.
+
+**Alternatives considered**:
+
+- Always kick at full speed (like some BIOS fan controls): reliable, but an audible burst at every start.
+- Use the derived `startPwm` as the kick value: that is the value that failed above.
+- Decide on the first reading after the write: a stale reading of a spinning fan skips a needed kick, a garbage low
+  reading kicks a spinning fan, a garbage high reading ends a kick too early. Two readings in a row cost about one
+  tach interval more.
+- A fixed kick duration with an RPM sensor: either too short for slow fans or longer than needed. Holding until the
+  RPM shows the fan spinning is the shortest kick that works.
+- Kick whenever a fan with a spinning target reads 0 RPM: kicks a fan whose target is below its keep-spinning PWM
+  over and over (kick, start, slow down, stop, kick). Only starts from a stopping target or from the first update
+  are supervised.
+- Persist the value raised at runtime: the analysis data only changes on an explicit analysis so far (see
+  [fan-analysis.md](fan-analysis.md#no-continuous-re-analysis-at-runtime)); a raised value is learned again quickly.
+- Kick fans without an RPM sensor by default (`mode: auto`): fan2go could see neither standstill nor whether the kick
+  worked, so every start would be a blind burst at a guessed value. An explicit value is required for them.
+
+**Trade-offs**: A kick ends after two RPM readings that show the fan spinning, so the fan is briefly faster than its
+target (1–3 s at the kick value). A kick that fails costs `kickTimeout` (4–5 s with the defaults) per step: from a
+measured value that is too low, the fan starts a few steps later. A start whose first reading isn't clearly standstill
+is watched first, so a fan that really stands still is kicked one response delay later (about 3–6 s). Every start is
+supervised for about `coastDown + responseDelay + 2 × tachInterval` (about 10 s with the defaults), at most
+`coastDown + 2 × watch window` (15 s with the defaults) if the readings don't confirm it; the stall checks wait
+until then. Without a
+measured value, the first kick is a guess: it may be louder than needed, or fail and be raised. The RPM is read
+directly once per possible start (a command for cmd fans). With `mode: auto`, the analysis takes longer (see
+[fan-analysis.md](fan-analysis.md#measure-the-breakaway-pwm-value)).
 
 ### RPM monitoring with an exponential moving average
 
@@ -586,17 +755,31 @@ fan2go's own state).
 | `fans[].sanityCheck.fanModeChangedByThirdParty.enabled` | `true` | Re-apply `controlMode.active` if the mode changed. |
 | `fans[].sanityCheck.fanModeChangedByThirdParty.throttleDuration` | `10s` | Minimum time between two mode checks. |
 | `fans[].sanityCheck.fanStalled.enabled` | `true` | Warn and notify once when a fan without `neverStop` doesn't spin at a target of at least `minPwm`. |
+| `fans[].kickStart.mode` | `auto` | `auto`, `fixed` or `off`, see [Kick start from standstill](#kick-start-from-standstill). |
+| `fans[].kickStart.pwm` | none | Kick PWM value (before the `pwmMap`), 1..255, at most a configured `maxPwm`. Required for `mode: fixed`; with `mode: auto` the first kick value (raised if it fails), and it lets `auto` kick a fan without a working RPM sensor. |
+| `fans[].kickStart.duration` | `0` (derived) | 0..60 s, a plain number is seconds. With a working RPM sensor: the time after which a kick counts as failed, at least the derived `kickTimeout`. Without one: the time a kick is held (default 3 s, at least 1 s). |
 | `fans[].cmd.setPwm/getPwm/getRpm.timeout` | `2s` | Command timeout of `cmd` fans. |
 
-Not configurable (constants in `internal/controller/controller.go`): startup warm-up 2 s, update delay 1 s, stall
-threshold 50 RPM, stall reaction 3 RPM polling periods, PWM write failure timeout 10 s and 3 attempts, log interval
-25 for repeated failures.
+Not configurable (constants in `internal/controller/controller.go` and `kick_start.go`): startup warm-up 2 s, update
+delay 1 s, stall threshold 50 RPM, stall reaction 3 RPM polling periods, PWM write failure timeout 10 s and 3 attempts,
+log interval 25 for repeated failures; kick start margin 1/32, step 1/8 of the full range, fallback a quarter of the
+range above `startPwm`, step down after 5 kicks in a row that worked at once, 2 readings in a row for every verdict,
+`kickTimeout` at least 4 s, default tach interval 1 s and spin-up delay 2 s (measured values capped at 10 s), default
+coast-down 5 s (capped at 30 s), a kick that can't be judged ends after 3 kick timeouts, one extra kick after a stop
+at the target.
 
 ## Known limitations and open questions
 
-- `startPwm` is not used at runtime; without config values `minPwm` equals the measured `startPwm`, and there is no
-  jump-start from standstill (#30). A configured `minPwm` below `startPwm` without `neverStop` can leave a fan
+- Without config values `minPwm` equals the measured `startPwm` (the start boundary of the analysis, closer to the
+  PWM that keeps the fan spinning than to the one that starts it); the PWM that starts the fan is only used for the kick
+  start. With `kickStart.mode: off`, a configured `minPwm` below `startPwm` without `neverStop` can leave a fan
   stopped; config validation warns about it, and the stall check reports it at runtime.
+- Kick start: the kick PWM value raised at runtime is not persisted, a restart or reload starts from the measured
+  value again. A fan that is stopped by something else while fan2go sets a spinning target (e.g. firmware, a third
+  party) is not kicked: only a start from a stopping target or the first update of a run is. A fan without a
+  working RPM sensor is only kicked with an explicit value, blindly at every such start (including every start or
+  reload of fan2go). A broken tach that reads 0 RPM makes `mode: auto` kick once up to full speed per run, then it
+  stops kicking.
 - The `fanModeChangedByThirdParty` check expects PWM mode even with another `controlMode.active`.
 - A stopped controller (`ErrPwmWriteFailed`, `ErrFanStalledAtMaxPwm`, panic) is not restarted, and the daemon keeps
   running even if no fan is controlled anymore.
