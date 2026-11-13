@@ -1346,7 +1346,8 @@ fan2go uses an adaptive measurement process instead of sweeping all PWM values:
    With `kickStart.mode: auto` (the default), also measure the lowest PWM value that starts the fan from standstill
    (the breakaway PWM value, for the [kick start](#kick-start-from-standstill)), and how fast the fan and its RPM
    sensor respond. This adds a few stops of the fan and start attempts of up to 6 seconds each, typically 5 to 15
-   seconds for a fan that starts easily and up to 90 seconds for one that needs a much higher PWM value to start.
+   seconds for a fan that starts easily, and up to about 2 minutes for a large, slowly coasting fan that needs a much
+   higher PWM value to start.
 2. Discover the max boundary (`maxPwm`) by scanning and confirming the upper PWM range.
 3. Sample interior points coarsely between these boundaries.
 4. Clean up the measured data by applying threshold-aware filtering, interpolation, monotonic enforcement, and interior
@@ -1437,7 +1438,12 @@ spin (it was set to stop before, or fan2go just started controlling it), it watc
 the RPM sensor shows the fan standing still, fan2go sets a higher PWM value (a kick) until the fan spins, then the
 normal value. A kick that starts the fan takes 1 to 3 seconds. A fan that spins already, or a target that is high
 enough to start the fan by itself, gets no kick. fan2go never decides on a single RPM reading: some chips
-occasionally return a wrong value, and some drivers report a new RPM value only every second or two.
+occasionally return a wrong value, and some drivers report a new RPM value only every second or two. When fan2go
+starts, a fan that stands still is kicked after a few seconds, once two readings confirmed the standstill.
+
+If a fan stops again at its target right after a kick made it spin, the target is too low to keep it spinning: fan2go
+kicks it once more (a bit higher), and if it stops again, it warns that `minPwm` is too low (raise it, or set
+`neverStop: true`) instead of kicking it louder and louder.
 
 With `kickStart.mode: auto` (the default), the kick uses `kickStart.pwm` or a configured `startPwm` if set, else the
 PWM value the fan analysis measured to start the fan from standstill, plus a small margin. If the kick value isn't

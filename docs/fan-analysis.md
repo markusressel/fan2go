@@ -31,7 +31,7 @@ Run
  │        │         max boundary ─► interior ─► cleanup                  │
  │        │      AttachFanRpmCurveData, SaveFanRpmData,                  │
  │        │      SaveFanAnalysisInfo (quirk, readback delay, breakaway,  │
- │        │                           tach interval, spin-up delay)      │
+ │        │                     tach interval, spin-up, coast-down)      │
  │        ├─ missing (file, cmd fan) ─► save the fixed linear curve      │
  │        └─ other error (e.g. db locked) ─► stop with an error          │
  ├─ AttachFanRpmCurveData  ◄────────────────────────────────────────────┘
@@ -318,7 +318,9 @@ the timing of the kick start:
 3. Coarse search: try the start boundary, then every 16th of the distinct values above it, without stopping in
    between. Each try first waits until the fan reports the written value (up to `fanResponseDelay`, for drivers
    that apply a value late), then gives the fan max(6 s, 3 tach intervals) to start: BLDC fans with locked-rotor
-   protection only retry every few seconds. A try counts as started if 2 readings in a row show at least 50 RPM.
+   protection only retry every few seconds. A try counts as started if 2 readings in a row show at least 50 RPM (a
+   failed reading breaks the row); a spinning reading at the end of the window gets up to 2 more tach intervals to be
+   confirmed.
    The value below the start boundary can't start the fan (it doesn't even keep it spinning).
 4. Refine: bisect between the last value that didn't start the fan and the first that did, from standstill (step 2)
    each time, until they are at most a quarter of a coarse step apart (4 of 256 values). The result must have
@@ -329,13 +331,15 @@ Measured on the way:
 
 - the **tach interval**: the median time between two changes of the reported RPM value (needs at least 3
   intervals). A driver that caches the tach value for a second reports a new value only once a second;
-- the **spin-up delay**: the time from the readback of the result to the first spinning reading, from standstill.
+- the **spin-up delay**: the time from the readback of the result to the first spinning reading, from standstill;
+- the **coast-down time**: the longest time from a stopping write until the fan counted as stopped.
 
-They are saved as `breakawayPwm` (target value, before the `pwmMap`), `tachIntervalMillis` and `spinUpMillis` in the
-`fanAnalysisInfo` record, and loaded by the daemon (`loadKickStartInfo`; the times are capped at 10 s). A fan that
+They are saved as `breakawayPwm` (target value, before the `pwmMap`), `tachIntervalMillis`, `spinUpMillis` and
+`coastDownMillis` in the `fanAnalysisInfo` record, and loaded by the daemon (`loadKickStartInfo`; the tach interval
+and spin-up delay are capped at 10 s, the coast-down time at 30 s, a capped value is logged at INFO). A fan that
 didn't stop or didn't start at all gets no breakaway value. A record without the values (data from an older version,
 or analyzed with `kickStart.mode` `fixed` or `off`) is valid: the kick start uses its fallback value and default
-timing then (tach interval 1 s, spin-up delay 2 s, see
+timing then (tach interval 1 s, spin-up delay 2 s, coast-down 5 s, see
 [fan-controller.md](fan-controller.md#kick-start-from-standstill)). The fields can be added by a later separate
 measurement of `minPwm`/`startPwm` without a format change.
 
@@ -356,7 +360,9 @@ measurement reads the RPM every 100 ms anyway).
 
 **Trade-offs**: The analysis takes longer. A fan that starts at its start boundary costs one stop (about 3–15 s
 depending on how fast it spins down) and one try (about 1–3 s). A fan whose breakaway value is far above its start
-boundary (e.g. 116 and 40) costs about 5 failed tries of 6 s and 3–4 more stops, roughly 50–90 s. The tach interval is
+boundary (e.g. 116 and 40) costs about 5 failed tries of 6 s and 3–4 more stops: about 50 s for a fan that stops at
+once, up to about 2 minutes for a large fan that coasts for 10–15 s (each stop then takes about 20 s: coast-down, the
+standstill readings and a pause of half the coast-down). The tach interval is
 only measured where the breakaway is (`kickStart.mode: auto`, a fan that stops). The value depends on the rotor
 position and temperature; the kick start adds a margin and raises the value at runtime when a kick fails.
 
@@ -445,7 +451,7 @@ Data format: five buckets, keyed by fan `id`, values are JSON:
 | `fanSetPwmToGetPwmMap` | set PWM to reported PWM                  | `{"0":0,"1":1,...}`           |
 | `fanPwmMapping`        | `pwmMap`, an array of exactly 256 values | `[0,1,2,...,255]`             |
 | `fanOriginalState`     | state before fan2go took control, only while it controls the fan | `{"hardware":"hwmon:nct6798/0/pwm1","controlMode":2,"automaticControlMode":5,"pwm":120}` |
-| `fanAnalysisInfo`      | known hardware quirks entry the analysis data of a hwmon fan was measured with ([details](hardware-quirks.md#persistence)), the measured readback delay (fans whose PWM can be read back), and the measured breakaway PWM value, tach interval and spin-up delay | `{"quirk":"corsaircpro","quirkVersion":1,"readbackDelayMillis":0,"breakawayPwm":116,"tachIntervalMillis":1000,"spinUpMillis":1800}` |
+| `fanAnalysisInfo`      | known hardware quirks entry the analysis data of a hwmon fan was measured with ([details](hardware-quirks.md#persistence)), the measured readback delay (fans whose PWM can be read back), and the measured breakaway PWM value, tach interval, spin-up delay and coast-down time | `{"quirk":"corsaircpro","quirkVersion":1,"readbackDelayMillis":0,"breakawayPwm":116,"tachIntervalMillis":1000,"spinUpMillis":1800,"coastDownMillis":6500}` |
 
 A fan without an RPM sensor stores `null` in `fans`: it counts as "analyzed, no curve" as long as the fan has no
 RPM sensor. If a hwmon or nvidia fan has one later (a fixed `rpmChannel`, a driver that was loaded late), the `null`

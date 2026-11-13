@@ -41,7 +41,7 @@ Main types and state:
   `pwmMap`, exposed to statistics through `GetLastSetPwm`.
 - `minPwmOffset`, `pwmFloorSetAt`, `rpmAvgSeeded` (stall detection); `stallCheckSince`, `stallCheckTarget`,
   `stallReported`, `lastRpmReading`, `rpmSpinSeen`, `rpmReadFailing` (stall check of fans without `neverStop`); `kick`,
-  `rpmReadingCount`, `lastRpmReadingAt`, `breakawayPwm`, `tachInterval`, `spinUpDelay` (kick start from standstill); `sensorFailureAction`, `pwmWriteFailures`,
+  `rpmSample`, `breakawayPwm`, `tachInterval`, `spinUpDelay`, `coastDown` (kick start from standstill); `sensorFailureAction`, `pwmWriteFailures`,
   `thirdPartyPwmChanges` (failure states of the update loop).
 - `clock` (`util.Clock`) is the time source for all waits, tickers and timestamps.
 
@@ -495,29 +495,45 @@ When the supervision starts (all must hold):
 
 How a start is supervised:
 
-- **Kick right away** if a direct RPM reading and the last reading of the RPM monitor both show standstill (below
-  50 RPM, `fans.IsRpmLikelySpinning`) and the kick value is above the target.
+- **Kick right away** if a direct RPM reading and the last 2 samples of the RPM monitor all show standstill (below
+  50 RPM, `fans.IsRpmLikelySpinning`) and the kick value is above the target. At the first update of a run, the
+  monitor usually has only one sample: the start is watched instead, and a fan that stands still when fan2go starts
+  is kicked about 3–5 s later.
 - **Otherwise the target is set and watched** (`kickPhaseWatching`): a single reading can be stale (a driver that
   caches the tach value), show a coasting fan, or be garbage (e.g. another program reading the same chip at the same
-  time: one reading of all channels was wrong, 57 RPM for a fan at 800 RPM). The watch window is
-  `responseDelay + 2 × tachInterval` (see the timing below). If 2 readings in a row, taken after the fan could react
-  (`responseDelay` after the write), show standstill, the fan is kicked. This also covers a kick value that isn't
-  above the target (e.g. a configured `startPwm` that is also `minPwm`): the target is tried first, and if it doesn't
-  start the fan, `mode: auto` kicks one step above it.
-- **During a kick** (`kickPhaseKicking`), the kick value is held until 2 RPM readings in a row, taken after the
-  readback delay, show the fan spinning. A single spinning reading doesn't end it. Then the target is written through
-  the normal path (the control algorithm kept running during the kick), and the start is watched again for one watch
-  window: a fan that broke free but stalls again at its target counts as a failed kick and is kicked one step higher.
-  There is no ramp from the kick value down to the target: the fan slows down by its inertia. A kick that starts the
-  fan takes 1–3 s, depending on the fan and its tach.
-- A kick that didn't start the fan counts as failed after `kickTimeout`, and only if at least 2 fresh readings were
-  taken and reading the RPM doesn't fail. While reading the RPM fails, the kick is held and nothing is judged.
+  time: one reading of all channels was wrong, 57 RPM for a fan at 800 RPM). If 2 samples in a row, taken after the
+  fan could react (`responseDelay` after the write), show standstill, the fan is kicked. This also covers a kick
+  value that isn't above the target (e.g. a configured `startPwm` that is also `minPwm`): the target is tried first,
+  and if it doesn't start the fan, `mode: auto` kicks one step above it.
+- **During a kick** (`kickPhaseKicking`), the kick value is held until 2 samples in a row, taken after the readback
+  delay, show the fan spinning. A single spinning reading doesn't end it. Then the target is written through the
+  normal path (the control algorithm kept running during the kick), and the start is watched again. There is no ramp
+  from the kick value down to the target: the fan slows down by its inertia. A kick that starts the fan takes 1–3 s,
+  depending on the fan and its tach.
+- **A start succeeds** once 2 samples in a row, taken after the coast-down allowance plus the response delay, show
+  the fan spinning at its target. A fan that slowly coasts to a stop is still seen spinning before that. Without such
+  samples, the supervision ends unjudged after `coastDown + 2 × watch window`.
+- **A fan that stops at its target after a kick made it spin** didn't fail to start: the target doesn't keep it
+  spinning. It wasn't up to speed yet, or the target is below the PWM value that keeps the fan spinning (e.g. a
+  configured `minPwm` that is too low). It gets one more kick in this start, one step higher (`mode: fixed`: at the
+  same value). If the fan then keeps spinning, `mode: auto` uses that value for later starts. If it stops again, the
+  start ends, and fan2go warns once per run that the target is below what keeps the fan spinning (raise `minPwm`, or
+  set `neverStop: true`). Neither counts as a failed kick, raises the kick value by itself, or disables the kick
+  start: a too-low target costs at most 2 kicks per start, never an escalation to full speed.
+- A kick that didn't start the fan counts as failed after `kickTimeout`, and only if 2 samples in a row show the fan
+  standing still and reading the RPM doesn't fail. While the samples can't judge the kick (reading the RPM fails, or
+  they disagree), it is held, but at most `3 × kickTimeout`: then the fan gets its target unjudged, like a fan
+  without an RPM sensor.
 - A target that stops the fan ends the supervision; it doesn't count as failed. A curve failure ends it too, the
   `onSensorFailure` action decides the PWM value then.
 - A kick is counted and its timer starts only after the write succeeded. A failed write changes nothing.
 
-Readings are judged by the time they were taken (`lastRpmReadingAt`), not by their number: a reading taken before
-the fan could react to the write doesn't count.
+The RPM monitor stores each new reading as one immutable sample (`rpmSample`: value, time, the number of samples in
+a row with the same state, the time of the previous one), so the update loop never mixes the value of one reading
+with the time of another. A reading that repeats the value of the last sample within 3/4 of the tach interval is
+not a new sample: a driver that caches the RPM value reports the same sample (also a wrong one) again. Samples are
+judged by the time they were taken, not by their number: a sample taken before the fan could react doesn't count.
+Samples taken between two updates count too (an update loop slower than the RPM monitor).
 
 Timing (derived from what the analysis measured, see
 [fan-analysis.md](fan-analysis.md#measure-the-breakaway-pwm-value); defaults for data without it):
@@ -525,7 +541,11 @@ Timing (derived from what the analysis measured, see
 - `tachInterval` = the measured tach update interval (default 1 s), at least `rpmPollingRate`;
 - `responseDelay` = readback delay + spin-up delay (measured, default 2 s) + `tachInterval`;
 - watch window = `responseDelay + 2 × tachInterval` (5 s with the defaults);
-- `kickTimeout` = max(watch window, 4 s, `kickStart.duration`).
+- `kickTimeout` = max(watch window, 4 s, `kickStart.duration`);
+- `coastDown` = the longest coast-down time measured by the analysis (default 5 s, at most 30 s): the allowance
+  before spinning samples confirm a start.
+
+Measured values above their limits (10 s; coast-down 30 s) are capped, and logged at INFO.
 
 The kick value (before the `pwmMap`):
 
@@ -605,7 +625,9 @@ users whose fan stands still when fan2go takes over.
 **Trade-offs**: A kick ends after two RPM readings that show the fan spinning, so the fan is briefly faster than its
 target (1–3 s at the kick value). A kick that fails costs `kickTimeout` (4–5 s with the defaults) per step: from a
 measured value that is too low, the fan starts a few steps later. A start whose first reading isn't clearly standstill
-is watched first, so a fan that really stands still is kicked one response delay later (about 3–5 s). Without a
+is watched first, so a fan that really stands still is kicked one response delay later (about 3–5 s). Every start is
+supervised for about `coastDown + responseDelay + 2 × tachInterval` (10 s with the defaults); the stall checks wait
+until then. Without a
 measured value, the first kick is a guess: it may be louder than needed, or fail and be raised. The RPM is read
 directly once per possible start (a command for cmd fans). With `mode: auto`, the analysis takes longer (see
 [fan-analysis.md](fan-analysis.md#measure-the-breakaway-pwm-value)).
@@ -735,7 +757,9 @@ Not configurable (constants in `internal/controller/controller.go` and `kick_sta
 delay 1 s, stall threshold 50 RPM, stall reaction 3 RPM polling periods, PWM write failure timeout 10 s and 3 attempts,
 log interval 25 for repeated failures; kick start margin 1/32, step 1/8 of the full range, fallback a quarter of the
 range above `startPwm`, step down after 5 kicks in a row that worked at once, 2 readings in a row for every verdict,
-`kickTimeout` at least 4 s, default tach interval 1 s and spin-up delay 2 s (measured values capped at 10 s).
+`kickTimeout` at least 4 s, default tach interval 1 s and spin-up delay 2 s (measured values capped at 10 s), default
+coast-down 5 s (capped at 30 s), a kick that can't be judged ends after 3 kick timeouts, one extra kick after a stop
+at the target.
 
 ## Known limitations and open questions
 
