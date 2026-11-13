@@ -198,19 +198,14 @@ func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 		// no curve data, e.g. because the fan has no RPM sensor
 		pwmRpmMap = &map[int]float64{}
 	}
-	return ComputePwmBoundariesFromCurveData(*pwmRpmMap, configuredStartPwm(fan))
+	return ComputeFanPwmBoundariesFromCurveData(fan, *pwmRpmMap, configuredStartPwm(fan))
 }
 
 // applyPwmBoundariesFromCurveData sets the startPwm, maxPwm and minPwm of the fan that aren't configured
 // from the given PWM -> RPM curve data, then resolves conflicts between derived and configured values
 // (see clampDerivedPwmBoundaries).
-// A flat curve (see IsFlatRpmCurve) says nothing about the speed range, so the derived maxPwm is the highest
-// value of the fan then (see FullRangeMaxPwm).
 func applyPwmBoundariesFromCurveData(fan Fan, curveData map[int]float64) {
-	startPwm, maxPwm := ComputePwmBoundariesFromCurveData(curveData, configuredStartPwm(fan))
-	if flat, _ := IsFlatRpmCurve(fan, curveData); flat {
-		maxPwm = FullRangeMaxPwm(fan)
-	}
+	startPwm, maxPwm := ComputeFanPwmBoundariesFromCurveData(fan, curveData, configuredStartPwm(fan))
 	fan.SetStartPwm(startPwm, false)
 	fan.SetMaxPwm(maxPwm, false)
 
@@ -277,6 +272,18 @@ func configuredStartPwm(fan Fan) int {
 		return *startPwm
 	}
 	return MaxPwmValue
+}
+
+// ComputeFanPwmBoundariesFromCurveData calculates startPwm and maxPwm of the fan from the given curve data, like
+// ComputePwmBoundariesFromCurveData. A flat curve (see IsFlatRpmCurve) says nothing about the speed range, so
+// maxPwm is the highest value of the fan then (see FullRangeMaxPwm). Configured values are not applied, except
+// userStartPwm (pass MaxPwmValue to disable it).
+func ComputeFanPwmBoundariesFromCurveData(fan Fan, curveData map[int]float64, userStartPwm int) (startPwm int, maxPwm int) {
+	startPwm, maxPwm = ComputePwmBoundariesFromCurveData(curveData, userStartPwm)
+	if flat, _ := IsFlatRpmCurve(fan, curveData); flat {
+		maxPwm = FullRangeMaxPwm(fan)
+	}
+	return startPwm, maxPwm
 }
 
 // ComputePwmBoundariesFromCurveData calculates startPwm and maxPwm directly from curve data.
@@ -391,9 +398,13 @@ func WarnIfFlatRpmCurve(fan Fan) bool {
 	}
 	flat, avgRpm := IsFlatRpmCurve(fan, *curveData)
 	if flat {
+		pwmRange := "the full PWM range"
+		if configuredMaxPwm := fan.GetConfig().MaxPwm; configuredMaxPwm != nil {
+			pwmRange = fmt.Sprintf("the configured range (maxPwm %d)", *configuredMaxPwm)
+		}
 		ui.Warning("Fan %s: RPM stays at ~%.0f across the whole PWM range, so the fan doesn't react to PWM. "+
 			"Check the header (DC/PWM mode, BIOS fan setting, 3-pin fan on a PWM-only header). "+
-			"fan2go keeps controlling it with the full PWM range.", fan.GetId(), avgRpm)
+			"fan2go keeps controlling it with %s.", fan.GetId(), avgRpm, pwmRange)
 	}
 	return flat
 }

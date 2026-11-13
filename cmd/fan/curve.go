@@ -50,10 +50,8 @@ var curveCmd = &cobra.Command{
 
 			measuredStartPwm := "-"
 			measuredMaxPwm := "-"
-			if fanCurveErr == nil && len(pwmData) > 0 {
-				startPwm, maxPwm := fans.ComputePwmBoundariesFromCurveData(pwmData, fans.MaxPwmValue)
-				measuredStartPwm = strconv.Itoa(startPwm)
-				measuredMaxPwm = strconv.Itoa(maxPwm)
+			if fanCurveErr == nil {
+				measuredStartPwm, measuredMaxPwm = measuredPwmBoundaries(fan, pwmData)
 			}
 
 			if idx > 0 {
@@ -163,6 +161,17 @@ func analyzeCurveDataQuality(pwmData map[int]float64) []string {
 	}
 
 	return warnings
+}
+
+// measuredPwmBoundaries returns the start and max PWM derived from the given curve data of the fan, without config
+// overrides ("-" if there is no data). The max PWM of a flat curve is the full range (see
+// fans.ComputeFanPwmBoundariesFromCurveData).
+func measuredPwmBoundaries(fan fans.Fan, pwmData map[int]float64) (startPwm string, maxPwm string) {
+	if len(pwmData) == 0 {
+		return "-", "-"
+	}
+	start, end := fans.ComputeFanPwmBoundariesFromCurveData(fan, pwmData, fans.MaxPwmValue)
+	return strconv.Itoa(start), strconv.Itoa(end)
 }
 
 func init() {

@@ -105,4 +105,6 @@ func TestRunInitializationAndRestore_FlatRpmCurve_WarnsOnce(t *testing.T) {
 	assert.True(t, flat, "%v", curve)
 	assert.Equal(t, 1, strings.Count(log, flatRpmCurveWarning), log)
 	assert.Contains(t, log, "Fan fan: RPM stays at ~753 across the whole PWM range")
+	// the boundaries before config overrides show the full range, not the lowest PWM with 98% of the peak RPM
+	assert.Contains(t, log, "Analysis boundaries detected (before config overrides): Start 1, Max 255")
 }

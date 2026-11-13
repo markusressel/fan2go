@@ -1000,7 +1000,7 @@ func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]f
 		return nil, err
 	}
 
-	rawStartPwm, rawMaxPwm := fans.ComputePwmBoundariesFromCurveData(curveData, fans.MaxPwmValue)
+	rawStartPwm, rawMaxPwm := fans.ComputeFanPwmBoundariesFromCurveData(fan, curveData, fans.MaxPwmValue)
 	ui.Info("Fan %s: Analysis boundaries detected (before config overrides): Start %d, Max %d", fan.GetId(), rawStartPwm, rawMaxPwm)
 
 	err = fan.AttachFanRpmCurveData(&curveData)

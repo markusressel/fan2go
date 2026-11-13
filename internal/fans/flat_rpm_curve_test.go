@@ -131,12 +131,55 @@ func TestHwMonFan_AttachFanRpmCurveData_FlatCurve_NoRpmSensor_NotChecked(t *test
 	assert.Equal(t, 1, fan.GetMaxPwm())
 }
 
-func TestWarnIfFlatRpmCurve(t *testing.T) {
+func TestComputeFanPwmBoundariesFromCurveData(t *testing.T) {
 	tests := map[string]struct {
-		curve    *map[int]float64
-		wantFlat bool
+		fan                      func(t *testing.T) Fan
+		curve                    map[int]float64
+		wantStartPwm, wantMaxPwm int
 	}{
-		"flat":    {curve: &map[int]float64{0: 0, 1: 753, 255: 754}, wantFlat: true},
+		"flat curve": {
+			fan:   func(t *testing.T) Fan { return newHwMonFanWithRpmSensor(t, nil) },
+			curve: flatCurve(753, noNoise), wantStartPwm: 1, wantMaxPwm: MaxPwmValue,
+		},
+		"flat curve, configured maxPwm is not applied": {
+			fan:   func(t *testing.T) Fan { return newHwMonFanWithRpmSensor(t, intPtr(200)) },
+			curve: flatCurve(753, noNoise), wantStartPwm: 1, wantMaxPwm: MaxPwmValue,
+		},
+		"flat curve, no RPM sensor": {
+			fan: func(t *testing.T) Fan {
+				return &HwMonFan{Config: configuration.FanConfig{ID: "fan", HwMon: &configuration.HwMonFanConfig{}}}
+			},
+			curve: flatCurve(753, noNoise), wantStartPwm: 1, wantMaxPwm: 1,
+		},
+		"normal curve": {
+			fan:   func(t *testing.T) Fan { return newHwMonFanWithRpmSensor(t, nil) },
+			curve: curveStartingAt(50), wantStartPwm: 50, wantMaxPwm: 50,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			startPwm, maxPwm := ComputeFanPwmBoundariesFromCurveData(tt.fan(t), tt.curve, MaxPwmValue)
+			assert.Equal(t, tt.wantStartPwm, startPwm)
+			assert.Equal(t, tt.wantMaxPwm, maxPwm)
+		})
+	}
+}
+
+func intPtr(v int) *int { return &v }
+
+func TestWarnIfFlatRpmCurve(t *testing.T) {
+	const fullRange = "fan2go keeps controlling it with the full PWM range."
+	tests := map[string]struct {
+		curve       *map[int]float64
+		maxPwm      *int
+		wantFlat    bool
+		wantWarning string
+	}{
+		"flat": {curve: &map[int]float64{0: 0, 1: 753, 255: 754}, wantFlat: true, wantWarning: fullRange},
+		"flat, configured maxPwm": {
+			curve: &map[int]float64{0: 0, 1: 753, 255: 754}, maxPwm: intPtr(200), wantFlat: true,
+			wantWarning: "fan2go keeps controlling it with the configured range (maxPwm 200).",
+		},
 		"normal":  {curve: &map[int]float64{0: 0, 31: 0, 32: 221, 255: 839}},
 		"no data": {curve: nil},
 	}
@@ -144,7 +187,7 @@ func TestWarnIfFlatRpmCurve(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// GIVEN
 			warnings := captureWarnings(t)
-			fan := newHwMonFanWithRpmSensor(t, nil)
+			fan := newHwMonFanWithRpmSensor(t, tt.maxPwm)
 			require.NoError(t, fan.AttachFanRpmCurveData(tt.curve))
 
 			// WHEN
@@ -156,6 +199,10 @@ func TestWarnIfFlatRpmCurve(t *testing.T) {
 				assert.Equal(t, 1, strings.Count(warnings.String(), "WARNING"), warnings.String())
 				assert.Contains(t, warnings.String(),
 					"Fan fan: RPM stays at ~754 across the whole PWM range, so the fan doesn't react to PWM.")
+				assert.Contains(t, warnings.String(), tt.wantWarning)
+				if tt.maxPwm != nil {
+					assert.NotContains(t, warnings.String(), fullRange)
+				}
 			} else {
 				assert.Empty(t, warnings.String())
 			}
