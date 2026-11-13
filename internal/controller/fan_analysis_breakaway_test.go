@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -69,6 +70,9 @@ func TestRunInitialization_MeasuresAndSavesTheBreakawayPwm(t *testing.T) {
 	// every read changes the value: the poll interval
 	require.NotNil(t, info.TachIntervalMillis)
 	assert.Equal(t, breakawayPollInterval.Milliseconds(), *info.TachIntervalMillis)
+	// the fan stops at once: the first reading after the write shows it
+	require.NotNil(t, info.CoastDownMillis)
+	assert.Equal(t, breakawayPollInterval.Milliseconds(), *info.CoastDownMillis)
 
 	// the daemon loads it
 	daemon := newAnalysisTestController(p, fan, clock)
@@ -77,6 +81,23 @@ func TestRunInitialization_MeasuresAndSavesTheBreakawayPwm(t *testing.T) {
 	assert.Equal(t, *info.BreakawayPwm, *daemon.breakawayPwm)
 	assert.Equal(t, time.Duration(*info.SpinUpMillis)*time.Millisecond, daemon.spinUpDelay)
 	assert.Equal(t, breakawayPollInterval, daemon.tachInterval)
+	assert.Equal(t, breakawayPollInterval, daemon.coastDown)
+}
+
+// Saved timing values above their limits (e.g. corrupt data) are capped.
+func TestLoadKickStartInfo_CapsTimingValues(t *testing.T) {
+	clock := util.NewFakeClock(time.Unix(1000, 0))
+	fan := newAnalysisTestFan(clock)
+	p := newFakePersistence()
+	controller := newAnalysisTestController(p, fan, clock)
+	long := int64(time.Hour / time.Millisecond)
+	p.analysisInfos["fan"] = persistence.FanAnalysisInfo{TachIntervalMillis: &long, SpinUpMillis: &long, CoastDownMillis: &long}
+
+	controller.loadKickStartInfo()
+
+	assert.Equal(t, maxKickTimingValue, controller.tachInterval)
+	assert.Equal(t, maxKickTimingValue, controller.spinUpDelay)
+	assert.Equal(t, maxCoastDown, controller.coastDown)
 }
 
 // A driver that reports a written PWM value only after a while: each try starts once the fan reports the value, so
@@ -224,6 +245,98 @@ func TestLoadKickStartInfo_MissingValues(t *testing.T) {
 	assert.Nil(t, controller.breakawayPwm)
 	assert.Zero(t, controller.tachInterval)
 	assert.Zero(t, controller.spinUpDelay)
+	assert.Zero(t, controller.coastDown)
+	assert.Equal(t, defaultCoastDown, controller.kickStartCoastAllowance())
 	// the defaults: 0 + 2s + 1s, plus 2 tach intervals
 	assert.Equal(t, 5*time.Second, controller.kickStartTimeout(configuration.KickStartConfig{}))
+}
+
+// scriptedRpmFan is an analysisTestFan whose RPM readings follow a script: read(n, now) returns the RPM of the n-th
+// reading (from 1), or an error. After maxReads readings it cancels the context of the test (a measurement that
+// doesn't end).
+type scriptedRpmFan struct {
+	*analysisTestFan
+	read     func(n int, now time.Time) (int, error)
+	reads    int
+	maxReads int
+	cancel   context.CancelFunc
+}
+
+func (fan *scriptedRpmFan) GetRpm() (int, error) {
+	fan.reads++
+	if fan.reads > fan.maxReads {
+		fan.cancel()
+	}
+	return fan.read(fan.reads, fan.clock.Now())
+}
+
+func newScriptedTry(t *testing.T, read func(n int, now time.Time) (int, error)) (*breakawayMeasurement, *scriptedRpmFan, context.Context, util.Clock) {
+	setUpAnalysisTestConfig(t)
+	clock := util.NewAutoAdvancingFakeClock(time.Unix(1000, 0))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	fan := &scriptedRpmFan{analysisTestFan: newAnalysisTestFan(clock), read: read, maxReads: 10000, cancel: cancel}
+	controller := identityMapped(newAnalysisTestController(newFakePersistence(), fan, clock))
+	return &breakawayMeasurement{analyzer: NewFanCurveAnalyzer(controller), fan: fan}, fan, ctx, clock
+}
+
+// A spinning reading at the end of a try, followed by failing readings: the try ends (no endless polling), not started.
+func TestMeasureBreakawayPwm_ReadErrorsAfterASpinningReading_TryEnds(t *testing.T) {
+	var start time.Time
+	m, fan, ctx, clock := newScriptedTry(t, func(n int, now time.Time) (int, error) {
+		switch {
+		case now.Sub(start) < minBreakawayTryWindow-100*time.Millisecond:
+			return 0, nil
+		case now.Sub(start) < minBreakawayTryWindow:
+			return 800, nil
+		default:
+			return 0, fmt.Errorf("read failed")
+		}
+	})
+	start = clock.Now()
+
+	started, _, err := m.tryStart(ctx, 120)
+
+	require.NoError(t, err)
+	assert.False(t, started)
+	assert.Less(t, fan.reads, 200)
+	// the window, plus at most 2 tach intervals for the confirmation
+	assert.LessOrEqual(t, clock.Now().Sub(start), minBreakawayTryWindow+2*defaultTachInterval+time.Second)
+}
+
+// Spinning readings around a failed one aren't 2 in a row.
+func TestMeasureBreakawayPwm_SpinErrorSpin_NotStarted(t *testing.T) {
+	m, _, ctx, _ := newScriptedTry(t, func(n int, now time.Time) (int, error) {
+		switch n % 4 {
+		case 1:
+			return 800, nil
+		case 2:
+			return 0, fmt.Errorf("read failed")
+		case 3:
+			return 800, nil
+		default:
+			return 0, nil
+		}
+	})
+
+	started, _, err := m.tryStart(ctx, 120)
+
+	require.NoError(t, err)
+	assert.False(t, started)
+}
+
+// Failing readings while the fan stops don't count as standstill, and don't end the measurement with an error.
+func TestMeasureBreakawayPwm_ReadErrorsWhileStopping(t *testing.T) {
+	m, _, ctx, _ := newScriptedTry(t, func(n int, now time.Time) (int, error) {
+		if n%2 == 0 {
+			return 0, fmt.Errorf("read failed")
+		}
+		return 0, nil
+	})
+
+	stopped, err := m.stopAndWaitForStandstill(ctx, 0)
+
+	require.NoError(t, err)
+	// never 3 standstill readings in a row
+	assert.False(t, stopped)
 }

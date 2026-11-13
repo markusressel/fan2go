@@ -109,6 +109,7 @@ func TestPersistence_LoadFanAnalysisInfo_RecordWithoutBreakawayPwm(t *testing.T)
 	assert.Nil(t, loaded.BreakawayPwm)
 	assert.Nil(t, loaded.TachIntervalMillis)
 	assert.Nil(t, loaded.SpinUpMillis)
+	assert.Nil(t, loaded.CoastDownMillis)
 	require.NotNil(t, loaded.ReadbackDelayMillis)
 }
 
@@ -118,7 +119,8 @@ func TestPersistence_FanAnalysisInfo_KickStartTiming(t *testing.T) {
 	breakaway := 116
 	tach := int64(1000)
 	spinUp := int64(1800)
-	info := FanAnalysisInfo{BreakawayPwm: &breakaway, TachIntervalMillis: &tach, SpinUpMillis: &spinUp}
+	coastDown := int64(6500)
+	info := FanAnalysisInfo{BreakawayPwm: &breakaway, TachIntervalMillis: &tach, SpinUpMillis: &spinUp, CoastDownMillis: &coastDown}
 
 	// WHEN
 	require.NoError(t, p.SaveFanAnalysisInfo("cpu", info))
@@ -127,7 +129,7 @@ func TestPersistence_FanAnalysisInfo_KickStartTiming(t *testing.T) {
 	// THEN
 	require.NoError(t, err)
 	assert.Equal(t, info, loaded)
-	assert.Equal(t, `{"quirk":"","quirkVersion":0,"breakawayPwm":116,"tachIntervalMillis":1000,"spinUpMillis":1800}`,
+	assert.Equal(t, `{"quirk":"","quirkVersion":0,"breakawayPwm":116,"tachIntervalMillis":1000,"spinUpMillis":1800,"coastDownMillis":6500}`,
 		string(getRaw(t, dbPath, BucketFanAnalysisInfo, "cpu")))
 }
 

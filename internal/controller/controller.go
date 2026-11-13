@@ -286,13 +286,11 @@ type DefaultFanController struct {
 	// reading showed the fan spinning in this Run (written by the RPM monitor, read by the update loop)
 	lastRpmReading atomic.Int64
 	rpmSpinSeen    atomic.Bool
-	// rpmReadingCount counts the successful RPM readings of the RPM monitor in this Run (counted after
-	// lastRpmReading is stored), so the kick start can tell readings taken after a kick started
-	rpmReadingCount atomic.Uint64
+	// rpmSample is the last new sample of the RPM monitor in this Run, nil before the first one (see
+	// recordRpmSample). Written by the RPM monitor as a whole, so a reader never mixes two readings.
+	rpmSample atomic.Pointer[rpmSample]
 	// kick is the state of the kick start from standstill (see kick_start.go), only used by the update loop
 	kick kickStartState
-	// lastRpmReadingAt is the time (unix nanoseconds of the controller clock) of lastRpmReading
-	lastRpmReadingAt atomic.Int64
 	// breakawayPwm is the PWM value (pre-pwmMap) that started the fan from standstill during the analysis
 	// (see loadKickStartInfo), nil if it is unknown. Only used by the goroutine that runs Run.
 	breakawayPwm *int
@@ -300,11 +298,14 @@ type DefaultFanController struct {
 	// RPM reading when the fan starts from standstill, measured by the analysis (0: unknown, see kickTiming)
 	tachInterval time.Duration
 	spinUpDelay  time.Duration
+	// coastDown is the time the fan took to stop after a stopping write, measured by the analysis (0: unknown)
+	coastDown time.Duration
 	// measuredBreakawayPwm, measuredTachInterval and measuredSpinUpDelay are the results of the breakaway
 	// measurement of the current analysis (nil: not measured)
 	measuredBreakawayPwm *int
 	measuredTachInterval *time.Duration
 	measuredSpinUpDelay  *time.Duration
+	measuredCoastDown    *time.Duration
 	// rpmReadFailing is true while the last RPM reading of the RPM monitor failed
 	rpmReadFailing atomic.Bool
 
@@ -787,11 +788,10 @@ func (f *DefaultFanController) resetRuntimeState() {
 	f.stallReported = false
 	f.lastRpmReading.Store(0)
 	f.rpmSpinSeen.Store(false)
-	f.rpmReadingCount.Store(0)
+	f.rpmSample.Store(nil)
 	// a fan that a kick at full speed didn't start isn't kicked again after an error restart of the controller
 	// (a reload or a new start of fan2go creates a new controller)
 	f.kick = kickStartState{disabled: f.kick.disabled}
-	f.lastRpmReadingAt.Store(0)
 	f.rpmReadFailing.Store(false)
 	f.lastFanModeCheckTime = time.Unix(0, 0)
 	f.sensorFailureAction = ""
@@ -1042,6 +1042,7 @@ func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]f
 	f.measuredBreakawayPwm = nil
 	f.measuredTachInterval = nil
 	f.measuredSpinUpDelay = nil
+	f.measuredCoastDown = nil
 
 	err := f.computeFanSpecificMappings(ctx)
 	if err != nil {
@@ -1085,6 +1086,7 @@ func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]f
 		info.BreakawayPwm = f.measuredBreakawayPwm
 		info.TachIntervalMillis = durationMillis(f.measuredTachInterval)
 		info.SpinUpMillis = durationMillis(f.measuredSpinUpDelay)
+		info.CoastDownMillis = durationMillis(f.measuredCoastDown)
 	}
 
 	// save to database to restore it on restarts
@@ -1505,12 +1507,10 @@ func (f *DefaultFanController) measureRpm(fan fans.Fan) {
 		ui.Info("Fan %s: reading the RPM value succeeded again after %d failed readings", fan.GetId(), failures)
 	}
 	f.lastRpmReading.Store(int64(rpm))
-	f.lastRpmReadingAt.Store(f.getClock().Now().UnixNano())
+	f.recordRpmSample(rpm, f.getClock().Now())
 	if fans.IsRpmLikelySpinning(float64(rpm)) {
 		f.rpmSpinSeen.Store(true)
 	}
-	// after lastRpmReading: a reader that sees the new count also sees the new reading
-	f.rpmReadingCount.Add(1)
 
 	if !f.rpmAvgSeeded.Load() {
 		// the RPM monitor is the only writer of the average, so this can't race with another update

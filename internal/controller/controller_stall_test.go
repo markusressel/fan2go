@@ -724,7 +724,10 @@ func TestFanController_StallCheck_FailedWriteIsNotChecked(t *testing.T) {
 // A failing RPM sensor freezes the average and the last reading: no report while it fails.
 func TestFanController_StallCheck_NoReportWhileReadingTheRpmFails(t *testing.T) {
 	// GIVEN a stopped fan (target 0) with a credible tach
-	s := newStallCheckTest(t, nil)
+	s := newStallCheckTest(t, func(config *configuration.FanConfig) {
+		// the stall check itself, without the kick start that supervises the start
+		config.KickStart = &configuration.KickStartConfig{Mode: configuration.KickStartOff}
+	})
 	s.setRpm(t, "1000")
 	s.pollAndUpdateN(t, 5)
 	*s.curveValue = 0

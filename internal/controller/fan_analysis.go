@@ -98,6 +98,7 @@ func (f *FanCurveAnalyzer) RunInitializationSequence(ctx context.Context) (rpmCu
 		f.fanController.measuredBreakawayPwm = breakaway.Pwm
 		f.fanController.measuredTachInterval = breakaway.TachInterval
 		f.fanController.measuredSpinUpDelay = breakaway.SpinUp
+		f.fanController.measuredCoastDown = breakaway.CoastDown
 		ui.Info("Fan %s: Breakaway measurement finished in %s", fan.GetId(), clock.Now().Sub(breakawayStarted).Round(time.Millisecond))
 	}
 

@@ -250,11 +250,19 @@ func newKickTest(t *testing.T, fan *kickTestFan, controlLoop control_loop.Contro
 	controller.errorNotifier = func(title, format string, a ...any) {
 		test.notifications = append(test.notifications, title+": "+fmt.Sprintf(format, a...))
 	}
-	// the RPM monitor has read the fan once (see TestKickStart_FirstUpdateWithoutRpmReading)
+	// the RPM monitor has read the fan twice (see TestKickStart_FirstUpdateWithoutRpmReading)
 	if !fan.noRpmSensor {
-		controller.measureRpm(fan)
+		test.monitorReadsTwice()
 	}
 	return test
+}
+
+// monitorReadsTwice lets the RPM monitor read the fan twice, a second apart (the clock ends where it started).
+func (k *kickTest) monitorReadsTwice() {
+	k.clock.Advance(-stallTestRpmPollingRate)
+	k.controller.measureRpm(k.fan)
+	k.clock.Advance(stallTestRpmPollingRate)
+	k.controller.measureRpm(k.fan)
 }
 
 func (fan *kickTestFan) addGlitch(rpm int) {
@@ -345,7 +353,8 @@ func TestKickStart_AlreadySpinning_NoKick(t *testing.T) {
 	test := newKickTest(t, fan, nil)
 	test.setSlowestSpeed()
 
-	test.run(t, 10)
+	// the start is watched for the coast-down allowance (5s), plus the response delay and 2 readings
+	test.run(t, 15)
 
 	assert.Equal(t, []int{32}, fan.pwmWrites())
 	assert.Equal(t, 0, test.controller.GetStatistics().KickStartCount)
@@ -461,8 +470,9 @@ func TestKickStart_StepDownNeverReturnsToAFailedLevel(t *testing.T) {
 		*test.curveValue = 0
 		test.run(t, 2)
 		test.setSlowestSpeed()
-		test.run(t, 10)
+		test.run(t, 15)
 		require.True(t, fan.isSpinning())
+		require.Equal(t, kickPhaseNone, test.controller.kick.phase)
 	}
 
 	// THEN it is lowered to 140 (124 + half a step), and stays there: no recurring failed starts
@@ -681,7 +691,8 @@ func TestKickStart_ShortDuration_NoFalseFailure(t *testing.T) {
 	assert.Equal(t, minKickStartTimeout+time.Second, test.controller.kickStartTimeout(fan.GetConfig().GetKickStart()))
 }
 
-// While reading the RPM fails, a kick isn't judged: no escalation to full speed.
+// While reading the RPM fails, a kick isn't judged: no escalation. It isn't held forever either: after 3 kick
+// timeouts, the fan gets its target, like a fan without an RPM sensor.
 func TestKickStart_RpmReadErrorsDuringKick_NoEscalation(t *testing.T) {
 	fan := newKickTestFan(200, 32)
 	test := newKickTest(t, fan, nil).withBreakaway(116)
@@ -689,14 +700,13 @@ func TestKickStart_RpmReadErrorsDuringKick_NoEscalation(t *testing.T) {
 	test.run(t, 1)
 	require.Equal(t, 124, test.pwm())
 
-	// WHEN reading the RPM fails for 30s
+	// WHEN reading the RPM fails for a while, shorter than 3 kick timeouts (15s)
 	fan.setReadError(true)
-	test.run(t, 30)
+	test.run(t, 10)
 
 	// THEN the kick goes on, nothing failed
 	assert.Equal(t, 124, test.pwm())
 	assert.Equal(t, 0, test.controller.GetStatistics().FailedKickStartCount)
-	assert.False(t, test.controller.kick.disabled)
 
 	// WHEN reading works again: judged then
 	fan.setReadError(false)
@@ -705,8 +715,28 @@ func TestKickStart_RpmReadErrorsDuringKick_NoEscalation(t *testing.T) {
 	assert.Equal(t, []int{124, 156, 188, 220, 32}, fan.pwmWrites())
 }
 
+// A kick while reading the RPM keeps failing ends unjudged after 3 kick timeouts: the fan gets its target, nothing
+// counts as failed, nothing is escalated.
+func TestKickStart_RpmReadErrorsForLong_KickEndsUnjudged(t *testing.T) {
+	fan := newKickTestFan(200, 32)
+	test := newKickTest(t, fan, nil).withBreakaway(116)
+	test.setSlowestSpeed()
+	test.run(t, 1)
+	require.Equal(t, 124, test.pwm())
+
+	fan.setReadError(true)
+	test.run(t, 600)
+
+	assert.Equal(t, 32, test.pwm())
+	assert.Equal(t, []int{124, 32}, fan.pwmWrites())
+	assert.Equal(t, kickPhaseNone, test.controller.kick.phase)
+	assert.Equal(t, 0, test.controller.GetStatistics().FailedKickStartCount)
+	assert.False(t, test.controller.kick.disabled)
+}
+
 // A fan that broke free with a kick, but stalls again at its target (it wasn't up to speed): the watch after the
-// kick sees it standing still and kicks it again, one step higher.
+// kick sees it standing still and kicks it once more, one step higher. That kick keeps it spinning, so it is used
+// for later starts. Neither counts as a failed kick.
 func TestKickStart_StallAfterHandover_KickedAgain(t *testing.T) {
 	fan := newKickTestFan(116, 32)
 	fan.needsKickAtLeast = 150
@@ -717,8 +747,74 @@ func TestKickStart_StallAfterHandover_KickedAgain(t *testing.T) {
 
 	assert.True(t, fan.isSpinning())
 	assert.Equal(t, []int{124, 32, 156, 32}, fan.pwmWrites())
-	assert.Equal(t, 1, test.controller.GetStatistics().FailedKickStartCount)
+	assert.Equal(t, 0, test.controller.GetStatistics().FailedKickStartCount)
+	assert.Equal(t, 156, test.controller.kick.level)
 	assert.Empty(t, test.notifications)
+}
+
+// A target below the PWM value that keeps the fan spinning (e.g. a configured minPwm that is too low): the kick
+// makes the fan spin, it stops at its target, gets one more kick, stops again, and the start ends with a warning.
+// No failed kicks, no escalation to full speed, the kick start isn't disabled.
+func TestKickStart_TargetBelowKeepSpinning_NoEscalation(t *testing.T) {
+	// GIVEN a fan that needs 116 to start and 32 to keep spinning, that coasts for 2s, with minPwm 20
+	fan := newKickTestFan(116, 32)
+	fan.MinPWM = 20
+	fan.coastDown = 2 * time.Second
+	test := newKickTest(t, fan, nil).withBreakaway(116)
+	test.setSlowestSpeed()
+
+	// WHEN
+	test.run(t, 120)
+
+	// THEN
+	assert.Equal(t, []int{124, 20, 156, 20}, fan.pwmWrites())
+	stats := test.controller.GetStatistics()
+	assert.Equal(t, 2, stats.KickStartCount)
+	assert.Equal(t, 0, stats.FailedKickStartCount)
+	assert.False(t, test.controller.kick.disabled)
+	assert.Equal(t, 124, test.controller.kick.level)
+	assert.Equal(t, kickPhaseNone, test.controller.kick.phase)
+
+	// WHEN it is stopped and started again: at most 2 kicks again, the warning isn't repeated
+	*test.curveValue = 0
+	test.run(t, 5)
+	test.setSlowestSpeed()
+	test.run(t, 60)
+	assert.Equal(t, []int{124, 20, 156, 20, 0, 124, 20, 156, 20}, fan.pwmWrites())
+	assert.Equal(t, 0, test.controller.GetStatistics().FailedKickStartCount)
+	assert.False(t, test.controller.kick.disabled)
+}
+
+// A fan that coasts longer than the response delay after its target turned out too low: the watch lasts the
+// coast-down allowance and needs spinning readings after it, so the stop is seen.
+func TestKickStart_LongCoastDownAfterHandover_StopIsSeen(t *testing.T) {
+	// GIVEN a fan that coasts for 8s (measured by the analysis), with a target that doesn't keep it spinning
+	fan := newKickTestFan(116, 32)
+	fan.MinPWM = 20
+	fan.coastDown = 8 * time.Second
+	test := newKickTest(t, fan, nil).withBreakaway(116)
+	test.controller.coastDown = 8 * time.Second
+	test.setSlowestSpeed()
+
+	// WHEN
+	test.run(t, 120)
+
+	// THEN the stop is seen and handled, not counted as a successful kick
+	assert.Equal(t, []int{124, 20, 156, 20}, fan.pwmWrites())
+	assert.Equal(t, 0, test.controller.kick.successStreak)
+}
+
+// The default coast-down allowance (5s) covers a fan that coasts for 4s without measured data.
+func TestKickStart_CoastDownWithinDefaultAllowance(t *testing.T) {
+	fan := newKickTestFan(116, 32)
+	fan.MinPWM = 20
+	fan.coastDown = 4 * time.Second
+	test := newKickTest(t, fan, nil).withBreakaway(116)
+	test.setSlowestSpeed()
+
+	test.run(t, 60)
+
+	assert.Equal(t, []int{124, 20, 156, 20}, fan.pwmWrites())
 }
 
 // A fan without an RPM sensor isn't kicked with mode auto without a configured value (logged once).
@@ -957,6 +1053,8 @@ func TestKickStart_It87FullDutyKick(t *testing.T) {
 	controller.breakawayPwm = &breakaway
 	// the RPM monitor has seen the standstill
 	controller.measureRpm(fan)
+	clock.Advance(stallTestRpmPollingRate)
+	controller.measureRpm(fan)
 
 	// WHEN the fan is kicked at full speed, and the chip reports pwm_enable 0 for it
 	clock.Advance(kickTestUpdateRate)
@@ -1030,4 +1128,106 @@ func TestKickStart_OneOffSpinningGlitchDuringKick_NoHandover(t *testing.T) {
 
 	assert.Equal(t, 124, test.pwm())
 	assert.Equal(t, []int{124}, fan.pwmWrites())
+}
+
+// A wrong reading that the driver caches, so the RPM monitor reads it twice, counts once: no handover.
+func TestKickStart_GlitchCachedByTheDriver_NoHandover(t *testing.T) {
+	// GIVEN a driver that updates the RPM value every 2.5s (measured), and a kick that doesn't start the fan
+	fan := newKickTestFan(200, 32)
+	fan.tachInterval = 2500 * time.Millisecond
+	test := newKickTest(t, fan, nil).withBreakaway(116)
+	test.controller.tachInterval = 2500 * time.Millisecond
+	test.setSlowestSpeed()
+	test.run(t, 2)
+	require.Equal(t, 124, test.pwm())
+
+	// WHEN the driver reads a wrong value and reports it until its next update
+	fan.setStaleTach(830)
+	test.run(t, 2)
+	test.updates(t, 1)
+
+	// THEN
+	assert.Equal(t, 124, test.pwm())
+	assert.Equal(t, []int{124}, fan.pwmWrites())
+}
+
+// The update loop runs less often than the RPM monitor: the samples between two updates count, a kick works as usual.
+func TestKickStart_UpdateSlowerThanRpmPolling(t *testing.T) {
+	fan := newKickTestFan(116, 32)
+	test := newKickTest(t, fan, nil).withBreakaway(116)
+	test.setSlowestSpeed()
+
+	// WHEN the update loop runs every 3s, the RPM monitor every second
+	for i := 0; i < 10; i++ {
+		test.clock.Advance(stallTestRpmPollingRate)
+		test.controller.measureRpm(fan)
+		test.clock.Advance(stallTestRpmPollingRate)
+		test.controller.measureRpm(fan)
+		test.clock.Advance(stallTestRpmPollingRate)
+		test.controller.measureRpm(fan)
+		require.NoError(t, test.controller.UpdateFanSpeed())
+	}
+
+	// THEN
+	assert.True(t, fan.isSpinning())
+	assert.Equal(t, []int{124, 32}, fan.pwmWrites())
+	assert.Equal(t, 0, test.controller.GetStatistics().FailedKickStartCount)
+}
+
+// The kick start judges a sample as a whole (value, time, streak), never a value of one reading with the time or
+// count of another.
+func TestKickStart_RpmSample_IsConsistent(t *testing.T) {
+	fan := newKickTestFan(116, 32)
+	test := newKickTest(t, fan, nil)
+	c := test.controller
+	start := test.clock.Now()
+
+	c.rpmSample.Store(nil)
+	c.recordRpmSample(0, start)
+	c.recordRpmSample(830, start.Add(time.Second))
+	// a value of another reading, stored on its own, doesn't change the sample
+	c.lastRpmReading.Store(830)
+	spinning, standstill := c.kickStartReadings(time.Time{})
+	assert.False(t, spinning)
+	assert.False(t, standstill)
+
+	c.recordRpmSample(840, start.Add(2*time.Second))
+	spinning, standstill = c.kickStartReadings(start.Add(time.Second))
+	assert.True(t, spinning)
+	assert.False(t, standstill)
+	// both readings must be taken after judgeFrom
+	spinning, _ = c.kickStartReadings(start.Add(1500 * time.Millisecond))
+	assert.False(t, spinning)
+	sample := c.rpmSample.Load()
+	assert.Equal(t, uint64(3), sample.seq)
+	assert.Equal(t, 2, sample.streak)
+
+	// the same value within 3/4 of a tach interval (default 1s) is the same sample
+	c.recordRpmSample(840, start.Add(2500*time.Millisecond))
+	assert.Same(t, sample, c.rpmSample.Load())
+	// a later one is a new sample
+	c.recordRpmSample(840, start.Add(3*time.Second))
+	assert.Equal(t, 3, c.rpmSample.Load().streak)
+}
+
+// The RPM monitor and the update loop run concurrently: the race detector checks the sample handover.
+func TestKickStart_RpmSample_ConcurrentMonitor(t *testing.T) {
+	fan := newKickTestFan(116, 32)
+	test := newKickTest(t, fan, nil)
+	c := test.controller
+	start := test.clock.Now()
+	c.rpmSample.Store(nil)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 1; i <= 1000; i++ {
+			c.recordRpmSample(i%2*800, start.Add(time.Duration(i)*time.Second))
+		}
+	}()
+	for i := 0; i < 1000; i++ {
+		spinning, standstill := c.kickStartReadings(time.Time{})
+		// alternating values never make 2 in a row
+		require.False(t, spinning || standstill)
+	}
+	<-done
 }

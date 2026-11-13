@@ -43,6 +43,13 @@ const (
 	defaultSpinUpDelay = 2 * time.Second
 	// maxKickTimingValue caps the measured tach interval and spin-up delay (e.g. corrupt data)
 	maxKickTimingValue = 10 * time.Second
+	// defaultCoastDown is the time a fan takes to stop after a stopping write, if the analysis didn't measure it
+	defaultCoastDown = 5 * time.Second
+	// maxCoastDown caps the measured coast-down time
+	maxCoastDown = 30 * time.Second
+	// kickStartGiveUpTimeouts: a kick that the RPM readings can't judge (e.g. reading the RPM keeps failing) ends
+	// unjudged after this many kick timeouts, and the fan gets its target
+	kickStartGiveUpTimeouts = 3
 	// defaultTimedKickDuration is the time a kick of a fan whose RPM can't be checked is held, if
 	// kickStart.duration isn't set
 	defaultTimedKickDuration = 3 * time.Second
@@ -72,16 +79,15 @@ type kickStartState struct {
 	// pendingLevel the kick value of a pending kick
 	pending      kickPhase
 	pendingLevel int
-	// lastSeq is the last RPM reading (rpmReadingCount) the supervision looked at
-	lastSeq uint64
-	// spinReadings and stopReadings count the RPM readings in a row, taken after the fan could react to the write
-	// of the phase, that show the fan spinning / standing still; freshReadings counts all of them
-	spinReadings  int
-	stopReadings  int
-	freshReadings int
 	// kicked is true once the current start got a kick, kickLevel is the value of the last kick
 	kicked    bool
 	kickLevel int
+	// spun is true once the RPM readings showed the fan spinning at the last kick (it was handed to its target)
+	spun bool
+	// retried is true once the fan got its one extra kick in the current start because it stopped again at its
+	// target after a kick had made it spin; pendingRetry marks the pending kick as that one
+	retried      bool
+	pendingRetry bool
 	// attempt is the number of kicks that failed in the current start from standstill
 	attempt int
 	// level is the kick PWM value (pre-pwmMap) of mode auto, 0 until it was determined in this run; baseLevel is the
@@ -101,6 +107,56 @@ type kickStartState struct {
 	cantKickLogged bool
 	// fixedTooLowLogged is set once it was logged that kickStart.pwm of mode fixed isn't above the target
 	fixedTooLowLogged bool
+	// targetTooLowLogged is set once it was warned that the fan stops at its target after a start
+	targetTooLowLogged bool
+}
+
+// rpmSample is a new reading of the RPM monitor (see recordRpmSample). Immutable once stored.
+type rpmSample struct {
+	// seq numbers the samples of a Run, from 1
+	seq uint64
+	rpm int
+	// at is the time the value was first read
+	at       time.Time
+	spinning bool
+	// streak is the number of samples in a row, up to this one, that show the same state (spinning or standing
+	// still); prevAt is the time of the sample before this one in the streak (zero if streak is 1)
+	streak int
+	prevAt time.Time
+}
+
+// recordRpmSample stores a successful RPM reading of the RPM monitor as a new sample, unless it repeats the value of
+// the last sample within 3/4 of the tach interval of the fan: a driver that updates the RPM value only every tach
+// interval reports the same sample again, also a wrong one, which must not count twice.
+func (f *DefaultFanController) recordRpmSample(rpm int, now time.Time) {
+	prev := f.rpmSample.Load()
+	interval := f.tachInterval
+	if interval <= 0 {
+		interval = defaultTachInterval
+	}
+	if prev != nil && rpm == prev.rpm && now.Sub(prev.at) < interval*3/4 {
+		return
+	}
+	sample := &rpmSample{seq: 1, rpm: rpm, at: now, spinning: fans.IsRpmLikelySpinning(float64(rpm)), streak: 1}
+	if prev != nil {
+		sample.seq = prev.seq + 1
+		if prev.spinning == sample.spinning {
+			sample.streak = prev.streak + 1
+			sample.prevAt = prev.at
+		}
+	}
+	f.rpmSample.Store(sample)
+}
+
+// kickStartReadings returns whether the last kickStartJudgeReadings (2) samples of the RPM monitor, all taken at or
+// after judgeFrom, show the fan spinning or standing still. Both are false if they don't agree, are older, or
+// reading the RPM fails.
+func (f *DefaultFanController) kickStartReadings(judgeFrom time.Time) (spinning bool, standstill bool) {
+	sample := f.rpmSample.Load()
+	if sample == nil || f.rpmReadFailing.Load() || sample.streak < kickStartJudgeReadings || sample.prevAt.Before(judgeFrom) {
+		return false, false
+	}
+	return sample.spinning, !sample.spinning
 }
 
 // kickStart decides how the fan starts from standstill in this update. It returns the target to set instead of
@@ -145,13 +201,15 @@ func (f *DefaultFanController) beginStartSupervision(config configuration.KickSt
 	f.kick.kicked = false
 	f.kick.kickLevel = 0
 	f.kick.attempt = 0
+	f.kick.spun = false
+	f.kick.retried = false
 	// a single reading can be wrong (e.g. another program accesses the chip at the same time): kick right away only
-	// if a fresh reading and the last reading of the RPM monitor both show the fan standing still. Otherwise the
-	// watch decides, with kickStartJudgeReadings readings in a row.
+	// if a fresh reading and the last kickStartJudgeReadings samples of the RPM monitor all show the fan standing
+	// still. Otherwise the watch decides.
 	standstill := false
 	if rpm, err := f.fan.GetRpm(); err == nil {
-		standstill = !fans.IsRpmLikelySpinning(float64(rpm)) && f.rpmReadingCount.Load() > 0 && !f.rpmReadFailing.Load() &&
-			!fans.IsRpmLikelySpinning(float64(f.lastRpmReading.Load()))
+		_, monitorStandstill := f.kickStartReadings(time.Time{})
+		standstill = !fans.IsRpmLikelySpinning(float64(rpm)) && monitorStandstill
 	} else {
 		ui.Debug("Fan %s: can't read its RPM to check for standstill, watching its start: %v", f.fan.GetId(), err)
 	}
@@ -165,49 +223,105 @@ func (f *DefaultFanController) beginStartSupervision(config configuration.KickSt
 }
 
 // superviseKick handles an update while the fan is kicked: it hands the fan back to its target once
-// kickStartJudgeReadings readings showed it spinning, and counts the kick as failed after kickStartTimeout.
+// kickStartJudgeReadings samples showed it spinning, and counts the kick as failed once, after kickStartTimeout, the
+// samples show the fan standing still. A kick that the samples can't judge (e.g. reading the RPM keeps failing) ends
+// unjudged after kickStartGiveUpTimeouts timeouts: the fan gets its target, like a fan without an RPM sensor.
 func (f *DefaultFanController) superviseKick(config configuration.KickStartConfig, speedTarget int, now time.Time) (int, bool) {
-	f.consumeKickStartReading(f.kick.since.Add(f.readbackDelay))
-	if f.kick.spinReadings >= kickStartJudgeReadings {
+	spinning, standstill := f.kickStartReadings(f.kick.since.Add(f.readbackDelay))
+	if spinning {
 		ui.Debug("Fan %s: started from standstill with a kick at PWM %d, setting its target %d", f.fan.GetId(),
 			f.kick.kickLevel, speedTarget)
-		// the target may not be enough to keep the fan accelerating: watch it for a while
+		f.kick.spun = true
+		// the target may not keep the fan spinning: watch it for a while
 		f.kick.pending = kickPhaseWatching
 		return 0, false
 	}
 	timeout := f.kickStartTimeout(config)
-	// no judgement without fresh readings (e.g. while reading the RPM fails)
-	if now.Sub(f.kick.since) < timeout || f.kick.freshReadings < kickStartJudgeReadings || f.rpmReadFailing.Load() {
-		return max(f.kick.kickLevel, speedTarget), true
-	}
-	f.kickStartFailed(f.kick.kickLevel, timeout)
-	f.kick.since = now
-	return f.escalateKickStart(config, speedTarget, now)
-}
-
-// superviseStart handles an update while a start is watched: kickStartJudgeReadings readings in a row that show the
-// fan standing still (taken after it could react) mean that the start failed: the fan is kicked (again). Once the
-// window ended, the start succeeded.
-func (f *DefaultFanController) superviseStart(config configuration.KickStartConfig, speedTarget int, now time.Time) (int, bool) {
-	f.consumeKickStartReading(f.kick.since.Add(f.kickStartResponseDelay()))
-	if f.kick.stopReadings >= kickStartJudgeReadings && !f.rpmReadFailing.Load() {
-		if f.kick.kicked {
-			// handed back too early: the fan broke free, but the target couldn't keep it accelerating
-			f.kickStartFailed(f.kick.kickLevel, now.Sub(f.kick.since))
-		} else {
-			ui.Debug("Fan %s doesn't spin at its target %d after a start from standstill", f.fan.GetId(), speedTarget)
-		}
+	elapsed := now.Sub(f.kick.since)
+	if standstill && elapsed >= timeout {
+		f.kickStartFailed(f.kick.kickLevel, timeout)
 		f.kick.since = now
 		return f.escalateKickStart(config, speedTarget, now)
 	}
-	if now.Before(f.kick.until) {
+	if elapsed >= kickStartGiveUpTimeouts*timeout {
+		ui.Info("Fan %s: the RPM readings can't show whether the kick at PWM %d started the fan (reading the RPM "+
+			"fails, or the readings disagree), setting its target %d", f.fan.GetId(), f.kick.kickLevel, speedTarget)
+		f.finishKickStart(now)
 		return 0, false
 	}
-	if f.kick.kicked {
-		f.kickStartSucceeded(config, f.kick.kickLevel)
+	return max(f.kick.kickLevel, speedTarget), true
+}
+
+// superviseStart handles an update while a start is watched (after a start without a kick, or after a kick made the
+// fan spin). If kickStartJudgeReadings samples, taken after the fan could react, show the fan standing still:
+//   - without a kick yet, the start failed: the fan is kicked;
+//   - after a kick made the fan spin, the kick worked, but the target doesn't keep the fan spinning (it wasn't up to
+//     speed, or the target is below the PWM value that keeps the fan spinning): see retryAfterStopAtTarget.
+//
+// The start succeeded once kickStartJudgeReadings samples, taken after the coast-down allowance, show the fan
+// spinning: a fan that stops slowly is still seen spinning before. Without a verdict, the supervision ends unjudged
+// at the end of the window.
+func (f *DefaultFanController) superviseStart(config configuration.KickStartConfig, speedTarget int, now time.Time) (int, bool) {
+	_, standstill := f.kickStartReadings(f.kick.since.Add(f.kickStartResponseDelay()))
+	if standstill {
+		f.kick.since = now
+		if !f.kick.kicked {
+			ui.Debug("Fan %s doesn't spin at its target %d after a start from standstill", f.fan.GetId(), speedTarget)
+			return f.escalateKickStart(config, speedTarget, now)
+		}
+		return f.retryAfterStopAtTarget(config, speedTarget, now)
 	}
-	f.finishKickStart(now)
+	spinning, _ := f.kickStartReadings(f.kick.since.Add(f.kickStartCoastAllowance() + f.kickStartResponseDelay()))
+	if spinning {
+		if f.kick.kicked {
+			if f.kick.retried && config.Mode == configuration.KickStartAuto && f.kick.kickLevel > f.kick.level {
+				ui.Info("Fan %s keeps spinning at its target only after a kick at PWM %d, kicking it at PWM %d from now on",
+					f.fan.GetId(), f.kick.kickLevel, f.kick.kickLevel)
+				f.kick.level = f.kick.kickLevel
+			}
+			f.kickStartSucceeded(config, f.kick.kickLevel)
+		}
+		f.finishKickStart(now)
+		return 0, false
+	}
+	if !now.Before(f.kick.until) {
+		ui.Debug("Fan %s: the RPM readings didn't confirm the start from standstill, ending its supervision", f.fan.GetId())
+		f.finishKickStart(now)
+	}
 	return 0, false
+}
+
+// retryAfterStopAtTarget handles a fan that stopped at its target after a kick had made it spin. That is not a
+// failed kick, and doesn't raise the kick value by itself: the fan is kicked once more in this start, one step higher
+// (mode auto; adopted for later starts only if the fan then keeps spinning at its target). If it stops again, the
+// target is below the PWM value that keeps the fan spinning: the start ends with a warning (once per run).
+func (f *DefaultFanController) retryAfterStopAtTarget(config configuration.KickStartConfig, speedTarget int, now time.Time) (int, bool) {
+	fanId := f.fan.GetId()
+	if f.kick.retried {
+		if !f.kick.targetTooLowLogged {
+			f.kick.targetTooLowLogged = true
+			ui.Warning("Fan %s stops at its target PWM %d after a start from standstill, although a kick at PWM %d "+
+				"made it spin: the target is below the PWM value that keeps the fan spinning. Raise minPwm, or set "+
+				"neverStop: true", fanId, speedTarget, f.kick.kickLevel)
+		} else {
+			ui.Debug("Fan %s stopped again at its target %d after a kick at PWM %d", fanId, speedTarget, f.kick.kickLevel)
+		}
+		f.finishKickStart(now)
+		return 0, false
+	}
+	level := f.kick.kickLevel
+	if config.Mode == configuration.KickStartAuto {
+		level = f.nextKickStartLevel(level)
+	}
+	level = max(level, speedTarget)
+	ui.Info("Fan %s stopped again at its target %d after a kick at PWM %d made it spin, kicking it once more at PWM %d",
+		fanId, speedTarget, f.kick.kickLevel, level)
+	f.kick.retried = true
+	f.kick.attempt++
+	f.kick.pending = kickPhaseKicking
+	f.kick.pendingLevel = level
+	f.kick.pendingRetry = true
+	return level, true
 }
 
 // escalateKickStart kicks the fan (again) after a failed start: at the kick value if there was no kick yet and it is
@@ -301,25 +415,29 @@ func (f *DefaultFanController) timedKickStart(config configuration.KickStartConf
 // changes nothing: the next update decides again.
 func (f *DefaultFanController) kickStartAfterWrite(written bool) {
 	pending := f.kick.pending
+	retry := f.kick.pendingRetry
 	f.kick.pending = kickPhaseNone
+	f.kick.pendingRetry = false
 	if pending == kickPhaseNone || !written {
+		if retry {
+			f.kick.retried = false
+			f.kick.attempt--
+		}
 		return
 	}
 	now := f.getClock().Now()
 	f.kick.phase = pending
 	f.kick.since = now
-	f.kick.lastSeq = f.rpmReadingCount.Load()
-	f.kick.spinReadings = 0
-	f.kick.stopReadings = 0
-	f.kick.freshReadings = 0
 	switch pending {
 	case kickPhaseWatching:
-		f.kick.until = now.Add(f.kickStartWatchWindow())
+		f.kick.until = now.Add(f.kickStartCoastAllowance() + 2*f.kickStartWatchWindow())
 	case kickPhaseKicking:
 		level := f.kick.pendingLevel
 		f.kick.kicked = true
 		f.kick.kickLevel = level
-		if f.fan.GetConfig().GetKickStart().Mode == configuration.KickStartAuto && level > f.kick.level {
+		f.kick.spun = false
+		// the extra kick after a stop at the target is only adopted if it keeps the fan spinning (superviseStart)
+		if !retry && f.fan.GetConfig().GetKickStart().Mode == configuration.KickStartAuto && level > f.kick.level {
 			// remembered for the next starts in this run
 			f.kick.level = level
 		}
@@ -340,32 +458,11 @@ func (f *DefaultFanController) kickStartSupervising() bool {
 	return f.kick.phase != kickPhaseNone || f.kick.pending != kickPhaseNone
 }
 
-// consumeKickStartReading counts the latest RPM reading of the RPM monitor, if it is new and was taken at or after
-// judgeFrom (before that, the fan couldn't react to the write yet, or the tach reported an older value).
-func (f *DefaultFanController) consumeKickStartReading(judgeFrom time.Time) {
-	seq := f.rpmReadingCount.Load()
-	if seq == f.kick.lastSeq {
-		return
-	}
-	f.kick.lastSeq = seq
-	at := time.Unix(0, f.lastRpmReadingAt.Load())
-	if at.Before(judgeFrom) {
-		return
-	}
-	f.kick.freshReadings++
-	if fans.IsRpmLikelySpinning(float64(f.lastRpmReading.Load())) {
-		f.kick.spinReadings++
-		f.kick.stopReadings = 0
-	} else {
-		f.kick.stopReadings++
-		f.kick.spinReadings = 0
-	}
-}
-
 // finishKickStart ends the supervision: the stall checks give the fan their full reaction period from now on.
 func (f *DefaultFanController) finishKickStart(now time.Time) {
 	f.kick.phase = kickPhaseNone
 	f.kick.pending = kickPhaseNone
+	f.kick.pendingRetry = false
 	f.kick.attempt = 0
 	f.restartStallReactionPeriod()
 	f.pwmFloorSetAt = now
@@ -375,6 +472,7 @@ func (f *DefaultFanController) finishKickStart(now time.Time) {
 func (f *DefaultFanController) abortKickStart() {
 	f.kick.phase = kickPhaseNone
 	f.kick.pending = kickPhaseNone
+	f.kick.pendingRetry = false
 	f.kick.attempt = 0
 }
 
@@ -540,13 +638,22 @@ func (f *DefaultFanController) kickStartWatchWindow() time.Duration {
 	return f.kickStartResponseDelay() + kickStartJudgeReadings*f.kickStartTachInterval()
 }
 
+// kickStartCoastAllowance returns the time a fan that stops may still be seen spinning: the coast-down time measured
+// by the analysis (defaultCoastDown if unknown).
+func (f *DefaultFanController) kickStartCoastAllowance() time.Duration {
+	if f.coastDown > 0 {
+		return f.coastDown
+	}
+	return defaultCoastDown
+}
+
 // kickStartTimeout returns the time after which a kick that didn't start the fan counts as failed: the watch window,
 // at least minKickStartTimeout and at least kickStart.duration.
 func (f *DefaultFanController) kickStartTimeout(config configuration.KickStartConfig) time.Duration {
 	return max(f.kickStartWatchWindow(), minKickStartTimeout, config.Duration.Duration())
 }
 
-// loadKickStartInfo loads the breakaway PWM value, the tach interval and the spin-up delay measured by the analysis
+// loadKickStartInfo loads the breakaway PWM value, the tach interval, the spin-up delay and the coast-down time measured by the analysis
 // of the fan (see persistence.FanAnalysisInfo). Values that weren't measured (e.g. data saved by an older version)
 // or can't be read are unknown, and the kick start uses its defaults.
 func (f *DefaultFanController) loadKickStartInfo() {
@@ -554,6 +661,7 @@ func (f *DefaultFanController) loadKickStartInfo() {
 	f.breakawayPwm = nil
 	f.tachInterval = 0
 	f.spinUpDelay = 0
+	f.coastDown = 0
 	if config := fan.GetConfig(); config.HwMon == nil && config.Nvidia == nil {
 		return
 	}
@@ -568,18 +676,28 @@ func (f *DefaultFanController) loadKickStartInfo() {
 		breakaway := util.Coerce(*info.BreakawayPwm, fans.MinPwmValue, fans.MaxPwmValue)
 		f.breakawayPwm = &breakaway
 	}
-	if info.TachIntervalMillis != nil {
-		f.tachInterval = util.Coerce(time.Duration(*info.TachIntervalMillis)*time.Millisecond, 0, maxKickTimingValue)
-	}
-	if info.SpinUpMillis != nil {
-		f.spinUpDelay = util.Coerce(time.Duration(*info.SpinUpMillis)*time.Millisecond, 0, maxKickTimingValue)
-	}
+	f.tachInterval = loadKickTiming(fan.GetId(), "tach interval", info.TachIntervalMillis, maxKickTimingValue)
+	f.spinUpDelay = loadKickTiming(fan.GetId(), "spin-up delay", info.SpinUpMillis, maxKickTimingValue)
+	f.coastDown = loadKickTiming(fan.GetId(), "coast-down time", info.CoastDownMillis, maxCoastDown)
 	breakaway := "unknown"
 	if f.breakawayPwm != nil {
 		breakaway = fmt.Sprint(*f.breakawayPwm)
 	}
-	ui.Debug("Fan %s: measured kick start data: breakaway PWM %s, tach interval %s, spin-up delay %s",
-		fan.GetId(), breakaway, f.tachInterval, f.spinUpDelay)
+	ui.Debug("Fan %s: measured kick start data: breakaway PWM %s, tach interval %s, spin-up delay %s, coast-down %s",
+		fan.GetId(), breakaway, f.tachInterval, f.spinUpDelay, f.coastDown)
+}
+
+// loadKickTiming returns a saved kick start time value (0: not measured), at most limit. A value above the limit is
+// logged at INFO: the kick start uses the limit then.
+func loadKickTiming(fanId string, name string, millis *int64, limit time.Duration) time.Duration {
+	if millis == nil {
+		return 0
+	}
+	value := time.Duration(*millis) * time.Millisecond
+	if value > limit {
+		ui.Info("Fan %s: the measured %s (%s) is above %s, using %s", fanId, name, value, limit, limit)
+	}
+	return util.Coerce(value, 0, limit)
 }
 
 // durationMillis returns the given duration in milliseconds (rounded up), nil if it is nil.

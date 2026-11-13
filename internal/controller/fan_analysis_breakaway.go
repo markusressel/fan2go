@@ -49,6 +49,8 @@ type breakawayResult struct {
 	TachInterval *time.Duration
 	// SpinUp is the time from the readback of Pwm to the first spinning RPM reading, from standstill
 	SpinUp *time.Duration
+	// CoastDown is the longest time the fan took from a stopping write until it counted as stopped
+	CoastDown *time.Duration
 }
 
 // breakawayMeasurement keeps the observations of a breakaway measurement.
@@ -59,6 +61,8 @@ type breakawayMeasurement struct {
 	changeTimes []time.Time
 	lastRpm     int
 	haveLastRpm bool
+	// coastDown is the longest coast-down seen (0: none)
+	coastDown time.Duration
 }
 
 // measureBreakawayPwm measures the lowest PWM value (pre-pwmMap) that starts the fan from standstill (the breakaway
@@ -87,6 +91,10 @@ func (f *FanCurveAnalyzer) measureBreakawayPwm(ctx context.Context, fan fans.Fan
 
 	defer func() {
 		result.TachInterval = m.tachInterval()
+		if m.coastDown > 0 {
+			coastDown := m.coastDown
+			result.CoastDown = &coastDown
+		}
 	}()
 
 	stopped, err := m.stopAndWaitForStandstill(ctx, stopTarget)
@@ -256,6 +264,7 @@ func (m *breakawayMeasurement) stopAndWaitForStandstill(ctx context.Context, sto
 		}
 	}
 	coastDown := stoppedSince.Sub(start)
+	m.coastDown = max(m.coastDown, coastDown)
 	pause := util.Coerce(coastDown/2, minBreakawayStandstillPause, maxBreakawayStandstillPause)
 	return true, sleepWithContext(ctx, clock, pause)
 }
@@ -283,14 +292,18 @@ func (m *breakawayMeasurement) tryStart(ctx context.Context, pwm int) (bool, tim
 	start := clock.Now()
 	window := max(minBreakawayTryWindow, breakawayTryWindowTachIntervals*m.tachIntervalOrDefault())
 	deadline := start.Add(window)
+	// a spinning reading just before the deadline gets the readings of up to 2 tach intervals to be confirmed
+	hardDeadline := deadline.Add(2 * m.tachIntervalOrDefault())
 	spinning := 0
 	var spinUp time.Duration
-	for clock.Now().Before(deadline) || spinning > 0 {
+	for now := clock.Now(); now.Before(hardDeadline) && (now.Before(deadline) || spinning > 0); now = clock.Now() {
 		if err := sleepWithContext(ctx, clock, breakawayPollInterval); err != nil {
 			return false, 0, err
 		}
 		rpm, err := m.read()
 		if err != nil {
+			// readings around a failed one aren't in a row
+			spinning = 0
 			continue
 		}
 		if !fans.IsRpmLikelySpinning(float64(rpm)) {

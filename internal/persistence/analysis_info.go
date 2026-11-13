@@ -34,6 +34,10 @@ type FanAnalysisInfo struct {
 	// to the first RPM reading that showed the fan spinning, when it started from standstill. nil if it wasn't
 	// measured. Used to time the kick start.
 	SpinUpMillis *int64 `json:"spinUpMillis,omitempty"`
+	// CoastDownMillis is the longest time (in milliseconds) the fan took from a write of a PWM value that stops it
+	// until its RPM readings showed it standing still, measured during the breakaway measurement. nil if it wasn't
+	// measured. Used to time the kick start.
+	CoastDownMillis *int64 `json:"coastDownMillis,omitempty"`
 }
 
 // SaveFanAnalysisInfo saves the analysis info of the given fan, overwriting a saved one.
