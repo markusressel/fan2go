@@ -38,7 +38,7 @@ An entry (`quirks.Entry`) only has the fields that its devices need:
 | Field | Used by | Effect |
 |---|---|---|
 | `Match.Names`, `Match.Modalias` | `quirks.Lookup` | Exact, case-sensitive hwmon `name`. Optionally, a `device/modalias` glob (`path.Match` syntax) to tell drivers with the same name apart. The most specific entry wins: name and modalias beat name only. |
-| `Readback` | `computeSetPwmToGetPwmMap` | The set→get PWM map comes from the formula. fan2go doesn't write 0..255 to measure it, and doesn't store it in the database (like a configured `setPwmToGetPwmMap`). `Entry.OutputLevels()` returns the distinct values, i.e. the real output levels of the device. |
+| `Readback` | `computeSetPwmToGetPwmMap`, `computePwmMapAutomatically` | The set→get PWM map comes from the formula. fan2go doesn't write 0..255 to measure it, and doesn't store it in the database (like a configured `setPwmToGetPwmMap`). `Entry.OutputLevels()` returns the distinct values, i.e. the real output levels of the device. The autodetected `pwmMap` uses one written value per output level (the one that reads back as itself), so the analysis measures each level once (Corsair: 101 target ranges). |
 | `Levels` | advice | The number of output levels, if it is known but the readback formula isn't (ThinkPad: 8). `Entry.LevelCount()` returns it, or the number of `OutputLevels()`. `Entry.WriteStep()` is the smallest change of the written value that can change the output: the shortest inner run of written values with the same readback (Corsair: 2), or `256 / Levels` (ThinkPad: 32). |
 | `Hint` | `takeManualControl` | Appended to the error when fan2go can't switch the fan to manual control: `... (known hardware quirk 'thinkpad': ...)`. |
 | `Advice` | `fan2go config validate` | Functions that check a fan config for settings that don't work well with the device. |
@@ -97,16 +97,23 @@ the entry whose readback formula it was measured with. They are kept in the buck
 `{"quirk": "corsaircpro", "quirkVersion": 1}`, written after a successful analysis. If the formula isn't used (no
 `Readback`, or a `setPwmToGetPwmMap` with `identity`/`linear`/`values`), the record is `("", 0)`: hints, levels and
 advice don't affect the analysis. `fan init --assume-pwm-map-identity` still records the entry: the flag only applies
-to that run, and the identity has the same keys (0..255) as the formula, so the measured data stays valid when the
-daemon uses the formula again.
+to that run, and the identity has the same keys (0..255) as the formula. The RPM curve and the `pwmMap` (the identity,
+since the identity readback has 256 levels) were measured together, so the saved data stays valid when the daemon
+uses the formula again.
+
+The record also stores the readback delay measured during the analysis (`readbackDelayMillis`, see
+[Fan analysis](fan-analysis.md)), also for hwmon fans without an entry. Fans whose PWM can't be read back (e.g.
+nvidia fans) have no measured delay. It is optional: records
+written before it existed have no such field, which means "not measured", and they stay valid. The readback delay
+is not compared: a different delay doesn't make fan2go analyze the fan again.
 
 Before it loads the saved data, `runInitializationIfNeeded` compares the stored values with the current entry. Data
 without a record was measured without an entry, so it counts as `("", 0)`. If they differ, fan2go deletes the RPM
 curve, the set→get map, the pwm map and the record, logs it at INFO, and analyzes the fan again. This happens when an
 entry with a formula is added, its formula changes (version bump), it is removed, disabled with
 `quirks.enabled: false`, or overridden in the config. A read error other than
-missing/corrupt data stops the controller, like for the other analysis data. `fan2go fan init` and `fan reset` delete
-the record together with the other data.
+missing/corrupt data stops the controller, like for the other analysis data. `fan2go fan reset` deletes the record
+together with the other data; `fan2go fan init` replaces it together with the other data once the analysis succeeded.
 
 **Why the RPM curve too**: the curve was measured with the readback the old map predicted. A wrong map skips
 measurement points, a sweep with failed writes leaves values out of the map (and so out of the pwmMap), and a future
@@ -126,11 +133,22 @@ handled with the regular config:
   BIOS keeps changing the speed until its control is disabled (e.g. with `dell-bios-fan-control`).
 - **AMD GPUs (`amdgpu`)**: the reported PWM may not follow the written value (#148, #196). Use
   `setPwmToGetPwmMap: identity` and disable the `pwmValueChangedByThirdParty` sanity check.
+  The zero RPM mode of newer GPUs (`gpu_od/fan_ctrl/fan_zero_rpm_enable`) doesn't apply in manual mode, so the stall
+  check (`sanityCheck.fanStalled`) needs no opt-out for it. In the kernel tree the registry is pinned to,
+  `pwm1_enable=1` switches off the firmware fan control (`smu_v13_0_set_fan_control_mode` calls
+  `smu_v13_0_auto_fan_control(smu, 0)`), and a `pwm1` write programs a static duty cycle into the fan controller
+  (`smu_v13_0_set_fan_speed_pwm`, `FDO_PWM_MODE_STATIC`). The zero RPM setting is only a value in the overdrive table
+  of the firmware's own fan control (`FanZeroRpmEnable`). Older GPUs (`smu7_thermal.c`) enable zero RPM only when they
+  start the firmware fan control, and stop it on a `pwm1` write. SMU 14.0.2 GPUs have no writable `pwm1`.
+  Sources: [`smu_v13_0.c` `smu_v13_0_set_fan_speed_pwm`](https://github.com/torvalds/linux/blob/ee83899302a0457a3ba47464a13e8682bd7ba27d/drivers/gpu/drm/amd/pm/swsmu/smu13/smu_v13_0.c#L972),
+  [`smu_v13_0_set_fan_control_mode`](https://github.com/torvalds/linux/blob/ee83899302a0457a3ba47464a13e8682bd7ba27d/drivers/gpu/drm/amd/pm/swsmu/smu13/smu_v13_0.c#L1001),
+  [`smu7_thermal.c`](https://github.com/torvalds/linux/blob/ee83899302a0457a3ba47464a13e8682bd7ba27d/drivers/gpu/drm/amd/pm/powerplay/hwmgr/smu7_thermal.c#L176), [`amdgpu_pm.c` `pwm1`](https://github.com/torvalds/linux/blob/ee83899302a0457a3ba47464a13e8682bd7ba27d/drivers/gpu/drm/amd/pm/amdgpu_pm.c#L3069).
 - **Corsair Commander Pro, fans that don't stop at 0 %** (#316): this depends on the fan. Set `minPwm` or a `pwmMap`
   so that stopping writes a value that the fan reacts to.
 - **Out-of-tree NCT6687D driver** (`nct6687`): older versions cached register values for 1 s (#272, #358). The
   current driver reads the PWM register back right after a write, and the mainline `nct6683` driver uses the same
-  hwmon name. If you still see stale values, set `pwmSetDelay` and `setPwmToGetPwmMap: identity`.
+  hwmon name. fan2go measures the readback delay during the analysis and waits for it (see
+  [Fan analysis](fan-analysis.md)). If you still see stale values, set `pwmSetDelay` and `setPwmToGetPwmMap: identity`.
 - **Mainline `nct6683`**: `pwm` is read-only, except on MiTAC boards. Use the out-of-tree driver for fan control.
 
 ## Adding an entry
@@ -158,6 +176,6 @@ handled with the regular config:
 - `corsaircpro`: `pwm` can't be read before fan2go wrote it (kernel docs), so the original PWM isn't restored on exit
   (the device has no automatic mode anyway), and the `pwmValueChangedByThirdParty` check switches itself off on the
   first cycle.
-- The `pwmMap` is still derived from the keys of the set→get map, not from the output levels, so quantized devices
-  get an identity `pwmMap` (see [Fan analysis](fan-analysis.md)). `Entry.OutputLevels()` provides the levels for a
-  later change.
+- The `pwmMap` of fans analyzed before 1.0.0 is kept: it is the identity, not one value per output level, until the fan
+  is analyzed again (`fan init`). A change of the `pwmMap` derivation doesn't bump entry versions, because the saved
+  data stays valid.

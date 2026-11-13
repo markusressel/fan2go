@@ -58,6 +58,9 @@ type Persistence interface {
 	LoadFanAnalysisInfo(fanId string) (FanAnalysisInfo, error)
 	SaveFanAnalysisInfo(fanId string, info FanAnalysisInfo) error
 	DeleteFanAnalysisInfo(fanId string) error
+
+	// replaces all analysis data of a fan in one transaction, see FanAnalysisData
+	ReplaceFanAnalysisData(fanId string, data FanAnalysisData) error
 }
 
 type persistence struct {

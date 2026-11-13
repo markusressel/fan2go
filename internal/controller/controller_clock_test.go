@@ -149,8 +149,8 @@ func TestFanController_Run_WaitsForStartupDelaysOnClock(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run() did not return after its context was cancelled")
 	}
-	// the automatic setPwm -> getPwm detection writes all 256 values right after the warm-up,
-	// the first update writes exactly startupUpdateDelay later
+	// the automatic setPwm -> getPwm detection writes 4 values to measure the readback delay and then all 256
+	// values right after the warm-up, the first update writes exactly startupUpdateDelay later
 	writesAtWarmupEnd := 0
 	var updateWrites []time.Time
 	for _, at := range fan.pwmWriteTimes {
@@ -160,7 +160,7 @@ func TestFanController_Run_WaitsForStartupDelaysOnClock(t *testing.T) {
 			updateWrites = append(updateWrites, at)
 		}
 	}
-	assert.Equal(t, 256, writesAtWarmupEnd)
+	assert.Equal(t, 4+256, writesAtWarmupEnd)
 	if assert.NotEmpty(t, updateWrites, "the first update must happen after startupUpdateDelay") {
 		assert.Equal(t, warmupDone.Add(defaultStartupUpdateDelay), updateWrites[0])
 	}
@@ -207,8 +207,8 @@ func TestFanController_Run_CancelledDuringSetPwmToGetPwmDetection_RestoresFan(t 
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run() did not return after its context was cancelled")
 	}
-	// the detection stopped after its first write
-	assert.Equal(t, []int{0}, fan.pwmWrites)
+	// the detection stopped after its first write (255, the first write of the readback delay measurement)
+	assert.Equal(t, []int{255}, fan.pwmWrites)
 	assert.Equal(t, fans.ControlModeAutomatic, fan.ControlMode)
 }
 
@@ -306,10 +306,10 @@ func TestComputeSetPwmToGetPwmMapAutomatically_WaitsPwmSetDelayOnClock(t *testin
 	// WHEN
 	err := controller.computeSetPwmToGetPwmMapAutomatically(context.Background())
 
-	// THEN: one pwmSetDelay per PWM value, without real sleeps
+	// THEN: one pwmSetDelay per PWM value and per write of the readback delay measurement (4), without real sleeps
 	assert.NoError(t, err)
 	assert.Len(t, controller.setPwmToGetPwmMap, 256)
-	assert.Equal(t, 256*pwmSetDelay, clock.Now().Sub(start))
+	assert.Equal(t, (4+256)*pwmSetDelay, clock.Now().Sub(start))
 }
 
 func TestComputeSetPwmToGetPwmMapAutomatically_Cancelled(t *testing.T) {

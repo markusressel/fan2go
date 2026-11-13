@@ -2,6 +2,7 @@ package fan
 
 import (
 	"fmt"
+	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -12,8 +13,9 @@ import (
 var modeCmd = &cobra.Command{
 	Use:   "mode",
 	Short: "Get/Set the current pwm mode setting of a fan",
-	Long:  ``,
-	Args:  cobra.RangeArgs(0, 1),
+	Long: `Without a value, prints the current control mode of the fan. With a value, writes it to the fan; this is
+refused while the fan2go daemon runs, because it controls the fan and would overwrite the value.`,
+	Args: cobra.RangeArgs(0, 1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pterm.DisableOutput()
 
@@ -46,6 +48,11 @@ var modeCmd = &cobra.Command{
 					return fmt.Errorf("unknown mode: %d, must be an integer in (0..2) or one of: 'auto', 'pwm', 'disabled'", argAsInt)
 				}
 			}
+			release, err := lockFanForWriting(configuration.CurrentConfig.DbPath, fan.GetId(), "control mode")
+			if err != nil {
+				return err
+			}
+			defer release()
 			err = fan.SetControlMode(controlMode)
 			if err != nil {
 				return err

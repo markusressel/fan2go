@@ -176,10 +176,11 @@ const (
 	// evidence that the fan is actually spinning. Readings at or below this value
 	// are treated as sensor noise / fan-stopped.
 	rpmNoiseThreshold = 50.0
-	// maxPwmRpmRatio is the fraction of the peak RPM that a data point must reach
-	// for the corresponding PWM to qualify as maxPwm. Using the *highest* such PWM
-	// (rather than the single peak) makes maxPwm robust against noise spikes.
-	maxPwmRpmRatio = 0.95
+	// MaxPwmRpmRatio is the fraction of the peak RPM that the derived maxPwm must reach: maxPwm is the
+	// lowest PWM value whose RPM is at least this fraction of the peak. 98% keeps the loss of top speed of a
+	// fan that doesn't saturate within the usual tach noise (1-3%), and still cuts off the flat top of a
+	// fan that saturates early (see docs/fan-analysis.md).
+	MaxPwmRpmRatio = 0.98
 )
 
 func IsRpmLikelySpinning(rpm float64) bool {
@@ -189,10 +190,7 @@ func IsRpmLikelySpinning(rpm float64) bool {
 // ComputePwmBoundaries calculates the startPwm and maxPwm values for a fan based on its fan curve data.
 //
 // startPwm: the lowest PWM value where the measured RPM is at least rpmNoiseThreshold.
-// maxPwm:   the highest PWM value where RPM is at least maxPwmRpmRatio (95%) of the observed peak.
-//
-// Using the highest qualifying PWM for maxPwm (rather than the single measurement with the greatest
-// value) avoids noise spikes at low PWM values being mistaken for the true peak.
+// maxPwm:   the lowest PWM value where the RPM is at least MaxPwmRpmRatio (98%) of the peak RPM.
 func ComputePwmBoundaries(fan Fan) (startPwm int, maxPwm int) {
 	pwmRpmMap := fan.GetFanRpmCurveData()
 	if pwmRpmMap == nil {
@@ -298,14 +296,15 @@ func ComputePwmBoundariesFromCurveData(pwmRpmMap map[int]float64, userStartPwm i
 		}
 	}
 
-	// Pass 2: find the highest PWM where RPM >= maxPwmRpmRatio * peakRpm.
-	// Iterating in ascending order and always overwriting ensures the last
-	// (= highest) qualifying PWM is retained.
-	minQualifyingRpm := peakRpm * maxPwmRpmRatio
+	// Pass 2: find the lowest PWM (at or above startPwm) where RPM >= MaxPwmRpmRatio * peakRpm.
+	// The analysis makes the curve monotonic, so all higher PWM values reach it too: the range above
+	// changes the speed by less than (1 - MaxPwmRpmRatio).
+	minQualifyingRpm := peakRpm * MaxPwmRpmRatio
 	maxPwm = -1
 	for _, pwm := range keys {
-		if pwmRpmMap[pwm] >= minQualifyingRpm {
+		if pwm >= startPwm && pwmRpmMap[pwm] >= minQualifyingRpm && pwmRpmMap[pwm] >= rpmNoiseThreshold {
 			maxPwm = pwm
+			break
 		}
 	}
 	if maxPwm < 0 {
@@ -317,6 +316,21 @@ func ComputePwmBoundariesFromCurveData(pwmRpmMap map[int]float64, userStartPwm i
 	}
 
 	return startPwm, maxPwm
+}
+
+// FailSafeMaxPwm returns the PWM value (pre-pwmMap) fan2go uses when it sets a fan to full speed for safety
+// (onSensorFailure: max, and a fan that stalls at its maximum): the configured maxPwm, or else the highest value
+// of the fan (255; 100 for nvidia fans, whose values are percent). It never uses the maxPwm derived from the
+// curve data, which can be lower than full speed.
+func FailSafeMaxPwm(fan Fan) int {
+	config := fan.GetConfig()
+	if config.MaxPwm != nil {
+		return *config.MaxPwm
+	}
+	if config.Nvidia != nil {
+		return 100
+	}
+	return MaxPwmValue
 }
 
 func copyIntPtr(value *int) *int {

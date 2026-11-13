@@ -451,8 +451,11 @@ fans:
     # Note: Settings this to a value that is too small
     #       may damage your fans. Use at your own risk!
     startPwm: 30
-    # (Optional) Override for the highest PWM value which still yields
-    # an increased rotational speed compared to lower values.
+    # (Optional) Override for the PWM value the highest curve value is mapped to.
+    # If not set, it is derived from the measured fan curve: the lowest PWM value
+    # at which the fan reaches 98% of its peak RPM (higher values hardly make it faster).
+    # Fail-safe paths (onSensorFailure: max, a neverStop fan that stalls) use this
+    # value if it is set, and full speed (255; nvidia: 100) otherwise.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
     # Note: minPwm, startPwm and maxPwm must be in [0..255], and minPwm and startPwm
@@ -466,8 +469,8 @@ fans:
     # pwmSetDelay: 10ms
     # (Optional) What to do with this fan while its curve can't be evaluated, e.g. because a sensor
     # can't be read or its value is stale. See "Sensor failures" below.
-    #   max (default): set the fan to its maxPwm
-    #   restore:       hand the fan back like on exit (see controlMode.onExit); maxPwm if that would
+    #   max (default): set the fan to its configured maxPwm, or full speed (255; nvidia: 100) if none is configured
+    #   restore:       hand the fan back like on exit (see controlMode.onExit); max if that would
     #                  leave the fan at a fixed PWM value
     onSensorFailure: max
     # (Optional) Configure how fan2go maps the internal [0..255] PWM range to
@@ -597,6 +600,16 @@ fans:
         enabled: true
         # (Optional) Throttle duration for the execution of this check.
         throttleDuration: 10s
+      # (Optional) Control the behavior of the "fanStalled" sanity check
+      # This check warns (and notifies) once when a fan without neverStop doesn't spin (avg. RPM < 50),
+      # although fan2go has set a PWM value of at least its minPwm for a few RPM polling periods.
+      # It only applies to fans with an RPM sensor whose tach has been seen working (RPM >= 50 in the
+      # fan curve data, or since fan2go started controlling the fan or reloaded its config).
+      # fan2go doesn't change the PWM value because of it.
+      # Default: true
+      fanStalled:
+        # (Optional) Whether to enable this check or not
+        enabled: true
 ```
 
 ### Sensors
@@ -1038,6 +1051,12 @@ No control, 100% all the time (0)
 Automatic control by integrated hardware (2)
 ```
 
+`fan speed <value>` and `fan mode <value>` refuse to run while the fan2go daemon runs with the same `dbPath`: the
+daemon controls the fans and would overwrite the value on its next update. Stop the daemon first (e.g.
+`sudo systemctl stop fan2go`), or change the config of the fan (its curve, `minPwm`/`maxPwm` or `controlMode`)
+instead. Reading values works while the daemon runs: `fan speed` and `fan mode` without a value, `fan rpm` and
+`fan curve`.
+
 ### Sensors
 
 ```shell
@@ -1130,6 +1149,8 @@ The exported values are the ones fan2go maintains anyway, so a scrape doesn't re
   stale), since the fans don't follow it then,
 - `fan2go_curve_error`: 1 while the curve can't be evaluated (the fans that use it apply their `onSensorFailure`
   action), 0 otherwise; missing before the first evaluation,
+- `fan2go_controller_stall_count`: the number of times a fan without `neverStop` was found stalled (see
+  [Monitoring](#monitoring)),
 - `fan2go_controller_state{id, state}`: 1 for the current state of the fan controller, 0 for the others. The states
   are `initializing`, `running`, `sensor_failure_max` (the curve fails, the fan runs at its max PWM),
   `sensor_failure_restored` (the curve fails, the fan was handed back), `stopped_pwm_write_failed`,
@@ -1266,7 +1287,26 @@ until it is done; fans whose analysis data is saved usually start right away.
 
 `fan2go fan --id <id> init` re-runs the analysis for a single fan and hands the fan back afterwards (restoring its
 original control mode, or as configured in `controlMode.onExit`), so it doesn't stay at the last PWM value of the
-analysis.
+analysis. It replaces the saved data of the fan only if the analysis succeeds. `fan2go fan --id <id> reset` deletes
+the saved data, so the daemon analyzes the fan again on its next start.
+
+Stop the fan2go daemon before you run `fan init` or `fan reset` (e.g. `sudo systemctl stop fan2go`), and start it
+again afterwards. Both commands, and `fan speed <value>` and `fan mode <value>`, refuse to run while the daemon uses
+the same database (`dbPath`), and the daemon refuses to start while one of them runs: two processes would write to
+the same fans, and the daemon would keep using the old data. fan2go marks the database as in use with an advisory
+lock on the file `<dbPath>.lock`, which the system releases when the process exits, also if it is killed.
+
+The derived `maxPwm` is the lowest PWM value at which the fan reaches 98% of its peak RPM, so a fan that is at full
+speed at PWM 150 uses the whole curve range up to 150. For fans with a few speed levels it is the first value of the
+level that reaches 98%. The fail-safe paths (`onSensorFailure: max`, a `neverStop` fan that doesn't spin) use a
+configured `maxPwm`, or full speed (255; nvidia: 100) without one.
+
+During the analysis, fan2go also measures how long the driver takes to report a written PWM value (the readback
+delay), up to 2 seconds. Some drivers (e.g. older versions of the out-of-tree `nct6687` driver) report the old value
+for up to a second. fan2go waits for the new value when it measures the `setPwmToGetPwmMap` and the RPM curve, and
+while the control loop runs it doesn't treat an old value within this delay as a change by a third party.
+`pwmSetDelay` is the minimum wait after a write. Fans analyzed by an older version have no measured delay until you
+run `fan init` again.
 
 Some PWM controllers or fans may require more time to react to PWM changes. If fan2go is failing to characterize a fan,
 you can try increasing the fan response delay by passing `--fan-response-delay <delay>` to the `fan init` command or
@@ -1293,9 +1333,20 @@ the first successful RPM reading, and failed readings don't change it.
 For a fan with `neverStop: true` and an RPM sensor, fan2go treats the fan as stalled when its RPM average is below
 50 RPM while its PWM target is unchanged. It then increases the fan's minimum PWM by 1 (this is not persisted). The fan
 gets 3 `rpmPollingRate` periods to react, both after fan2go starts controlling it and after each increase, before
-fan2go increases it (again). If the fan still doesn't spin at its `maxPwm`, fan2go stops controlling it and restores
+fan2go increases it (again). If the fan still doesn't spin at its configured `maxPwm` (full speed without one),
+fan2go stops controlling it and restores
 the state it had before fan2go took control. A fan whose RPM sensor reports 0 RPM even though it spins (e.g. a missing
 or broken tach signal) therefore ends up uncontrolled: check the tach signal, or disable `neverStop` for such a fan.
+
+For a fan without `neverStop` that has an RPM sensor, fan2go warns and sends a notification once when the fan doesn't
+spin (RPM average and last reading below 50 RPM), although fan2go has set a PWM value of at least the fan's `minPwm`
+(and the fan had 3 `rpmPollingRate` periods to react to it). fan2go doesn't change the PWM value because of this,
+and logs when the fan spins again. The check only applies once the fan's tach has been seen working (at least 50 RPM
+in the fan's curve data, or since fan2go started controlling the fan or reloaded its config), so a fan header
+without a tach signal isn't reported. A common
+cause is a configured `minPwm` below the PWM value the fan needs to start: fan2go doesn't give a stopped fan a higher
+PWM value to start it, so raise `minPwm` or set `neverStop: true`. If something else stops the fan on purpose
+(e.g. the firmware of the device), disable the check with `sanityCheck.fanStalled.enabled: false`.
 
 ### Sensor failures
 
@@ -1309,11 +1360,12 @@ stale can't be evaluated. This also applies to a `function` curve if any of its 
 
 While the curve of a fan can't be evaluated (for any reason), fan2go applies the fan's `onSensorFailure` option:
 
-- `max` (default): the fan is set to its `maxPwm` (mapped through its `pwmMap`, like any other speed).
+- `max` (default): the fan is set to its configured `maxPwm`, or to full speed (255; nvidia: 100) if `maxPwm` is not configured
+  (mapped through its `pwmMap`, like any other speed). The `maxPwm` derived from the fan curve is not used here.
 - `restore`: the fan is handed back like on exit (see `controlMode.onExit`, e.g. to the automatic control of the
   BIOS). A fixed PWM value is not fail-safe, so if that doesn't hand the fan over to a control mode other than manual
   PWM (e.g. `onExit: none`, the original mode was manual, or the fan's control mode can't be written or is unknown),
-  the fan is set to its `maxPwm` instead.
+  the fan is set to its fail-safe speed like with `max`.
 
 In both cases, fan2go keeps trying to evaluate the curve on every cycle, and resumes normal control (taking manual
 control again for `restore`) as soon as it can. Entering this state is logged and notified once, and so is the

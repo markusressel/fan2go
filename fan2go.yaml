@@ -54,7 +54,8 @@ analysis:
 fanController:
   # The rate to update fan speed targets at (length of one "cycle", must be > 0)
   adjustmentTickRate: 200ms
-  # Time to wait for a fan to respond to a control change
+  # Minimum time to wait before reading back a PWM value that was written. fan2go measures how long
+  # a fan takes to report a written value during the analysis, and waits for that if it is longer.
   pwmSetDelay: 5ms
 
 # A list of fans to control
@@ -99,8 +100,11 @@ fans:
     # Note: Settings this to a value that is too small
     #       may damage your fans. Use at your own risk!
     startPwm: 30
-    # (Optional) Override for the highest PWM value which still yields
-    # an increased rotational speed compared to lower values.
+    # (Optional) Override for the PWM value the highest curve value is mapped to.
+    # If not set, it is derived from the measured fan curve: the lowest PWM value
+    # at which the fan reaches 98% of its peak RPM (higher values hardly make it faster).
+    # Fail-safe paths (onSensorFailure: max, a neverStop fan that stalls) use this
+    # value if it is set, and full speed (255; nvidia: 100) otherwise.
     # Note: you can also use this to limit the max speed of a fan.
     maxPwm: 255
     # Note: minPwm, startPwm and maxPwm must be in [0..255], and minPwm and startPwm
@@ -143,11 +147,11 @@ fans:
     # (Optional) What to do with this fan while its curve can't be evaluated, e.g. because a
     # sensor can't be read or its value is stale (see sensorStaleTimeout).
     # fan2go keeps trying and resumes normal control once the curve can be evaluated again.
-    #   max (default): set the fan to its maxPwm
+    #   max (default): set the fan to its configured maxPwm, or full speed (255; nvidia: 100) if none is configured
     #   restore:       hand the fan back like on exit (see controlMode.onExit), and take control
     #                  again once the curve recovers. If that would leave the fan at a fixed
     #                  PWM value (e.g. onExit: none, or its original mode was manual), the fan
-    #                  is set to its maxPwm instead.
+    #                  is set like with max instead.
     # onSensorFailure: max
     # (Optional) Override the global fanController.pwmSetDelay for this specific fan.
     # pwmSetDelay: 10ms
@@ -181,6 +185,16 @@ fans:
         enabled: true
         # (Optional) Throttle duration for the execution of this check.
         throttleDuration: 10s
+      # (Optional) Control the behavior of the "fanStalled" sanity check
+      # This check warns (and notifies) once when a fan without neverStop doesn't spin (avg. RPM < 50),
+      # although fan2go has set a PWM value of at least its minPwm for a few RPM polling periods.
+      # It only applies to fans with an RPM sensor whose tach has been seen working (RPM >= 50 in the
+      # fan curve data, or since fan2go started controlling the fan or reloaded its config).
+      # fan2go doesn't change the PWM value because of it.
+      # Default: true
+      fanStalled:
+        # (Optional) Whether to enable this check or not
+        enabled: true
 
   - id: in_front
     hwmon:

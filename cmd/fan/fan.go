@@ -1,11 +1,15 @@
 package fan
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/hwmon"
+	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/spf13/cobra"
 )
 
@@ -57,4 +61,57 @@ func getFan(id string) (fans.Fan, error) {
 	}
 
 	return nil, fmt.Errorf("no fan with id found: %s, options: %s", id, availableFanIds)
+}
+
+// openPersistenceExclusively creates the database directory if needed and takes the process lock of the
+// database (see persistence.AcquireProcessLock), so the command doesn't run next to the daemon, which would
+// write to the same fans and keep using its old data. Call release when the command is done.
+func openPersistenceExclusively(dbPath string) (p persistence.Persistence, release func(), err error) {
+	p = persistence.NewPersistence(dbPath)
+	if err := p.Init(); err != nil {
+		return nil, nil, fmt.Errorf("unable to create the database directory: %w", err)
+	}
+	release, err = persistence.AcquireProcessLock(dbPath)
+	if err != nil {
+		var locked *persistence.ProcessLockedError
+		if errors.As(err, &locked) {
+			return nil, nil, fmt.Errorf("%w. Is the fan2go daemon running? Stop it first (e.g. 'sudo systemctl stop fan2go'), "+
+				"then run this command again", err)
+		}
+		if errors.Is(err, os.ErrPermission) {
+			return nil, nil, fmt.Errorf("%w. Run this command as root (like the daemon)", err)
+		}
+		return nil, nil, err
+	}
+	return p, release, nil
+}
+
+// lockFanForWriting takes the process lock of the database (see persistence.AcquireProcessLock) before a command
+// writes to a fan directly (fan speed, fan mode): while the daemon runs, it controls the fan and would overwrite the
+// value on its next update. If the database directory doesn't exist, no daemon has used it yet, so no lock is
+// needed (and the directory isn't created). A user that can't write the lock file (it belongs to root) gets a
+// shared lock instead, so writing to a fan that this user may access keeps working while no daemon runs. Call
+// release when the command is done.
+func lockFanForWriting(dbPath string, fanId string, what string) (release func(), err error) {
+	if _, err := os.Stat(filepath.Dir(dbPath)); errors.Is(err, os.ErrNotExist) {
+		return func() {}, nil
+	}
+	release, err = persistence.AcquireProcessLock(dbPath)
+	if errors.Is(err, os.ErrPermission) {
+		release, err = persistence.AcquireProcessLockShared(dbPath)
+	}
+	if err == nil {
+		return release, nil
+	}
+	var locked *persistence.ProcessLockedError
+	if errors.As(err, &locked) {
+		return nil, fmt.Errorf("can't set the %s of fan %s: %w. While the fan2go daemon runs, it controls the fans "+
+			"and would overwrite the value on its next update (other fan2go commands, like 'fan init', hold the lock "+
+			"only while they run). Stop the daemon first (e.g. 'sudo systemctl stop fan2go'), "+
+			"or change the fan's config (e.g. its curve, minPwm/maxPwm or controlMode) instead", what, fanId, err)
+	}
+	if errors.Is(err, os.ErrPermission) {
+		return nil, fmt.Errorf("%w. Run this command as root (like the daemon)", err)
+	}
+	return nil, err
 }

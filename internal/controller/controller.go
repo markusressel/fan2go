@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -49,6 +50,9 @@ type FanControllerStatistics struct {
 	UnexpectedPwmValueCount int
 	IncreasedMinPwmCount    int
 	MinPwmOffset            int
+	// StallCount is the number of times the stall check of a fan without neverStop found the fan stopped
+	// (once per stall, see checkStall)
+	StallCount int
 }
 
 type FanController interface {
@@ -224,6 +228,29 @@ type DefaultFanController struct {
 	// (enabled by `fan2go fan --id <id> init --assume-pwm-map-identity`)
 	assumePwmMapIdentity bool
 
+	// freshAnalysis is true while RunInitializationAndRestore runs (`fan2go fan init`): the saved analysis data
+	// is neither used nor changed until the analysis succeeded, then it is replaced (see saveFreshAnalysisData).
+	// Only accessed by the goroutine that runs the initialization.
+	freshAnalysis bool
+	// pendingSetPwmToGetPwmMap is the measured setPwmToGetPwmMap of a fresh analysis, saved once it succeeded
+	// (nil: nothing to save, e.g. it comes from the config or a known readback formula)
+	pendingSetPwmToGetPwmMap map[int]int
+	// pendingPwmMap is true if the pwmMap of a fresh analysis was computed automatically and has to be saved
+	pendingPwmMap bool
+
+	// readbackDelay is the measured time the fan needs to report a written PWM value when it is read back
+	// (see FanAnalysisInfo.ReadbackDelayMillis), 0 if it isn't known or the readback is immediate.
+	// Only used by the goroutine that runs Run.
+	readbackDelay time.Duration
+	// observedReadbackDelay is the longest readback delay observed during the current analysis, nil if none
+	observedReadbackDelay *time.Duration
+	// lastPwmWriteValue and lastPwmWriteAt are the raw value and the time of the last successful write of a PWM
+	// value by the controller (zero time: none in this Run). See readbackMayBeStale.
+	lastPwmWriteValue int
+	lastPwmWriteAt    time.Time
+	// pwmWriteCount counts the successful writes of PWM values by the controller (see writePwm)
+	pwmWriteCount uint64
+
 	// control loop that specifies how the target value of the curve is approached
 	controlLoop control_loop.ControlLoop
 
@@ -237,6 +264,20 @@ type DefaultFanController struct {
 	// rpmAvgSeeded is set by the RPM monitor once the RPM average of the fan has been seeded
 	// with a successful reading. Until then the average is meaningless and stall detection is skipped.
 	rpmAvgSeeded atomic.Bool
+
+	// stall check of fans without neverStop (see checkStall), only used by the update loop:
+	// stallCheckSince is the time since which the target qualifies for the check (zero if it doesn't),
+	// stallCheckTarget the target of the last update, stallReported is true from the warning about a stall
+	// until the fan spins again.
+	stallCheckSince  time.Time
+	stallCheckTarget int
+	stallReported    bool
+	// lastRpmReading is the last successful RPM reading of the RPM monitor, and rpmSpinSeen is set once a
+	// reading showed the fan spinning in this Run (written by the RPM monitor, read by the update loop)
+	lastRpmReading atomic.Int64
+	rpmSpinSeen    atomic.Bool
+	// rpmReadFailing is true while the last RPM reading of the RPM monitor failed
+	rpmReadFailing atomic.Bool
 
 	// lastFanModeCheckTime is the last time we checked if some third party changed the fan control mode
 	lastFanModeCheckTime time.Time
@@ -272,6 +313,11 @@ type DefaultFanController struct {
 }
 
 const (
+	// maxReadbackDelay is the longest time fan2go waits for a fan to report a written PWM value when it measures
+	// the readback delay (see probeReadbackDelay), and the longest readback delay it stores
+	maxReadbackDelay = 2 * time.Second
+	// readbackPollInterval is the time between two reads of the PWM value while waiting for the readback
+	readbackPollInterval       = 5 * time.Millisecond
 	defaultStartupSensorWarmup = 2 * time.Second
 	defaultStartupUpdateDelay  = 1 * time.Second
 	// minPwmIncreaseRpmPollingPeriods is the number of RPM polling periods a fan that should never stop
@@ -529,11 +575,6 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 		return err
 	}
 
-	fanPwmData, err = f.persistence.LoadFanRpmData(fan)
-	if err != nil {
-		return err
-	}
-
 	err = fan.AttachFanRpmCurveData(&fanPwmData)
 	if err != nil {
 		return err
@@ -543,6 +584,8 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	f.alignDerivedMaxPwmWithOutputLevels()
+	f.loadReadbackDelay()
 
 	ui.Debug("setPwmToGetPwmMap of fan '%s': %v", fan.GetId(), f.setPwmToGetPwmMap)
 	ui.Debug("pwmMap of fan '%s': %v", fan.GetId(), f.pwmMapping)
@@ -688,8 +731,15 @@ func (f *DefaultFanController) resetRuntimeState() {
 	f.mayHaveWrittenToFan = f.handbackPending
 	f.originalFanStateSaveFailed = false
 	f.lastTarget = nil
+	f.lastPwmWriteAt = time.Time{}
 	f.pwmFloorSetAt = time.Time{}
 	f.rpmAvgSeeded.Store(false)
+	f.stallCheckSince = time.Time{}
+	f.stallCheckTarget = 0
+	f.stallReported = false
+	f.lastRpmReading.Store(0)
+	f.rpmSpinSeen.Store(false)
+	f.rpmReadFailing.Store(false)
 	f.lastFanModeCheckTime = time.Unix(0, 0)
 	f.sensorFailureAction = ""
 	f.sensorFailureMaxWriteFailed = false
@@ -725,7 +775,12 @@ func (f *DefaultFanController) runInitializationIfNeeded(ctx context.Context) (m
 	ui.Info("Fan %s: Loading fan curve data...", fan.GetId())
 	fanRpmData, err := f.persistence.LoadFanRpmData(fan)
 	if err == nil {
-		return fanRpmData, nil
+		if len(fanRpmData) > 0 || !f.needsRpmCurve() {
+			return fanRpmData, nil
+		}
+		// saved while the RPM sensor was missing (e.g. a wrong rpmChannel, or the driver was loaded late):
+		// now that it is there, the fan can be analyzed
+		err = errAnalyzedWithoutRpmSensor
 	}
 	if !persistence.IsMissingOrCorrupt(err) {
 		// the data may exist, but can't be read right now (e.g. the database is locked by another process):
@@ -737,6 +792,8 @@ func (f *DefaultFanController) runInitializationIfNeeded(ctx context.Context) (m
 	if config.HwMon != nil || config.Nvidia != nil {
 		if errors.Is(err, persistence.ErrCorruptData) {
 			ui.Warning("Saved data of fan '%s' is corrupt, starting initialization sequence...", fan.GetId())
+		} else if errors.Is(err, errAnalyzedWithoutRpmSensor) {
+			ui.Warning("Fan '%s' was analyzed without an RPM sensor, but has one now, starting initialization sequence...", fan.GetId())
 		} else {
 			ui.Warning("Fan '%s' has not yet been analyzed, starting initialization sequence...", fan.GetId())
 		}
@@ -750,12 +807,28 @@ func (f *DefaultFanController) runInitializationIfNeeded(ctx context.Context) (m
 			return nil, err
 		}
 		return fanCurveData, nil
-	} else { // file/cmd fan
-		if fan.GetFanRpmCurveData() != nil {
-			err = f.persistence.SaveFanRpmData(fan)
-		}
 	}
-	return fanRpmData, err
+
+	// file/cmd fan: save its fixed curve
+	curveData := fan.GetFanRpmCurveData()
+	if curveData == nil {
+		return nil, nil
+	}
+	if err := f.persistence.SaveFanRpmData(fan); err != nil {
+		return nil, fmt.Errorf("unable to save the fan curve data of fan %s: %w", fan.GetId(), err)
+	}
+	return *curveData, nil
+}
+
+// errAnalyzedWithoutRpmSensor means that the saved data of a fan has no RPM curve, although the fan has an RPM
+// sensor now (see needsRpmCurve).
+var errAnalyzedWithoutRpmSensor = fmt.Errorf("%w: analyzed without an RPM sensor", os.ErrNotExist)
+
+// needsRpmCurve returns true if the fan is analyzed (hwmon and nvidia fans) and has an RPM sensor, so the
+// analysis measures an RPM curve. Saved data without a curve is not usable for such a fan.
+func (f *DefaultFanController) needsRpmCurve() bool {
+	config := f.fan.GetConfig()
+	return (config.HwMon != nil || config.Nvidia != nil) && f.fan.Supports(fans.FeatureRpmSensor)
 }
 
 // deleteAnalysisDataIfKnownQuirksChanged deletes the saved analysis data of the fan (RPM curve, setPwmToGetPwmMap,
@@ -836,12 +909,20 @@ func (f *DefaultFanController) RunInitialization(ctx context.Context) (map[int]f
 // RunInitializationAndRestore runs the fan initialization sequence (see RunInitialization) on its own,
 // outside of Run (e.g. for `fan2go fan init`), and restores the fan settings afterwards, also if it panics
 // (unless it failed before it wrote to the fan). A panic is returned as an error.
+// It measures everything again (the setPwmToGetPwmMap, the pwmMap and the RPM curve) without using the saved
+// analysis data, and replaces the saved data only if it succeeds: a failed or interrupted analysis keeps it.
 // Must not be called while Run is running on the same controller.
 func (f *DefaultFanController) RunInitializationAndRestore(ctx context.Context) (curveData map[int]float64, err error) {
 	f.restoreOnce = &sync.Once{}
 	f.mayHaveWrittenToFan = f.handbackPending
 	f.originalFanStateSaveFailed = false
+	f.freshAnalysis = true
+	f.pendingSetPwmToGetPwmMap = nil
+	f.pendingPwmMap = false
 	defer func() {
+		f.freshAnalysis = false
+		f.pendingSetPwmToGetPwmMap = nil
+		f.pendingPwmMap = false
 		if r := recover(); r != nil {
 			curveData = nil
 			err = f.panicToError("fan initialization", r)
@@ -897,6 +978,7 @@ func (f *DefaultFanController) lockInitializationSequence(ctx context.Context) (
 
 func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]float64, error) {
 	fan := f.fan
+	f.observedReadbackDelay = nil
 
 	err := f.computeFanSpecificMappings(ctx)
 	if err != nil {
@@ -921,24 +1003,154 @@ func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]f
 		return nil, err
 	}
 
-	// save to database to restore it on restarts
-	err = f.persistence.SaveFanRpmData(fan)
-	if err != nil {
-		ui.Error("Fan %s: Failed to save RPM data: %v", fan.GetId(), err)
-	} else if fan.GetConfig().HwMon != nil {
+	if f.observedReadbackDelay != nil {
+		f.readbackDelay = *f.observedReadbackDelay
+		ui.Info("Fan %s: Measured PWM readback delay: %s", fan.GetId(), f.readbackDelay)
+	}
+
+	var info *persistence.FanAnalysisInfo
+	if config := fan.GetConfig(); config.HwMon != nil || config.Nvidia != nil {
 		id, version := f.analysisQuirkFingerprint()
-		info := persistence.FanAnalysisInfo{Quirk: id, QuirkVersion: version}
-		if err := f.persistence.SaveFanAnalysisInfo(fan.GetId(), info); err != nil {
-			ui.Error("Fan %s: Failed to save analysis info: %v", fan.GetId(), err)
+		info = &persistence.FanAnalysisInfo{Quirk: id, QuirkVersion: version}
+		if f.observedReadbackDelay != nil {
+			millis := f.observedReadbackDelay.Milliseconds()
+			if time.Duration(millis)*time.Millisecond < *f.observedReadbackDelay {
+				millis++ // round up
+			}
+			info.ReadbackDelayMillis = &millis
 		}
 	}
 
-	fanRpmData, err := f.persistence.LoadFanRpmData(fan)
+	// save to database to restore it on restarts
+	if f.freshAnalysis {
+		// replace everything at once, so a failed save keeps the old data
+		if err := f.replaceSavedAnalysisData(curveData, info); err != nil {
+			return nil, err
+		}
+		return curveData, nil
+	}
+	err = f.persistence.SaveFanRpmData(fan)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to save the fan curve data of fan %s: %w", fan.GetId(), err)
+	}
+	if info != nil {
+		if err := f.persistence.SaveFanAnalysisInfo(fan.GetId(), *info); err != nil {
+			return nil, fmt.Errorf("unable to save the analysis info of fan %s: %w", fan.GetId(), err)
+		}
 	}
 
-	return fanRpmData, nil
+	return curveData, nil
+}
+
+// replaceSavedAnalysisData replaces the saved analysis data of the fan with the result of a fresh analysis
+// (see freshAnalysis) in one transaction. Mappings that don't come from the database (config, known readback
+// formula) are deleted, like `fan reset` does.
+func (f *DefaultFanController) replaceSavedAnalysisData(curveData map[int]float64, info *persistence.FanAnalysisInfo) error {
+	data := persistence.FanAnalysisData{
+		RpmCurve:          curveData,
+		SetPwmToGetPwmMap: f.pendingSetPwmToGetPwmMap,
+		Info:              info,
+	}
+	if f.pendingPwmMap {
+		data.PwmMap = append([]int(nil), f.pwmMapping[:]...)
+	}
+	if err := f.persistence.ReplaceFanAnalysisData(f.fan.GetId(), data); err != nil {
+		return fmt.Errorf("unable to save the analysis data of fan %s: %w", f.fan.GetId(), err)
+	}
+	return nil
+}
+
+// loadReadbackDelay loads the readback delay measured by the analysis of the fan (see FanAnalysisInfo).
+// It is 0 if none was measured (e.g. data saved by an older version) or the info can't be read.
+func (f *DefaultFanController) loadReadbackDelay() {
+	fan := f.fan
+	f.readbackDelay = 0
+	if config := fan.GetConfig(); config.HwMon == nil && config.Nvidia == nil {
+		return
+	}
+	info, err := f.persistence.LoadFanAnalysisInfo(fan.GetId())
+	if err != nil {
+		if !persistence.IsMissingOrCorrupt(err) {
+			ui.Warning("Fan %s: unable to load the measured PWM readback delay, assuming none: %v", fan.GetId(), err)
+		}
+		return
+	}
+	if info.ReadbackDelayMillis == nil {
+		ui.Debug("Fan %s: PWM readback delay not measured yet (run 'fan2go fan --id %s init' to measure it)", fan.GetId(), fan.GetId())
+		return
+	}
+	delay := time.Duration(*info.ReadbackDelayMillis) * time.Millisecond
+	if delay < 0 || delay > maxReadbackDelay {
+		ui.Warning("Fan %s: the saved PWM readback delay (%dms) is out of range, using %s",
+			fan.GetId(), *info.ReadbackDelayMillis, util.Coerce(delay, 0, maxReadbackDelay))
+		delay = util.Coerce(delay, 0, maxReadbackDelay)
+	}
+	f.readbackDelay = delay
+	if f.readbackDelay > f.getPwmSetDelay() {
+		ui.Info("Fan %s: Using the measured PWM readback delay of %s", fan.GetId(), f.readbackDelay)
+	}
+}
+
+// alignDerivedMaxPwmWithOutputLevels makes sure that a maxPwm derived from the curve data selects an output level
+// of the fan that reaches fans.MaxPwmRpmRatio of the peak RPM. Target values whose raw values read back the same
+// form one output level. The curve between two measured points is interpolated, so inside a level it can
+// reach the ratio although the level itself doesn't (e.g. a fan with 8 speed levels). The curve value of the
+// first target value of a level is used for the whole level; maxPwm is raised to the first level that reaches
+// the ratio (255 if none). Configured maxPwm values and nvidia fans (whose values are percent) are not changed.
+// Must be called after computeFanSpecificMappings.
+func (f *DefaultFanController) alignDerivedMaxPwmWithOutputLevels() {
+	fan := f.fan
+	config := fan.GetConfig()
+	if config.MaxPwm != nil || config.Nvidia != nil || !f.pwmMapComputed {
+		return
+	}
+	curveData := fan.GetFanRpmCurveData()
+	if curveData == nil || len(*curveData) == 0 {
+		return
+	}
+	maxPwm := fan.GetMaxPwm()
+	alignedMaxPwm := alignMaxPwmWithOutputLevels(*curveData, maxPwm, f.outputLevelsOfTargets())
+	if alignedMaxPwm != maxPwm {
+		ui.Info("Fan %s: raising the derived maxPwm from %d to %d, the first output level that reaches %.0f%% of the peak RPM",
+			fan.GetId(), maxPwm, alignedMaxPwm, fans.MaxPwmRpmRatio*100)
+		fan.SetMaxPwm(alignedMaxPwm, false)
+	}
+}
+
+// outputLevelsOfTargets returns the PWM value the fan reports for each target value (pre-pwmMap): target values
+// with the same value select the same output level.
+func (f *DefaultFanController) outputLevelsOfTargets() (levels [fans.MaxPwmValue + 1]int) {
+	for target := fans.MinPwmValue; target <= fans.MaxPwmValue; target++ {
+		levels[target] = f.getReportedPwmAfterApplyingPwm(f.applyPwmMapToTarget(target))
+	}
+	return levels
+}
+
+// alignMaxPwmWithOutputLevels returns the lowest target value >= maxPwm whose output level reaches
+// fans.MaxPwmRpmRatio of the peak RPM of the curve, judged by the curve value of the first target value of the
+// level (see alignDerivedMaxPwmWithOutputLevels). Returns 255 if no level reaches it, and maxPwm if the curve
+// has no spinning value.
+func alignMaxPwmWithOutputLevels(curveData map[int]float64, maxPwm int, outputLevels [fans.MaxPwmValue + 1]int) int {
+	peakRpm := 0.0
+	for _, rpm := range curveData {
+		peakRpm = math.Max(peakRpm, rpm)
+	}
+	if !fans.IsRpmLikelySpinning(peakRpm) {
+		return maxPwm
+	}
+	threshold := peakRpm * fans.MaxPwmRpmRatio
+	levelStart := func(target int) int {
+		for target > fans.MinPwmValue && outputLevels[target-1] == outputLevels[target] {
+			target--
+		}
+		return target
+	}
+	for target := util.Coerce(maxPwm, fans.MinPwmValue, fans.MaxPwmValue); target <= fans.MaxPwmValue; target++ {
+		if rpm, ok := curveData[levelStart(target)]; ok && rpm >= threshold {
+			return target
+		}
+	}
+	return fans.MaxPwmValue
 }
 
 // UpdateFanSpeed updates the fan speed by:
@@ -1024,7 +1236,8 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 		speedTarget = minPwm + f.minPwmOffset
 	}
 
-	if fan.Supports(fans.FeatureRpmSensor) {
+	hasRpmSensor := fan.Supports(fans.FeatureRpmSensor)
+	if hasRpmSensor {
 		// make sure fans never stop by validating the current RPM
 		// and adjusting the target PWM value upwards if necessary
 		if shouldNeverStop && f.pwmFloorSetAt.IsZero() {
@@ -1040,7 +1253,8 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 				now := f.getClock().Now()
 				// give the fan time to react to its first PWM value or the last increase before reacting (again)
 				if !fans.IsRpmLikelySpinning(avgRpm) && f.hadTimeToReactToPwmFloor(now) {
-					if speedTarget >= maxPwm {
+					// a fan that stalls at a derived maxPwm still gets the range up to full speed (see fans.FailSafeMaxPwm)
+					if speedTarget >= fans.FailSafeMaxPwm(fan) {
 						ui.Error("CRITICAL: Fan %s avg. RPM is %d, even at PWM value %d", fan.GetId(), int(avgRpm), lastTarget)
 						ui.Warning("Fan %s: its RPM sensor reports (almost) 0 RPM. If the fan is actually spinning, "+
 							"check its tach signal (wiring, sensor) or disable neverStop for this fan.", fan.GetId())
@@ -1056,7 +1270,103 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 		}
 	}
 
-	return f.handlePwmWriteResult(f.setTargetPwm(speedTarget))
+	err = f.setTargetPwm(speedTarget)
+	if hasRpmSensor && !shouldNeverStop {
+		f.checkStall(speedTarget, minPwm, err == nil)
+	}
+	return f.handlePwmWriteResult(err)
+}
+
+// checkStall warns and notifies once when a fan without neverStop doesn't spin, although fan2go set a target of
+// at least its minPwm (and at least 1) long enough ago, and logs when it spins again. It changes neither the PWM
+// value nor the controller state. A fan with neverStop has its own stall handling in UpdateFanSpeed.
+// target is the target of this update (before the pwmMap), written whether setting it succeeded.
+func (f *DefaultFanController) checkStall(target int, minPwm int, written bool) {
+	fan := f.fan
+	if enabled := fan.GetConfig().SanityCheck.FanStalled.Enabled; !enabled.Get() {
+		return
+	}
+	now := f.getClock().Now()
+
+	// the fan should spin at this target: at least minPwm and 1, and the pwmMap doesn't map it to 0
+	floor := max(minPwm, 1)
+	qualifies := written && target >= floor && f.applyPwmMapToTarget(target) > 0
+	switch {
+	case !qualifies:
+		f.stallCheckSince = time.Time{}
+	case f.stallCheckSince.IsZero():
+		// the fan may have to start from standstill
+		f.stallCheckSince = now
+	case target != f.stallCheckTarget && (target <= floor || f.stallCheckTarget <= floor):
+		// at the floor, the fan may not have been spinning before: give it time to react to the new target.
+		// A target that changes above the floor doesn't need that, the fan was spinning before.
+		f.stallCheckSince = now
+	}
+	f.stallCheckTarget = target
+
+	// skip until the RPM monitor seeded the average, which is meaningless before that
+	if !f.rpmAvgSeeded.Load() {
+		return
+	}
+	avgRpm := fan.GetRpmAvg()
+	if fans.IsRpmLikelySpinning(avgRpm) {
+		if f.stallReported {
+			f.stallReported = false
+			ui.Info("Fan %s is spinning again (avg. RPM %d at PWM %d)", fan.GetId(), int(avgRpm), target)
+		}
+		return
+	}
+	if f.stallReported || f.stallCheckSince.IsZero() || !f.hadTimeToReact(f.stallCheckSince, now) {
+		return
+	}
+	// while reading the RPM fails, the average and the last reading are frozen (the failure is logged)
+	if f.rpmReadFailing.Load() {
+		return
+	}
+	// the average lags behind: a fan that spins up slowly is not stalled if its last reading shows it spinning
+	if fans.IsRpmLikelySpinning(float64(f.lastRpmReading.Load())) {
+		return
+	}
+	// a fan header with an RPM input but no tach signal always reads 0 RPM
+	if !f.tachIsCredible() {
+		return
+	}
+
+	f.stallReported = true
+	f.statsMutex.Lock()
+	f.stats.StallCount += 1
+	f.statsMutex.Unlock()
+	notify := f.errorNotifier
+	if notify == nil {
+		notify = ui.WarningAndNotify
+	}
+	notify("Fan Stalled", "Fan %s doesn't spin: its avg. RPM is %d at PWM %d (minPwm %d) since %s. "+
+		"fan2go doesn't change the PWM value because of this. Check the fan and its tach signal. If the fan doesn't "+
+		"start at this PWM value, raise its minPwm or set neverStop: true. If something else stops the fan on purpose "+
+		"(e.g. the device firmware), set sanityCheck.fanStalled.enabled: false for this fan",
+		fan.GetId(), int(avgRpm), target, minPwm, now.Sub(f.stallCheckSince).Round(time.Second))
+}
+
+// restartStallReactionPeriod makes the stall check give the fan the full reaction period again from its next
+// update, e.g. after something else may have stopped it.
+func (f *DefaultFanController) restartStallReactionPeriod() {
+	f.stallCheckSince = time.Time{}
+}
+
+// tachIsCredible returns whether the RPM sensor of the fan has been seen working: its curve data contains a
+// point where it was spinning, or the RPM monitor read a spinning fan in this Run.
+func (f *DefaultFanController) tachIsCredible() bool {
+	if f.rpmSpinSeen.Load() {
+		return true
+	}
+	if curveData := f.fan.GetFanRpmCurveData(); curveData != nil {
+		for _, rpm := range *curveData {
+			if fans.IsRpmLikelySpinning(rpm) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // handlePwmWriteResult tracks the result (err) of setting the PWM value of the curve. Failures are logged
@@ -1091,8 +1401,14 @@ func (f *DefaultFanController) handlePwmWriteResult(err error) error {
 // hadTimeToReactToPwmFloor returns true if the fan had minPwmIncreaseRpmPollingPeriods RPM polling periods
 // to react to the first PWM value set by the controller, or to the last minPwm increase.
 func (f *DefaultFanController) hadTimeToReactToPwmFloor(now time.Time) bool {
+	return f.hadTimeToReact(f.pwmFloorSetAt, now)
+}
+
+// hadTimeToReact returns true if the fan had minPwmIncreaseRpmPollingPeriods RPM polling periods since the given
+// time to react to a new PWM value.
+func (f *DefaultFanController) hadTimeToReact(since time.Time, now time.Time) bool {
 	interval := minPwmIncreaseRpmPollingPeriods * configuration.CurrentConfig.RpmPollingRate
-	return now.Sub(f.pwmFloorSetAt) >= interval
+	return now.Sub(since) >= interval
 }
 
 // read the current value of a fan RPM sensor and update its moving average with it.
@@ -1100,6 +1416,7 @@ func (f *DefaultFanController) hadTimeToReactToPwmFloor(now time.Time) bool {
 // Of a series of failed readings, only the first one is logged, and the recovery.
 func (f *DefaultFanController) measureRpm(fan fans.Fan) {
 	rpm, err := fan.GetRpm()
+	f.rpmReadFailing.Store(err != nil)
 	if err != nil {
 		if count, _, _ := f.rpmReadFailures.fail(f.getClock().Now()); count == 1 {
 			ui.Warning("Error reading RPM value of fan %s (further errors are not logged until it recovers): %v", fan.GetId(), err)
@@ -1108,6 +1425,10 @@ func (f *DefaultFanController) measureRpm(fan fans.Fan) {
 	}
 	if failures := f.rpmReadFailures.succeed(); failures > 0 {
 		ui.Info("Fan %s: reading the RPM value succeeded again after %d failed readings", fan.GetId(), failures)
+	}
+	f.lastRpmReading.Store(int64(rpm))
+	if fans.IsRpmLikelySpinning(float64(rpm)) {
+		f.rpmSpinSeen.Store(true)
 	}
 
 	if !f.rpmAvgSeeded.Load() {
@@ -1244,6 +1565,8 @@ func (f *DefaultFanController) stopAfterUpdateError(err error) {
 //     the control mode can't be written or is unknown), fall back to max: a fixed PWM value is not fail-safe.
 func (f *DefaultFanController) handleCurveFailure(err error) {
 	fan := f.fan
+	// the fan may be handed back or set to max: after the failure, it gets the full reaction period again
+	f.restartStallReactionPeriod()
 	if f.sensorFailureAction == configuration.OnSensorFailureMax {
 		// keep the fan at max while the failure lasts (e.g. if a third party changed it)
 		f.setMaxPwmForSensorFailure()
@@ -1294,10 +1617,11 @@ func (f *DefaultFanController) handleCurveFailure(err error) {
 	notify("Sensor Failure", "Fan %s: curve can't be evaluated, %s until it can be evaluated again: %v", fan.GetId(), description, err)
 }
 
-// setMaxPwmForSensorFailure sets the fan to its maxPwm, the fail-safe speed while its curve can't be evaluated.
+// setMaxPwmForSensorFailure sets the fan to its fail-safe speed while its curve can't be evaluated: the configured
+// maxPwm, or else full speed (see fans.FailSafeMaxPwm), never the maxPwm derived from the curve data.
 // A failed write is logged once per failure state, not on every tick.
 func (f *DefaultFanController) setMaxPwmForSensorFailure() {
-	err := f.setTargetPwm(f.fan.GetMaxPwm())
+	err := f.setTargetPwm(fans.FailSafeMaxPwm(f.fan))
 	if err != nil && !f.sensorFailureMaxWriteFailed {
 		ui.Error("Fan %s: Error setting max PWM (further errors are not logged until the curve recovers): %v", f.fan.GetId(), err)
 	}
@@ -1491,7 +1815,7 @@ func (f *DefaultFanController) restoreControlMode() (handedOver bool, complete b
 			if err := f.fan.SetControlMode(*controlModeToSet); err != nil {
 				// if this fails, try to set it to max speed instead
 				ui.Warning("Fan %s: Error restoring control mode %d, setting max speed instead: %v", f.fan.GetId(), *controlModeToSet, err)
-				if err := f.fan.SetPwm(f.applyPwmMapForRestore(fans.MaxPwmValue)); err != nil {
+				if err := f.writePwm(f.applyPwmMapForRestore(fans.MaxPwmValue)); err != nil {
 					ui.Warning("Unable to restore fan %s, make sure it is running!", f.fan.GetId())
 					return false, false
 				}
@@ -1504,7 +1828,7 @@ func (f *DefaultFanController) restoreControlMode() (handedOver bool, complete b
 	}
 	if pwmToSet != nil {
 		// restore (default: onExit == nil or onExit.Restore != nil)
-		if err := f.fan.SetPwm(*pwmToSet); err != nil {
+		if err := f.writePwm(*pwmToSet); err != nil {
 			ui.Warning("Fan %s: Error restoring original PWM value: %v", f.fan.GetId(), err)
 			complete = false
 		}
@@ -1533,7 +1857,7 @@ func (f *DefaultFanController) restoreUnknownControlMode(originalPwmValue *int) 
 	if err := f.fan.SetControlMode(fans.ControlModePWM); err != nil {
 		ui.Warning("Fan %s: Error setting manual control mode: %v", f.fan.GetId(), err)
 	}
-	if err := f.fan.SetPwm(*originalPwmValue); err != nil {
+	if err := f.writePwm(*originalPwmValue); err != nil {
 		ui.Warning("Fan %s: Error restoring original PWM value: %v", f.fan.GetId(), err)
 	}
 	return false, false
@@ -1579,11 +1903,12 @@ func (f *DefaultFanController) calculateTargetSpeed() (float64, error) {
 	return newTarget, nil
 }
 
-// maxPwmCurveValue returns the curve value that UpdateFanSpeed maps to the maxPwm of the fan:
-// 255, or maxPwm itself if the fan uses unscaled curve values.
+// maxPwmCurveValue returns the curve value that is closest to the fail-safe speed set by onSensorFailure: max
+// (see setMaxPwmForSensorFailure): 255, which UpdateFanSpeed maps to the maxPwm of the fan, or the fail-safe
+// value itself if the fan uses unscaled curve values.
 func (f *DefaultFanController) maxPwmCurveValue() float64 {
 	if f.fan.GetConfig().UseUnscaledCurveValues {
-		return float64(f.fan.GetMaxPwm())
+		return float64(fans.FailSafeMaxPwm(f.fan))
 	}
 	return fans.MaxPwmValue
 }
@@ -1616,11 +1941,18 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 		return
 	}
 
+	if f.readbackMayBeStale(f.getClock().Now()) {
+		// the fan may still report the value before the last write
+		return
+	}
+
 	if f.lastTarget != nil {
 		pwmMappedValue := f.applyPwmMapToTarget(*f.lastTarget)
 		expectedReportedPwm := f.getReportedPwmAfterApplyingPwm(pwmMappedValue)
 		if currentPwm, err := f.fan.GetPwm(); err == nil {
 			if currentPwm != expectedReportedPwm {
+				// the third party may have stopped the fan, give it time to start again after fan2go's write
+				f.restartStallReactionPeriod()
 				// the statistics count every change, the warning is rate-limited
 				f.statsMutex.Lock()
 				f.stats.UnexpectedPwmValueCount += 1
@@ -1654,21 +1986,142 @@ func (f *DefaultFanController) setTargetPwm(target int) (err error) {
 	// if we can read the PWM value, we can check if the fan is already at the target value
 	// and avoid unnecessary setPwm calls
 	if f.fan.Supports(fans.FeaturePwmSensor) {
-		current, err := f.getPwm()
-		if err == nil && expectedReportedPwmValue == current {
+		alreadySet := false
+		if f.readbackMayBeStale(f.getClock().Now()) {
+			// the readback may still show an older value (e.g. A, B, A within the delay would read A and skip the
+			// second A, so B would stay): compare with the value written last instead
+			alreadySet = f.lastPwmWriteValue == pwmMappedValue
+		} else {
+			current, err := f.getPwm()
+			alreadySet = err == nil && expectedReportedPwmValue == current
+		}
+		if alreadySet {
 			// nothing to do
 			f.lastTarget = &target
 			f.recordLastSetPwm(pwmMappedValue)
 			return nil
 		}
 	}
-	err = f.fan.SetPwm(pwmMappedValue)
+	err = f.writePwm(pwmMappedValue)
 	if err == nil {
 		// only after a successful write: lastTarget is compared with the PWM value of the fan
 		f.lastTarget = &target
 		f.recordLastSetPwm(pwmMappedValue)
 	}
 	return err
+}
+
+// writePwm writes the raw PWM value to the fan and remembers it and the time of the write (see readbackMayBeStale).
+func (f *DefaultFanController) writePwm(raw int) error {
+	err := f.fan.SetPwm(raw)
+	if err == nil {
+		f.lastPwmWriteValue = raw
+		f.lastPwmWriteAt = f.getClock().Now()
+		f.pwmWriteCount++
+	}
+	return err
+}
+
+// readbackMayBeStale returns true if the fan may still report a PWM value from before the last write at the given
+// time: a readback delay was measured (see readbackDelay), and the last write is less than
+// max(readbackDelay, pwmSetDelay) ago. Without a measured delay it is always false, like before it was measured.
+func (f *DefaultFanController) readbackMayBeStale(now time.Time) bool {
+	if f.readbackDelay <= 0 || f.lastPwmWriteAt.IsZero() {
+		return false
+	}
+	return now.Sub(f.lastPwmWriteAt) < max(f.readbackDelay, f.getPwmSetDelay())
+}
+
+// observeReadbackDelay records a readback delay observed during the analysis (see observedReadbackDelay),
+// capped at maxReadbackDelay.
+func (f *DefaultFanController) observeReadbackDelay(delay time.Duration) {
+	delay = min(delay, maxReadbackDelay)
+	if f.observedReadbackDelay == nil || delay > *f.observedReadbackDelay {
+		f.observedReadbackDelay = &delay
+	}
+}
+
+// waitForReadback reads the PWM value of the fan (see getPwm) after a write until done returns true for it, or
+// until window has passed since the call. It waits pwmSetDelay before the first read and readbackPollInterval between reads.
+// It returns the last value read, whether done returned true, and the delay until then: 0 if the first read was
+// done, else the time since the call. A read error is returned as is, and so is ctx.Err().
+func (f *DefaultFanController) waitForReadback(
+	ctx context.Context,
+	done func(pwm int) bool,
+	window time.Duration,
+) (pwm int, ok bool, delay time.Duration, err error) {
+	clock := f.getClock()
+	start := clock.Now()
+	if err := sleepWithContext(ctx, clock, f.getPwmSetDelay()); err != nil {
+		return 0, false, 0, err
+	}
+	for first := true; ; first = false {
+		pwm, err = f.getPwm()
+		if err != nil {
+			return 0, false, 0, err
+		}
+		elapsed := clock.Now().Sub(start)
+		if done(pwm) {
+			if first {
+				return pwm, true, 0, nil
+			}
+			return pwm, true, elapsed, nil
+		}
+		if elapsed >= window {
+			return pwm, false, elapsed, nil
+		}
+		if err := sleepWithContext(ctx, clock, readbackPollInterval); err != nil {
+			return 0, false, 0, err
+		}
+	}
+}
+
+// probeReadbackDelay measures how long the fan takes to report a written PWM value before the setPwm -> getPwm
+// sweep: it writes 0 and 255 alternately (four writes, starting with the value further away from the current
+// one) and waits until the readback changes, up to maxReadbackDelay each. It returns the time the sweep waits
+// for the readback of each write: twice the longest observed delay (the readback of a caching driver changes at
+// its next refresh, so a single observation can be shorter than the cache period), at most maxReadbackDelay, but
+// at least pwmSetDelay. If the readback never changes, the delay can't be measured, and it returns pwmSetDelay.
+func (f *DefaultFanController) probeReadbackDelay(ctx context.Context) (time.Duration, error) {
+	floor := f.getPwmSetDelay()
+	previous, err := f.fan.GetPwm()
+	if err != nil {
+		return floor, nil
+	}
+	values := []int{fans.MaxPwmValue, fans.MinPwmValue, fans.MaxPwmValue, fans.MinPwmValue}
+	if previous > fans.MaxPwmValue/2 {
+		values = []int{fans.MinPwmValue, fans.MaxPwmValue, fans.MinPwmValue, fans.MaxPwmValue}
+	}
+	var longest *time.Duration
+	for _, value := range values {
+		if err := f.writePwm(value); err != nil {
+			ui.Debug("Fan %s: unable to measure the PWM readback delay, writing %d failed: %v", f.fan.GetId(), value, err)
+			return floor, nil
+		}
+		last := previous
+		pwm, changed, delay, err := f.waitForReadback(ctx, func(pwm int) bool { return pwm != last }, maxReadbackDelay)
+		if err != nil {
+			if ctx.Err() != nil {
+				return 0, ctx.Err()
+			}
+			ui.Debug("Fan %s: unable to measure the PWM readback delay: %v", f.fan.GetId(), err)
+			return floor, nil
+		}
+		if changed {
+			f.observeReadbackDelay(delay)
+			if longest == nil || delay > *longest {
+				longest = &delay
+			}
+		}
+		previous = pwm
+	}
+	if longest == nil {
+		ui.Warning("Fan %s: the reported PWM value didn't change within %s after writing 0 and 255, "+
+			"unable to measure the readback delay", f.fan.GetId(), maxReadbackDelay)
+		return floor, nil
+	}
+	ui.Info("Fan %s: PWM readback delay before the set/get sweep: %s", f.fan.GetId(), *longest)
+	return max(floor, min(2**longest, maxReadbackDelay)), nil
 }
 
 // ensureFanModeIsSetToExpectedMode makes sure that the fan control mode is set to the expected mode (manual PWM control),
@@ -1700,6 +2153,8 @@ func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
 		return
 	}
 	if cm != fans.ControlModePWM {
+		// the fan may have been stopped in the other mode, give it time to start again
+		f.restartStallReactionPeriod()
 		restoreErr := trySetManualPwm(f.fan)
 		if restoreErr != nil {
 			ui.Warning("Fan mode of fan %s is %v (expected PWM); could not restore: %v",
@@ -1751,15 +2206,17 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMap(ctx context.Context) (er
 		return nil
 	}
 
-	// load the setPwmToGetPwmMap from persistence, if it exists
-	f.setPwmToGetPwmMap, err = f.persistence.LoadFanSetPwmToGetPwmMap(f.fan.GetId())
-	if err == nil && f.setPwmToGetPwmMap != nil {
-		ui.Info("FanController: Using saved value for setPwmToGetPwmMap of Fan '%s'", f.fan.GetId())
-		return nil
-	}
-	if err != nil && !persistence.IsMissingOrCorrupt(err) {
-		// the data may exist, but can't be read right now: don't sweep the fan because of that
-		return fmt.Errorf("unable to load setPwmToGetPwmMap of fan %s: %w", f.fan.GetId(), err)
+	// load the setPwmToGetPwmMap from persistence, if it exists (a fresh analysis measures it again)
+	if !f.freshAnalysis {
+		f.setPwmToGetPwmMap, err = f.persistence.LoadFanSetPwmToGetPwmMap(f.fan.GetId())
+		if err == nil && f.setPwmToGetPwmMap != nil {
+			ui.Info("FanController: Using saved value for setPwmToGetPwmMap of Fan '%s'", f.fan.GetId())
+			return nil
+		}
+		if err != nil && !persistence.IsMissingOrCorrupt(err) {
+			// the data may exist, but can't be read right now: don't sweep the fan because of that
+			return fmt.Errorf("unable to load setPwmToGetPwmMap of fan %s: %w", f.fan.GetId(), err)
+		}
 	}
 
 	err = f.computeSetPwmToGetPwmMapAutomatically(ctx)
@@ -1775,6 +2232,11 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMap(ctx context.Context) (er
 		return nil
 	}
 
+	if f.freshAnalysis {
+		// saved once the analysis succeeded
+		f.pendingSetPwmToGetPwmMap = f.setPwmToGetPwmMap
+		return nil
+	}
 	ui.Debug("Saving setPwmToGetPwmMap to fan...")
 	return f.persistence.SaveFanSetPwmToGetPwmMap(f.fan.GetId(), f.setPwmToGetPwmMap)
 }
@@ -1820,16 +2282,19 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 		// cfg.Autodetect != nil → fall through to autodetect logic below
 	}
 
-	savedPwmMap, err := f.persistence.LoadFanPwmMap(f.fan.GetId())
-	if err == nil && savedPwmMap != nil {
-		ui.Info("FanController: Using saved value for pwm map of Fan '%s'", f.fan.GetId())
-		for i := 0; i < 256; i++ {
-			f.pwmMapping[i] = savedPwmMap[i]
+	// a fresh analysis computes it again
+	if !f.freshAnalysis {
+		savedPwmMap, err := f.persistence.LoadFanPwmMap(f.fan.GetId())
+		if err == nil && savedPwmMap != nil {
+			ui.Info("FanController: Using saved value for pwm map of Fan '%s'", f.fan.GetId())
+			for i := 0; i < 256; i++ {
+				f.pwmMapping[i] = savedPwmMap[i]
+			}
+			return nil
 		}
-		return nil
-	}
-	if err != nil && !persistence.IsMissingOrCorrupt(err) {
-		return fmt.Errorf("unable to load pwm map of fan %s: %w", f.fan.GetId(), err)
+		if err != nil && !persistence.IsMissingOrCorrupt(err) {
+			return fmt.Errorf("unable to load pwm map of fan %s: %w", f.fan.GetId(), err)
+		}
 	}
 
 	{
@@ -1841,6 +2306,11 @@ func (f *DefaultFanController) computePwmMap() (err error) {
 		}
 	}
 
+	if f.freshAnalysis {
+		// saved once the analysis succeeded
+		f.pendingPwmMap = true
+		return nil
+	}
 	ui.Debug("Saving pwm map to fan...")
 	return f.persistence.SaveFanPwmMap(f.fan.GetId(), f.pwmMapping[:])
 }
@@ -1861,29 +2331,74 @@ func (f *DefaultFanController) computePwmMapAutomatically() (err error) {
 			f.pwmMapping[i] = i
 		}
 	} else {
-		// if we have a setPwmToGetPwmMap, we can use its keyset to compute the pwmMap.
-		// Since this map will be used to map the internal target pwm value
-		// to the fan range, we need to interpolate it in a way that the internal range of [0..255]
-		// is mapped to the full supported range of the fan in [minPwm, maxPwm].
-		// Since there might be gaps in the setPwmToGetPwmMap, the pwmMap will be populated
-		// so that the supported values are represented as steps, with the steps being aligned to be
-		// in the middle of two adjacent values in the supported range.
+		// if we have a setPwmToGetPwmMap, we use the raw values the driver accepted (its keys) to compute the
+		// pwmMap. Values that read back the same are one output level of the fan, so only one value per level is
+		// used (see outputLevelValues). The levels are spread evenly over the internal range of [0..255] as steps,
+		// so every target range selects another level and there are no target ranges without an effect.
 		ui.Debug("Fan %s: Using setPwmToGetPwmMap to compute pwmMap", fan.GetId())
-		keySet := util.SortedKeys(f.setPwmToGetPwmMap)
-		identityMappingOfKeyset := make(map[int]int, len(keySet))
-		for i := 0; i < len(keySet); i++ {
-			key := keySet[i]
-			identityMappingOfKeyset[key] = key
+		levels := f.outputLevelValues()
+		identityMappingOfLevels := make(map[int]int, len(levels))
+		for _, value := range levels {
+			identityMappingOfLevels[value] = value
 		}
-		// TODO: shouldn't this take the values into account or something?
-		pwmMap := util.ExpandMapToFullRange(identityMappingOfKeyset, fans.MinPwmValue, fans.MaxPwmValue)
+		pwmMap := util.ExpandMapToFullRange(identityMappingOfLevels, fans.MinPwmValue, fans.MaxPwmValue)
 
-		// TODO: can all this be done more easily?
 		for i := 0; i < 256; i++ {
 			f.pwmMapping[i] = pwmMap[i]
 		}
 	}
 	return err
+}
+
+// outputLevelValues returns the raw values the autodetected pwmMap uses: one per output level of the fan, sorted.
+// The written values (keys of the setPwmToGetPwmMap) are grouped by the value they read back. Of each group, the
+// value that reads back as itself is used if there is one, else the lowest one. For the readback formula of a
+// known hardware quirks entry, the groups are the entry's output levels (quirks.Entry.OutputLevels).
+//
+// The grouping is only used if the readback looks like the output level of the fan: it doesn't decrease when the
+// written value increases, and there are at least two levels. Otherwise, and for nvidia fans (whose PWM
+// boundaries are percent values of the identity mapping), all accepted values are used.
+func (f *DefaultFanController) outputLevelValues() []int {
+	keys := util.SortedKeys(f.setPwmToGetPwmMap)
+	if f.fan.GetConfig().Nvidia != nil {
+		return keys
+	}
+	type level struct {
+		readback int
+		value    int
+	}
+	var levels []level
+	for _, key := range keys {
+		readback := f.setPwmToGetPwmMap[key]
+		if len(levels) > 0 {
+			current := &levels[len(levels)-1]
+			if readback < current.readback {
+				ui.Debug("Fan %s: the reported PWM decreases from %d to %d at %d, using every accepted value in the pwmMap",
+					f.fan.GetId(), current.readback, readback, key)
+				return keys
+			}
+			if readback == current.readback {
+				if key == readback {
+					current.value = key
+				}
+				continue
+			}
+		}
+		levels = append(levels, level{readback: readback, value: key})
+	}
+	if len(levels) < 2 {
+		ui.Debug("Fan %s: the reported PWM has fewer than two values, using every accepted value in the pwmMap", f.fan.GetId())
+		return keys
+	}
+	result := make([]int, 0, len(levels))
+	for _, l := range levels {
+		result = append(result, l.value)
+	}
+	if len(result) < len(keys) {
+		ui.Info("Fan %s: the driver reports %d distinct PWM values for %d accepted values, the pwmMap uses one value per level",
+			f.fan.GetId(), len(result), len(keys))
+	}
+	return result
 }
 
 func (f *DefaultFanController) updateDistinctPwmValues() {
@@ -1972,22 +2487,38 @@ func (f *DefaultFanController) computeSetPwmToGetPwmMapAutomatically(ctx context
 		return err
 	}
 
+	// slow drivers report a written value only after a while: wait for it (see probeReadbackDelay)
+	window, err := f.probeReadbackDelay(ctx)
+	if err != nil {
+		return err
+	}
+	previous, err := f.fan.GetPwm()
+	if err != nil {
+		previous = -1
+	}
+
 	setPwmToGetPwmMap := map[int]int{}
 	for i := fans.MinPwmValue; i <= fans.MaxPwmValue; i++ {
-		err := f.fan.SetPwm(i)
+		err := f.writePwm(i)
 		if err != nil {
 			ui.Warning("Error setting PWM value %d on fan %s: %v", i, f.fan.GetId(), err)
 			continue
 		}
-		if err := sleepWithContext(ctx, f.getClock(), f.getPwmSetDelay()); err != nil {
-			return err
-		}
-		pwm, err := f.fan.GetPwm()
+		// wait until the readback changes, or for the window if it doesn't (e.g. several values have the same level)
+		last := previous
+		pwm, changed, delay, err := f.waitForReadback(ctx, func(pwm int) bool { return pwm != last }, window)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 			ui.Warning("Error reading PWM value of fan %s: %v", f.fan.GetId(), err)
 			continue
 		}
+		if changed {
+			f.observeReadbackDelay(delay)
+		}
 		setPwmToGetPwmMap[i] = pwm
+		previous = pwm
 	}
 
 	if len(setPwmToGetPwmMap) > 0 {

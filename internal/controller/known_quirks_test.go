@@ -165,7 +165,8 @@ func TestRunInitializationIfNeeded_KnownQuirksChanged_AnalyzesAgain(t *testing.T
 				// the fan has no RPM sensor, so the new analysis saves no curve
 				assert.NotEqual(t, savedCurve, p.rpmData["fan"], "expected the fan to be analyzed again")
 				id, version := tt.entry.Fingerprint()
-				assert.Equal(t, persistence.FanAnalysisInfo{Quirk: id, QuirkVersion: version}, p.analysisInfos["fan"])
+				assert.Equal(t, id, p.analysisInfos["fan"].Quirk)
+				assert.Equal(t, version, p.analysisInfos["fan"].QuirkVersion)
 				// the old maps were deleted: the set->get map is the formula (not saved) or measured again,
 				// and the pwm map is computed again (from the 256 keys of the set->get map)
 				if tt.entry == nil {
@@ -309,5 +310,9 @@ type failingRpmSavePersistence struct {
 }
 
 func (p *failingRpmSavePersistence) SaveFanRpmData(fans.Fan) error {
+	return errors.New("disk full")
+}
+
+func (p *failingRpmSavePersistence) ReplaceFanAnalysisData(string, persistence.FanAnalysisData) error {
 	return errors.New("disk full")
 }
