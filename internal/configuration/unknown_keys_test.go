@@ -3,6 +3,9 @@ package configuration
 import (
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLevenshtein(t *testing.T) {
@@ -90,5 +93,118 @@ func TestGetParentType(t *testing.T) {
 	typ = getParentType([]string{"invalid", "path"}, reflect.TypeOf(cfg))
 	if typ != nil {
 		t.Errorf("getParentType() for invalid path should be nil, got %v", typ)
+	}
+}
+
+func TestLoadConfig_DotTemplatesSectionWithAnchorsIsIgnored(t *testing.T) {
+	// GIVEN a top-level ".templates" section that only holds YAML anchors
+	warnings := captureWarnings(t)
+
+	// WHEN
+	cfg := loadConfigFromYaml(t, `
+.templates:
+  x-values-gpu-set-pwm-to-get-pwm-map: &x-values-gpu-set-pwm-to-get-pwm-map
+    values:
+      0: 0
+      255: 255
+fans:
+  - id: gpu
+    setPwmToGetPwmMap: *x-values-gpu-set-pwm-to-get-pwm-map
+`)
+
+	// THEN there is no warning and the anchor is resolved
+	assert.NotContains(t, warnings.String(), "Unknown configuration")
+	require.Len(t, cfg.Fans, 1)
+	require.NotNil(t, cfg.Fans[0].SetPwmToGetPwmMap)
+	require.NotNil(t, cfg.Fans[0].SetPwmToGetPwmMap.Values)
+	assert.Equal(t, SetPwmToGetPwmMapValuesConfig{0: 0, 255: 255}, *cfg.Fans[0].SetPwmToGetPwmMap.Values)
+}
+
+func TestLoadConfig_XPrefixedTopLevelSectionIsIgnored(t *testing.T) {
+	// GIVEN top-level "x-" keys that hold YAML anchors
+	warnings := captureWarnings(t)
+
+	// WHEN
+	cfg := loadConfigFromYaml(t, `
+x-templates:
+  pwm-map: &pwm-map
+    linear:
+      0: 0
+      255: 255
+x-scalar: 1
+fans:
+  - id: gpu
+    setPwmToGetPwmMap: *pwm-map
+`)
+
+	// THEN
+	assert.NotContains(t, warnings.String(), "Unknown configuration")
+	require.Len(t, cfg.Fans, 1)
+	require.NotNil(t, cfg.Fans[0].SetPwmToGetPwmMap)
+	assert.NotNil(t, cfg.Fans[0].SetPwmToGetPwmMap.Linear)
+}
+
+func TestLoadConfig_UnknownTopLevelKeyIsWarned(t *testing.T) {
+	// GIVEN
+	warnings := captureWarnings(t)
+
+	// WHEN
+	loadConfigFromYaml(t, `
+templates:
+  a: 1
+fooBar: 1
+`)
+
+	// THEN
+	assert.Contains(t, warnings.String(), "Unknown configuration section (and its contents): templates")
+	assert.Contains(t, warnings.String(), "Unknown configuration key: foobar")
+}
+
+func TestLoadConfig_UnknownNestedKeyIsWarned(t *testing.T) {
+	// GIVEN keys starting with "x-" are only ignored at the top level
+	warnings := captureWarnings(t)
+
+	// WHEN
+	loadConfigFromYaml(t, `
+fans:
+  - id: gpu
+    unknownOption: 1
+    x-foo: 1
+`)
+
+	// THEN
+	assert.Contains(t, warnings.String(), "Unknown configuration key: fans[0].unknownoption")
+	assert.Contains(t, warnings.String(), "Unknown configuration key: fans[0].x-foo")
+}
+
+func TestWarnUnknownKeys_EmptyKeyNameIsPrinted(t *testing.T) {
+	// GIVEN a nested key whose last path segment is empty
+	warnings := captureWarnings(t)
+
+	// WHEN
+	WarnUnknownKeys(&Configuration{}, []string{"Fans[0]."}, func(string) interface{} { return 1 })
+
+	// THEN
+	assert.Contains(t, warnings.String(), "Unknown configuration key: fans[0].''")
+}
+
+func TestIsIgnoredTopLevelKey(t *testing.T) {
+	tests := []struct {
+		key  string
+		want bool
+	}{
+		{"", true}, // viper splits ".templates" into "" and "templates"
+		{"x-templates", true},
+		{"x-", true},
+		{"templates", false},
+		{"fans[0].x-foo", false},
+		{"fans[0].", false},
+		{"curves[1]", false},
+	}
+
+	for _, tt := range tests {
+		if got := isIgnoredTopLevelKey(tt.key); got != tt.want {
+			t.Errorf("isIgnoredTopLevelKey(%q) = %v, want %v", tt.key, got, tt.want)
+		}
 	}
 }
