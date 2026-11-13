@@ -1,5 +1,7 @@
 package quirks
 
+import "sort"
+
 // linuxSource is the kernel source tree the formulas below were checked against.
 const linuxSource = "https://github.com/torvalds/linux/blob/ee83899302a0457a3ba47464a13e8682bd7ba27d/"
 
@@ -82,6 +84,66 @@ var registry = []*Entry{
 			"when the driver was loaded; reload the driver after connecting fans",
 		Advice: []AdviceFunc{adviseReadbackFormula, adviseSmoothingResolution, adviseOnlyPwmControlMode},
 	},
+	{
+		ID:          "it87",
+		Version:     1,
+		Description: "ITE Super I/O chips (it87)",
+		Sources: []string{
+			linuxSource + "drivers/hwmon/it87.c#L1461",
+			linuxSource + "drivers/hwmon/it87.c#L340",
+			linuxSource + "drivers/hwmon/it87.c#L1765",
+			it87FrankCrawfordSource + "it87.c#L3890",
+			it87FrankCrawfordSource + "it87.c#L569",
+		},
+		// both drivers register the platform device "it87" (modalias platform:it87)
+		Match:                               Match{Names: it87Names(), Modalias: "platform:it87*"},
+		FullDutyReadsAsFullSpeedFromChannel: it87FullDutyReadsAsFullSpeedFromChannel,
+		// pwm_enable 0 also means "full speed, no pwm control" on the channels with fan on/off control
+		Hint: "the it87 driver reports pwm_enable 0 for a fan in manual mode at pwm 255, which fan2go accepts, " +
+			"but also for a fan that runs at full speed without pwm control",
+	},
+}
+
+// it87FrankCrawfordSource is the out-of-tree it87 driver (github.com/frankcrawford/it87) the chip list below was
+// checked against. It supports more chips than the mainline driver, with the same hwmon names and modalias.
+const it87FrankCrawfordSource = "https://github.com/frankcrawford/it87/blob/bd7a566c8a60fe0308d67e26761e16260368191a/"
+
+// it87FullDutyReadsAsFullSpeedFromChannel lists the it87 chips whose pwm_enable reads 0 instead of 1 in manual mode
+// while the pwm is 255, with the first pwm channel that does this. pwm_mode() in it87.c returns 0 ("full speed") for
+// a channel in manual mode whose duty is 0xff, if the chip has no FEAT_FANCTL_ONOFF or the channel is pwm4 or above
+// (nr >= 3). The key is the hwmon name of the chip (it87_devices[].name). Chips with FEAT_FANCTL_ONOFF and at most 3
+// pwm channels are not listed: they always report 1 in manual mode.
+var it87FullDutyReadsAsFullSpeedFromChannel = map[string]int{
+	// no FEAT_FANCTL_ONOFF in the mainline and the out-of-tree driver: all channels
+	"it8603": 1,
+	"it8613": 1,
+	"it8622": 1,
+	// no FEAT_FANCTL_ONOFF in the out-of-tree driver, which also supports these chips; mainline has it8689 with
+	// FEAT_FANCTL_ONOFF (pwm4 and above only), the hwmon name is the same, so all channels
+	"it8689": 1,
+	// only supported by the out-of-tree driver, no FEAT_FANCTL_ONOFF: all channels
+	"it8606": 1,
+	"it8625": 1,
+	"it8655": 1,
+	"it8665": 1,
+	"it8686": 1,
+	"it8688": 1,
+	"it8696": 1,
+	"it8698": 1,
+	// FEAT_FANCTL_ONOFF and more than 3 pwm channels in both drivers: pwm4 and above
+	"it8620": 4,
+	"it8628": 4,
+	"it8732": 4,
+}
+
+// it87Names returns the hwmon names of it87FullDutyReadsAsFullSpeedFromChannel, sorted.
+func it87Names() []string {
+	result := make([]string, 0, len(it87FullDutyReadsAsFullSpeedFromChannel))
+	for name := range it87FullDutyReadsAsFullSpeedFromChannel {
+		result = append(result, name)
+	}
+	sort.Strings(result)
+	return result
 }
 
 // divRoundClosest is the kernel's DIV_ROUND_CLOSEST for non-negative values.

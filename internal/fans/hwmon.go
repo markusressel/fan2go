@@ -13,6 +13,10 @@ import (
 	"github.com/markusressel/fan2go/internal/util"
 )
 
+// writeSysfsInt writes pwm and pwm_enable of hwmon fans. Tests replace it to emulate drivers whose readback differs
+// from the written value.
+var writeSysfsInt = util.WriteIntToFile
+
 type HwMonFan struct {
 	Label        string                  `json:"label"`
 	Index        int                     `json:"index"`
@@ -36,6 +40,11 @@ type HwMonFan struct {
 
 	// pwmEnableReadable caches whether pwm_enable can be read (probed once on first Supports call).
 	pwmEnableReadable *bool
+
+	// manualModeUnconfirmed is true if fan2go took pwm_enable 0 with pwm 255 as manual mode, because the known
+	// hardware quirks of the fan say that the driver reports it like that (see fullDutyReadsAsFullSpeed). The next
+	// write of a pwm value below 255 confirms it: pwm_enable must read 1 then.
+	manualModeUnconfirmed bool
 
 	// mu protects all fields above, since the RPM monitor, the update loop of the fan controller,
 	// the statistics collector and the REST API access the fan from different goroutines.
@@ -216,8 +225,69 @@ func (fan *HwMonFan) GetPwm() (int, error) {
 
 func (fan *HwMonFan) SetPwm(pwm int) (err error) {
 	ui.Debug("Setting Fan PWM of '%s' to %d ...", fan.GetId(), pwm)
-	err = util.WriteIntToFile(pwm, fan.hwMonConfig().PwmPath)
-	return err
+	err = writeSysfsInt(pwm, fan.hwMonConfig().PwmPath)
+	if err != nil {
+		return err
+	}
+	return fan.confirmManualMode(pwm)
+}
+
+// fullDutyReadsAsFullSpeed returns whether the known hardware quirks of the fan say that its pwm_enable reads 0
+// instead of 1 while it is in manual mode at pwm 255 (e.g. it87 chips without fan on/off control).
+// On other drivers, pwm_enable 0 can mean "full speed, no pwm control", so it is never treated as manual mode there.
+func (fan *HwMonFan) fullDutyReadsAsFullSpeed() bool {
+	if fan.knownQuirks == nil {
+		return false
+	}
+	config := fan.hwMonConfig()
+	return fan.knownQuirks.FullDutyReadsAsFullSpeed(config.HwmonName, config.PwmChannel)
+}
+
+// isManualModeAtFullDuty returns whether the given pwm_enable value means manual mode at pwm 255 on this fan:
+// the value is 0, the known hardware quirks of the fan say that the driver reports manual mode at pwm 255 like that,
+// and pwm reads 255. The driver derives this 0 from the pwm duty only, so the current pwm is checked, not the value
+// fan2go wrote last. If it returns true, the next write of a pwm value below 255 must confirm it (see SetPwm).
+func (fan *HwMonFan) isManualModeAtFullDuty(pwmEnableValue int) bool {
+	if pwmEnableValue != 0 || !fan.fullDutyReadsAsFullSpeed() {
+		return false
+	}
+	pwm, err := util.ReadIntFromFile(fan.hwMonConfig().PwmPath)
+	if err != nil || pwm != MaxPwmValue {
+		return false
+	}
+	fan.mu.Lock()
+	fan.manualModeUnconfirmed = true
+	fan.mu.Unlock()
+	return true
+}
+
+// confirmManualMode checks that pwm_enable reads 1 after pwm was written, if fan2go took pwm_enable 0 with pwm 255 as
+// manual mode before (see isManualModeAtFullDuty). It is checked once, at the first written value below 255: the
+// driver reports 1 then, unless the fan isn't in manual mode. Returns an error if it isn't.
+func (fan *HwMonFan) confirmManualMode(pwm int) error {
+	if pwm >= MaxPwmValue {
+		return nil
+	}
+	fan.mu.Lock()
+	unconfirmed := fan.manualModeUnconfirmed
+	fan.manualModeUnconfirmed = false
+	fan.mu.Unlock()
+	if !unconfirmed {
+		return nil
+	}
+	value, err := fan.readPwmEnable()
+	if err != nil {
+		ui.Warning("Fan %s: cannot read pwm_enable to confirm manual mode: %v", fan.GetId(), err)
+		return nil
+	}
+	if value != 1 {
+		entryId, _ := fan.knownQuirks.Fingerprint()
+		return fmt.Errorf("fan %s: pwm_enable read 0 at pwm 255, which is manual mode on this device "+
+			"(known hardware quirk '%s'), but after writing pwm %d it reads %d instead of 1: PWM mode stuck to %d",
+			fan.GetId(), entryId, pwm, value, value)
+	}
+	ui.Debug("Fan %s: pwm_enable reads 1 at pwm %d, manual mode confirmed", fan.GetId(), pwm)
+	return nil
 }
 
 // GetFanRpmCurveData returns a copy of the fan curve data, so callers can read it
@@ -293,6 +363,10 @@ func (fan *HwMonFan) GetControlMode() (ControlMode, error) {
 
 	switch pwmEnabledValue {
 	case 0:
+		if fan.isManualModeAtFullDuty(pwmEnabledValue) {
+			// e.g. it87: manual mode at pwm 255 reads 0
+			return ControlModePWM, nil
+		}
 		return ControlModeDisabled, nil
 	case 1:
 		return ControlModePWM, nil
@@ -359,7 +433,7 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 		pwmEnabledValue = int(value)
 	}
 
-	err = util.WriteIntToFile(pwmEnabledValue, fan.hwMonConfig().PwmEnablePath)
+	err = writeSysfsInt(pwmEnabledValue, fan.hwMonConfig().PwmEnablePath)
 	if err != nil {
 		return err
 	}
@@ -369,6 +443,8 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 	} else {
 		fan.driverSpecificControlMode = nil
 	}
+	// set again below if manual mode at pwm 255 reads 0
+	fan.manualModeUnconfirmed = false
 	fan.mu.Unlock()
 	currentValue, err := fan.readPwmEnable()
 	if err != nil {
@@ -387,6 +463,11 @@ func (fan *HwMonFan) SetControlMode(value ControlMode) (err error) {
 		return nil
 	}
 	if currentValue != pwmEnabledValue {
+		if value == ControlModePWM && fan.isManualModeAtFullDuty(currentValue) {
+			ui.Debug("Fan %s: pwm_enable reads 0 at pwm 255, which is manual mode on this device (known hardware quirk)",
+				fan.GetId())
+			return nil
+		}
 		return fmt.Errorf("PWM mode stuck to %d", currentValue)
 	}
 	return nil

@@ -191,7 +191,9 @@ hint is added to the error.
 On hwmon, `SetControlMode` reads `pwm_enable` back to verify it. Any value `>= 2` counts as automatic; the last
 automatic value seen (e.g. 5 on nct6775) is remembered and written when fan2go hands the fan back to automatic.
 Integer `active` values `>= 3` are written as is. A write-only `pwm_enable` (e.g. `dell_smm_hwmon`, #229) is
-accepted without verification.
+accepted without verification. Many `it87` chips report manual mode at `pwm` 255 as `pwm_enable` 0; for them, the
+[`it87` known hardware quirks entry](hardware-quirks.md#it87-pwm_enable-0-at-full-duty) makes 0 with `pwm` 255 count
+as manual mode (also in the `fanModeChangedByThirdParty` sanity check).
 
 **Why**: fan2go cannot set the speed unless the driver is in manual mode. Up to 0.16.0, a failed write of `pwm`
 fell back to `disabled` (`pwm_enable=0`). That fallback came with the first working version (2021, 052cb34) without a
