@@ -586,6 +586,8 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 	}
 	f.alignDerivedMaxPwmWithOutputLevels()
 	f.loadReadbackDelay()
+	// explains a derived maxPwm of 255 (the curve data gives no speed range)
+	fans.WarnIfFlatRpmCurve(fan)
 
 	ui.Debug("setPwmToGetPwmMap of fan '%s': %v", fan.GetId(), f.setPwmToGetPwmMap)
 	ui.Debug("pwmMap of fan '%s': %v", fan.GetId(), f.pwmMapping)
@@ -931,7 +933,11 @@ func (f *DefaultFanController) RunInitializationAndRestore(ctx context.Context) 
 			f.restoreControlModeOnce()
 		}
 	}()
-	return f.RunInitialization(ctx)
+	curveData, err = f.RunInitialization(ctx)
+	if err == nil {
+		fans.WarnIfFlatRpmCurve(f.fan)
+	}
+	return curveData, err
 }
 
 // runInitializationSequentially runs runInitialization, holding the initialization lock
