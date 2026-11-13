@@ -1303,6 +1303,7 @@ applied entry at startup, and `fan2go detect` shows it in the `Quirks` column.
 | `aquacomputer` | Aquacomputer D5 Next, Octo, Quadro, Aquaero (`d5next`, `octo`, `quadro`, `aquaero`) | set→get map from the driver formula (equal to the identity), no set/get sweep (which takes minutes on these devices) |
 | `thinkpad`     | ThinkPad (`thinkpad`)                                      | hint about `thinkpad_acpi fan_control=1`; `config validate` advice for its 8 fan levels |
 | `nzxtsmart2`   | NZXT RGB & Fan Controller, Smart Device v2 (`nzxtsmart2`)  | `setPwmToGetPwmMap` from the driver formula (1% steps); hint about fans connected after boot |
+| `it87`         | ITE Super I/O chips with the `it87` driver, e.g. IT8665, IT8686, IT8688, IT8689 (`it8665`, ...) | `pwm_enable` 0 with `pwm` 255 counts as manual mode: the driver reports manual mode at full duty as 0 on these chips (all channels, or `pwm4` and above on IT8620/IT8628/IT8732) |
 
 A configured `setPwmToGetPwmMap` map (`identity`, `linear` or `values`) takes precedence; `autodetect` uses the
 formula. To not apply an entry to a fan (and measure the map instead), set
