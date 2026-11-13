@@ -481,9 +481,12 @@ described in the subsystem documents.
 - **A reload during an analysis waits for it.** Until every running analysis of the current config has finished,
   the old config stays active. Fans that are new in the reloaded config are analyzed after it was applied.
 - **One process per database.** The daemon takes an advisory lock on `<dbPath>.lock` at start and holds it until it
-  exits; `fan2go fan init` and `fan reset` take it too. Whoever comes second refuses to run, with an error that says
-  to stop the other process first (see [fan-analysis.md](fan-analysis.md)). The lock is per database, not per fan:
-  a second daemon with another `dbPath` isn't detected. `fan speed` and `fan mode` don't take it.
+  exits; `fan2go fan init`, `fan reset` and the writing forms `fan speed <value>` and `fan mode <value>` take it too
+  (only while they run). Whoever comes second refuses to run, with an error that says to stop the other process
+  first (see [fan-analysis.md](fan-analysis.md)): a value written by the CLI would be overwritten by the daemon on its
+  next update. The lock is per database, not per fan: a second daemon with another `dbPath` isn't detected.
+  Read-only commands (`fan speed` and `fan mode` without a value, `fan rpm`, `fan curve`) don't take it. If the
+  directory of `dbPath` doesn't exist, no daemon can run, and `fan speed`/`fan mode` write without the lock.
 - **Skipped hardware is never retried** (#510). A device that appears after startup needs a reload or restart.
 - **A killed daemon can't hand the fans back.** After `SIGKILL` or an OOM kill, fans stay in manual mode at their
   last PWM until the next run stops; that run restores them to the state saved before the killed run took over (see

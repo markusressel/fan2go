@@ -40,7 +40,8 @@ func RunDaemon() error {
 	}
 	releaseLock, err := persistence.AcquireProcessLock(configuration.CurrentConfig.DbPath)
 	if err != nil {
-		return fmt.Errorf("unable to start: %w (e.g. 'fan2go fan init' or a second daemon); stop it first", err)
+		return fmt.Errorf("unable to start: %w (e.g. 'fan2go fan init', a 'fan2go fan speed/mode' that is "+
+			"writing, or a second daemon); stop it first", err)
 	}
 	defer releaseLock()
 

@@ -31,8 +31,9 @@ func ProcessLockPath(dbPath string) string {
 }
 
 // AcquireProcessLock takes the lock that marks the process that controls the fans of the database at dbPath:
-// the daemon, or `fan2go fan init` / `fan reset`. It doesn't wait: if another process holds it, it returns a
-// *ProcessLockedError. The parent directory of dbPath must exist (see Persistence.Init).
+// the daemon, `fan2go fan init` / `fan reset`, or `fan speed` / `fan mode` while they write. It doesn't wait: if
+// another process holds it, it returns a *ProcessLockedError. The parent directory of dbPath must exist (see
+// Persistence.Init).
 //
 // The lock is an advisory lock (flock) on the file ProcessLockPath(dbPath), which contains the PID of the holder
 // for error messages. The kernel releases the lock when the process exits, also if it is killed, so a lock file
@@ -57,6 +58,34 @@ func AcquireProcessLock(dbPath string) (release func(), err error) {
 	}
 	if err := file.Truncate(0); err == nil {
 		_, _ = file.WriteAt([]byte(strconv.Itoa(os.Getpid())+"\n"), 0)
+	}
+	return func() {
+		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		_ = file.Close()
+	}, nil
+}
+
+// AcquireProcessLockShared is the variant of AcquireProcessLock for users that can't write the lock file, e.g.
+// `fan2go fan speed <value>` as a normal user for a file fan, while the lock file belongs to root. It opens the
+// file read-only and takes a shared lock, which fails with a *ProcessLockedError while another process holds the
+// exclusive lock, and keeps the daemon from starting until release is called. If the lock file doesn't exist, no
+// process has ever held the lock, so it returns a no-op release.
+func AcquireProcessLockShared(dbPath string) (release func(), err error) {
+	path := ProcessLockPath(dbPath)
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return func() {}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("unable to open lock file %s: %w", path, err)
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); err != nil {
+		pid := readLockPid(file)
+		_ = file.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, &ProcessLockedError{Path: path, Pid: pid}
+		}
+		return nil, fmt.Errorf("unable to lock %s: %w", path, err)
 	}
 	return func() {
 		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)

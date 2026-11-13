@@ -380,11 +380,13 @@ RPM sensor. If a hwmon or nvidia fan has one later (a fixed `rpmChannel`, a driv
 curve counts as missing and the fan is analyzed again. File and cmd fans store their fixed linear curve (0..255 to
 0..255).
 
-A database is used by one fan2go process at a time: the daemon, `fan init` and `fan reset` take an advisory lock
-(`flock`) on `<dbPath>.lock` and refuse to run if another process holds it (`persistence.AcquireProcessLock`). The
-file contains the PID of the holder for the error message. The kernel releases the lock when the process exits, also
-after `SIGKILL`, so a lock file left behind never blocks and needs no stale-PID check. Read-only commands
-(`fan curve`) don't take it.
+A database is used by one fan2go process at a time: the daemon, `fan init`, `fan reset` and the writing forms of
+`fan speed` and `fan mode` take an advisory lock (`flock`) on `<dbPath>.lock` and refuse to run if another process
+holds it (`persistence.AcquireProcessLock`). The file contains the PID of the holder for the error message. The kernel
+releases the lock when the process exits, also after `SIGKILL`, so a lock file left behind never blocks and needs no
+stale-PID check. A user that can't write the lock file (`fan speed <value>` for a file fan, without root) takes a
+shared lock on it instead (`persistence.AcquireProcessLockShared`). Read-only commands don't take the lock: `fan curve`,
+`fan rpm`, and `fan speed` and `fan mode` without a value.
 
 **Why**: bbolt is an embedded, pure Go key-value store: no external service, one file, crash-safe transactions. Opening
 it per operation lets the daemon and CLI commands (`fan init`, `fan reset`, `fan curve`) share the file, because no

@@ -940,6 +940,12 @@ No control, 100% all the time (0)
 Automatic control by integrated hardware (2)
 ```
 
+`fan speed <value>` and `fan mode <value>` refuse to run while the fan2go daemon runs with the same `dbPath`: the
+daemon controls the fans and would overwrite the value on its next update. Stop the daemon first (e.g.
+`sudo systemctl stop fan2go`), or change the config of the fan (its curve, `minPwm`/`maxPwm` or `controlMode`)
+instead. Reading values works while the daemon runs: `fan speed` and `fan mode` without a value, `fan rpm` and
+`fan curve`.
+
 ### Sensors
 
 ```shell
@@ -1162,10 +1168,10 @@ analysis. It replaces the saved data of the fan only if the analysis succeeds. `
 the saved data, so the daemon analyzes the fan again on its next start.
 
 Stop the fan2go daemon before you run `fan init` or `fan reset` (e.g. `sudo systemctl stop fan2go`), and start it
-again afterwards. Both commands refuse to run while the daemon uses the same database (`dbPath`), and the daemon
-refuses to start while one of them runs: two processes would write to the same fans, and the daemon would keep using
-the old data. fan2go marks the database as in use with an advisory lock on the file `<dbPath>.lock`, which the system
-releases when the process exits, also if it is killed.
+again afterwards. Both commands, and `fan speed <value>` and `fan mode <value>`, refuse to run while the daemon uses
+the same database (`dbPath`), and the daemon refuses to start while one of them runs: two processes would write to
+the same fans, and the daemon would keep using the old data. fan2go marks the database as in use with an advisory
+lock on the file `<dbPath>.lock`, which the system releases when the process exits, also if it is killed.
 
 The derived `maxPwm` is the lowest PWM value at which the fan reaches 98% of its peak RPM, so a fan that is at full
 speed at PWM 150 uses the whole curve range up to 150. For fans with a few speed levels it is the first value of the
