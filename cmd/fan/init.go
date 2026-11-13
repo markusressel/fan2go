@@ -60,13 +60,12 @@ measurement succeeds. Stop the fan2go daemon first: the command refuses to run w
 		// replaces the saved data only if it succeeds, and hands the fan back afterwards (also on errors and
 		// panics): the analysis leaves it in manual mode
 		_, err = fanController.RunInitializationAndRestore(ctx)
-		if err == nil {
-			ui.Success("Done!")
-			// print measured fan curve
-			curveCmd.Run(curveCmd, []string{})
+		if err != nil {
+			return err
 		}
-
-		return err
+		ui.Success("Done!")
+		// print measured fan curve
+		return curveCmd.RunE(curveCmd, []string{})
 	},
 }
 
