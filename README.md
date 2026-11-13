@@ -1230,6 +1230,43 @@ communication via websockets.
 A controller state has the fields `fanId`, `state` (the same states as the `fan2go_controller_state` metric),
 `since` (when the controller entered the state) and `error` (why it is in a failure state or stopped).
 
+#### Warnings
+
+| Endpoint     | Type | Description                                                  |
+|--------------|------|--------------------------------------------------------------|
+| `/warnings`  | GET  | Returns the current warnings of all fans, sensors and curves |
+
+Every fan, sensor and curve has a `warnings` list (empty if there are none) with the problems fan2go currently detects
+about it, besides logging them:
+
+```json
+"warnings": [
+  {
+    "code": "flatRpmCurve",
+    "message": "RPM stays at ~750 across the whole PWM range, so the fan doesn't react to PWM. ..."
+  }
+]
+```
+
+`code` is a stable identifier to match on, `message` is meant for humans. A warning is removed once its condition is
+gone. `/warnings` returns all of them in one list, each with the `kind` (`fan`, `sensor` or `curve`) and `id` of its
+item:
+
+```json
+[
+  {
+    "kind": "fan",
+    "id": "cpu_fan",
+    "code": "flatRpmCurve",
+    "message": "RPM stays at ~750 across the whole PWM range, so the fan doesn't react to PWM. ..."
+  }
+]
+```
+
+| Code           | Kind | Meaning                                                                        |
+|----------------|------|--------------------------------------------------------------------------------|
+| `flatRpmCurve` | fan  | The RPM doesn't change with PWM ([details](docs/fan-analysis.md#how-the-result-is-used)) |
+
 Sensors include their reading status: `lastReadingTime` (missing until the first successful reading),
 `consecutiveFailures`, `readFailures` and `stale`. Curves include the `error` and the time (`evaluatedAt`) of their
 last evaluation.

@@ -5,7 +5,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/markusressel/fan2go/internal/registry"
-	"github.com/qdm12/reprint"
+	"github.com/markusressel/fan2go/internal/warnings"
 )
 
 func registerFanEndpoints(rest *echo.Echo, reg *registry.Registry) {
@@ -21,16 +21,22 @@ func registerFanEndpoints(rest *echo.Echo, reg *registry.Registry) {
 
 // returns a list of all currently configured fans
 func getFans(c *echo.Context, reg *registry.Registry) error {
-	data := reprint.This(reg.SnapshotFans())
+	data, err := allWithWarnings(reg.SnapshotFans(), reg.Warnings(), warnings.KindFan)
+	if err != nil {
+		return err
+	}
 	return c.JSONPretty(http.StatusOK, data, indentationChar)
 }
 
 func getFan(c *echo.Context, reg *registry.Registry) error {
 	id := c.Param(urlParamId)
-	data, exists := reg.GetFan(id)
+	fan, exists := reg.GetFan(id)
 	if !exists {
 		return returnNotFound(c, id)
-	} else {
-		return c.JSONPretty(http.StatusOK, data, indentationChar)
 	}
+	data, err := withWarnings(fan, reg.Warnings(), warnings.KindFan, id)
+	if err != nil {
+		return err
+	}
+	return c.JSONPretty(http.StatusOK, data, indentationChar)
 }

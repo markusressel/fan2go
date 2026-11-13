@@ -9,5 +9,6 @@
   "lastReadingTime": "2024-01-02T03:04:05Z",
   "consecutiveFailures": 2,
   "readFailures": 2,
-  "stale": true
+  "stale": true,
+  "warnings": []
 }

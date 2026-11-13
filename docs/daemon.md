@@ -389,12 +389,25 @@ There are no metrics for failed fan RPM reads or PWM writes yet.
 ### REST API: read-only, local, off by default
 
 **Decision:** The REST API (`api.enabled`, default `127.0.0.1:9001`) serves `GET /alive`, `/fan`, `/fan/<id>`,
-`/sensor`, `/sensor/<id>`, `/curve`, `/curve/<id>`, `/controller` and `/controller/<fan id>`. It has no write
-endpoints: other methods on these paths get `405 Method Not Allowed`. There is no authentication.
+`/sensor`, `/sensor/<id>`, `/curve`, `/curve/<id>`, `/controller`, `/controller/<fan id>` and `/warnings`. It has
+no write endpoints: other methods on these paths get `405 Method Not Allowed`. There is no authentication.
 
 Besides their state, sensors show their reading status (`lastReadingTime`, `consecutiveFailures`, `readFailures`,
 `stale`), curves the result of their last evaluation (`error`, `evaluatedAt`), and `/controller` the state of each
 fan controller (`fanId`, `state`, `since`, `error`, see [fan-controller.md](fan-controller.md#controller-state)).
+
+Fans, sensors and curves also have a `warnings` list (always present, `[]` if empty) of `{"code", "message"}`
+entries: problems fan2go detected about the item that are otherwise only logged. `code` is a stable camelCase
+identifier for clients, `message` the human-readable text. `/warnings` lists all of them with the `kind` (`fan`,
+`sensor`, `curve`) and `id` of their item, so a client can show a count without fetching every item. The only warning
+so far is the fan warning `flatRpmCurve` (see [fan-analysis.md](fan-analysis.md#how-the-result-is-used)).
+
+The warnings are held in a `warnings.Store` of the registry, keyed by (kind, id, code). It is state, not history:
+setting a warning again replaces its message, and the code that detects a condition also clears it when the condition
+is gone (a fan controller clears the `flatRpmCurve` warning of its fan when `Run` starts and sets it again only if the
+curve data is flat). A config reload creates a new registry, so warnings of removed items disappear. The API adds the
+`warnings` field to the JSON of each item (`internal/api/warnings.go`), the items themselves don't know about it. The
+store is meant to also hold config-level warnings later (as a new kind).
 
 **Why:** It lets UI clients show the daemon's state. Without authentication, binding to localhost is the safe default.
 

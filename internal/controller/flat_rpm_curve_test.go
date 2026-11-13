@@ -9,6 +9,7 @@ import (
 
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/util"
+	"github.com/markusressel/fan2go/internal/warnings"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -73,6 +74,10 @@ func TestFanController_Run_FlatRpmCurve_WarnsOnce(t *testing.T) {
 			p.rpmData["fan"] = tt.curve
 			seedIdentityMappings(p)
 			controller := newInitTestController(p, fan)
+			store := warnings.NewStore()
+			// left over from an earlier Run: cleared when Run starts again
+			store.Set(warnings.KindFan, "fan", warnings.CodeFlatRpmCurve, "stale")
+			controller.SetWarnings(store)
 
 			// WHEN: Run loads the curve data
 			var err error
@@ -81,6 +86,15 @@ func TestFanController_Run_FlatRpmCurve_WarnsOnce(t *testing.T) {
 			// THEN
 			assert.ErrorIs(t, err, errNoManualMode)
 			assert.Equal(t, tt.wantWarnings, strings.Count(log, flatRpmCurveWarning), log)
+			if tt.wantWarnings > 0 {
+				fanWarnings := store.For(warnings.KindFan, "fan")
+				require.Len(t, fanWarnings, 1)
+				assert.Equal(t, warnings.CodeFlatRpmCurve, fanWarnings[0].Code)
+				assert.Contains(t, log, "Fan fan: "+fanWarnings[0].Message)
+				assert.NotEqual(t, "stale", fanWarnings[0].Message)
+			} else {
+				assert.Empty(t, store.All())
+			}
 		})
 	}
 }
@@ -107,4 +121,30 @@ func TestRunInitializationAndRestore_FlatRpmCurve_WarnsOnce(t *testing.T) {
 	assert.Contains(t, log, "Fan fan: RPM stays at ~753 across the whole PWM range")
 	// the boundaries before config overrides show the full range, not the lowest PWM with 98% of the peak RPM
 	assert.Contains(t, log, "Analysis boundaries detected (before config overrides): Start 1, Max 255")
+}
+
+// A Run that fails before it has the curve data (e.g. after a failed reload) must not keep the warning of an earlier
+// Run: the condition is unknown until the curve data is loaded again.
+func TestFanController_Run_ClearsFlatRpmCurveWarningOnStart(t *testing.T) {
+	setUpAnalysisTestConfig(t)
+	defer setUpInitTestConfig(true)()
+
+	// GIVEN: a warning of an earlier Run, and a database that can't be opened
+	fan := newAnalysisTestFan(util.NewFakeClock(time.Unix(1000, 0)))
+	p := &initFailingPersistence{fakePersistence: newFakePersistence()}
+	p.failInit.Store(true)
+	controller := newInitTestController(p, fan)
+	store := warnings.NewStore()
+	store.Set(warnings.KindFan, "fan", warnings.CodeFlatRpmCurve, "stale")
+	store.Set(warnings.KindFan, "other_fan", warnings.CodeFlatRpmCurve, "other fan")
+	controller.SetWarnings(store)
+
+	// WHEN
+	err := controller.Run(context.Background())
+
+	// THEN: only the warning of this fan is cleared
+	require.Error(t, err)
+	assert.Equal(t, []warnings.Entry{
+		{Kind: warnings.KindFan, ID: "other_fan", Code: warnings.CodeFlatRpmCurve, Message: "other fan"},
+	}, store.All())
 }

@@ -38,7 +38,8 @@
     "movingAvg": 3,
     "rpm": 500,
     "pwm": 50,
-    "rpmMovingAvg": 0
+    "rpmMovingAvg": 0,
+    "warnings": []
   },
   "file_fan": {
     "config": {
@@ -65,7 +66,8 @@
     "movingAvg": 12.5,
     "pwm": 100,
     "rpm": 1000,
-    "rpmMovingAvg": 0
+    "rpmMovingAvg": 0,
+    "warnings": []
   },
   "hwmon_fan": {
     "label": "hwmon_fan",
@@ -110,6 +112,12 @@
       "255": 1800
     },
     "rpm": 1200,
-    "pwm": 128
+    "pwm": 128,
+    "warnings": [
+      {
+        "code": "flatRpmCurve",
+        "message": "RPM stays at ~1800 across the whole PWM range."
+      }
+    ]
   }
 }

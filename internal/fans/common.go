@@ -390,23 +390,25 @@ func IsFlatRpmCurve(fan Fan, curveData map[int]float64) (flat bool, avgRpm float
 }
 
 // WarnIfFlatRpmCurve logs a warning if the RPM curve data attached to the fan is flat (see IsFlatRpmCurve), and
-// returns whether it is.
-func WarnIfFlatRpmCurve(fan Fan) bool {
+// returns whether it is and the warning message (without the fan id, empty if the curve isn't flat).
+func WarnIfFlatRpmCurve(fan Fan) (flat bool, message string) {
 	curveData := fan.GetFanRpmCurveData()
 	if curveData == nil {
-		return false
+		return false, ""
 	}
 	flat, avgRpm := IsFlatRpmCurve(fan, *curveData)
-	if flat {
-		pwmRange := "the full PWM range"
-		if configuredMaxPwm := fan.GetConfig().MaxPwm; configuredMaxPwm != nil {
-			pwmRange = fmt.Sprintf("the configured range (maxPwm %d)", *configuredMaxPwm)
-		}
-		ui.Warning("Fan %s: RPM stays at ~%.0f across the whole PWM range, so the fan doesn't react to PWM. "+
-			"Check the header (DC/PWM mode, BIOS fan setting, 3-pin fan on a PWM-only header). "+
-			"fan2go keeps controlling it with %s.", fan.GetId(), avgRpm, pwmRange)
+	if !flat {
+		return false, ""
 	}
-	return flat
+	pwmRange := "the full PWM range"
+	if configuredMaxPwm := fan.GetConfig().MaxPwm; configuredMaxPwm != nil {
+		pwmRange = fmt.Sprintf("the configured range (maxPwm %d)", *configuredMaxPwm)
+	}
+	message = fmt.Sprintf("RPM stays at ~%.0f across the whole PWM range, so the fan doesn't react to PWM. "+
+		"Check the header (DC/PWM mode, BIOS fan setting, 3-pin fan on a PWM-only header). "+
+		"fan2go keeps controlling it with %s.", avgRpm, pwmRange)
+	ui.Warning("Fan %s: %s", fan.GetId(), message)
+	return true, message
 }
 
 func copyIntPtr(value *int) *int {
