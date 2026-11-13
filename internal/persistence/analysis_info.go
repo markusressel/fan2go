@@ -27,6 +27,13 @@ type FanAnalysisInfo struct {
 	// analysis. nil if it wasn't measured (e.g. data saved by an older version, a fan that doesn't stop, or
 	// kickStart.mode isn't auto). It doesn't invalidate the analysis data when it changes.
 	BreakawayPwm *int `json:"breakawayPwm,omitempty"`
+	// TachIntervalMillis is the time (in milliseconds) between two updates of the RPM value the fan reports,
+	// measured during the breakaway measurement. nil if it wasn't measured. Used to time the kick start.
+	TachIntervalMillis *int64 `json:"tachIntervalMillis,omitempty"`
+	// SpinUpMillis is the time (in milliseconds) from writing the breakaway PWM value (once the fan reported it)
+	// to the first RPM reading that showed the fan spinning, when it started from standstill. nil if it wasn't
+	// measured. Used to time the kick start.
+	SpinUpMillis *int64 `json:"spinUpMillis,omitempty"`
 }
 
 // SaveFanAnalysisInfo saves the analysis info of the given fan, overwriting a saved one.

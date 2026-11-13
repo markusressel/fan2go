@@ -3,41 +3,80 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/ui"
+	"github.com/markusressel/fan2go/internal/util"
 )
 
 const (
-	// breakawayAttemptTimeout is the time a fan gets to start from standstill at a PWM value during the breakaway
-	// measurement
-	breakawayAttemptTimeout = 4 * time.Second
-	// breakawayStandstillReadings is the number of RPM readings in a row below the spin threshold after which a
-	// fan counts as stopped during the breakaway measurement
-	breakawayStandstillReadings = 4
-	// breakawayStandstillPause is the extra time a fan gets after it counts as stopped: a slowly coasting fan can
-	// read 0 RPM already, and would start more easily
-	breakawayStandstillPause = 2 * time.Second
+	// breakawayPollInterval is the time between two RPM readings during the breakaway measurement
+	breakawayPollInterval = 100 * time.Millisecond
+	// minBreakawayTryWindow is the shortest time a fan gets to start at a PWM value (after it reported the value).
+	// It covers the restart cycle of the locked-rotor protection of BLDC fans (drive ~0.5s, pause 2-5s).
+	minBreakawayTryWindow = 6 * time.Second
+	// breakawayTryWindowTachIntervals: a try lasts at least this many tach intervals
+	breakawayTryWindowTachIntervals = 3
+	// breakawayStandstillReadings is the minimum number of readings below the spin threshold, spanning at least
+	// minBreakawayStandstillSpan and two tach intervals, after which a fan counts as stopped
+	breakawayStandstillReadings = 3
+	minBreakawayStandstillSpan  = time.Second
+	// the pause after a fan counts as stopped is half its coast-down time (from the write until the RPM was below the
+	// spin threshold), within these bounds: a large fan coasts below its tach minimum for longer, and would start more
+	// easily while it still turns
+	minBreakawayStandstillPause = 2 * time.Second
+	maxBreakawayStandstillPause = 10 * time.Second
 	// defaultBreakawayStandstillTimeout is the longest wait for a fan to stop, if analysis.settleTimeout is 0
 	defaultBreakawayStandstillTimeout = 30 * time.Second
 	// breakawayCoarseSteps is the number of steps the coarse search of the breakaway measurement divides the
 	// distinct PWM values into. The refinement stops at a quarter of a step.
 	breakawayCoarseSteps = 16
+	// breakawayStartReadings is the number of readings in a row that must show the fan spinning to count a try as
+	// started (a single reading can be wrong)
+	breakawayStartReadings = 2
+	// minTachIntervalSamples is the number of intervals between RPM changes needed to measure the tach interval
+	minTachIntervalSamples = 3
 )
 
+// breakawayResult is the result of the breakaway measurement, nil fields weren't measured.
+type breakawayResult struct {
+	// Pwm is the lowest PWM value (pre-pwmMap) that started the fan from standstill
+	Pwm *int
+	// TachInterval is the median time between two changes of the reported RPM value
+	TachInterval *time.Duration
+	// SpinUp is the time from the readback of Pwm to the first spinning RPM reading, from standstill
+	SpinUp *time.Duration
+}
+
+// breakawayMeasurement keeps the observations of a breakaway measurement.
+type breakawayMeasurement struct {
+	analyzer *FanCurveAnalyzer
+	fan      fans.Fan
+	// times at which the reported RPM value changed
+	changeTimes []time.Time
+	lastRpm     int
+	haveLastRpm bool
+}
+
 // measureBreakawayPwm measures the lowest PWM value (pre-pwmMap) that starts the fan from standstill (the breakaway
-// PWM), which can be much higher than the start boundary (the lowest value that keeps a spinning fan turning).
-// startIdx is the index of the start boundary in distinct. It stops the fan, then tries the start boundary and every
-// breakawayCoarseSteps-th distinct value above it without stopping the fan in between, until one starts the fan
-// (spins within breakawayAttemptTimeout). Then it refines between the last value that didn't start the fan and the
-// first that did by bisection, from standstill each time, down to a quarter of a coarse step. Returns nil if the fan
-// doesn't stop (it spins at the lowest value, or doesn't stop within the settle timeout) or doesn't start at all.
-func (f *FanCurveAnalyzer) measureBreakawayPwm(ctx context.Context, fan fans.Fan, distinct []int, startIdx int) (*int, error) {
+// PWM), which can be much higher than the start boundary (the lowest value that keeps a spinning fan turning), and on
+// the way the tach update interval and the spin-up delay of the fan. startIdx is the index of the start boundary in
+// distinct.
+//
+// It stops the fan, then tries the start boundary and every breakawayCoarseSteps-th distinct value above it without
+// stopping the fan in between, until one starts the fan. Then it bisects between the last value that didn't start
+// the fan and the first that did, from standstill each time, down to a quarter of a coarse step, and confirms the
+// result from standstill (moving up if that fails). Each try starts once the fan reports the written value, and lasts
+// max(minBreakawayTryWindow, 3 tach intervals). The result has no Pwm if the fan doesn't stop (it spins at the lowest
+// value, or doesn't stop within the settle timeout) or doesn't start at all.
+func (f *FanCurveAnalyzer) measureBreakawayPwm(ctx context.Context, fan fans.Fan, distinct []int, startIdx int) (result breakawayResult, err error) {
+	m := &breakawayMeasurement{analyzer: f, fan: fan}
 	if startIdx <= 0 || startIdx >= len(distinct) {
 		ui.Info("Fan %s: the fan spins at its lowest PWM value, skipping the breakaway measurement", fan.GetId())
-		return nil, nil
+		return result, nil
 	}
 	ui.Info("Fan %s: Measuring the breakaway PWM value (the lowest PWM value that starts the fan from standstill)...", fan.GetId())
 
@@ -46,25 +85,34 @@ func (f *FanCurveAnalyzer) measureBreakawayPwm(ctx context.Context, fan fans.Fan
 	tolerance := max(1, step/4)
 	stopTarget := distinct[0]
 
-	stopped, err := f.stopAndWaitForStandstill(ctx, fan, stopTarget)
+	defer func() {
+		result.TachInterval = m.tachInterval()
+	}()
+
+	stopped, err := m.stopAndWaitForStandstill(ctx, stopTarget)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	if !stopped {
 		ui.Warning("Fan %s: the fan didn't stop at PWM %d, skipping the breakaway measurement", fan.GetId(), stopTarget)
-		return nil, nil
+		return result, nil
 	}
 
 	// the start boundary is the lowest value that keeps the fan spinning: the value below it can't start it
 	lastFailIdx := startIdx - 1
 	firstStartIdx := -1
-	for idx := startIdx; ; idx = min(idx+step, lastIdx) {
-		started, err := f.tryStartFromStandstill(ctx, fan, distinct[idx])
+	// fromStandstill[idx]: idx started the fan from standstill, with this spin-up delay
+	fromStandstill := map[int]time.Duration{}
+	for idx, first := startIdx, true; ; idx, first = min(idx+step, lastIdx), false {
+		started, spinUp, err := m.tryStart(ctx, distinct[idx])
 		if err != nil {
-			return nil, err
+			return result, err
 		}
 		if started {
 			firstStartIdx = idx
+			if first {
+				fromStandstill[idx] = spinUp
+			}
 			break
 		}
 		lastFailIdx = idx
@@ -74,101 +122,194 @@ func (f *FanCurveAnalyzer) measureBreakawayPwm(ctx context.Context, fan fans.Fan
 	}
 	if firstStartIdx < 0 {
 		ui.Warning("Fan %s: the fan didn't start from standstill at any PWM value, the breakaway PWM value is unknown", fan.GetId())
-		return nil, nil
+		return result, nil
 	}
 
-	for firstStartIdx-lastFailIdx > tolerance {
-		stopped, err := f.stopAndWaitForStandstill(ctx, fan, stopTarget)
-		if err != nil {
-			return nil, err
-		}
-		if !stopped {
-			// keep the coarse result, it started the fan
+	// refine from standstill, then confirm the result from standstill: in the coarse ascent, a fan that started late
+	// in one try is credited to the next one
+	for {
+		if _, ok := fromStandstill[firstStartIdx]; ok && firstStartIdx-lastFailIdx <= tolerance {
 			break
 		}
-		mid := (lastFailIdx + firstStartIdx) / 2
-		started, err := f.tryStartFromStandstill(ctx, fan, distinct[mid])
+		stopped, err := m.stopAndWaitForStandstill(ctx, stopTarget)
 		if err != nil {
-			return nil, err
+			return result, err
 		}
-		if started {
-			firstStartIdx = mid
-		} else {
-			lastFailIdx = mid
+		if !stopped {
+			ui.Warning("Fan %s: the fan didn't stop again at PWM %d, using PWM %d as the breakaway PWM value",
+				fan.GetId(), stopTarget, distinct[firstStartIdx])
+			break
+		}
+		probe := firstStartIdx
+		if firstStartIdx-lastFailIdx > tolerance {
+			probe = (lastFailIdx + firstStartIdx) / 2
+		}
+		started, spinUp, err := m.tryStart(ctx, distinct[probe])
+		if err != nil {
+			return result, err
+		}
+		switch {
+		case started:
+			firstStartIdx = probe
+			fromStandstill[probe] = spinUp
+		case probe == firstStartIdx && probe == lastIdx:
+			ui.Warning("Fan %s: the fan didn't start from standstill at any PWM value, the breakaway PWM value is unknown", fan.GetId())
+			return result, nil
+		case probe == firstStartIdx:
+			// the coarse result doesn't start the fan from standstill: move up
+			lastFailIdx = probe
+			firstStartIdx = min(probe+tolerance, lastIdx)
+		default:
+			lastFailIdx = probe
 		}
 	}
 
 	breakaway := distinct[firstStartIdx]
-	ui.Info("Fan %s: breakaway PWM value (start from standstill) detected at PWM %d", fan.GetId(), breakaway)
-	return &breakaway, nil
+	result.Pwm = &breakaway
+	if spinUp, ok := fromStandstill[firstStartIdx]; ok {
+		result.SpinUp = &spinUp
+	}
+	ui.Info("Fan %s: breakaway PWM value (start from standstill) detected at PWM %d (spin-up delay %s)",
+		fan.GetId(), breakaway, util.Coerce(fromStandstill[firstStartIdx], 0, time.Hour).Round(time.Millisecond))
+	return result, nil
 }
 
-// stopAndWaitForStandstill sets the fan to stopTarget and waits until breakawayStandstillReadings RPM readings in a
-// row are below the spin threshold, plus breakawayStandstillPause. Returns false if the fan doesn't stop within
-// analysis.settleTimeout (defaultBreakawayStandstillTimeout if that is 0).
-func (f *FanCurveAnalyzer) stopAndWaitForStandstill(ctx context.Context, fan fans.Fan, stopTarget int) (bool, error) {
-	if err := f.fanController.setTargetPwm(stopTarget); err != nil {
+// read reads the RPM of the fan and records when the reported value changes.
+func (m *breakawayMeasurement) read() (int, error) {
+	rpm, err := m.fan.GetRpm()
+	if err != nil {
+		ui.Warning("Fan %s: Cannot read RPM value: %v", m.fan.GetId(), err)
+		return 0, err
+	}
+	if m.haveLastRpm && rpm != m.lastRpm {
+		m.changeTimes = append(m.changeTimes, m.analyzer.clock().Now())
+	}
+	m.lastRpm = rpm
+	m.haveLastRpm = true
+	return rpm, nil
+}
+
+// tachInterval returns the median time between two changes of the reported RPM value, nil if there are fewer than
+// minTachIntervalSamples intervals. A value that doesn't change at an update makes an interval longer, the median
+// ignores a few of those.
+func (m *breakawayMeasurement) tachInterval() *time.Duration {
+	if len(m.changeTimes) < minTachIntervalSamples+1 {
+		return nil
+	}
+	gaps := make([]time.Duration, 0, len(m.changeTimes)-1)
+	for i := 1; i < len(m.changeTimes); i++ {
+		gaps = append(gaps, m.changeTimes[i].Sub(m.changeTimes[i-1]))
+	}
+	sort.Slice(gaps, func(i, j int) bool { return gaps[i] < gaps[j] })
+	median := gaps[len(gaps)/2]
+	return &median
+}
+
+// tachIntervalOrDefault returns the tach interval measured so far, defaultTachInterval if it is unknown.
+func (m *breakawayMeasurement) tachIntervalOrDefault() time.Duration {
+	if interval := m.tachInterval(); interval != nil {
+		return min(*interval, maxKickTimingValue)
+	}
+	return defaultTachInterval
+}
+
+// stopAndWaitForStandstill sets the fan to stopTarget and waits until it counts as stopped (see
+// breakawayStandstillReadings), plus a pause of half its coast-down time. Returns false if the fan doesn't stop
+// within analysis.settleTimeout (defaultBreakawayStandstillTimeout if that is 0).
+func (m *breakawayMeasurement) stopAndWaitForStandstill(ctx context.Context, stopTarget int) (bool, error) {
+	if err := m.analyzer.fanController.setTargetPwm(stopTarget); err != nil {
 		return false, fmt.Errorf("unable to set PWM (target %d): %w", stopTarget, err)
 	}
-	clock := f.clock()
+	clock := m.analyzer.clock()
+	start := clock.Now()
 	timeout := configuration.CurrentConfig.Analysis.SettleTimeout
 	if timeout <= 0 {
 		timeout = defaultBreakawayStandstillTimeout
 	}
-	deadline := clock.Now().Add(timeout)
+	deadline := start.Add(timeout)
+	var stoppedSince time.Time
 	stoppedReadings := 0
-	for stoppedReadings < breakawayStandstillReadings {
+	for {
 		if clock.Now().After(deadline) {
 			return false, nil
 		}
-		if err := sleepWithContext(ctx, clock, f.sampleInterval()); err != nil {
+		if err := sleepWithContext(ctx, clock, breakawayPollInterval); err != nil {
 			return false, err
 		}
-		rpm, err := fan.GetRpm()
+		rpm, err := m.read()
 		if err != nil {
-			ui.Warning("Fan %s: Cannot read RPM value: %v", fan.GetId(), err)
 			stoppedReadings = 0
 			continue
 		}
+		now := clock.Now()
 		if fans.IsRpmLikelySpinning(float64(rpm)) {
 			stoppedReadings = 0
-		} else {
-			stoppedReadings++
-		}
-	}
-	return true, sleepWithContext(ctx, clock, breakawayStandstillPause)
-}
-
-// tryStartFromStandstill sets the fan to pwm (pre-pwmMap) and returns true as soon as an RPM reading shows it
-// spinning, false if none does within breakawayAttemptTimeout.
-func (f *FanCurveAnalyzer) tryStartFromStandstill(ctx context.Context, fan fans.Fan, pwm int) (bool, error) {
-	if err := f.fanController.setTargetPwm(pwm); err != nil {
-		return false, fmt.Errorf("unable to set PWM (target %d): %w", pwm, err)
-	}
-	clock := f.clock()
-	deadline := clock.Now().Add(breakawayAttemptTimeout)
-	for clock.Now().Before(deadline) {
-		if err := sleepWithContext(ctx, clock, f.sampleInterval()); err != nil {
-			return false, err
-		}
-		rpm, err := fan.GetRpm()
-		if err != nil {
-			ui.Warning("Fan %s: Cannot read RPM value: %v", fan.GetId(), err)
 			continue
 		}
-		if fans.IsRpmLikelySpinning(float64(rpm)) {
-			ui.Debug("Fan %s: started from standstill at PWM %d (%d RPM)", fan.GetId(), pwm, rpm)
-			return true, nil
+		if stoppedReadings == 0 {
+			stoppedSince = now
+		}
+		stoppedReadings++
+		span := max(minBreakawayStandstillSpan, 2*m.tachIntervalOrDefault())
+		if stoppedReadings >= breakawayStandstillReadings && now.Sub(stoppedSince) >= span {
+			break
 		}
 	}
-	ui.Debug("Fan %s: didn't start from standstill at PWM %d within %s", fan.GetId(), pwm, breakawayAttemptTimeout)
-	return false, nil
+	coastDown := stoppedSince.Sub(start)
+	pause := util.Coerce(coastDown/2, minBreakawayStandstillPause, maxBreakawayStandstillPause)
+	return true, sleepWithContext(ctx, clock, pause)
 }
 
-// sampleInterval returns the time between two RPM readings while waiting for the fan.
-func (f *FanCurveAnalyzer) sampleInterval() time.Duration {
-	if f.settleSampleInterval <= 0 {
-		return defaultSettleSampleInterval
+// tryStart sets the fan to pwm (pre-pwmMap), waits until the fan reports it (up to fanResponseDelay), and returns
+// true and the time from then to the first spinning RPM reading, if breakawayStartReadings readings in a row show the
+// fan spinning, the first one within max(minBreakawayTryWindow, 3 tach intervals).
+func (m *breakawayMeasurement) tryStart(ctx context.Context, pwm int) (bool, time.Duration, error) {
+	controller := m.analyzer.fanController
+	if err := controller.setTargetPwm(pwm); err != nil {
+		return false, 0, fmt.Errorf("unable to set PWM (target %d): %w", pwm, err)
 	}
-	return f.settleSampleInterval
+	expectedPwm := controller.getReportedPwmAfterApplyingPwm(controller.applyPwmMapToTarget(pwm))
+	if _, matched, _, err := controller.waitForReadback(ctx, func(reported int) bool { return reported == expectedPwm },
+		configuration.CurrentConfig.FanResponseDelay.Duration()); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return false, 0, ctxErr
+		}
+		ui.Debug("Fan %s: unable to read back PWM %d: %v", m.fan.GetId(), pwm, err)
+	} else if !matched {
+		ui.Debug("Fan %s: the fan doesn't report PWM %d (yet), trying it anyway", m.fan.GetId(), pwm)
+	}
+
+	clock := m.analyzer.clock()
+	start := clock.Now()
+	window := max(minBreakawayTryWindow, breakawayTryWindowTachIntervals*m.tachIntervalOrDefault())
+	deadline := start.Add(window)
+	spinning := 0
+	var spinUp time.Duration
+	for clock.Now().Before(deadline) || spinning > 0 {
+		if err := sleepWithContext(ctx, clock, breakawayPollInterval); err != nil {
+			return false, 0, err
+		}
+		rpm, err := m.read()
+		if err != nil {
+			continue
+		}
+		if !fans.IsRpmLikelySpinning(float64(rpm)) {
+			spinning = 0
+			if !clock.Now().Before(deadline) {
+				break
+			}
+			continue
+		}
+		if spinning == 0 {
+			spinUp = clock.Now().Sub(start)
+		}
+		spinning++
+		// a single reading can be wrong: the fan started if breakawayStartReadings readings in a row show it spinning
+		if spinning >= breakawayStartReadings {
+			ui.Debug("Fan %s: started from standstill at PWM %d (%d RPM) after %s", m.fan.GetId(), pwm, rpm, spinUp)
+			return true, spinUp, nil
+		}
+	}
+	ui.Debug("Fan %s: didn't start from standstill at PWM %d within %s", m.fan.GetId(), pwm, window)
+	return false, 0, nil
 }

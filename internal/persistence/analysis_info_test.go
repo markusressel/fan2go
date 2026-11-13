@@ -104,10 +104,31 @@ func TestPersistence_LoadFanAnalysisInfo_RecordWithoutBreakawayPwm(t *testing.T)
 	// WHEN
 	loaded, err := p.LoadFanAnalysisInfo("cpu")
 
-	// THEN: valid, the breakaway PWM is not measured
+	// THEN: valid, the breakaway PWM and the kick start timing are not measured
 	require.NoError(t, err)
 	assert.Nil(t, loaded.BreakawayPwm)
+	assert.Nil(t, loaded.TachIntervalMillis)
+	assert.Nil(t, loaded.SpinUpMillis)
 	require.NotNil(t, loaded.ReadbackDelayMillis)
+}
+
+func TestPersistence_FanAnalysisInfo_KickStartTiming(t *testing.T) {
+	// GIVEN
+	p, dbPath := newTempPersistence(t)
+	breakaway := 116
+	tach := int64(1000)
+	spinUp := int64(1800)
+	info := FanAnalysisInfo{BreakawayPwm: &breakaway, TachIntervalMillis: &tach, SpinUpMillis: &spinUp}
+
+	// WHEN
+	require.NoError(t, p.SaveFanAnalysisInfo("cpu", info))
+	loaded, err := p.LoadFanAnalysisInfo("cpu")
+
+	// THEN
+	require.NoError(t, err)
+	assert.Equal(t, info, loaded)
+	assert.Equal(t, `{"quirk":"","quirkVersion":0,"breakawayPwm":116,"tachIntervalMillis":1000,"spinUpMillis":1800}`,
+		string(getRaw(t, dbPath, BucketFanAnalysisInfo, "cpu")))
 }
 
 func TestPersistence_ReplaceFanAnalysisData(t *testing.T) {

@@ -91,11 +91,13 @@ func (f *FanCurveAnalyzer) RunInitializationSequence(ctx context.Context) (rpmCu
 	// right after the start boundary: the fan runs slowly, so it stops quickly
 	if fan.GetConfig().GetKickStart().Mode == configuration.KickStartAuto {
 		breakawayStarted := clock.Now()
-		breakawayPwm, err := f.measureBreakawayPwm(ctx, fan, distinct, startIdx)
+		breakaway, err := f.measureBreakawayPwm(ctx, fan, distinct, startIdx)
 		if err != nil {
 			return nil, err
 		}
-		f.fanController.measuredBreakawayPwm = breakawayPwm
+		f.fanController.measuredBreakawayPwm = breakaway.Pwm
+		f.fanController.measuredTachInterval = breakaway.TachInterval
+		f.fanController.measuredSpinUpDelay = breakaway.SpinUp
 		ui.Info("Fan %s: Breakaway measurement finished in %s", fan.GetId(), clock.Now().Sub(breakawayStarted).Round(time.Millisecond))
 	}
 

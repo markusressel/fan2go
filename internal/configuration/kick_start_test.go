@@ -11,10 +11,10 @@ import (
 )
 
 func TestFanConfig_GetKickStart_Defaults(t *testing.T) {
-	// no kickStart: mode auto, default duration
+	// no kickStart: mode auto, duration 0 (derived)
 	kick := FanConfig{}.GetKickStart()
 	assert.Equal(t, KickStartAuto, kick.Mode)
-	assert.Equal(t, DefaultKickStartDuration, kick.Duration)
+	assert.Zero(t, kick.Duration)
 	assert.Nil(t, kick.Pwm)
 
 	// configured values are kept, the pwm is a copy

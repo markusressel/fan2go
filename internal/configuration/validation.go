@@ -863,9 +863,15 @@ func validateKickStart(fanConfig FanConfig) error {
 		if fanConfig.MaxPwm != nil && pwm > *fanConfig.MaxPwm {
 			return fmt.Errorf("fan %s: kickStart.pwm (%d) must be <= maxPwm (%d)", fanConfig.ID, pwm, *fanConfig.MaxPwm)
 		}
-		if kick.Mode != KickStartFixed {
-			ui.Warning("fan %s: kickStart.pwm is only used with kickStart.mode: %s. With mode auto, set startPwm to "+
-				"the PWM value the fan needs to start from standstill instead", fanConfig.ID, KickStartFixed)
+		if kick.Mode == KickStartOff {
+			ui.Warning("fan %s: kickStart.pwm has no effect with kickStart.mode: %s", fanConfig.ID, KickStartOff)
+		}
+		// the scaled target is at least minPwm (derived: startPwm), and only a kick above the target is sent
+		if floor := fanConfig.MinPwm; floor != nil && pwm <= *floor {
+			ui.Warning("fan %s: kickStart.pwm (%d) is not above minPwm (%d), so the fan is never kicked", fanConfig.ID, pwm, *floor)
+		} else if floor := fanConfig.StartPwm; fanConfig.MinPwm == nil && floor != nil && pwm <= *floor {
+			ui.Warning("fan %s: kickStart.pwm (%d) is not above startPwm (%d), which is also minPwm, so the fan is "+
+				"never kicked", fanConfig.ID, pwm, *floor)
 		}
 	} else if kick.Mode == KickStartFixed {
 		return fmt.Errorf("fan %s: kickStart.mode: %s requires kickStart.pwm", fanConfig.ID, KickStartFixed)
@@ -875,6 +881,10 @@ func validateKickStart(fanConfig FanConfig) error {
 	}
 	if kick.Duration > MaxKickStartDuration {
 		return fmt.Errorf("fan %s: kickStart.duration must be <= %s, got %s", fanConfig.ID, MaxKickStartDuration, kick.Duration)
+	}
+	if kick.Duration > 0 && kick.Duration < MinKickStartDuration {
+		ui.Warning("fan %s: kickStart.duration (%s) is shorter than %s, a kick is held for %s", fanConfig.ID,
+			kick.Duration, MinKickStartDuration, MinKickStartDuration)
 	}
 	return nil
 }

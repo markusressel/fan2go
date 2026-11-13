@@ -153,8 +153,9 @@ const (
 type KickStartMode string
 
 const (
-	// KickStartAuto kicks fans whose RPM sensor works at a PWM value learned from the fan analysis (or a
-	// default), and raises it while the fan doesn't start. Fans without a working RPM sensor are not kicked.
+	// KickStartAuto supervises fans whose RPM sensor works when they start from standstill, kicks them at a PWM
+	// value learned from the fan analysis (or a default), and raises it while the fan doesn't start. Fans without a
+	// working RPM sensor are only kicked if a kick value is configured (kickStart.pwm, or startPwm above minPwm).
 	KickStartAuto KickStartMode = "auto"
 	// KickStartFixed kicks the fan at the configured pwm, also fans without an RPM sensor.
 	KickStartFixed KickStartMode = "fixed"
@@ -163,8 +164,8 @@ const (
 )
 
 const (
-	// DefaultKickStartDuration is the default of kickStart.duration
-	DefaultKickStartDuration = SecondsOrDuration(5 * time.Second)
+	// MinKickStartDuration is the shortest time a kick is held: a shorter kickStart.duration is raised to it
+	MinKickStartDuration = SecondsOrDuration(time.Second)
 	// MaxKickStartDuration is the longest kickStart.duration that is accepted
 	MaxKickStartDuration = SecondsOrDuration(60 * time.Second)
 )
@@ -175,15 +176,16 @@ const (
 type KickStartConfig struct {
 	// Mode is auto (default), fixed or off.
 	Mode KickStartMode `json:"mode,omitempty"`
-	// Pwm is the PWM value (before the pwmMap) of the kick of mode fixed (required there, ignored otherwise).
-	// Mode auto uses a configured startPwm instead, see docs/fan-controller.md.
+	// Pwm is the PWM value (before the pwmMap) of the kick. Required for mode fixed. With mode auto, it is the first
+	// kick value (raised if it doesn't start the fan), and makes auto kick fans without a working RPM sensor.
 	Pwm *int `json:"pwm,omitempty"`
-	// Duration is the longest time a kick is held (0: DefaultKickStartDuration). With a working RPM sensor, the kick
-	// ends as soon as the fan spins. Without one, it is held this long. A plain number is seconds.
+	// Duration (0: derived) is, with a working RPM sensor, the time after which a kick that didn't start the fan
+	// counts as failed (at least the time derived from the measured timing of the fan, and at least 4s). Without
+	// one, the time a kick is held (default 3s, at least 1s). A plain number is seconds.
 	Duration SecondsOrDuration `json:"duration,omitempty"`
 }
 
-// GetKickStart returns the kickStart config of the fan with the defaults filled in (mode and duration).
+// GetKickStart returns the kickStart config of the fan with the default mode filled in.
 func (c FanConfig) GetKickStart() KickStartConfig {
 	result := KickStartConfig{}
 	if c.KickStart != nil {
@@ -195,9 +197,6 @@ func (c FanConfig) GetKickStart() KickStartConfig {
 	}
 	if result.Mode == "" {
 		result.Mode = KickStartAuto
-	}
-	if result.Duration <= 0 {
-		result.Duration = DefaultKickStartDuration
 	}
 	return result
 }
