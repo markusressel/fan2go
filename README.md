@@ -1443,7 +1443,8 @@ starts, a fan that stands still is kicked after a few seconds, once two readings
 
 If a fan stops again at its target right after a kick made it spin, the target is too low to keep it spinning: fan2go
 kicks it once more (a bit higher), and if it stops again, it warns that `minPwm` is too low (raise it, or set
-`neverStop: true`) instead of kicking it louder and louder.
+`neverStop: true`) instead of kicking it louder and louder. It doesn't kick the fan at that target again until it
+restarts or reloads its config.
 
 With `kickStart.mode: auto` (the default), the kick uses `kickStart.pwm` or a configured `startPwm` if set, else the
 PWM value the fan analysis measured to start the fan from standstill, plus a small margin. If the kick value isn't

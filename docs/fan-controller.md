@@ -498,7 +498,7 @@ How a start is supervised:
 - **Kick right away** if a direct RPM reading and the last 2 samples of the RPM monitor all show standstill (below
   50 RPM, `fans.IsRpmLikelySpinning`) and the kick value is above the target. At the first update of a run, the
   monitor usually has only one sample: the start is watched instead, and a fan that stands still when fan2go starts
-  is kicked about 3–5 s later.
+  is kicked about 3–6 s later.
 - **Otherwise the target is set and watched** (`kickPhaseWatching`): a single reading can be stale (a driver that
   caches the tach value), show a coasting fan, or be garbage (e.g. another program reading the same chip at the same
   time: one reading of all channels was wrong, 57 RPM for a fan at 800 RPM). If 2 samples in a row, taken after the
@@ -518,8 +518,11 @@ How a start is supervised:
   configured `minPwm` that is too low). It gets one more kick in this start, one step higher (`mode: fixed`: at the
   same value). If the fan then keeps spinning, `mode: auto` uses that value for later starts. If it stops again, the
   start ends, and fan2go warns once per run that the target is below what keeps the fan spinning (raise `minPwm`, or
-  set `neverStop: true`). Neither counts as a failed kick, raises the kick value by itself, or disables the kick
-  start: a too-low target costs at most 2 kicks per start, never an escalation to full speed.
+  set `neverStop: true`). Starts at that target or below aren't supervised for the rest of the run (`tooLowTarget`,
+  kept across an error restart of the controller, reset by a reload); a higher target, e.g. after `minPwm` was raised
+  or the `neverStop` floor rose, is supervised again. Neither counts as a failed kick, raises the kick value by
+  itself, or disables the kick start: a too-low target costs at most 2 kicks per run, never an escalation to full
+  speed.
 - A kick that didn't start the fan counts as failed after `kickTimeout`, and only if 2 samples in a row show the fan
   standing still and reading the RPM doesn't fail. While the samples can't judge the kick (reading the RPM fails, or
   they disagree), it is held, but at most `3 × kickTimeout`: then the fan gets its target unjudged, like a fan
@@ -530,10 +533,13 @@ How a start is supervised:
 
 The RPM monitor stores each new reading as one immutable sample (`rpmSample`: value, time, the number of samples in
 a row with the same state, the time of the previous one), so the update loop never mixes the value of one reading
-with the time of another. A reading that repeats the value of the last sample within 3/4 of the tach interval is
-not a new sample: a driver that caches the RPM value reports the same sample (also a wrong one) again. Samples are
-judged by the time they were taken, not by their number: a sample taken before the fan could react doesn't count.
-Samples taken between two updates count too (an update loop slower than the RPM monitor).
+with the time of another. A reading other than 0 that repeats the value of the last sample within 3/4 of the tach
+interval (at least 2.5 s, at most 5 s) is not a new sample: a driver that caches the RPM value reports the same
+sample (also a wrong one) again, while the value of a spinning fan changes from one tach update to the next. A
+reading of 0 is always a new sample, so a stopped fan is seen at once, also with a slow tach. Samples are judged by
+the time they were taken, not by their number: a sample taken before the fan could react doesn't count (for a
+standstill verdict, the last sample must be taken after `responseDelay`, the one before after `responseDelay -
+tachInterval`). Samples taken between two updates count too (an update loop slower than the RPM monitor).
 
 Timing (derived from what the analysis measured, see
 [fan-analysis.md](fan-analysis.md#measure-the-breakaway-pwm-value); defaults for data without it):
@@ -625,8 +631,9 @@ users whose fan stands still when fan2go takes over.
 **Trade-offs**: A kick ends after two RPM readings that show the fan spinning, so the fan is briefly faster than its
 target (1–3 s at the kick value). A kick that fails costs `kickTimeout` (4–5 s with the defaults) per step: from a
 measured value that is too low, the fan starts a few steps later. A start whose first reading isn't clearly standstill
-is watched first, so a fan that really stands still is kicked one response delay later (about 3–5 s). Every start is
-supervised for about `coastDown + responseDelay + 2 × tachInterval` (10 s with the defaults); the stall checks wait
+is watched first, so a fan that really stands still is kicked one response delay later (about 3–6 s). Every start is
+supervised for about `coastDown + responseDelay + 2 × tachInterval` (about 10 s with the defaults), at most
+`coastDown + 2 × watch window` (15 s with the defaults) if the readings don't confirm it; the stall checks wait
 until then. Without a
 measured value, the first kick is a guess: it may be louder than needed, or fail and be raised. The RPM is read
 directly once per possible start (a command for cmd fans). With `mode: auto`, the analysis takes longer (see
