@@ -109,6 +109,12 @@ fans:
     maxPwm: 255
     # Note: minPwm, startPwm and maxPwm must be in [0..255], and minPwm and startPwm
     #       must not be greater than maxPwm.
+    # (Optional) How fan2go starts this fan from standstill (see README, "Kick start from standstill").
+    # Modes: auto (default) | fixed (requires pwm) | off
+    # kickStart:
+    #   mode: auto
+    #   pwm: 120
+    #   duration: 5s
     # (Optional) Configure how fan2go maps the internal [0..255] PWM range to
     # hardware-specific PWM values. If omitted, fan2go auto-detects this during
     # fan initialization.
