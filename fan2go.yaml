@@ -181,6 +181,16 @@ fans:
         enabled: true
         # (Optional) Throttle duration for the execution of this check.
         throttleDuration: 10s
+      # (Optional) Control the behavior of the "fanStalled" sanity check
+      # This check warns (and notifies) once when a fan without neverStop doesn't spin (avg. RPM < 50),
+      # although fan2go has set a PWM value of at least its minPwm for a few RPM polling periods.
+      # It only applies to fans with an RPM sensor whose tach has been seen working (RPM >= 50 in the
+      # fan curve data, or since fan2go started controlling the fan or reloaded its config).
+      # fan2go doesn't change the PWM value because of it.
+      # Default: true
+      fanStalled:
+        # (Optional) Whether to enable this check or not
+        enabled: true
 
   - id: in_front
     hwmon:

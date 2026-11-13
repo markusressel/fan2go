@@ -126,6 +126,16 @@ handled with the regular config:
   BIOS keeps changing the speed until its control is disabled (e.g. with `dell-bios-fan-control`).
 - **AMD GPUs (`amdgpu`)**: the reported PWM may not follow the written value (#148, #196). Use
   `setPwmToGetPwmMap: identity` and disable the `pwmValueChangedByThirdParty` sanity check.
+  The zero RPM mode of newer GPUs (`gpu_od/fan_ctrl/fan_zero_rpm_enable`) doesn't apply in manual mode, so the stall
+  check (`sanityCheck.fanStalled`) needs no opt-out for it. In the kernel tree the registry is pinned to,
+  `pwm1_enable=1` switches off the firmware fan control (`smu_v13_0_set_fan_control_mode` calls
+  `smu_v13_0_auto_fan_control(smu, 0)`), and a `pwm1` write programs a static duty cycle into the fan controller
+  (`smu_v13_0_set_fan_speed_pwm`, `FDO_PWM_MODE_STATIC`). The zero RPM setting is only a value in the overdrive table
+  of the firmware's own fan control (`FanZeroRpmEnable`). Older GPUs (`smu7_thermal.c`) enable zero RPM only when they
+  start the firmware fan control, and stop it on a `pwm1` write. SMU 14.0.2 GPUs have no writable `pwm1`.
+  Sources: [`smu_v13_0.c` `smu_v13_0_set_fan_speed_pwm`](https://github.com/torvalds/linux/blob/ee83899302a0457a3ba47464a13e8682bd7ba27d/drivers/gpu/drm/amd/pm/swsmu/smu13/smu_v13_0.c#L972),
+  [`smu_v13_0_set_fan_control_mode`](https://github.com/torvalds/linux/blob/ee83899302a0457a3ba47464a13e8682bd7ba27d/drivers/gpu/drm/amd/pm/swsmu/smu13/smu_v13_0.c#L1001),
+  [`smu7_thermal.c`](https://github.com/torvalds/linux/blob/ee83899302a0457a3ba47464a13e8682bd7ba27d/drivers/gpu/drm/amd/pm/powerplay/hwmgr/smu7_thermal.c#L176), [`amdgpu_pm.c` `pwm1`](https://github.com/torvalds/linux/blob/ee83899302a0457a3ba47464a13e8682bd7ba27d/drivers/gpu/drm/amd/pm/amdgpu_pm.c#L3069).
 - **Corsair Commander Pro, fans that don't stop at 0 %** (#316): this depends on the fan. Set `minPwm` or a `pwmMap`
   so that stopping writes a value that the fan reacts to.
 - **Out-of-tree NCT6687D driver** (`nct6687`): older versions cached register values for 1 s (#272, #358). The

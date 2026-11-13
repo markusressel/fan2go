@@ -25,7 +25,8 @@ polling and staleness in [sensors.md](sensors.md), and curves and the curve eval
   run.Group:                                                          clamp, scale to [minPwm..maxPwm]
     RPM monitor goroutine (every rpmPollingRate)                      neverStop floor + stall detection
       measureRpm -> exponential moving average                        setTargetPwm -> pwmMap -> fan.SetPwm
-    update loop goroutine (startupUpdateDelay 1s, then per cycle)     handlePwmWriteResult
+    update loop goroutine (startupUpdateDelay 1s, then per cycle)     checkStall (fans without neverStop)
+                                                                      handlePwmWriteResult
   restoreControlModeOnce on every exit path
 ```
 
@@ -37,7 +38,8 @@ Main types and state:
   fan2go controls the fan, the snapshot is also saved in the database (see below).
 - `lastTarget` is the last target fan2go wrote, before the `pwmMap`. `lastSetPwm` is the raw value after the
   `pwmMap`, exposed to statistics through `GetLastSetPwm`.
-- `minPwmOffset`, `pwmFloorSetAt`, `rpmAvgSeeded` (stall detection); `sensorFailureAction`, `pwmWriteFailures`,
+- `minPwmOffset`, `pwmFloorSetAt`, `rpmAvgSeeded` (stall detection); `stallCheckSince`, `stallCheckTarget`,
+  `stallReported`, `lastRpmReading`, `rpmSpinSeen`, `rpmReadFailing` (stall check of fans without `neverStop`); `sensorFailureAction`, `pwmWriteFailures`,
   `thirdPartyPwmChanges` (failure states of the update loop).
 - `clock` (`util.Clock`) is the time source for all waits, tickers and timestamps.
 
@@ -411,6 +413,55 @@ control algorithm (low-pass plus deadband) keeps the target constant while the c
 is applied after the control algorithm, so smoothing can't push a fan below it. The step is
 1 in the pre-`pwmMap` domain, so with a coarse `pwmMap` many steps may not change the raw value at all.
 
+### Stall check for fans without `neverStop`
+
+**Decision**: For a fan without `neverStop` that has an RPM sensor, `checkStall` (called by `UpdateFanSpeed` after
+the write) warns and notifies once when the fan doesn't spin although it should. All of these must hold:
+
+- the target of the update (before the `pwmMap`) is at least `max(minPwm, 1)`, it was written successfully, and
+  the `pwmMap` doesn't map it to 0;
+- the fan had 3 `rpmPollingRate` periods to react to the target (`stallCheckSince`, the same reaction period as
+  for `neverStop`). The period starts when the target reaches that range, and again on every change of the target
+  to or from `max(minPwm, 1)`. A target that changes above it doesn't restart it: the fan was spinning before. It
+  also restarts after a curve failure (the fan may have been handed back), when the PWM value was changed by a
+  third party (`pwmValueChangedByThirdParty`), and when the control mode had to be set again
+  (`fanModeChangedByThirdParty`): something else may have stopped the fan;
+- the RPM average is seeded and below 50 RPM (`fans.IsRpmLikelySpinning`), and so is the last RPM reading, and
+  the last RPM reading didn't fail (the average is frozen while it fails);
+- the tach is credible: the fan's curve data has a point with at least 50 RPM, or the RPM monitor read at least
+  50 RPM in this run of the controller (`rpmSpinSeen`).
+
+The warning names the RPM, the target, `minPwm` and how long the fan had to react, and suggests what to check.
+It is reported once per stall (`stallReported`) and counted in `StallCount` (metric
+`fan2go_controller_stall_count`). When the RPM average is at least 50 RPM again, fan2go logs the recovery at INFO;
+the next stall is reported again. A target of 0 (or below `minPwm`) in between doesn't end the stall, because fan2go
+can't see whether the fan would spin. The check changes neither the PWM value nor the controller state. It is
+paused while the curve fails (`UpdateFanSpeed` returns before it) and starts over on every run (reload): a stall
+that lasts is reported again, and the tach has to be seen working again.
+
+It is configured with `sanityCheck.fanStalled.enabled` per fan (default `true`). Fans with `neverStop` are never
+checked here, whatever the config says: their own stall detection (above) raises the PWM and notifies when the fan
+stalls at `maxPwm`, so a fan is never reported by both. Fans without an RPM sensor (`cmd`/`file` fans without an
+RPM source, NVIDIA fans that can't read the RPM) are never checked.
+
+**Why**: The only stall check used to be the `neverStop` one. A fan without it could read 0 RPM even at `maxPwm`
+while the controller reported `running`, without a log line or notification. Typical causes are a broken or blocked
+fan, or a configured `minPwm` below the PWM the fan needs to start (fan2go doesn't use `startPwm` at runtime, so a
+stopped fan isn't kicked).
+
+**Who benefits**: Users without `neverStop` who want to know that a fan stopped working.
+
+**Alternatives considered**: Raising the offset like `neverStop` (it would stop the controller at `maxPwm`, which
+breaks setups with an RPM input that has no tach connected), and a start kick with `startPwm` (#30). Both are out of
+scope. Only checking the RPM average would report a fan that spins up slowly (e.g. 100 RPM after a start, the
+average needs about 7 polls to reach 50 RPM), so the last reading must show a stopped fan too.
+
+**Trade-offs**: A fan that a third party (e.g. the device firmware) stops on purpose while fan2go writes a positive
+PWM value is reported; disable the check for it. A tach that worked once and then fails with 0 RPM is reported as a
+stall. Like for `neverStop`, the first report takes a while: from 1000 RPM with the defaults, the average needs 29 s
+to drop below 50 RPM. A target that alternates at `minPwm` (e.g. PID jitter) keeps restarting the reaction period,
+and so does a fan whose reported PWM never matches the expected value while `pwmValueChangedByThirdParty` is on.
+
 ### RPM monitoring with an exponential moving average
 
 **Decision**: The RPM monitor goroutine (only for fans with an RPM sensor) reads the RPM every `rpmPollingRate` and
@@ -526,6 +577,7 @@ fan2go's own state).
 | `fans[].sanityCheck.pwmValueChangedByThirdParty.enabled` | `true` | Compare the reported PWM with the last target. |
 | `fans[].sanityCheck.fanModeChangedByThirdParty.enabled` | `true` | Re-apply `controlMode.active` if the mode changed. |
 | `fans[].sanityCheck.fanModeChangedByThirdParty.throttleDuration` | `10s` | Minimum time between two mode checks. |
+| `fans[].sanityCheck.fanStalled.enabled` | `true` | Warn and notify once when a fan without `neverStop` doesn't spin at a target of at least `minPwm`. |
 | `fans[].cmd.setPwm/getPwm/getRpm.timeout` | `2s` | Command timeout of `cmd` fans. |
 
 Not configurable (constants in `internal/controller/controller.go`): startup warm-up 2 s, update delay 1 s, stall
@@ -535,7 +587,8 @@ threshold 50 RPM, stall reaction 3 RPM polling periods, PWM write failure timeou
 ## Known limitations and open questions
 
 - `startPwm` is not used at runtime; without config values `minPwm` equals the measured `startPwm`, and there is no
-  jump-start from standstill (#30).
+  jump-start from standstill (#30). A configured `minPwm` below `startPwm` without `neverStop` can leave a fan
+  stopped; config validation warns about it, and the stall check reports it at runtime.
 - The `fanModeChangedByThirdParty` check expects PWM mode even with another `controlMode.active`.
 - A stopped controller (`ErrPwmWriteFailed`, `ErrFanStalledAtMaxPwm`, panic) is not restarted, and the daemon keeps
   running even if no fan is controlled anymore.
