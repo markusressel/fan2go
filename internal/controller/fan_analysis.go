@@ -88,6 +88,17 @@ func (f *FanCurveAnalyzer) RunInitializationSequence(ctx context.Context) (rpmCu
 	}
 	ui.Info("Fan %s: Boundary discovery (start) finished in %s", fan.GetId(), clock.Now().Sub(startBoundaryStarted).Round(time.Millisecond))
 
+	// right after the start boundary: the fan runs slowly, so it stops quickly
+	if fan.GetConfig().GetKickStart().Mode == configuration.KickStartAuto {
+		breakawayStarted := clock.Now()
+		breakawayPwm, err := f.measureBreakawayPwm(ctx, fan, distinct, startIdx)
+		if err != nil {
+			return nil, err
+		}
+		f.fanController.measuredBreakawayPwm = breakawayPwm
+		ui.Info("Fan %s: Breakaway measurement finished in %s", fan.GetId(), clock.Now().Sub(breakawayStarted).Round(time.Millisecond))
+	}
+
 	maxBoundaryStarted := clock.Now()
 	maxIdx, _, err := f.detectMaxBoundary(ctx, fan, distinct, startIdx, curveData)
 	if err != nil {

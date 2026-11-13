@@ -79,6 +79,37 @@ func TestPersistence_SaveFanAnalysisInfo_WithoutReadbackDelay_OmitsTheField(t *t
 	assert.Equal(t, `{"quirk":"corsaircpro","quirkVersion":1}`, string(getRaw(t, dbPath, BucketFanAnalysisInfo, "cpu")))
 }
 
+func TestPersistence_FanAnalysisInfo_BreakawayPwm(t *testing.T) {
+	// GIVEN
+	p, dbPath := newTempPersistence(t)
+	breakaway := 116
+	info := FanAnalysisInfo{BreakawayPwm: &breakaway}
+
+	// WHEN
+	require.NoError(t, p.SaveFanAnalysisInfo("cpu", info))
+	loaded, err := p.LoadFanAnalysisInfo("cpu")
+
+	// THEN
+	require.NoError(t, err)
+	require.NotNil(t, loaded.BreakawayPwm)
+	assert.Equal(t, 116, *loaded.BreakawayPwm)
+	assert.Equal(t, `{"quirk":"","quirkVersion":0,"breakawayPwm":116}`, string(getRaw(t, dbPath, BucketFanAnalysisInfo, "cpu")))
+}
+
+func TestPersistence_LoadFanAnalysisInfo_RecordWithoutBreakawayPwm(t *testing.T) {
+	// GIVEN: a record written before the breakaway PWM was measured
+	p, dbPath := newTempPersistence(t)
+	putRaw(t, dbPath, BucketFanAnalysisInfo, "cpu", []byte(`{"quirk":"","quirkVersion":0,"readbackDelayMillis":20}`))
+
+	// WHEN
+	loaded, err := p.LoadFanAnalysisInfo("cpu")
+
+	// THEN: valid, the breakaway PWM is not measured
+	require.NoError(t, err)
+	assert.Nil(t, loaded.BreakawayPwm)
+	require.NotNil(t, loaded.ReadbackDelayMillis)
+}
+
 func TestPersistence_ReplaceFanAnalysisData(t *testing.T) {
 	// GIVEN: saved data
 	p, _ := newTempPersistence(t)

@@ -54,6 +54,12 @@ type FanControllerStatistics struct {
 	// StallCount is the number of times the stall check of a fan without neverStop found the fan stopped
 	// (once per stall, see checkStall)
 	StallCount int
+	// KickStartCount is the number of kicks that should start the fan from standstill (each attempt counts)
+	KickStartCount int
+	// FailedKickStartCount is the number of kicks after which the RPM sensor didn't show the fan spinning
+	FailedKickStartCount int
+	// KickStartPwm is the PWM value (before the pwmMap) of the last kick, 0 if there was none in this Run
+	KickStartPwm int
 }
 
 type FanController interface {
@@ -280,6 +286,16 @@ type DefaultFanController struct {
 	// reading showed the fan spinning in this Run (written by the RPM monitor, read by the update loop)
 	lastRpmReading atomic.Int64
 	rpmSpinSeen    atomic.Bool
+	// rpmReadingCount counts the successful RPM readings of the RPM monitor in this Run (counted after
+	// lastRpmReading is stored), so the kick start can tell readings taken after a kick started
+	rpmReadingCount atomic.Uint64
+	// kick is the state of the kick start from standstill (see kick_start.go), only used by the update loop
+	kick kickStartState
+	// breakawayPwm is the PWM value (pre-pwmMap) that started the fan from standstill during the analysis
+	// (see loadBreakawayPwm), nil if it is unknown. Only used by the goroutine that runs Run.
+	breakawayPwm *int
+	// measuredBreakawayPwm is the breakaway PWM value measured by the current analysis, nil if none
+	measuredBreakawayPwm *int
 	// rpmReadFailing is true while the last RPM reading of the RPM monitor failed
 	rpmReadFailing atomic.Bool
 
@@ -606,6 +622,7 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 	}
 	f.alignDerivedMaxPwmWithOutputLevels()
 	f.loadReadbackDelay()
+	f.loadBreakawayPwm()
 	// explains a derived maxPwm of 255 (the curve data gives no speed range)
 	f.updateFlatRpmCurveWarning()
 
@@ -761,6 +778,8 @@ func (f *DefaultFanController) resetRuntimeState() {
 	f.stallReported = false
 	f.lastRpmReading.Store(0)
 	f.rpmSpinSeen.Store(false)
+	f.rpmReadingCount.Store(0)
+	f.kick = kickStartState{}
 	f.rpmReadFailing.Store(false)
 	f.lastFanModeCheckTime = time.Unix(0, 0)
 	f.sensorFailureAction = ""
@@ -779,6 +798,7 @@ func (f *DefaultFanController) resetRuntimeState() {
 	f.lastSetPwm = nil
 	f.minPwmOffset = 0
 	f.stats.MinPwmOffset = 0
+	f.stats.KickStartPwm = 0
 }
 
 // IsInitializing returns true while Run analyzes the fan or runs the setPwm -> getPwm sweep (or waits for
@@ -1007,6 +1027,7 @@ func (f *DefaultFanController) lockInitializationSequence(ctx context.Context) (
 func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]float64, error) {
 	fan := f.fan
 	f.observedReadbackDelay = nil
+	f.measuredBreakawayPwm = nil
 
 	err := f.computeFanSpecificMappings(ctx)
 	if err != nil {
@@ -1047,6 +1068,7 @@ func (f *DefaultFanController) runInitialization(ctx context.Context) (map[int]f
 			}
 			info.ReadbackDelayMillis = &millis
 		}
+		info.BreakawayPwm = f.measuredBreakawayPwm
 	}
 
 	// save to database to restore it on restarts
@@ -1198,6 +1220,8 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 	// calculate the direct optimal target speed
 	target, err := f.calculateTargetSpeed()
 	if err != nil {
+		// the onSensorFailure action decides the PWM value now
+		f.abortKickStart()
 		f.handleCurveFailure(err)
 		return fmt.Errorf("%w: %w", ErrCurveEvaluation, err)
 	}
@@ -1262,6 +1286,12 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 	// (f.minPwmOffset is usually 0, but if the fan doesn't start at MinPwm it gets increased)
 	if shouldNeverStop && speedTarget < minPwm+f.minPwmOffset {
 		speedTarget = minPwm + f.minPwmOffset
+	}
+
+	// a fan that has to start from standstill gets a kick first (see kickStart). The stall checks are skipped
+	// while it is kicked, and give it the full reaction period after the kick.
+	if kickTarget, kicking := f.kickStart(speedTarget); kicking {
+		return f.handlePwmWriteResult(f.setTargetPwm(kickTarget))
 	}
 
 	hasRpmSensor := fan.Supports(fans.FeatureRpmSensor)
@@ -1458,6 +1488,8 @@ func (f *DefaultFanController) measureRpm(fan fans.Fan) {
 	if fans.IsRpmLikelySpinning(float64(rpm)) {
 		f.rpmSpinSeen.Store(true)
 	}
+	// after lastRpmReading: a reader that sees the new count also sees the new reading
+	f.rpmReadingCount.Add(1)
 
 	if !f.rpmAvgSeeded.Load() {
 		// the RPM monitor is the only writer of the average, so this can't race with another update

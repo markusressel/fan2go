@@ -577,6 +577,10 @@ func validateFans(config *Configuration) error {
 				fanConfig.ID, fanConfig.OnSensorFailure, OnSensorFailureMax, OnSensorFailureRestore)
 		}
 
+		if err := validateKickStart(fanConfig); err != nil {
+			return err
+		}
+
 		if fanConfig.ControlLoop != nil { //nolint:all
 			ui.Warning("fan %s: controlLoop is deprecated, use controlAlgorithm.pid instead", fanConfig.ID)
 			if fanConfig.ControlAlgorithm != nil {
@@ -827,13 +831,51 @@ func validateFanPwmLimits(fanConfig FanConfig) error {
 	if fanConfig.MinPwm != nil && fanConfig.StartPwm != nil && *fanConfig.MinPwm > *fanConfig.StartPwm {
 		ui.Warning("fan %s: suspicious pwm config: minPwm (%d) > startPwm (%d)", fanConfig.ID, *fanConfig.MinPwm, *fanConfig.StartPwm)
 	}
-	if fanConfig.MinPwm != nil && fanConfig.StartPwm != nil && *fanConfig.MinPwm < *fanConfig.StartPwm && !fanConfig.NeverStop {
-		// fan2go doesn't use startPwm at runtime: a fan that stopped doesn't get a higher PWM value to start again
-		ui.Warning("fan %s: minPwm (%d) < startPwm (%d) without neverStop: once the fan stopped, a PWM value between "+
-			"minPwm and startPwm may not start it again, so it stays stopped. Set minPwm to at least startPwm, or set "+
-			"neverStop: true", fanConfig.ID, *fanConfig.MinPwm, *fanConfig.StartPwm)
+	if fanConfig.MinPwm != nil && fanConfig.StartPwm != nil && *fanConfig.MinPwm < *fanConfig.StartPwm && !fanConfig.NeverStop &&
+		fanConfig.GetKickStart().Mode == KickStartOff {
+		// without a kick, a fan that stopped doesn't get a higher PWM value to start again
+		ui.Warning("fan %s: minPwm (%d) < startPwm (%d) without neverStop and with kickStart.mode: %s: once the fan "+
+			"stopped, a PWM value between minPwm and startPwm may not start it again, so it stays stopped. Set minPwm "+
+			"to at least startPwm, enable kickStart or set neverStop: true",
+			fanConfig.ID, *fanConfig.MinPwm, *fanConfig.StartPwm, KickStartOff)
 	}
 
+	return nil
+}
+
+// validateKickStart checks the kickStart config of a fan.
+func validateKickStart(fanConfig FanConfig) error {
+	kick := fanConfig.KickStart
+	if kick == nil {
+		return nil
+	}
+	switch kick.Mode {
+	case "", KickStartAuto, KickStartFixed, KickStartOff:
+	default:
+		return fmt.Errorf("fan %s: invalid kickStart.mode %q, must be one of: %s | %s | %s",
+			fanConfig.ID, kick.Mode, KickStartAuto, KickStartFixed, KickStartOff)
+	}
+	if kick.Pwm != nil {
+		pwm := *kick.Pwm
+		if pwm < 1 || pwm > 255 {
+			return fmt.Errorf("fan %s: kickStart.pwm must be in [1..255], got %d", fanConfig.ID, pwm)
+		}
+		if fanConfig.MaxPwm != nil && pwm > *fanConfig.MaxPwm {
+			return fmt.Errorf("fan %s: kickStart.pwm (%d) must be <= maxPwm (%d)", fanConfig.ID, pwm, *fanConfig.MaxPwm)
+		}
+		if kick.Mode != KickStartFixed {
+			ui.Warning("fan %s: kickStart.pwm is only used with kickStart.mode: %s. With mode auto, set startPwm to "+
+				"the PWM value the fan needs to start from standstill instead", fanConfig.ID, KickStartFixed)
+		}
+	} else if kick.Mode == KickStartFixed {
+		return fmt.Errorf("fan %s: kickStart.mode: %s requires kickStart.pwm", fanConfig.ID, KickStartFixed)
+	}
+	if kick.Duration < 0 {
+		return fmt.Errorf("fan %s: kickStart.duration must be >= 0, got %s", fanConfig.ID, kick.Duration)
+	}
+	if kick.Duration > MaxKickStartDuration {
+		return fmt.Errorf("fan %s: kickStart.duration must be <= %s, got %s", fanConfig.ID, MaxKickStartDuration, kick.Duration)
+	}
 	return nil
 }
 

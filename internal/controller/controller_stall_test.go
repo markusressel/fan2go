@@ -750,6 +750,8 @@ func TestFanController_StallCheck_UnscaledCurveValues(t *testing.T) {
 	// GIVEN
 	s := newStallCheckTest(t, func(config *configuration.FanConfig) {
 		config.UseUnscaledCurveValues = true
+		// the stall check itself, without the kick that would start the fan first
+		config.KickStart = &configuration.KickStartConfig{Mode: configuration.KickStartOff}
 	})
 	s.spinThenStop(t)
 
@@ -775,6 +777,8 @@ func TestFanController_StallCheck_FloorIsAtLeastOne(t *testing.T) {
 		zero := 0
 		config.MinPwm = &zero
 		config.UseUnscaledCurveValues = true
+		// the stall check itself, without the kick that would start the fan first
+		config.KickStart = &configuration.KickStartConfig{Mode: configuration.KickStartOff}
 	})
 	s.setRpm(t, "1000")
 	s.pollAndUpdateN(t, 5)
