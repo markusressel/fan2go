@@ -43,3 +43,31 @@ func TestQuirksConfig_OnlyForHwmonFans(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "quirks can only be configured for hwmon fans")
 }
+
+func TestFanStalledConfig_Parse(t *testing.T) {
+	cfg := loadYaml(t, `
+fans:
+  - id: default
+    hwMon: { platform: corsaircpro, rpmChannel: 1 }
+    curve: c
+  - id: disabled
+    hwMon: { platform: corsaircpro, rpmChannel: 2 }
+    curve: c
+    sanityCheck:
+      fanStalled:
+        enabled: false
+  - id: enabled
+    hwMon: { platform: corsaircpro, rpmChannel: 3 }
+    curve: c
+    sanityCheck:
+      fanStalled:
+        enabled: true
+`)
+	require.Len(t, cfg.Fans, 3)
+	defaultValue := cfg.Fans[0].SanityCheck.FanStalled.Enabled
+	assert.True(t, defaultValue.Get())
+	disabled := cfg.Fans[1].SanityCheck.FanStalled.Enabled
+	assert.False(t, disabled.Get())
+	enabled := cfg.Fans[2].SanityCheck.FanStalled.Enabled
+	assert.True(t, enabled.Get())
+}

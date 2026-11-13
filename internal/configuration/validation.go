@@ -827,6 +827,12 @@ func validateFanPwmLimits(fanConfig FanConfig) error {
 	if fanConfig.MinPwm != nil && fanConfig.StartPwm != nil && *fanConfig.MinPwm > *fanConfig.StartPwm {
 		ui.Warning("fan %s: suspicious pwm config: minPwm (%d) > startPwm (%d)", fanConfig.ID, *fanConfig.MinPwm, *fanConfig.StartPwm)
 	}
+	if fanConfig.MinPwm != nil && fanConfig.StartPwm != nil && *fanConfig.MinPwm < *fanConfig.StartPwm && !fanConfig.NeverStop {
+		// fan2go doesn't use startPwm at runtime: a fan that stopped doesn't get a higher PWM value to start again
+		ui.Warning("fan %s: minPwm (%d) < startPwm (%d) without neverStop: once the fan stopped, a PWM value between "+
+			"minPwm and startPwm may not start it again, so it stays stopped. Set minPwm to at least startPwm, or set "+
+			"neverStop: true", fanConfig.ID, *fanConfig.MinPwm, *fanConfig.StartPwm)
+	}
 
 	return nil
 }

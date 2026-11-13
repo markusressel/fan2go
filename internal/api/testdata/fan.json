@@ -19,6 +19,13 @@
             "Present": false,
             "RuntimeOverride": false
           }
+        },
+        "fanStalled": {
+          "enabled": {
+            "Value": false,
+            "Present": false,
+            "RuntimeOverride": false
+          }
         }
       },
       "cmd": {
@@ -65,6 +72,13 @@
             "Present": false,
             "RuntimeOverride": false
           }
+        },
+        "fanStalled": {
+          "enabled": {
+            "Value": false,
+            "Present": false,
+            "RuntimeOverride": false
+          }
         }
       },
       "file": {
@@ -96,6 +110,13 @@
           }
         },
         "fanModeChangedByThirdParty": {
+          "enabled": {
+            "Value": false,
+            "Present": false,
+            "RuntimeOverride": false
+          }
+        },
+        "fanStalled": {
           "enabled": {
             "Value": false,
             "Present": false,

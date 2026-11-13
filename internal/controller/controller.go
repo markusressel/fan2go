@@ -50,6 +50,9 @@ type FanControllerStatistics struct {
 	UnexpectedPwmValueCount int
 	IncreasedMinPwmCount    int
 	MinPwmOffset            int
+	// StallCount is the number of times the stall check of a fan without neverStop found the fan stopped
+	// (once per stall, see checkStall)
+	StallCount int
 }
 
 type FanController interface {
@@ -261,6 +264,20 @@ type DefaultFanController struct {
 	// rpmAvgSeeded is set by the RPM monitor once the RPM average of the fan has been seeded
 	// with a successful reading. Until then the average is meaningless and stall detection is skipped.
 	rpmAvgSeeded atomic.Bool
+
+	// stall check of fans without neverStop (see checkStall), only used by the update loop:
+	// stallCheckSince is the time since which the target qualifies for the check (zero if it doesn't),
+	// stallCheckTarget the target of the last update, stallReported is true from the warning about a stall
+	// until the fan spins again.
+	stallCheckSince  time.Time
+	stallCheckTarget int
+	stallReported    bool
+	// lastRpmReading is the last successful RPM reading of the RPM monitor, and rpmSpinSeen is set once a
+	// reading showed the fan spinning in this Run (written by the RPM monitor, read by the update loop)
+	lastRpmReading atomic.Int64
+	rpmSpinSeen    atomic.Bool
+	// rpmReadFailing is true while the last RPM reading of the RPM monitor failed
+	rpmReadFailing atomic.Bool
 
 	// lastFanModeCheckTime is the last time we checked if some third party changed the fan control mode
 	lastFanModeCheckTime time.Time
@@ -717,6 +734,12 @@ func (f *DefaultFanController) resetRuntimeState() {
 	f.lastPwmWriteAt = time.Time{}
 	f.pwmFloorSetAt = time.Time{}
 	f.rpmAvgSeeded.Store(false)
+	f.stallCheckSince = time.Time{}
+	f.stallCheckTarget = 0
+	f.stallReported = false
+	f.lastRpmReading.Store(0)
+	f.rpmSpinSeen.Store(false)
+	f.rpmReadFailing.Store(false)
 	f.lastFanModeCheckTime = time.Unix(0, 0)
 	f.sensorFailureAction = ""
 	f.sensorFailureMaxWriteFailed = false
@@ -1213,7 +1236,8 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 		speedTarget = minPwm + f.minPwmOffset
 	}
 
-	if fan.Supports(fans.FeatureRpmSensor) {
+	hasRpmSensor := fan.Supports(fans.FeatureRpmSensor)
+	if hasRpmSensor {
 		// make sure fans never stop by validating the current RPM
 		// and adjusting the target PWM value upwards if necessary
 		if shouldNeverStop && f.pwmFloorSetAt.IsZero() {
@@ -1246,7 +1270,103 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 		}
 	}
 
-	return f.handlePwmWriteResult(f.setTargetPwm(speedTarget))
+	err = f.setTargetPwm(speedTarget)
+	if hasRpmSensor && !shouldNeverStop {
+		f.checkStall(speedTarget, minPwm, err == nil)
+	}
+	return f.handlePwmWriteResult(err)
+}
+
+// checkStall warns and notifies once when a fan without neverStop doesn't spin, although fan2go set a target of
+// at least its minPwm (and at least 1) long enough ago, and logs when it spins again. It changes neither the PWM
+// value nor the controller state. A fan with neverStop has its own stall handling in UpdateFanSpeed.
+// target is the target of this update (before the pwmMap), written whether setting it succeeded.
+func (f *DefaultFanController) checkStall(target int, minPwm int, written bool) {
+	fan := f.fan
+	if enabled := fan.GetConfig().SanityCheck.FanStalled.Enabled; !enabled.Get() {
+		return
+	}
+	now := f.getClock().Now()
+
+	// the fan should spin at this target: at least minPwm and 1, and the pwmMap doesn't map it to 0
+	floor := max(minPwm, 1)
+	qualifies := written && target >= floor && f.applyPwmMapToTarget(target) > 0
+	switch {
+	case !qualifies:
+		f.stallCheckSince = time.Time{}
+	case f.stallCheckSince.IsZero():
+		// the fan may have to start from standstill
+		f.stallCheckSince = now
+	case target != f.stallCheckTarget && (target <= floor || f.stallCheckTarget <= floor):
+		// at the floor, the fan may not have been spinning before: give it time to react to the new target.
+		// A target that changes above the floor doesn't need that, the fan was spinning before.
+		f.stallCheckSince = now
+	}
+	f.stallCheckTarget = target
+
+	// skip until the RPM monitor seeded the average, which is meaningless before that
+	if !f.rpmAvgSeeded.Load() {
+		return
+	}
+	avgRpm := fan.GetRpmAvg()
+	if fans.IsRpmLikelySpinning(avgRpm) {
+		if f.stallReported {
+			f.stallReported = false
+			ui.Info("Fan %s is spinning again (avg. RPM %d at PWM %d)", fan.GetId(), int(avgRpm), target)
+		}
+		return
+	}
+	if f.stallReported || f.stallCheckSince.IsZero() || !f.hadTimeToReact(f.stallCheckSince, now) {
+		return
+	}
+	// while reading the RPM fails, the average and the last reading are frozen (the failure is logged)
+	if f.rpmReadFailing.Load() {
+		return
+	}
+	// the average lags behind: a fan that spins up slowly is not stalled if its last reading shows it spinning
+	if fans.IsRpmLikelySpinning(float64(f.lastRpmReading.Load())) {
+		return
+	}
+	// a fan header with an RPM input but no tach signal always reads 0 RPM
+	if !f.tachIsCredible() {
+		return
+	}
+
+	f.stallReported = true
+	f.statsMutex.Lock()
+	f.stats.StallCount += 1
+	f.statsMutex.Unlock()
+	notify := f.errorNotifier
+	if notify == nil {
+		notify = ui.WarningAndNotify
+	}
+	notify("Fan Stalled", "Fan %s doesn't spin: its avg. RPM is %d at PWM %d (minPwm %d) since %s. "+
+		"fan2go doesn't change the PWM value because of this. Check the fan and its tach signal. If the fan doesn't "+
+		"start at this PWM value, raise its minPwm or set neverStop: true. If something else stops the fan on purpose "+
+		"(e.g. the device firmware), set sanityCheck.fanStalled.enabled: false for this fan",
+		fan.GetId(), int(avgRpm), target, minPwm, now.Sub(f.stallCheckSince).Round(time.Second))
+}
+
+// restartStallReactionPeriod makes the stall check give the fan the full reaction period again from its next
+// update, e.g. after something else may have stopped it.
+func (f *DefaultFanController) restartStallReactionPeriod() {
+	f.stallCheckSince = time.Time{}
+}
+
+// tachIsCredible returns whether the RPM sensor of the fan has been seen working: its curve data contains a
+// point where it was spinning, or the RPM monitor read a spinning fan in this Run.
+func (f *DefaultFanController) tachIsCredible() bool {
+	if f.rpmSpinSeen.Load() {
+		return true
+	}
+	if curveData := f.fan.GetFanRpmCurveData(); curveData != nil {
+		for _, rpm := range *curveData {
+			if fans.IsRpmLikelySpinning(rpm) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // handlePwmWriteResult tracks the result (err) of setting the PWM value of the curve. Failures are logged
@@ -1281,8 +1401,14 @@ func (f *DefaultFanController) handlePwmWriteResult(err error) error {
 // hadTimeToReactToPwmFloor returns true if the fan had minPwmIncreaseRpmPollingPeriods RPM polling periods
 // to react to the first PWM value set by the controller, or to the last minPwm increase.
 func (f *DefaultFanController) hadTimeToReactToPwmFloor(now time.Time) bool {
+	return f.hadTimeToReact(f.pwmFloorSetAt, now)
+}
+
+// hadTimeToReact returns true if the fan had minPwmIncreaseRpmPollingPeriods RPM polling periods since the given
+// time to react to a new PWM value.
+func (f *DefaultFanController) hadTimeToReact(since time.Time, now time.Time) bool {
 	interval := minPwmIncreaseRpmPollingPeriods * configuration.CurrentConfig.RpmPollingRate
-	return now.Sub(f.pwmFloorSetAt) >= interval
+	return now.Sub(since) >= interval
 }
 
 // read the current value of a fan RPM sensor and update its moving average with it.
@@ -1290,6 +1416,7 @@ func (f *DefaultFanController) hadTimeToReactToPwmFloor(now time.Time) bool {
 // Of a series of failed readings, only the first one is logged, and the recovery.
 func (f *DefaultFanController) measureRpm(fan fans.Fan) {
 	rpm, err := fan.GetRpm()
+	f.rpmReadFailing.Store(err != nil)
 	if err != nil {
 		if count, _, _ := f.rpmReadFailures.fail(f.getClock().Now()); count == 1 {
 			ui.Warning("Error reading RPM value of fan %s (further errors are not logged until it recovers): %v", fan.GetId(), err)
@@ -1298,6 +1425,10 @@ func (f *DefaultFanController) measureRpm(fan fans.Fan) {
 	}
 	if failures := f.rpmReadFailures.succeed(); failures > 0 {
 		ui.Info("Fan %s: reading the RPM value succeeded again after %d failed readings", fan.GetId(), failures)
+	}
+	f.lastRpmReading.Store(int64(rpm))
+	if fans.IsRpmLikelySpinning(float64(rpm)) {
+		f.rpmSpinSeen.Store(true)
 	}
 
 	if !f.rpmAvgSeeded.Load() {
@@ -1434,6 +1565,8 @@ func (f *DefaultFanController) stopAfterUpdateError(err error) {
 //     the control mode can't be written or is unknown), fall back to max: a fixed PWM value is not fail-safe.
 func (f *DefaultFanController) handleCurveFailure(err error) {
 	fan := f.fan
+	// the fan may be handed back or set to max: after the failure, it gets the full reaction period again
+	f.restartStallReactionPeriod()
 	if f.sensorFailureAction == configuration.OnSensorFailureMax {
 		// keep the fan at max while the failure lasts (e.g. if a third party changed it)
 		f.setMaxPwmForSensorFailure()
@@ -1818,6 +1951,8 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 		expectedReportedPwm := f.getReportedPwmAfterApplyingPwm(pwmMappedValue)
 		if currentPwm, err := f.fan.GetPwm(); err == nil {
 			if currentPwm != expectedReportedPwm {
+				// the third party may have stopped the fan, give it time to start again after fan2go's write
+				f.restartStallReactionPeriod()
 				// the statistics count every change, the warning is rate-limited
 				f.statsMutex.Lock()
 				f.stats.UnexpectedPwmValueCount += 1
@@ -2018,6 +2153,8 @@ func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
 		return
 	}
 	if cm != fans.ControlModePWM {
+		// the fan may have been stopped in the other mode, give it time to start again
+		f.restartStallReactionPeriod()
 		restoreErr := trySetManualPwm(f.fan)
 		if restoreErr != nil {
 			ui.Warning("Fan mode of fan %s is %v (expected PWM); could not restore: %v",

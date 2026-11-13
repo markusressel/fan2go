@@ -230,6 +230,14 @@ type SanityCheckConfig struct {
 	// Enabled defines whether the sanity check is enabled.
 	PwmValueChangedByThirdParty PwmValueChangedByThirdPartyConfig `json:"pwmValueChangedByThirdParty,omitempty"`
 	FanModeChangedByThirdParty  FanModeChangedByThirdPartyConfig  `json:"fanModeChangedByThirdParty,omitempty"`
+	FanStalled                  FanStalledConfig                  `json:"fanStalled,omitempty"`
+}
+
+// FanStalledConfig configures the check that warns when a fan without neverStop doesn't spin although fan2go
+// sets a PWM value of at least its minPwm.
+type FanStalledConfig struct {
+	// Enabled defines whether the check is enabled (default true).
+	Enabled DefaultTrueBool `json:"enabled,omitempty"`
 }
 
 type PwmValueChangedByThirdPartyConfig struct {
