@@ -23,5 +23,6 @@
   "movingAvg": 0,
   "pwm": 0,
   "rpm": 0,
-  "rpmMovingAvg": 0
+  "rpmMovingAvg": 0,
+  "warnings": []
 }

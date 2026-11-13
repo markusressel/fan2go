@@ -191,11 +191,15 @@ func TestWarnIfFlatRpmCurve(t *testing.T) {
 			require.NoError(t, fan.AttachFanRpmCurveData(tt.curve))
 
 			// WHEN
-			flat := WarnIfFlatRpmCurve(fan)
+			flat, message := WarnIfFlatRpmCurve(fan)
 
 			// THEN
 			assert.Equal(t, tt.wantFlat, flat)
 			if tt.wantFlat {
+				// the message is the log line without the fan id
+				assert.Contains(t, warnings.String(), "Fan fan: "+message)
+				assert.True(t, strings.HasPrefix(message, "RPM stays at ~754"), message)
+				assert.Contains(t, message, tt.wantWarning)
 				assert.Equal(t, 1, strings.Count(warnings.String(), "WARNING"), warnings.String())
 				assert.Contains(t, warnings.String(),
 					"Fan fan: RPM stays at ~754 across the whole PWM range, so the fan doesn't react to PWM.")
@@ -204,6 +208,7 @@ func TestWarnIfFlatRpmCurve(t *testing.T) {
 					assert.NotContains(t, warnings.String(), fullRange)
 				}
 			} else {
+				assert.Empty(t, message)
 				assert.Empty(t, warnings.String())
 			}
 		})

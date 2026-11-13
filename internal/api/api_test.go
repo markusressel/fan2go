@@ -18,6 +18,7 @@ import (
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/registry"
 	"github.com/markusressel/fan2go/internal/sensors"
+	"github.com/markusressel/fan2go/internal/warnings"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -139,6 +140,8 @@ func createTestRegistry(t *testing.T) *registry.Registry {
 	}})
 	reg.RegisterFanController(&fakeFanController{status: status.Status{FanId: "cmd_fan", State: status.StateStopped}})
 
+	reg.Warnings().Set(warnings.KindFan, "hwmon_fan", warnings.CodeFlatRpmCurve, "RPM stays at ~1800 across the whole PWM range.")
+
 	return reg
 }
 
@@ -168,6 +171,7 @@ func TestRestApi_JsonOutputMatchesGoldenFiles(t *testing.T) {
 		"/sensor/", "/sensor/hwmon_sensor/", "/sensor/file_sensor/", "/sensor/cmd_sensor/", "/sensor/disk_sensor/",
 		"/curve/", "/curve/linear_curve/", "/curve/staircase_curve/", "/curve/pid_curve/", "/curve/function_curve/",
 		"/controller/", "/controller/hwmon_fan/", "/controller/file_fan/", "/controller/cmd_fan/",
+		"/warnings/",
 		"/fan/unknown/", "/controller/unknown/",
 	} {
 		t.Run(path, func(t *testing.T) {
@@ -242,11 +246,13 @@ func TestRestApi_ConcurrentUpdatesDuringGet(t *testing.T) {
 			fan.SetMinPwm(i%100, true)
 			_ = fan.AttachFanRpmCurveData(&map[int]float64{0: 0, 255: float64(i)})
 			_, _ = staircase.Evaluate()
+			reg.Warnings().Set(warnings.KindFan, "hwmon_fan", warnings.CodeFlatRpmCurve, "flat")
+			reg.Warnings().Clear(warnings.KindFan, "hwmon_fan", warnings.CodeFlatRpmCurve)
 		}
 	}()
 
 	for i := 0; i < iterations; i++ {
-		for _, path := range []string{"/sensor/", "/sensor/file_sensor/", "/fan/", "/fan/hwmon_fan/", "/curve/", "/curve/staircase_curve/"} {
+		for _, path := range []string{"/sensor/", "/sensor/file_sensor/", "/fan/", "/fan/hwmon_fan/", "/curve/", "/curve/staircase_curve/", "/warnings/"} {
 			code, _ := get(t, rest, path)
 			assert.Equal(t, http.StatusOK, code)
 		}

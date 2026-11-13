@@ -8,6 +8,7 @@ import (
 	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/sensors"
+	"github.com/markusressel/fan2go/internal/warnings"
 )
 
 // FanController is the part of a fan controller (controller.FanController) the registry provides,
@@ -24,6 +25,8 @@ type Registry struct {
 	curves  cmap.ConcurrentMap[string, curves.SpeedCurve]
 	// fan controllers by the id of the fan they control
 	fanControllers cmap.ConcurrentMap[string, FanController]
+	// warnings of the fans, sensors and curves of this registry
+	warnings *warnings.Store
 }
 
 func NewRegistry() *Registry {
@@ -33,7 +36,14 @@ func NewRegistry() *Registry {
 		curves:  cmap.New[curves.SpeedCurve](),
 
 		fanControllers: cmap.New[FanController](),
+		warnings:       warnings.NewStore(),
 	}
+}
+
+// Warnings returns the warnings of the fans, sensors and curves of this registry. A new registry (e.g. after a
+// config reload) starts without warnings.
+func (r *Registry) Warnings() *warnings.Store {
+	return r.warnings
 }
 
 // Fans

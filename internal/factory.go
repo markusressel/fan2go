@@ -61,6 +61,7 @@ func initializeFanControllers(
 		curve, _ := reg.GetCurve(fan.GetCurveId())
 		fanController := controller.NewFanController(pers, fan, curve, controlLoop, updateRate, false)
 		fanController.SetCurveCycles(evaluator.Subscribe())
+		fanController.SetWarnings(reg.Warnings())
 		result[fan] = fanController
 	}
 

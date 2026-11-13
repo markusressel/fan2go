@@ -23,6 +23,7 @@ import (
 	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
+	"github.com/markusressel/fan2go/internal/warnings"
 	"github.com/oklog/run"
 )
 
@@ -131,6 +132,9 @@ type DefaultFanController struct {
 	// the fan speed once per notification. If nil, the update loop uses its own ticker at updateRate instead
 	// (and something else has to evaluate the curve).
 	curveCycles <-chan struct{}
+	// warnings receives the warnings the controller detects about the fan (shown in the REST API).
+	// nil if there is no store (e.g. `fan2go fan init`): then they are only logged.
+	warnings *warnings.Store
 	// rate to update the target fan speed, if there are no curveCycles
 	updateRate time.Duration
 	// the fan state as it was before the controller started (nil until captured)
@@ -378,6 +382,22 @@ func (f *DefaultFanController) SetCurveCycles(cycles <-chan struct{}) {
 	f.curveCycles = cycles
 }
 
+// SetWarnings sets the store the controller reports the warnings it detects about the fan to.
+// Must not be called while Run is running.
+func (f *DefaultFanController) SetWarnings(store *warnings.Store) {
+	f.warnings = store
+}
+
+// updateFlatRpmCurveWarning logs a warning if the RPM curve data attached to the fan is flat
+// (see fans.WarnIfFlatRpmCurve), and sets or clears the matching warning in the warnings store.
+func (f *DefaultFanController) updateFlatRpmCurveWarning() {
+	if flat, message := fans.WarnIfFlatRpmCurve(f.fan); flat {
+		f.warnings.Set(warnings.KindFan, f.fan.GetId(), warnings.CodeFlatRpmCurve, message)
+	} else {
+		f.warnings.Clear(warnings.KindFan, f.fan.GetId(), warnings.CodeFlatRpmCurve)
+	}
+}
+
 func NewFanController(
 	persistence persistence.Persistence,
 	fan fans.Fan,
@@ -587,7 +607,7 @@ func (f *DefaultFanController) Run(ctx context.Context) (err error) {
 	f.alignDerivedMaxPwmWithOutputLevels()
 	f.loadReadbackDelay()
 	// explains a derived maxPwm of 255 (the curve data gives no speed range)
-	fans.WarnIfFlatRpmCurve(fan)
+	f.updateFlatRpmCurveWarning()
 
 	ui.Debug("setPwmToGetPwmMap of fan '%s': %v", fan.GetId(), f.setPwmToGetPwmMap)
 	ui.Debug("pwmMap of fan '%s': %v", fan.GetId(), f.pwmMapping)
@@ -751,6 +771,8 @@ func (f *DefaultFanController) resetRuntimeState() {
 	if f.controlLoop != nil {
 		f.controlLoop.Reset()
 	}
+	// re-evaluated once Run has the curve data of the fan
+	f.warnings.Clear(warnings.KindFan, f.fan.GetId(), warnings.CodeFlatRpmCurve)
 
 	f.statsMutex.Lock()
 	defer f.statsMutex.Unlock()
@@ -935,7 +957,7 @@ func (f *DefaultFanController) RunInitializationAndRestore(ctx context.Context) 
 	}()
 	curveData, err = f.RunInitialization(ctx)
 	if err == nil {
-		fans.WarnIfFlatRpmCurve(f.fan)
+		f.updateFlatRpmCurveWarning()
 	}
 	return curveData, err
 }

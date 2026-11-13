@@ -1,0 +1,8 @@
+[
+  {
+    "kind": "fan",
+    "id": "hwmon_fan",
+    "code": "flatRpmCurve",
+    "message": "RPM stays at ~1800 across the whole PWM range."
+  }
+]

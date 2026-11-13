@@ -5,6 +5,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/markusressel/fan2go/internal/registry"
+	"github.com/markusressel/fan2go/internal/warnings"
 )
 
 func registerSensorEndpoints(rest *echo.Echo, reg *registry.Registry) {
@@ -19,17 +20,23 @@ func registerSensorEndpoints(rest *echo.Echo, reg *registry.Registry) {
 }
 
 func getSensors(c *echo.Context, reg *registry.Registry) error {
-	data := reg.SnapshotSensors()
+	data, err := allWithWarnings(reg.SnapshotSensors(), reg.Warnings(), warnings.KindSensor)
+	if err != nil {
+		return err
+	}
 	return c.JSONPretty(http.StatusOK, data, indentationChar)
 }
 
 func getSensor(c *echo.Context, reg *registry.Registry) error {
 	id := c.Param(urlParamId)
 
-	data, exists := reg.GetSensor(id)
+	sensor, exists := reg.GetSensor(id)
 	if !exists {
 		return returnNotFound(c, id)
-	} else {
-		return c.JSONPretty(http.StatusOK, data, indentationChar)
 	}
+	data, err := withWarnings(sensor, reg.Warnings(), warnings.KindSensor, id)
+	if err != nil {
+		return err
+	}
+	return c.JSONPretty(http.StatusOK, data, indentationChar)
 }

@@ -10,7 +10,8 @@
         ]
       }
     },
-    "value": 40
+    "value": 40,
+    "warnings": []
   },
   "linear_curve": {
     "config": {
@@ -25,7 +26,8 @@
         }
       }
     },
-    "value": 10
+    "value": 10,
+    "warnings": []
   },
   "pid_curve": {
     "config": {
@@ -38,7 +40,8 @@
         "d": 0.0005
       }
     },
-    "value": 30
+    "value": 30,
+    "warnings": []
   },
   "staircase_curve": {
     "config": {
@@ -54,6 +57,7 @@
         }
       }
     },
-    "value": 20
+    "value": 20,
+    "warnings": []
   }
 }
