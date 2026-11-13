@@ -789,9 +789,11 @@ func (f *DefaultFanController) resetRuntimeState() {
 	f.lastRpmReading.Store(0)
 	f.rpmSpinSeen.Store(false)
 	f.rpmSample.Store(nil)
-	// a fan that a kick at full speed didn't start isn't kicked again after an error restart of the controller
-	// (a reload or a new start of fan2go creates a new controller)
-	f.kick = kickStartState{disabled: f.kick.disabled}
+	// a fan that a kick at full speed didn't start, or that a kick can't keep spinning at a target, isn't kicked
+	// again (at that target) after an error restart of the controller (a reload or a new start of fan2go creates a
+	// new controller)
+	f.kick = kickStartState{disabled: f.kick.disabled, tooLowTarget: f.kick.tooLowTarget,
+		targetTooLowLogged: f.kick.targetTooLowLogged}
 	f.rpmReadFailing.Store(false)
 	f.lastFanModeCheckTime = time.Unix(0, 0)
 	f.sensorFailureAction = ""

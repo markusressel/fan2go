@@ -47,6 +47,10 @@ const (
 	defaultCoastDown = 5 * time.Second
 	// maxCoastDown caps the measured coast-down time
 	maxCoastDown = 30 * time.Second
+	// minSpinningRepeatWindow and maxSpinningRepeatWindow bound the time within which a reading other than 0 that
+	// repeats the value of the last sample is the same sample (a value the driver caches, also a wrong one)
+	minSpinningRepeatWindow = 2500 * time.Millisecond
+	maxSpinningRepeatWindow = 5 * time.Second
 	// kickStartGiveUpTimeouts: a kick that the RPM readings can't judge (e.g. reading the RPM keeps failing) ends
 	// unjudged after this many kick timeouts, and the fan gets its target
 	kickStartGiveUpTimeouts = 3
@@ -109,6 +113,10 @@ type kickStartState struct {
 	fixedTooLowLogged bool
 	// targetTooLowLogged is set once it was warned that the fan stops at its target after a start
 	targetTooLowLogged bool
+	// tooLowTarget is the highest target (pre-pwmMap) at which the fan stopped again after two kicks had made it spin
+	// in one start (0: none). Starts at this target or below aren't supervised for the rest of the run: kicks can't
+	// keep the fan spinning there. A higher target (e.g. a raised minPwm) is supervised again.
+	tooLowTarget int
 }
 
 // rpmSample is a new reading of the RPM monitor (see recordRpmSample). Immutable once stored.
@@ -125,19 +133,18 @@ type rpmSample struct {
 	prevAt time.Time
 }
 
-// recordRpmSample stores a successful RPM reading of the RPM monitor as a new sample, unless it repeats the value of
-// the last sample within 3/4 of the tach interval of the fan: a driver that updates the RPM value only every tach
-// interval reports the same sample again, also a wrong one, which must not count twice.
+// recordRpmSample stores a successful RPM reading of the RPM monitor as a new sample. A reading other than 0 that
+// repeats the value of the last sample within spinningRepeatWindow is the same sample: a driver that updates the RPM
+// value only every tach interval reports a value again, also a wrong one, which must not count twice (the value of a
+// spinning fan changes from one tach update to the next). Readings of 0 are always new samples: a stopped fan reports
+// 0 every time, and skipping them would delay a kick.
 func (f *DefaultFanController) recordRpmSample(rpm int, now time.Time) {
 	prev := f.rpmSample.Load()
-	interval := f.tachInterval
-	if interval <= 0 {
-		interval = defaultTachInterval
-	}
-	if prev != nil && rpm == prev.rpm && now.Sub(prev.at) < interval*3/4 {
+	spinning := fans.IsRpmLikelySpinning(float64(rpm))
+	if prev != nil && rpm != 0 && rpm == prev.rpm && now.Sub(prev.at) < f.spinningRepeatWindow() {
 		return
 	}
-	sample := &rpmSample{seq: 1, rpm: rpm, at: now, spinning: fans.IsRpmLikelySpinning(float64(rpm)), streak: 1}
+	sample := &rpmSample{seq: 1, rpm: rpm, at: now, spinning: spinning, streak: 1}
 	if prev != nil {
 		sample.seq = prev.seq + 1
 		if prev.spinning == sample.spinning {
@@ -146,6 +153,13 @@ func (f *DefaultFanController) recordRpmSample(rpm int, now time.Time) {
 		}
 	}
 	f.rpmSample.Store(sample)
+}
+
+// spinningRepeatWindow returns the time within which a reading other than 0 with the value of the last sample is the
+// same sample: 3/4 of the measured tach interval, within [minSpinningRepeatWindow, maxSpinningRepeatWindow] (a
+// driver may cache a value longer than its tach interval, e.g. data without a measured interval).
+func (f *DefaultFanController) spinningRepeatWindow() time.Duration {
+	return util.Coerce(f.tachInterval*3/4, minSpinningRepeatWindow, maxSpinningRepeatWindow)
 }
 
 // kickStartReadings returns whether the last kickStartJudgeReadings (2) samples of the RPM monitor, all taken at or
@@ -157,6 +171,15 @@ func (f *DefaultFanController) kickStartReadings(judgeFrom time.Time) (spinning 
 		return false, false
 	}
 	return sample.spinning, !sample.spinning
+}
+
+// kickStartStandstillAfterResponse returns true if the RPM samples show that the fan didn't start within the
+// response delay after the write of the current phase: the last sample, taken after the response delay, and the one
+// before, taken after the readback and spin-up delay (it may be one tach update old), show it standing still.
+func (f *DefaultFanController) kickStartStandstillAfterResponse() bool {
+	sample := f.rpmSample.Load()
+	_, standstill := f.kickStartReadings(f.kick.since.Add(f.kickStartResponseDelay() - f.kickStartTachInterval()))
+	return standstill && !sample.at.Before(f.kick.since.Add(f.kickStartResponseDelay()))
 }
 
 // kickStart decides how the fan starts from standstill in this update. It returns the target to set instead of
@@ -189,6 +212,11 @@ func (f *DefaultFanController) kickStart(speedTarget int) (target int, kicking b
 		return f.superviseStart(config, speedTarget, now)
 	}
 	if !transition || f.kick.disabled {
+		return 0, false
+	}
+	if f.kick.tooLowTarget > 0 && speedTarget <= f.kick.tooLowTarget {
+		ui.Debug("Fan %s: its target %d doesn't keep it spinning after a kick (see the warning above), no kick start",
+			f.fan.GetId(), speedTarget)
 		return 0, false
 	}
 	return f.beginStartSupervision(config, speedTarget)
@@ -262,8 +290,7 @@ func (f *DefaultFanController) superviseKick(config configuration.KickStartConfi
 // spinning: a fan that stops slowly is still seen spinning before. Without a verdict, the supervision ends unjudged
 // at the end of the window.
 func (f *DefaultFanController) superviseStart(config configuration.KickStartConfig, speedTarget int, now time.Time) (int, bool) {
-	_, standstill := f.kickStartReadings(f.kick.since.Add(f.kickStartResponseDelay()))
-	if standstill {
+	if f.kickStartStandstillAfterResponse() {
 		f.kick.since = now
 		if !f.kick.kicked {
 			ui.Debug("Fan %s doesn't spin at its target %d after a start from standstill", f.fan.GetId(), speedTarget)
@@ -294,14 +321,17 @@ func (f *DefaultFanController) superviseStart(config configuration.KickStartConf
 // retryAfterStopAtTarget handles a fan that stopped at its target after a kick had made it spin. That is not a
 // failed kick, and doesn't raise the kick value by itself: the fan is kicked once more in this start, one step higher
 // (mode auto; adopted for later starts only if the fan then keeps spinning at its target). If it stops again, the
-// target is below the PWM value that keeps the fan spinning: the start ends with a warning (once per run).
+// target is below the PWM value that keeps the fan spinning: the start ends with a warning (once per run), and starts
+// at this target or below aren't supervised again in this run (see tooLowTarget).
 func (f *DefaultFanController) retryAfterStopAtTarget(config configuration.KickStartConfig, speedTarget int, now time.Time) (int, bool) {
 	fanId := f.fan.GetId()
 	if f.kick.retried {
+		f.kick.tooLowTarget = max(f.kick.tooLowTarget, speedTarget)
 		if !f.kick.targetTooLowLogged {
 			f.kick.targetTooLowLogged = true
 			ui.Warning("Fan %s stops at its target PWM %d after a start from standstill, although a kick at PWM %d "+
-				"made it spin: the target is below the PWM value that keeps the fan spinning. Raise minPwm, or set "+
+				"made it spin: the target is below the PWM value that keeps the fan spinning. fan2go doesn't kick it "+
+				"at this target again until its config is reloaded or fan2go is restarted. Raise minPwm, or set "+
 				"neverStop: true", fanId, speedTarget, f.kick.kickLevel)
 		} else {
 			ui.Debug("Fan %s stopped again at its target %d after a kick at PWM %d", fanId, speedTarget, f.kick.kickLevel)
