@@ -439,12 +439,10 @@ can't see whether the fan would spin. The check changes neither the PWM value no
 paused while the curve fails (`UpdateFanSpeed` returns before it) and starts over on every run (reload): a stall
 that lasts is reported again, and the tach has to be seen working again.
 
-It is configured with `sanityCheck.fanStalled.enabled` per fan. Without that key it is on, unless the known hardware
-quirks of the device have `FirmwareMayStopFan` (see [hardware-quirks.md](hardware-quirks.md#fields)); an explicit
-value always wins (`quirks.StallCheckEnabled`). Fans with `neverStop` are never checked here, whatever the config
-says: their own stall detection (above) raises the PWM and notifies when the fan stalls at `maxPwm`, so a fan is
-never reported by both. Fans without an RPM sensor (`cmd`/`file` fans without an RPM source, NVIDIA fans that can't
-read the RPM) are never checked.
+It is configured with `sanityCheck.fanStalled.enabled` per fan (default `true`). Fans with `neverStop` are never
+checked here, whatever the config says: their own stall detection (above) raises the PWM and notifies when the fan
+stalls at `maxPwm`, so a fan is never reported by both. Fans without an RPM sensor (`cmd`/`file` fans without an
+RPM source, NVIDIA fans that can't read the RPM) are never checked.
 
 **Why**: The only stall check used to be the `neverStop` one. A fan without it could read 0 RPM even at `maxPwm`
 while the controller reported `running`, without a log line or notification. Typical causes are a broken or blocked
@@ -579,7 +577,7 @@ fan2go's own state).
 | `fans[].sanityCheck.pwmValueChangedByThirdParty.enabled` | `true` | Compare the reported PWM with the last target. |
 | `fans[].sanityCheck.fanModeChangedByThirdParty.enabled` | `true` | Re-apply `controlMode.active` if the mode changed. |
 | `fans[].sanityCheck.fanModeChangedByThirdParty.throttleDuration` | `10s` | Minimum time between two mode checks. |
-| `fans[].sanityCheck.fanStalled.enabled` | `true`, `false` with a `FirmwareMayStopFan` quirk | Warn and notify once when a fan without `neverStop` doesn't spin at a target of at least `minPwm`. |
+| `fans[].sanityCheck.fanStalled.enabled` | `true` | Warn and notify once when a fan without `neverStop` doesn't spin at a target of at least `minPwm`. |
 | `fans[].cmd.setPwm/getPwm/getRpm.timeout` | `2s` | Command timeout of `cmd` fans. |
 
 Not configurable (constants in `internal/controller/controller.go`): startup warm-up 2 s, update delay 1 s, stall

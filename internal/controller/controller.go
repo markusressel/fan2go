@@ -20,7 +20,6 @@ import (
 	"github.com/markusressel/fan2go/internal/curves"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/markusressel/fan2go/internal/persistence"
-	"github.com/markusressel/fan2go/internal/quirks"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/oklog/run"
@@ -1094,7 +1093,7 @@ func (f *DefaultFanController) UpdateFanSpeed() error {
 // target is the target of this update (before the pwmMap), written whether setting it succeeded.
 func (f *DefaultFanController) checkStall(target int, minPwm int, written bool) {
 	fan := f.fan
-	if !quirks.StallCheckEnabled(fan.GetConfig(), fans.KnownQuirksOf(fan)) {
+	if enabled := fan.GetConfig().SanityCheck.FanStalled.Enabled; !enabled.Get() {
 		return
 	}
 	now := f.getClock().Now()

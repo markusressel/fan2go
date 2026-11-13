@@ -187,7 +187,7 @@ fans:
       # It only applies to fans with an RPM sensor whose tach has been seen working (RPM >= 50 in the
       # fan curve data, or since fan2go started controlling the fan or reloaded its config).
       # fan2go doesn't change the PWM value because of it.
-      # Default: true, except for devices whose firmware may keep the fan stopped (see docs/hardware-quirks.md).
+      # Default: true
       fanStalled:
         # (Optional) Whether to enable this check or not
         enabled: true

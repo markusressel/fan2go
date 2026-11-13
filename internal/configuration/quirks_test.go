@@ -65,12 +65,9 @@ fans:
 `)
 	require.Len(t, cfg.Fans, 3)
 	defaultValue := cfg.Fans[0].SanityCheck.FanStalled.Enabled
-	assert.False(t, defaultValue.IsSet())
 	assert.True(t, defaultValue.Get())
 	disabled := cfg.Fans[1].SanityCheck.FanStalled.Enabled
-	assert.True(t, disabled.IsSet())
 	assert.False(t, disabled.Get())
 	enabled := cfg.Fans[2].SanityCheck.FanStalled.Enabled
-	assert.True(t, enabled.IsSet())
 	assert.True(t, enabled.Get())
 }

@@ -38,12 +38,6 @@ type DefaultTrueBool struct {
 	Optional[bool]
 }
 
-// IsSet returns whether the value was set in the configuration or overridden at runtime,
-// i.e. whether Get returns something other than the default.
-func (b *DefaultTrueBool) IsSet() bool {
-	return b.Present || b.RuntimeOverride
-}
-
 // Get returns the boolean value, defaulting to true if not present and not overridden.
 func (b *DefaultTrueBool) Get() bool {
 	if !b.Present && !b.RuntimeOverride {

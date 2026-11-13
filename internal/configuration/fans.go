@@ -234,10 +234,9 @@ type SanityCheckConfig struct {
 }
 
 // FanStalledConfig configures the check that warns when a fan without neverStop doesn't spin although fan2go
-// sets a PWM value of at least its minPwm. The default (no enabled key) is on, unless the known hardware quirks
-// of the device say that its firmware may keep the fan stopped (see quirks.StallCheckEnabled).
+// sets a PWM value of at least its minPwm.
 type FanStalledConfig struct {
-	// Enabled defines whether the check is enabled. Use IsSet to tell an explicit value from the default.
+	// Enabled defines whether the check is enabled (default true).
 	Enabled DefaultTrueBool `json:"enabled,omitempty"`
 }
 

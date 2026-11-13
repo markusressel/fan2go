@@ -13,7 +13,6 @@ import (
 	"github.com/markusressel/fan2go/internal/control_loop"
 	"github.com/markusressel/fan2go/internal/controller/status"
 	"github.com/markusressel/fan2go/internal/fans"
-	"github.com/markusressel/fan2go/internal/quirks"
 	"github.com/markusressel/fan2go/internal/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -370,15 +369,15 @@ func newStallCheckTest(t *testing.T, modify func(config *configuration.FanConfig
 			modify(config)
 		}
 	})
-	return newStallCheckTestForFan(t, s, s.fan)
+	return newStallCheckTestForFan(t, s)
 }
 
-func newStallCheckTestForFan(t *testing.T, s stallTestFan, fan fans.Fan) *stallCheckTest {
+func newStallCheckTestForFan(t *testing.T, s stallTestFan) *stallCheckTest {
 	t.Helper()
 	curveValue := 255.0
 	controller := NewFanController(
 		mockPersistence{hasSavedPwmData: true},
-		fan,
+		s.fan,
 		MockCurve{ID: "curve", Value: &curveValue},
 		control_loop.NewDirectControlLoop(nil),
 		time.Millisecond,
@@ -563,7 +562,7 @@ func TestFanController_StallCheck_NeverStopFansUseTheirOwnStallHandling(t *testi
 	s := newStallTestHwMonFanWithConfig(t, 20, 255, func(config *configuration.FanConfig) {
 		config.SanityCheck.FanStalled.Enabled.SetOverride(true)
 	})
-	test := newStallCheckTestForFan(t, s, s.fan)
+	test := newStallCheckTestForFan(t, s)
 	*test.curveValue = 0
 	test.spinThenStop(t)
 
@@ -577,49 +576,26 @@ func TestFanController_StallCheck_NeverStopFansUseTheirOwnStallHandling(t *testi
 	assert.Empty(t, test.notifications)
 }
 
-// quirkyFan adds a known hardware quirks entry to a fan.
-type quirkyFan struct {
-	fans.Fan
-	entry *quirks.Entry
-}
-
-func (f quirkyFan) KnownQuirks() *quirks.Entry {
-	return f.entry
-}
-
-func TestFanController_StallCheck_ConfigAndKnownQuirks(t *testing.T) {
-	firmwareMayStopFan := &quirks.Entry{ID: "test", Version: 1, FirmwareMayStopFan: true}
+func TestFanController_StallCheck_ConfigSwitch(t *testing.T) {
 	tests := []struct {
 		name       string
 		enabled    *bool
-		entry      *quirks.Entry
 		wantReport bool
 	}{
-		{"default", nil, nil, true},
-		{"disabled", boolPtr(false), nil, false},
-		{"enabled", boolPtr(true), nil, true},
-		{"entry without FirmwareMayStopFan", nil, &quirks.Entry{ID: "other", Version: 1}, true},
-		{"FirmwareMayStopFan: off by default", nil, firmwareMayStopFan, false},
-		{"FirmwareMayStopFan: config enables it", boolPtr(true), firmwareMayStopFan, true},
-		{"FirmwareMayStopFan: config disables it", boolPtr(false), firmwareMayStopFan, false},
+		{"default", nil, true},
+		{"disabled", boolPtr(false), false},
+		{"enabled", boolPtr(true), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// GIVEN
-			setupStallTestConfig(t)
-			s := newStallTestHwMonFanWithConfig(t, stallCheckTestMinPwm, 255, func(config *configuration.FanConfig) {
-				config.NeverStop = false
+			test := newStallCheckTest(t, func(config *configuration.FanConfig) {
 				if tt.enabled != nil {
 					config.SanityCheck.FanStalled.Enabled = configuration.DefaultTrueBool{
 						Optional: configuration.Optional[bool]{Value: *tt.enabled, Present: true},
 					}
 				}
 			})
-			fan := s.fan
-			if tt.entry != nil {
-				fan = quirkyFan{Fan: s.fan, entry: tt.entry}
-			}
-			test := newStallCheckTestForFan(t, s, fan)
 
 			// WHEN the fan stalls
 			test.spinThenStop(t)
@@ -643,7 +619,7 @@ func TestFanController_StallCheck_FanWithoutRpmSensorIsNotChecked(t *testing.T) 
 	require.NoError(t, os.WriteFile(pwmPath, []byte("0"), 0644))
 	fan, err := fans.NewFan(configuration.FanConfig{ID: "file", File: &configuration.FileFanConfig{Path: pwmPath}})
 	require.NoError(t, err)
-	test := newStallCheckTestForFan(t, stallTestFan{fan: fan, pwmPath: pwmPath}, fan)
+	test := newStallCheckTestForFan(t, stallTestFan{fan: fan, pwmPath: pwmPath})
 	require.NoError(t, fan.AttachFanRpmCurveData(&map[int]float64{0: 0, 255: 1500}))
 
 	for i := 0; i < 50; i++ {

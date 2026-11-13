@@ -55,36 +55,7 @@ func (e *Entry) Check(ctx AdviceContext) []Advice {
 	for _, f := range e.Advice {
 		result = append(result, f(e, ctx)...)
 	}
-	// derived from a field, so every entry with it gets the advice
-	if e.FirmwareMayStopFan {
-		result = append(result, adviseFirmwareMayStopFan(e, ctx)...)
-	}
 	return result
-}
-
-// adviseFirmwareMayStopFan: the firmware of the device may keep the fan stopped although fan2go writes a positive
-// PWM value, so the stall check of fans without neverStop is off by default (see StallCheckEnabled).
-func adviseFirmwareMayStopFan(e *Entry, ctx AdviceContext) []Advice {
-	if ctx.Fan.NeverStop {
-		// the stall check only applies to fans without neverStop
-		return nil
-	}
-	enabled := ctx.Fan.SanityCheck.FanStalled.Enabled
-	if !enabled.IsSet() {
-		return []Advice{{AdviceTip, fmt.Sprintf(
-			"fan %s: the firmware of the %s may keep the fan stopped although fan2go sets a positive PWM value "+
-				"(known hardware quirk '%s'), so fan2go doesn't warn when this fan doesn't spin. "+
-				"Set sanityCheck.fanStalled.enabled: true to get that warning anyway.",
-			ctx.Fan.ID, e.Description, e.ID)}}
-	}
-	if enabled.Get() {
-		return []Advice{{AdviceTip, fmt.Sprintf(
-			"fan %s: the firmware of the %s may keep the fan stopped although fan2go sets a positive PWM value "+
-				"(known hardware quirk '%s'), so the enabled sanityCheck.fanStalled may warn about a fan that the "+
-				"firmware stopped on purpose. Remove sanityCheck.fanStalled.enabled (or set it to false) if it does.",
-			ctx.Fan.ID, e.Description, e.ID)}}
-	}
-	return nil
 }
 
 // adviseReadbackFormula: a configured setPwmToGetPwmMap (identity, linear or values) replaces the driver formula of
