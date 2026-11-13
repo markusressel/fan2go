@@ -109,7 +109,8 @@ curl -LO "https://github.com/markusressel/fan2go/releases/download/${VERSION}/fa
 sudo apt install "./fan2go_${VERSION}_amd64.deb"
 ```
 
-For a pre-release, the package file names use `~` instead of `-` (e.g. `fan2go_1.0.0~rc.1_amd64.deb`).
+For a pre-release, the package version is e.g. `1.0.0~rc.1`, so the final `1.0.0` upgrades it; the file name is
+`fan2go_1.0.0-rc.1_amd64.deb`.
 
 ### Fedora / openSUSE ![](https://img.shields.io/badge/.rpm-51A2DA?logo=fedora&logoColor=white)
 

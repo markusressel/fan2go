@@ -71,6 +71,10 @@ jobs:
           version: v2.20.2
           args: release --snapshot --clean
 
+      # the snapshot version (e.g. 1.0.1-snapshot+abc1234) is a pre-release, like 1.0.0-rc.1
+      - name: Check the package versions and file names
+        run: .github/scripts/check-packages.sh dist
+
       - name: Upload the snapshot
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -138,6 +142,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # the tag of this run; with several tags on the commit (e.g. 1.0.0-rc.1 and 1.0.0), GoReleaser would pick one
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+
+      # GoReleaser has uploaded the assets already; a failure here stops the release before the attestations
+      - name: Check the package versions and file names
+        run: .github/scripts/check-packages.sh dist
 
       # SHA256SUMS lists every uploaded asset under its release asset name; add SHA256SUMS itself, so one attestation
       # covers all assets.

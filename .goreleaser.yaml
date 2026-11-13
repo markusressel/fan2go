@@ -113,7 +113,10 @@ nfpms:
     formats:
       - deb
     package_name: fan2go
-    file_name_template: "{{ .ConventionalFileName }}"
+    # The package version of a pre-release is 1.0.0~rc.1 (sorts below 1.0.0 for dpkg and rpm), but GitHub replaces "~"
+    # in release asset names, so the file names use "-" (fan2go_1.0.0-rc.1_amd64.deb) and match SHA256SUMS.
+    # .github/scripts/check-packages.sh checks both.
+    file_name_template: '{{ replace .ConventionalFileName "~" "-" }}'
     vendor: Markus Ressel
     homepage: https://github.com/markusressel/fan2go
     maintainer: Markus Ressel <markus9100@gmail.com>

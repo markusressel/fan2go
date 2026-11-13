@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Installs everything the GoReleaser build needs on an amd64 Ubuntu 24.04 (noble) machine:
 # the native and cross C toolchains (cgo), binutils (readelf, for the binary checks), qemu-user-static and libsensors5
-# for every target architecture (to smoke test the binaries, which load libsensors at runtime).
+# for every target architecture (to smoke test the binaries, which load libsensors at runtime), and rpm (to check the
+# versions of the .rpm packages).
 #
 # Usage: sudo .github/scripts/install-cross-toolchains.sh
 # UBUNTU_MIRROR overrides the amd64 archive mirror (default: the Azure mirror GitHub-hosted runners use),
@@ -53,7 +54,7 @@ Architectures: ${FOREIGN_ARCHES[*]}
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 SOURCES
 
-packages=(build-essential binutils file libsensors5 qemu-user-static)
+packages=(build-essential binutils file libsensors5 qemu-user-static rpm)
 for arch in "${FOREIGN_ARCHES[@]}"; do
   packages+=("crossbuild-essential-${arch}" "libsensors5:${arch}")
 done
