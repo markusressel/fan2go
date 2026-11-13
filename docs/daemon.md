@@ -158,7 +158,8 @@ setting is a safety problem. Failing on missing hardware was the old behaviour a
 **Trade-offs:** A skipped sensor is not retried. A curve that uses it can't be evaluated, so its fans apply their
 `onSensorFailure` action. A device that appears late during boot (#510) stays skipped until the next reload or restart.
 Unknown config keys only produce a warning (`WarnUnknownKeys`), so typos in optional keys load silently with defaults
-apart from that warning.
+apart from that warning. Top-level keys starting with `x-` or `.` get no warning: they hold YAML anchors. Viper splits
+keys on `.`, so a `.templates` section shows up as an unused top-level key with an empty name.
 
 ### Exit codes: 78 for config errors, returned errors instead of `os.Exit`
 

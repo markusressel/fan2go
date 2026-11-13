@@ -11,10 +11,14 @@ import (
 
 // WarnUnknownKeys checks unused configuration keys, determines if they are sections,
 // finds suggestions for typos, and prints warnings.
+// Top-level keys starting with "x-" or "." are ignored, see isIgnoredTopLevelKey.
 func WarnUnknownKeys(cfg interface{}, unusedKeys []string, getValue func(string) interface{}) {
 	re := regexp.MustCompile(`\[(\d+)\]`)
 	for _, unused := range unusedKeys {
 		key := strings.ToLower(unused)
+		if isIgnoredTopLevelKey(key) {
+			continue
+		}
 		viperKey := re.ReplaceAllString(key, ".$1")
 		val := getValue(viperKey)
 
@@ -42,11 +46,36 @@ func WarnUnknownKeys(cfg interface{}, unusedKeys []string, getValue func(string)
 		}
 
 		if isSection {
-			ui.Warning("Unknown configuration section (and its contents): %s%s", key, suggestion)
+			ui.Warning("Unknown configuration section (and its contents): %s%s", displayKey(key), suggestion)
 		} else {
-			ui.Warning("Unknown configuration key: %s%s", key, suggestion)
+			ui.Warning("Unknown configuration key: %s%s", displayKey(key), suggestion)
 		}
 	}
+}
+
+// isIgnoredTopLevelKey reports whether an unused key is a top-level key that only holds
+// YAML anchors, like "x-templates" or ".templates".
+// Viper splits keys on ".", so a top-level ".templates" section ends up below a top-level
+// key with an empty name, which is reported as unused key "".
+func isIgnoredTopLevelKey(key string) bool {
+	if key == "" {
+		return true
+	}
+	if strings.ContainsAny(key, ".[") {
+		// nested key
+		return false
+	}
+	return strings.HasPrefix(key, "x-")
+}
+
+// displayKey returns a printable form of an unused key path. Viper splits keys on ".",
+// so a key name that starts or ends with "." produces empty path segments; an empty
+// last segment is shown as a pair of single quotes, so a warning never shows an empty key name.
+func displayKey(key string) string {
+	if key == "" || strings.HasSuffix(key, ".") {
+		return key + "''"
+	}
+	return key
 }
 
 func levenshtein(a, b string) int {

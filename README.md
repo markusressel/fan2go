@@ -236,6 +236,21 @@ with an error that names the expected location.
 
 The most important configuration options you need to define are the `fans:`, `sensors:` and `curves:` sections.
 
+fan2go warns about unknown configuration keys, except for top-level keys starting with `x-` or `.`. Use such a key
+to hold YAML anchors that you reuse elsewhere in the file:
+
+```yaml
+x-templates:
+  gpu-pwm-map: &gpu-pwm-map
+    values:
+      0: 0
+      255: 255
+
+fans:
+  - id: gpu
+    setPwmToGetPwmMap: *gpu-pwm-map
+```
+
 ### Fans
 
 Under `fans:` you need to define a list of fan devices that you want to control using fan2go. To detect fans on your
