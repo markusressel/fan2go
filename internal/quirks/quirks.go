@@ -73,6 +73,11 @@ type Entry struct {
 	Levels int
 	// Hint is added to the error when fan2go can't take control of the fan.
 	Hint string
+	// FullDutyReadsAsFullSpeedFromChannel maps hwmon names of the entry to the first pwm channel (1-based) whose
+	// pwm_enable reads 0 ("full speed") instead of 1 while the channel is in manual mode at pwm 255. Lower channels,
+	// and names that are not in the map, don't do this. nil if the driver never does this.
+	// See FullDutyReadsAsFullSpeed.
+	FullDutyReadsAsFullSpeedFromChannel map[string]int
 	// Advice checks a fan config for settings that don't work well with this device, see Check.
 	Advice []AdviceFunc
 }
@@ -163,6 +168,17 @@ func hasSetPwmToGetPwmMap(config configuration.FanConfig) bool {
 	return config.SetPwmToGetPwmMap != nil && config.SetPwmToGetPwmMap.Autodetect == nil
 }
 
+// FullDutyReadsAsFullSpeed returns whether pwm_enable of the given pwm channel (1-based) of the device with the
+// given hwmon name reads 0 instead of 1 while the channel is in manual mode at pwm 255 (see
+// FullDutyReadsAsFullSpeedFromChannel). fan2go then treats pwm_enable 0 together with pwm 255 as manual mode.
+func (e *Entry) FullDutyReadsAsFullSpeed(hwmonName string, pwmChannel int) bool {
+	if e == nil || pwmChannel <= 0 {
+		return false
+	}
+	first, ok := e.FullDutyReadsAsFullSpeedFromChannel[hwmonName]
+	return ok && pwmChannel >= first
+}
+
 // IssueLink returns the first fan2go issue in Sources, or the first source if there is none.
 func (e *Entry) IssueLink() string {
 	for _, s := range e.Sources {
@@ -186,6 +202,9 @@ func (e *Entry) AppliedMessage(config configuration.FanConfig) string {
 			effect += " (overridden by config: setPwmToGetPwmMap)"
 		}
 		effects = append(effects, effect)
+	}
+	if config.HwMon != nil && e.FullDutyReadsAsFullSpeed(config.HwMon.HwmonName, config.HwMon.PwmChannel) {
+		effects = append(effects, "pwm_enable 0 at pwm 255 counts as manual mode")
 	}
 	if e.Hint != "" {
 		effects = append(effects, "a hint if fan2go can't take control of the fan")

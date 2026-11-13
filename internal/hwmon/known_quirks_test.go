@@ -39,6 +39,7 @@ func TestKnownQuirks_FakeSysfsDevices(t *testing.T) {
 		{"d5next", "d5next", "aquacomputer", false},
 		{"thinkpad", "thinkpad", "thinkpad", true},
 		{"nzxtsmart2", "nzxtsmart2", "nzxtsmart2", true},
+		{"it8665", "it8665", "it87", true},
 		{"nct6798", "nct6798", "", true},
 	}
 	for _, tt := range tests {
@@ -84,4 +85,20 @@ func TestKnownQuirks_FakeSysfsDevice_DisabledInConfig(t *testing.T) {
 
 	// THEN
 	assert.Nil(t, fans.KnownQuirksOf(fan))
+}
+
+func TestKnownQuirks_FakeSysfsDevice_It87ManualModeAtFullDuty(t *testing.T) {
+	// GIVEN: pwm1_enable reads 0 and pwm1 255, which is manual mode at full duty on this chip
+	controller := newFakeSysfsController(t, "it8665")
+	config := configuration.FanConfig{ID: "fan", HwMon: &configuration.HwMonFanConfig{Platform: "it8665", RpmChannel: 1}}
+	require.NoError(t, UpdateFanConfigFromHwMonControllers([]*HwMonController{controller}, &config))
+	fan, err := fans.NewFan(config)
+	require.NoError(t, err)
+
+	// WHEN
+	mode, err := fan.GetControlMode()
+
+	// THEN
+	require.NoError(t, err)
+	assert.Equal(t, fans.ControlModePWM, mode)
 }

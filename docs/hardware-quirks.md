@@ -28,6 +28,7 @@ device it identifies exactly. It never guesses from observed behaviour.
 | `aquacomputer` | `d5next`, `octo`, `quadro`, `aquaero` | `setPwmToGetPwmMap` is the identity. PWM is stored in centi-percent, and the round trip returns every value exactly. These four devices wait 200 ms between two control reports (`CTRL_REPORT_DELAY`), and every PWM read and write uses one, so measuring the map took minutes. | [docs](https://docs.kernel.org/hwmon/aquacomputer_d5next.html), `aquacomputer_d5next.c` `aqc_pwm_to_percent`, `aqc_percent_to_pwm` | #273, #324 |
 | `thinkpad` | `thinkpad` | 8 EC levels (write `level = (pwm >> 5) & 7`), used for advice only. No readback formula: most models read back `level * 255 / 7`, but models with the ACPI `FANG`/`FANW` methods (e.g. E531) store the level in percent (`level * 100 / 7`, read `speed * 7 / 100`) and report other values, and the hwmon name is the same. Hint: fan control needs `thinkpad_acpi fan_control=1` (otherwise every write fails with EPERM). | [docs](https://docs.kernel.org/admin-guide/laptops/thinkpad-acpi.html), `thinkpad_acpi.c` `fan_pwm1_show`, `fan_pwm1_store`, `fan_set_level` | #47 |
 | `nzxtsmart2` | `nzxtsmart2` | `setPwmToGetPwmMap` from the driver formula (percent, positive values never become 0). Hint: `pwm_enable` only accepts the value it reports (1 if the device detected a fan on the channel when the driver was loaded). | [docs](https://docs.kernel.org/hwmon/nzxt-smart2.html), `nzxt-smart2.c` `scale_pwm_value`, `set_pwm_enable` | none |
+| `it87` | `it8603`, `it8606`, `it8613`, `it8622`, `it8625`, `it8655`, `it8665`, `it8686`, `it8688`, `it8689`, `it8696`, `it8698` (all channels); `it8620`, `it8628`, `it8732` (`pwm4` and above). Modalias `platform:it87*` only. | `pwm_enable` 0 together with `pwm` 255 counts as manual mode (see [it87: pwm_enable 0 at full duty](#it87-pwm_enable-0-at-full-duty)). Hint: on channels with fan on/off control, `pwm_enable` 0 means full speed without PWM control. | `it87.c` `pwm_mode`, `it87_devices`, `set_pwm`; out-of-tree [frankcrawford/it87](https://github.com/frankcrawford/it87) `it87.c` `pwm_mode`, `it87_devices` | none |
 
 The source links with line numbers are in `internal/quirks/registry.go`.
 
@@ -41,8 +42,53 @@ An entry (`quirks.Entry`) only has the fields that its devices need:
 | `Readback` | `computeSetPwmToGetPwmMap`, `computePwmMapAutomatically` | The set→get PWM map comes from the formula. fan2go doesn't write 0..255 to measure it, and doesn't store it in the database (like a configured `setPwmToGetPwmMap`). `Entry.OutputLevels()` returns the distinct values, i.e. the real output levels of the device. The autodetected `pwmMap` uses one written value per output level (the one that reads back as itself), so the analysis measures each level once (Corsair: 101 target ranges). |
 | `Levels` | advice | The number of output levels, if it is known but the readback formula isn't (ThinkPad: 8). `Entry.LevelCount()` returns it, or the number of `OutputLevels()`. `Entry.WriteStep()` is the smallest change of the written value that can change the output: the shortest inner run of written values with the same readback (Corsair: 2), or `256 / Levels` (ThinkPad: 32). |
 | `Hint` | `takeManualControl` | Appended to the error when fan2go can't switch the fan to manual control: `... (known hardware quirk 'thinkpad': ...)`. |
+| `FullDutyReadsAsFullSpeedFromChannel` | `HwMonFan.GetControlMode`, `HwMonFan.SetControlMode`, `HwMonFan.SetPwm` | Per hwmon name, the first `pwm` channel whose `pwm_enable` reads 0 instead of 1 in manual mode at `pwm` 255. `Entry.FullDutyReadsAsFullSpeed(name, channel)` checks a channel. See [it87: pwm_enable 0 at full duty](#it87-pwm_enable-0-at-full-duty). |
 | `Advice` | `fan2go config validate` | Functions that check a fan config for settings that don't work well with the device. |
 | `ID`, `Version` | logs, `detect`, REST, database | `Version` is incremented on every change of `Readback` (see [Persistence](#persistence)). |
+
+## it87: pwm_enable 0 at full duty
+
+`pwm_mode()` in the it87 driver (mainline and [frankcrawford/it87](https://github.com/frankcrawford/it87)) doesn't
+store the mode that was written. It derives `pwm_enable` from the registers:
+
+```c
+if (has_fanctl_onoff(data) && nr < 3 && !(data->fan_main_ctrl & BIT(nr)))
+	return 0;			/* Full speed */
+if (data->pwm_ctrl[nr] & 0x80)
+	return 2;			/* Automatic mode */
+if ((!has_fanctl_onoff(data) || nr >= 3) && data->pwm_duty[nr] == pwm_to_reg(data, 0xff))
+	return 0;			/* Full speed */
+return 1;				/* Manual mode */
+```
+
+On chips without `FEAT_FANCTL_ONOFF`, and on `pwm4` and above (`nr >= 3`) of chips with it, a channel in manual mode
+at duty 255 reads `pwm_enable` 0. Writing 1 to `pwm_enable` at `pwm` 255 reads back 0, and writing 128 to `pwm` then
+reads back 1. Writing 0 sets the duty to 255 in manual mode, so 0 and "manual at 255" are the same hardware state.
+Without the entry, fan2go fails with `PWM mode stuck to 0` whenever the duty is 255 when it switches to manual mode
+(e.g. the board's automatic curve drove the fan to 255), and the `fanModeChangedByThirdParty` sanity check reports
+`Fan mode of fan X is ... (expected PWM)` whenever fan2go's curve asks for 255.
+
+For a fan of a listed chip and channel, fan2go treats `pwm_enable` 0 as manual mode if `pwm` reads 255:
+
+1. `SetControlMode(pwm)` succeeds if `pwm_enable` reads back 0 and `pwm` reads 255.
+2. `GetControlMode` returns `pwm` for `pwm_enable` 0 with `pwm` 255, so the sanity check (and `fan2go detect`) sees
+   manual mode. It checks the current `pwm`, not the value fan2go wrote last: the driver derives the 0 from the
+   current duty only, and fan2go may not have written anything yet (start-up, restore).
+3. Every time fan2go takes 0 as manual mode, the next write of a `pwm` value below 255 must confirm it: `pwm_enable`
+   must read 1 then. If it doesn't, the write returns an error (`... PWM mode stuck to 0`), handled like other PWM
+   write errors. Afterwards `pwm` isn't 255, so the sanity check sees `pwm_enable` 0 as disabled again and switches
+   the fan to manual mode, which fails with `PWM mode stuck to 0` if the channel really is in on/off mode.
+4. fan2go keeps writing 255. It doesn't write 254 to keep `pwm_enable` at 1.
+
+fan2go already switches a fan to manual mode before it writes `pwm` (`takeManualControl` before the analysis and the
+control loop, the sanity check before every write). This matters on these chips: `set_pwm` returns EBUSY in automatic
+mode. Only the fallbacks of the restore on exit write `pwm` after a failed mode switch.
+
+The entry is limited to the it87 driver (modalias `platform:it87*`). On other drivers, and on `pwm1`-`pwm3` of chips
+with fan on/off control, `pwm_enable` 0 can mean "full speed, no PWM control", so fan2go keeps reporting
+`PWM mode stuck to 0` there. The chip list is the union of both drivers. Chips that only one of them supports are
+included, and `it8689` (fan on/off control in mainline, none in frankcrawford/it87, same hwmon name) is matched on all
+channels: the confirmation in step 3 catches a channel that is really in on/off mode.
 
 ## Precedence and config
 
@@ -169,7 +215,8 @@ handled with the regular config:
 ## Known limitations
 
 - Only hwmon fans. NVIDIA fans handle their percent range in the backend.
-- An entry applies to all channels of a device. There are no channel-specific entries.
+- An entry applies to all channels of a device. There are no channel-specific entries. Only the `it87` behaviour
+  depends on the channel (`FullDutyReadsAsFullSpeedFromChannel`); its hint applies to all channels.
 - `thinkpad`: no readback formula, because it differs between models with the same hwmon name; the set/get sweep
   still runs (it is fast on the EC).
 - No DMI matching, so model-specific behaviour (e.g. `dell_smm` levels) can't be expressed.

@@ -2,6 +2,7 @@ package quirks
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -83,6 +84,74 @@ func TestRegistry_Formulas(t *testing.T) {
 	assert.Equal(t, 3, nzxt.Readback(1)) // positive values never become 0: 1 -> 1% -> 3
 	assert.Equal(t, 250, nzxt.Readback(249))
 	assert.Len(t, nzxt.OutputLevels(), 101)
+}
+
+func TestRegistry_It87FullDutyReadsAsFullSpeed(t *testing.T) {
+	tests := []struct {
+		name       string
+		pwmChannel int
+		expected   bool
+	}{
+		// no FEAT_FANCTL_ONOFF: all channels
+		{"it8665", 1, true},
+		{"it8665", 6, true},
+		{"it8603", 1, true},
+		{"it8613", 2, true},
+		{"it8622", 3, true},
+		{"it8606", 1, true},
+		{"it8625", 1, true},
+		{"it8655", 1, true},
+		{"it8686", 1, true},
+		{"it8688", 1, true},
+		{"it8689", 1, true},
+		{"it8696", 1, true},
+		{"it8698", 1, true},
+		// FEAT_FANCTL_ONOFF with more than 3 pwm channels: pwm4 and above
+		{"it8620", 3, false},
+		{"it8620", 4, true},
+		{"it8628", 3, false},
+		{"it8628", 6, true},
+		{"it8732", 3, false},
+		{"it8732", 4, true},
+		// unknown channel
+		{"it8665", 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s/pwm%d", tt.name, tt.pwmChannel), func(t *testing.T) {
+			e := Lookup(tt.name, "platform:it87")
+			require.NotNil(t, e)
+			assert.Equal(t, "it87", e.ID)
+			assert.Equal(t, tt.expected, e.FullDutyReadsAsFullSpeed(tt.name, tt.pwmChannel))
+		})
+	}
+
+	// FEAT_FANCTL_ONOFF and at most 3 pwm channels: no entry
+	for _, name := range []string{"it87", "it8712", "it8716", "it8718", "it8720", "it8721", "it8728", "it8736",
+		"it8738", "it8771", "it8772", "it8781", "it8782", "it8783", "it8785", "it8786", "it8790", "it8792", "it8607",
+		"it87952"} {
+		assert.Nil(t, Lookup(name, "platform:it87"), name)
+	}
+	// only the it87 driver: on other drivers, 0 can mean full speed without pwm control
+	assert.Nil(t, Lookup("it8665", "platform:nct6775"))
+	assert.Nil(t, Lookup("it8665", ""))
+	assert.Nil(t, Lookup("nct6798", "platform:it87"))
+	assert.NotNil(t, Lookup("it8665", "platform:it87.656"))
+	// other entries don't have this behaviour
+	assert.False(t, entryById(t, "nzxtsmart2").FullDutyReadsAsFullSpeed("nzxtsmart2", 1))
+	var none *Entry
+	assert.False(t, none.FullDutyReadsAsFullSpeed("it8665", 1))
+}
+
+func TestAppliedMessage_FullDutyReadsAsFullSpeed(t *testing.T) {
+	e := entryById(t, "it87")
+	config := configuration.FanConfig{ID: "fan", HwMon: &configuration.HwMonFanConfig{
+		HwmonName: "it8628", Modalias: "platform:it87", PwmChannel: 4,
+	}}
+	assert.Contains(t, e.AppliedMessage(config), "pwm_enable 0 at pwm 255 counts as manual mode")
+	assert.Contains(t, e.AppliedMessage(config), "a hint if fan2go can't take control of the fan")
+
+	config.HwMon.PwmChannel = 1
+	assert.NotContains(t, e.AppliedMessage(config), "pwm_enable 0 at pwm 255")
 }
 
 func TestLookup(t *testing.T) {
