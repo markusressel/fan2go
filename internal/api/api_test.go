@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"flag"
 	"net/http"
 	"net/http/httptest"
@@ -189,6 +190,30 @@ func TestRestApi_JsonOutputMatchesGoldenFiles(t *testing.T) {
 			assert.Equal(t, string(expected), body)
 		})
 	}
+}
+
+// Optional config bools (sanity checks) show their effective value, not the internal fields of the config type.
+func TestRestApi_FanConfigShowsEffectiveSanityCheckValues(t *testing.T) {
+	code, body := get(t, CreateRestService(createTestRegistry(t)), "/fan/file_fan/")
+	require.Equal(t, http.StatusOK, code)
+
+	assert.NotContains(t, body, `"Present"`)
+	assert.NotContains(t, body, `"RuntimeOverride"`)
+
+	var fan struct {
+		Config struct {
+			SanityCheck map[string]struct {
+				Enabled bool `json:"enabled"`
+			} `json:"sanityCheck"`
+		} `json:"config"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &fan))
+	// unset in the config, so enabled by default
+	for _, check := range []string{"pwmValueChangedByThirdParty", "fanModeChangedByThirdParty", "fanStalled"} {
+		require.Contains(t, fan.Config.SanityCheck, check)
+		assert.True(t, fan.Config.SanityCheck[check].Enabled, check)
+	}
+	assert.Contains(t, body, `"enabled": true`)
 }
 
 // The monitors and fan controllers update sensors, fans and curves while the API serializes them.

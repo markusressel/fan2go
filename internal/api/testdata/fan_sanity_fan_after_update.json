@@ -6,25 +6,13 @@
     "useUnscaledCurveValues": false,
     "sanityCheck": {
       "pwmValueChangedByThirdParty": {
-        "enabled": {
-          "Value": false,
-          "Present": false,
-          "RuntimeOverride": true
-        }
+        "enabled": false
       },
       "fanModeChangedByThirdParty": {
-        "enabled": {
-          "Value": false,
-          "Present": false,
-          "RuntimeOverride": true
-        }
+        "enabled": false
       },
       "fanStalled": {
-        "enabled": {
-          "Value": false,
-          "Present": false,
-          "RuntimeOverride": false
-        }
+        "enabled": true
       }
     },
     "file": {

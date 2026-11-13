@@ -27,7 +27,7 @@ func (c constantCurve) CurrentResult() curves.CurveResult {
 }
 
 // When the fan controller disables sanity checks at runtime (the fan can't read back its PWM value
-// or its control mode), the REST API shows them as runtime overrides in the fan config.
+// or its control mode), the REST API shows them as disabled in the fan config.
 func TestRestApi_FanConfigShowsSanityChecksDisabledAtRuntime(t *testing.T) {
 	// GIVEN a file fan whose files don't exist, so it can't read back its PWM value
 	reg := registry.NewRegistry()

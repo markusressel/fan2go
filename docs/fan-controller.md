@@ -154,7 +154,7 @@ party change (#552). Rate-limiting replaced a warning on every cycle, which floo
 **Decision**: `sanityCheck.pwmValueChangedByThirdParty` needs a PWM readback, and
 `sanityCheck.fanModeChangedByThirdParty` needs a readable control mode. If the fan lacks the feature, the
 controller logs a warning once and calls `fan.DisableSanityCheck`, which sets a runtime override in the fan
-config under the fan lock. The REST API shows it as `"Value": false, "RuntimeOverride": true`.
+config under the fan lock. The REST API shows the effective value, `"enabled": false`.
 
 `fanModeChangedByThirdParty` reads the control mode at most once per `throttleDuration` (default 10 s). If the
 mode is not manual PWM, it calls `trySetManualPwm` again, which writes `controlMode.active`. This check also runs
