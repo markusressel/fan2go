@@ -483,17 +483,22 @@ fans:
     #       Otherwise the derived maxPwm is raised to minPwm/startPwm.
     # (Optional) How fan2go starts this fan from standstill, see "Kick start from standstill".
     kickStart:
-      # auto (default): kick fans with a working RPM sensor at the PWM value measured by the fan
-      #                 analysis (or startPwm, if configured), until the fan spins. Raised if it doesn't.
-      #                 Fans without a working RPM sensor are not kicked.
+      # auto (default): watch every start from standstill; kick fans with a working RPM sensor at
+      #                 pwm, startPwm (if configured) or the PWM value measured by the fan analysis,
+      #                 until the fan spins. Raised if it doesn't. Fans without a working RPM sensor
+      #                 are only kicked if pwm or startPwm (above minPwm) is configured.
       # fixed:          kick at pwm (required) until the fan spins, or for duration without an RPM sensor
-      # off:            no kick, the fan gets its target right away
+      # off:            no kick, the fan gets its target right away. Use this for pumps and other
+      #                 devices that must never get a burst of a higher PWM value.
       mode: auto
-      # (Optional) PWM value of the kick of mode fixed, 1..255 (at most maxPwm, if configured)
+      # (Optional) PWM value of the kick, 1..255 (at most maxPwm, if configured). Required for fixed;
+      # with auto, the first kick value.
       # pwm: 120
-      # (Optional) Longest time a kick is held (with an RPM sensor, at least 2 rpmPollingRate periods),
-      # a plain number is seconds. Default: 5s
-      duration: 5s
+      # (Optional) With an RPM sensor: the time after which a kick that didn't start the fan counts as
+      # failed (at least the time derived from the fan's measured timing, and at least 4s).
+      # Without one: the time a kick is held (default 3s, at least 1s).
+      # A plain number is seconds. Default: 0 (derived)
+      # duration: 3s
     # (Optional) Override the global fanController.pwmSetDelay for this specific fan.
     # Useful when a fan requires more or less time to respond to PWM changes than the global default.
     # pwmSetDelay: 10ms
@@ -1339,8 +1344,9 @@ fan2go uses an adaptive measurement process instead of sweeping all PWM values:
 
 1. Discover the start boundary (`startPwm`) using boundary search.
    With `kickStart.mode: auto` (the default), also measure the lowest PWM value that starts the fan from standstill
-   (the breakaway PWM value, for the [kick start](#kick-start-from-standstill)). This adds a stop of the fan and a few
-   start attempts of up to 4 seconds each, typically 15 to 60 seconds per fan.
+   (the breakaway PWM value, for the [kick start](#kick-start-from-standstill)), and how fast the fan and its RPM
+   sensor respond. This adds a few stops of the fan and start attempts of up to 6 seconds each, typically 5 to 15
+   seconds for a fan that starts easily and up to 90 seconds for one that needs a much higher PWM value to start.
 2. Discover the max boundary (`maxPwm`) by scanning and confirming the upper PWM range.
 3. Sample interior points coarsely between these boundaries.
 4. Clean up the measured data by applying threshold-aware filtering, interpolation, monotonic enforcement, and interior
@@ -1427,21 +1433,29 @@ else stops the fan on purpose (e.g. the firmware of the device), disable the che
 ### Kick start from standstill
 
 A fan needs more power to start than to keep spinning. When fan2go sets a PWM value that should make a stopped fan
-spin (it was set to stop before, or fan2go just started controlling it) and the fan stands still, fan2go first sets a
-higher PWM value (a kick) until the RPM sensor shows the fan spinning, then the normal value. A fan that spins
-already, or a target that is high enough to start the fan by itself, gets no kick.
+spin (it was set to stop before, or fan2go just started controlling it), it watches the start for a few seconds. If
+the RPM sensor shows the fan standing still, fan2go sets a higher PWM value (a kick) until the fan spins, then the
+normal value. A kick that starts the fan takes 1 to 3 seconds. A fan that spins already, or a target that is high
+enough to start the fan by itself, gets no kick. fan2go never decides on a single RPM reading: some chips
+occasionally return a wrong value, and some drivers report a new RPM value only every second or two.
 
-With `kickStart.mode: auto` (the default), the kick uses the PWM value the fan analysis measured to start the fan from
-standstill, plus a small margin (a configured `startPwm` is used as is instead). If a kick doesn't start the fan
-within `kickStart.duration` (5 s), fan2go raises it by 1/8 of the range and tries again, up to full speed (or a
-configured `maxPwm`), and keeps the raised value until it restarts or reloads its config. If even full speed doesn't
-start the fan, it logs a warning and stops kicking it. A fan with `neverStop: true` is kicked first; its minimum PWM
-is only raised if the kicks didn't start it. Fans analyzed by an older version of fan2go have no measured value: the
-first kick is `startPwm` plus a quarter of the range up to full speed. Run `fan2go fan --id <id> init` to measure it.
+With `kickStart.mode: auto` (the default), the kick uses `kickStart.pwm` or a configured `startPwm` if set, else the
+PWM value the fan analysis measured to start the fan from standstill, plus a small margin. If the kick value isn't
+above the target (e.g. a configured `startPwm` that is also the minimum), the target is tried first, and the fan is
+kicked above it only if it doesn't start. If a kick doesn't start the fan within a few seconds (derived from how fast
+the fan and its RPM sensor responded during the analysis, at least 4 s, or `kickStart.duration` if that is longer),
+fan2go raises it by 1/8 of the range and tries again, up to full speed (or a configured `maxPwm`), and keeps the raised
+value until it restarts or reloads its config. If even full speed doesn't start the fan, it logs a warning and stops
+kicking it. A fan with `neverStop: true` is kicked first; its minimum PWM is only raised if the kicks didn't start
+it. Fans analyzed by an older version of fan2go have no measured value: the first kick is `startPwm` plus a quarter
+of the range up to full speed. Run `fan2go fan --id <id> init` to measure it.
 
-`mode: auto` needs an RPM sensor that has been seen working; other fans are not kicked. For those, `mode: fixed`
-kicks the fan at `kickStart.pwm` for `kickStart.duration` whenever it should start (including every start or
-reload of fan2go). `mode: off` sets the target right away, like versions before the kick start.
+A fan without a working RPM sensor is kicked only with an explicit value: `mode: fixed` with `kickStart.pwm`, or
+`mode: auto` with `kickStart.pwm` or a configured `startPwm` above `minPwm`. It gets the kick for
+`kickStart.duration` (default 3 s) whenever it should start (including every start or reload of fan2go). `mode: off`
+sets the target right away, like versions before the kick start; use it for pumps and other devices that must never
+get a burst of a higher PWM value. On it87 chips that report `pwm_enable` 0 at full speed (see
+[hardware quirks](docs/hardware-quirks.md)), a kick at full speed is handled like any other value.
 
 ### Sensor failures
 
