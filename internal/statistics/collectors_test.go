@@ -237,6 +237,9 @@ func TestControllerCollector_DescribesAllMetrics(t *testing.T) {
 		"fan2go_controller_increased_minPwm_count",
 		"fan2go_controller_minPwm_offset",
 		"fan2go_controller_stall_count",
+		"fan2go_controller_kick_start_count",
+		"fan2go_controller_failed_kick_start_count",
+		"fan2go_controller_kick_start_pwm",
 		"fan2go_controller_state",
 	}, names)
 }

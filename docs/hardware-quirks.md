@@ -78,7 +78,9 @@ For a fan of a listed chip and channel, fan2go treats `pwm_enable` 0 as manual m
    must read 1 then. If it doesn't, the write returns an error (`... PWM mode stuck to 0`), handled like other PWM
    write errors. Afterwards `pwm` isn't 255, so the sanity check sees `pwm_enable` 0 as disabled again and switches
    the fan to manual mode, which fails with `PWM mode stuck to 0` if the channel really is in on/off mode.
-4. fan2go keeps writing 255. It doesn't write 254 to keep `pwm_enable` at 1.
+4. fan2go keeps writing 255. It doesn't write 254 to keep `pwm_enable` at 1. This includes a kick at full speed
+   when a fan starts from standstill (see [fan-controller.md](fan-controller.md#kick-start-from-standstill)): the
+   `pwm_enable` 0 it reads during the kick is taken as manual mode, and the write of the target after it confirms it.
 
 fan2go already switches a fan to manual mode before it writes `pwm` (`takeManualControl` before the analysis and the
 control loop, the sanity check before every write). This matters on these chips: `set_pwm` returns EBUSY in automatic
