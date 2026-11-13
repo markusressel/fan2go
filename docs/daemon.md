@@ -424,14 +424,29 @@ the log).
 ### Build variants: `disable_nvml`
 
 **Decision:** NVIDIA support (NVML via cgo) is behind the build tag `disable_nvml`: with the tag, stub files replace
-the NVIDIA fans, sensors and the NVML handle. CI builds both variants for every architecture (`make build` and
-`make build-no-nvml`, artifacts with the suffix `-no-nvml`). The test suite runs with `disable_nvml`.
+the NVIDIA fans, sensors and the NVML handle. CI builds both variants for every architecture with GoReleaser
+(`.goreleaser.yaml`; locally `make build` and `make build-no-nvml`), release binaries with the suffix `-no-nvml` are
+the `disable_nvml` variant. The `.deb` and `.rpm` packages ship the NVML variant. The test suite runs with
+`disable_nvml`.
 
-**Why:** NVML needs the NVIDIA library at runtime and cgo at build time; users without NVIDIA GPUs and some
-architectures don't want that dependency.
+All release binaries are built on Ubuntu 24.04. They don't link libsensors: fan2go loads `libsensors.so.5`,
+`libsensors.so.4` (Fedora, RHEL, openSUSE) or `libsensors.so` at runtime and detects the hwmon chips in sysfs if none
+is installed (see [sensors](sensors.md#libsensors-is-loaded-at-runtime-with-a-sysfs-fallback)). So the plain
+binaries, the `.deb` and the `.rpm` packages contain the same binary, and the packages only recommend libsensors. CI
+rejects binaries that need a glibc newer than 2.34 or have a `NEEDED` entry for libsensors, and runs `fan2go detect`
+with libsensors on every architecture.
+
+The NVML variant doesn't link `libnvidia-ml`: go-nvml leaves the NVML symbols unresolved at link time and loads
+`libnvidia-ml.so.1` with `dlopen()` when fan2go initializes NVML. The binary is linked with lazy binding
+(`-z lazy`), so it starts on machines without the NVIDIA driver; NVML initialization then fails and fan2go runs
+without NVIDIA devices. CI checks that the NVML variant has the NVML symbols and the `disable_nvml` variant has none.
+
+**Why:** NVML needs cgo at build time and the NVIDIA driver at runtime; some users don't want NVIDIA code in the
+binary at all.
 
 **Trade-offs:** NVIDIA code is not covered by `make test`. A config with `nvidia` fans or sensors fails validation in a
-`disable_nvml` build ("This version of fan2go was built without NVIDIA (nvml) support").
+`disable_nvml` build ("This version of fan2go was built without NVIDIA (nvml) support"). The NVML variant doesn't
+start with `LD_BIND_NOW=1` set, since the dynamic linker then has to resolve the NVML symbols at startup.
 
 ### Versioning and upgrade notes
 

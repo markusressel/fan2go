@@ -1,32 +1,91 @@
 package hwmon
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/markusressel/fan2go/internal/ui"
 
 	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
+	"github.com/markusressel/fan2go/internal/hwmon/lmsensors"
 	"github.com/markusressel/fan2go/internal/sensors"
-	"github.com/md14454/gosensors"
 )
 
 const (
-	BusTypeI2c     = 0
-	BusTypeIsa     = 1
-	BusTypePci     = 2
-	BusTypeSpi     = 3
-	BusTypeVirtual = 4
-	BusTypeAcpi    = 5
-	BusTypeHid     = 6
-	BusTypeMdio    = 7
-	BusTypeScsi    = 8
+	BusTypeI2c     = lmsensors.BusTypeI2c
+	BusTypeIsa     = lmsensors.BusTypeIsa
+	BusTypePci     = lmsensors.BusTypePci
+	BusTypeSpi     = lmsensors.BusTypeSpi
+	BusTypeVirtual = lmsensors.BusTypeVirtual
+	BusTypeAcpi    = lmsensors.BusTypeAcpi
+	BusTypeHid     = lmsensors.BusTypeHid
+	BusTypeMdio    = lmsensors.BusTypeMdio
+	BusTypeScsi    = lmsensors.BusTypeScsi
 )
+
+// The functions detectChips uses; tests replace them.
+var (
+	// sysfsRoot is the mount point of sysfs, used when libsensors can't be used
+	sysfsRoot         = "/sys"
+	libsensorsChips   = lmsensors.DetectedChips
+	warnf             = ui.Warning
+	libsensorsWarning sync.Once
+	libsensorsInfo    sync.Once
+)
+
+// wantValue selects the subfeature values fan2go uses: initial values and limits of temperature and fan inputs
+func wantValue(t lmsensors.SubFeatureType) bool {
+	switch t {
+	case lmsensors.SubFeatureTypeTempInput, lmsensors.SubFeatureTypeTempMax, lmsensors.SubFeatureTypeTempMin,
+		lmsensors.SubFeatureTypeFanInput, lmsensors.SubFeatureTypeFanMax, lmsensors.SubFeatureTypeFanMin,
+		SubFeatureTypeFanMode:
+		return true
+	}
+	return false
+}
+
+// detectChips returns the hwmon chips detected by libsensors, or, if libsensors can't be used, read directly from
+// sysfs (with a one-time warning)
+func detectChips() []lmsensors.Chip {
+	chips, err := libsensorsChips(wantValue)
+	if err == nil {
+		libsensorsInfo.Do(func() {
+			name, _ := lmsensors.Load()
+			ui.Debug("Detecting hwmon chips with %s (libsensors %s, %s used: %v)", name, lmsensors.Version(),
+				lmsensors.ConfigFile, lmsensors.ConfigUsed())
+		})
+		return chips
+	}
+	libsensorsWarning.Do(func() { warnf("%s", libsensorsWarningText(err)) })
+	chips, err = lmsensors.SysfsChips(sysfsRoot, wantValue)
+	if err != nil {
+		ui.Error("Detecting hwmon chips in sysfs failed: %v", err)
+		return nil
+	}
+	return chips
+}
+
+// libsensorsWarningText explains why fan2go detects the hwmon chips without libsensors, and what to do about it
+func libsensorsWarningText(err error) string {
+	text := fmt.Sprintf("Detecting hwmon chips directly in sysfs, because libsensors (lm-sensors) can't be used: %v. "+
+		"The ignore and compute statements of %s don't apply.", err, lmsensors.ConfigFile)
+	switch {
+	case errors.Is(err, lmsensors.ErrInit):
+		text += fmt.Sprintf(" Fix or remove %s to use libsensors.", lmsensors.ConfigFile)
+	case errors.Is(err, lmsensors.ErrNoCgo):
+	default:
+		text += " Install libsensors (libsensors5 on Debian/Ubuntu, lm_sensors-libs on Fedora/RHEL, libsensors4 on " +
+			"openSUSE, lm_sensors on Arch Linux) to use it."
+	}
+	return text
+}
 
 type HwMonController struct {
 	Name string
@@ -50,9 +109,7 @@ type HwMonController struct {
 }
 
 func GetChips() []*HwMonController {
-	gosensors.Init()
-	defer gosensors.Cleanup()
-	chips := gosensors.GetDetectedChips()
+	chips := detectChips()
 
 	var list []*HwMonController
 
@@ -109,7 +166,7 @@ func getDeviceType(devicePath string) string {
 	return strings.TrimSpace(string(content))
 }
 
-func GetTempSensors(chip gosensors.Chip) map[int]*sensors.HwmonSensor {
+func GetTempSensors(chip lmsensors.Chip) map[int]*sensors.HwmonSensor {
 	result := map[int]*sensors.HwmonSensor{}
 
 	currentOutputIndex := 0
@@ -117,7 +174,7 @@ func GetTempSensors(chip gosensors.Chip) map[int]*sensors.HwmonSensor {
 	for j := 0; j < len(features); j++ {
 		feature := features[j]
 
-		if !FeatureContainsType(feature, gosensors.FeatureTypeTemp) {
+		if !FeatureContainsType(feature, lmsensors.FeatureTypeTemp) {
 			continue
 		}
 
@@ -130,21 +187,21 @@ func GetTempSensors(chip gosensors.Chip) map[int]*sensors.HwmonSensor {
 
 		subfeatures := feature.GetSubFeatures()
 
-		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeTempInput) {
+		if containsSubFeature(subfeatures, lmsensors.SubFeatureTypeTempInput) {
 			currentOutputIndex++
 
-			inputSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeTempInput)
+			inputSubFeature := getSubFeature(subfeatures, lmsensors.SubFeatureTypeTempInput)
 			sensorInputPath := path.Join(chip.Path, inputSubFeature.Name)
 
 			max := -1
-			if containsSubFeature(subfeatures, gosensors.SubFeatureTypeTempMax) {
-				maxSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeTempMax)
+			if containsSubFeature(subfeatures, lmsensors.SubFeatureTypeTempMax) {
+				maxSubFeature := getSubFeature(subfeatures, lmsensors.SubFeatureTypeTempMax)
 				max = int(maxSubFeature.GetValue())
 			}
 
 			min := -1
-			if containsSubFeature(subfeatures, gosensors.SubFeatureTypeTempMin) {
-				minSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeTempMin)
+			if containsSubFeature(subfeatures, lmsensors.SubFeatureTypeTempMin) {
+				minSubFeature := getSubFeature(subfeatures, lmsensors.SubFeatureTypeTempMin)
 				min = int(minSubFeature.GetValue())
 			}
 
@@ -166,11 +223,12 @@ func GetTempSensors(chip gosensors.Chip) map[int]*sensors.HwmonSensor {
 }
 
 var (
-	FeatureTypePwm        gosensors.FeatureType    = 7
-	SubFeatureTypeFanMode gosensors.SubFeatureType = 1920
+	// FeatureTypePwm and SubFeatureTypeFanMode (pwmN_enable) are only reported by libsensors >= 3.6.1
+	FeatureTypePwm        = lmsensors.FeatureTypePwm
+	SubFeatureTypeFanMode = lmsensors.SubFeatureTypePwmEnable
 )
 
-func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
+func GetFans(chip lmsensors.Chip) []*fans.HwMonFan {
 	var result = []*fans.HwMonFan{}
 
 	hwmonName := getDeviceName(chip.Path)
@@ -189,7 +247,7 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 			}
 			// assume rpm channel is the same as pwm channel
 			rpmChannel = pwmChannel
-		} else if feature.Type == gosensors.FeatureTypeFan {
+		} else if feature.Type == lmsensors.FeatureTypeFan {
 			_, err := fmt.Sscanf(feature.Name, "fan%d", &rpmChannel)
 			if err != nil {
 				ui.Warning("No rpmChannel found for '%s', ignoring.", feature.Name)
@@ -216,7 +274,7 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 		}
 
 		rpmAverage := 0.0
-		inputSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanInput)
+		inputSubFeature := getSubFeature(subfeatures, lmsensors.SubFeatureTypeFanInput)
 		if inputSubFeature != nil {
 			rpmAverage = inputSubFeature.GetValue()
 		} else {
@@ -224,16 +282,16 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 		}
 
 		max := -1
-		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanMax) {
-			maxSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanMax)
+		if containsSubFeature(subfeatures, lmsensors.SubFeatureTypeFanMax) {
+			maxSubFeature := getSubFeature(subfeatures, lmsensors.SubFeatureTypeFanMax)
 			max = int(maxSubFeature.GetValue())
 		} else {
 			max = fans.MaxPwmValue
 		}
 
 		min := -1
-		if containsSubFeature(subfeatures, gosensors.SubFeatureTypeFanMin) {
-			minSubFeature := getSubFeature(subfeatures, gosensors.SubFeatureTypeFanMin)
+		if containsSubFeature(subfeatures, lmsensors.SubFeatureTypeFanMin) {
+			minSubFeature := getSubFeature(subfeatures, lmsensors.SubFeatureTypeFanMin)
 			min = int(minSubFeature.GetValue())
 		} else {
 			min = fans.MinPwmValue
@@ -267,11 +325,11 @@ func GetFans(chip gosensors.Chip) []*fans.HwMonFan {
 	return result
 }
 
-func FeatureContainsType(feature gosensors.Feature, featureType gosensors.FeatureType) bool {
+func FeatureContainsType(feature lmsensors.Feature, featureType lmsensors.FeatureType) bool {
 	return feature.Type == featureType
 }
 
-func getSubFeature(subfeatures []gosensors.SubFeature, input gosensors.SubFeatureType) *gosensors.SubFeature {
+func getSubFeature(subfeatures []lmsensors.SubFeature, input lmsensors.SubFeatureType) *lmsensors.SubFeature {
 	for _, a := range subfeatures {
 		if a.Type == input {
 			return &a
@@ -280,7 +338,7 @@ func getSubFeature(subfeatures []gosensors.SubFeature, input gosensors.SubFeatur
 	return nil
 }
 
-func containsSubFeature(s []gosensors.SubFeature, e gosensors.SubFeatureType) bool {
+func containsSubFeature(s []lmsensors.SubFeature, e lmsensors.SubFeatureType) bool {
 	for _, a := range s {
 		if a.Type == e {
 			return true
@@ -300,7 +358,7 @@ func getLabel(devicePath string, featureName string) string {
 	return strings.TrimSpace(label)
 }
 
-func computeIdentifier(chip gosensors.Chip) (name string) {
+func computeIdentifier(chip lmsensors.Chip) (name string) {
 	name = chip.Prefix
 
 	devicePath := chip.Path
@@ -337,7 +395,7 @@ func computeIdentifier(chip gosensors.Chip) (name string) {
 // libsensors' sensors_snprintf_chip_name, or "" for an unknown bus type.
 // Unlike computeIdentifier, it doesn't put the bus number in front of ISA and PCI addresses,
 // so both differ for addresses >= 0x1000 (e.g. "nvme-pci-5a00" vs. "nvme-pci-05a00").
-func computeLmSensorsName(chip gosensors.Chip) string {
+func computeLmSensorsName(chip lmsensors.Chip) string {
 	prefix := chip.Prefix
 	if len(prefix) <= 0 {
 		return ""

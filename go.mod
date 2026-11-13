@@ -10,7 +10,6 @@ require (
 	github.com/guptarohit/asciigraph v0.10.0
 	github.com/labstack/echo/v5 v5.4.4
 	github.com/looplab/tarjan v0.1.0
-	github.com/md14454/gosensors v0.0.0-20180726083412-bded752ab001
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/natefinch/atomic v1.0.1

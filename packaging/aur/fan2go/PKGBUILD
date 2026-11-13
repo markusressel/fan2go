@@ -9,9 +9,10 @@ pkgdesc="A simple daemon providing dynamic fan speed control based on temperatur
 arch=('x86_64' 'aarch64')
 url="https://github.com/markusressel/fan2go"
 license=('AGPL3')
-depends=('glibc' 'lm_sensors')
+depends=('glibc')
 makedepends=('go')
-optdepends=('libnotify: desktop notifications on errors'
+optdepends=('lm_sensors: hwmon device detection with libsensors and /etc/sensors3.conf (loaded at runtime)'
+            'libnotify: desktop notifications on errors'
             'nvidia-utils: NVIDIA GPU fan and temperature support')
 provides=("fan2go")
 conflicts=("fan2go-git")
