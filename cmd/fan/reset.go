@@ -2,7 +2,6 @@ package fan
 
 import (
 	"github.com/markusressel/fan2go/internal/configuration"
-	"github.com/markusressel/fan2go/internal/persistence"
 	"github.com/markusressel/fan2go/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -10,8 +9,9 @@ import (
 var resetCmd = &cobra.Command{
 	Use:   "reset",
 	Short: "Reset all data associated with a given fan",
-	Long:  ``,
-	Args:  cobra.NoArgs,
+	Long: `Deletes the saved analysis data of the fan, so it is analyzed again on the next start of the daemon.
+Stop the fan2go daemon first: the command refuses to run while it uses the same database.`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fan, err := getFan(fanId)
 		if err != nil {
@@ -21,7 +21,12 @@ var resetCmd = &cobra.Command{
 		dbPath := configuration.CurrentConfig.DbPath
 		ui.Info("Using persistence at: %s", dbPath)
 
-		p := persistence.NewPersistence(dbPath)
+		p, release, err := openPersistenceExclusively(dbPath)
+		if err != nil {
+			return err
+		}
+		defer release()
+
 		err = p.DeleteFanRpmData(fan)
 		if err != nil {
 			return err

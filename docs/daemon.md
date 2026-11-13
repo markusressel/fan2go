@@ -23,7 +23,10 @@ Details of the individual subsystems are in their own documents:
    searches `fan2go.yaml` in `.`, `$HOME` and `/etc/fan2go/`. A missing file or a YAML syntax error exits with code 78.
 2. **Load and validate** (`configuration.LoadConfig`, `configuration.ValidateConfig`). Errors are logged once, sent as
    a desktop notification and make the process exit with code 78 (`loggedError` in `cmd/root.go`, see "Exit codes").
-3. **Check the process owner** (`checkProcessOwner`). Running as non-root only logs a hint.
+3. **Check the process owner** (`checkProcessOwner`). Running as non-root only logs a hint. Then create the database
+   directory and take the process lock of the database (`persistence.AcquireProcessLock`, `<dbPath>.lock`). If
+   another fan2go process holds it (`fan2go fan init`, `fan reset` or a second daemon), the daemon exits with code 1
+   and names its PID.
 4. **Create the objects** (`InitializeObjects`):
    - `hwmon.GetChips()` scans the hwmon chips once.
    - Sensors: hwmon sensors are resolved against the scanned chips. A sensor that can't be resolved or created is
@@ -457,7 +460,7 @@ version is tagged, after they already run the change. The Makefile's `VERSION` d
 | `rpmPollingRate` | `1s` | RPM monitor interval |
 | `fanController.adjustmentTickRate` | `200ms` | Curve evaluator cycle, i.e. fan update interval |
 | `controllerAdjustmentTickRate` | unset | Deprecated alias of the above |
-| `fanController.pwmSetDelay` | `5ms` | Wait after a PWM write in the `setPwmToGetPwmMap` sweep and the fan analysis |
+| `fanController.pwmSetDelay` | `5ms` | Minimum wait after a PWM write in the `setPwmToGetPwmMap` sweep and the fan analysis (the measured readback delay is used if longer) |
 | `fanResponseDelay` | `2` (seconds) | Only used by the fan analysis (readback retries, small steps); seconds or a duration |
 | `statistics.enabled` / `host` / `port` | `false` / `127.0.0.1` / `9000` | Prometheus exporter |
 | `api.enabled` / `host` / `port` | `false` / `127.0.0.1` / `9001` | REST API |
@@ -477,10 +480,13 @@ described in the subsystem documents.
   controllers.
 - **A reload during an analysis waits for it.** Until every running analysis of the current config has finished,
   the old config stays active. Fans that are new in the reloaded config are analyzed after it was applied.
-- **`fan2go fan init` next to a running daemon is not prevented.** The initialization lock only works within one
-  process, and the database is opened per operation, so nothing stops both from writing to the same fan. Run
-  `fan init` with the daemon stopped. A running daemon picks up the new data only after a reload or restart (see
-  [fan-analysis.md](fan-analysis.md)).
+- **One process per database.** The daemon takes an advisory lock on `<dbPath>.lock` at start and holds it until it
+  exits; `fan2go fan init`, `fan reset` and the writing forms `fan speed <value>` and `fan mode <value>` take it too
+  (only while they run). Whoever comes second refuses to run, with an error that says to stop the other process
+  first (see [fan-analysis.md](fan-analysis.md)): a value written by the CLI would be overwritten by the daemon on its
+  next update. The lock is per database, not per fan: a second daemon with another `dbPath` isn't detected.
+  Read-only commands (`fan speed` and `fan mode` without a value, `fan rpm`, `fan curve`) don't take it. If the
+  directory of `dbPath` doesn't exist, no daemon can run, and `fan speed`/`fan mode` write without the lock.
 - **Skipped hardware is never retried** (#510). A device that appears after startup needs a reload or restart.
 - **A killed daemon can't hand the fans back.** After `SIGKILL` or an OOM kill, fans stay in manual mode at their
   last PWM until the next run stops; that run restores them to the state saved before the killed run took over (see

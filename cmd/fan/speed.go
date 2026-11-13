@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/markusressel/fan2go/internal/configuration"
 	"github.com/markusressel/fan2go/internal/fans"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -12,8 +13,9 @@ import (
 var speedCmd = &cobra.Command{
 	Use:   "speed",
 	Short: "Get/Set the current speed setting of a fan to the given PWM value ([0..255])",
-	Long:  ``,
-	Args:  cobra.RangeArgs(0, 1),
+	Long: `Without a value, prints the current PWM value of the fan. With a value, writes it to the fan; this is
+refused while the fan2go daemon runs, because it controls the fan and would overwrite the value.`,
+	Args: cobra.RangeArgs(0, 1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pterm.DisableOutput()
 
@@ -28,7 +30,13 @@ var speedCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+			release, err := lockFanForWriting(configuration.CurrentConfig.DbPath, fan.GetId(), "speed")
+			if err != nil {
+				return err
+			}
+			defer release()
 			err = fan.SetPwm(pwmValue)
+			return err
 		} else {
 			if !fan.Supports(fans.FeaturePwmSensor) {
 				fmt.Printf("N/A")

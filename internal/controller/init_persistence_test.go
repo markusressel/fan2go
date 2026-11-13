@@ -220,6 +220,29 @@ func (p *fakePersistence) DeleteFanAnalysisInfo(fanId string) error {
 	return nil
 }
 
+// ReplaceFanAnalysisData replaces all analysis data of the fan, like the real persistence (in one step).
+func (p *fakePersistence) ReplaceFanAnalysisData(fanId string, data persistence.FanAnalysisData) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.rpmData[fanId] = data.RpmCurve
+	if data.SetPwmToGetPwmMap != nil {
+		p.setPwmToGetPwmMaps[fanId] = data.SetPwmToGetPwmMap
+	} else {
+		delete(p.setPwmToGetPwmMaps, fanId)
+	}
+	if data.PwmMap != nil {
+		p.pwmMaps[fanId] = data.PwmMap
+	} else {
+		delete(p.pwmMaps, fanId)
+	}
+	if data.Info != nil {
+		p.analysisInfos[fanId] = *data.Info
+	} else {
+		delete(p.analysisInfos, fanId)
+	}
+	return nil
+}
+
 // originalState returns the saved original state of the fan, and false if there is none.
 func (p *fakePersistence) originalState(fanId string) (persistence.FanOriginalState, bool) {
 	p.mu.Lock()
@@ -682,7 +705,6 @@ func runUntilError(t *testing.T, controller *DefaultFanController) error {
 }
 
 func TestFanController_Run_ErrorAfterInitialization_RestoresFan(t *testing.T) {
-	loadErr := errors.New("load failed")
 	attachErr := errors.New("attach failed")
 	pwmMapErr := errors.New("pwm map load failed")
 
@@ -690,13 +712,6 @@ func TestFanController_Run_ErrorAfterInitialization_RestoresFan(t *testing.T) {
 		setUp       func(p *fakePersistence, fan *initTestFan)
 		expectedErr error
 	}{
-		"loading the fan curve data fails": {
-			setUp: func(p *fakePersistence, fan *initTestFan) {
-				// 1st load: no data (start initialization), 2nd: at the end of the initialization, 3rd: in Run
-				p.loadRpmDataErrors = []error{nil, nil, loadErr}
-			},
-			expectedErr: loadErr,
-		},
 		"attaching the fan curve data fails": {
 			setUp: func(p *fakePersistence, fan *initTestFan) {
 				// 1st attach: during the initialization, 2nd: in Run

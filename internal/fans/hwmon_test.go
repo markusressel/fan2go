@@ -316,8 +316,8 @@ func TestHwMonFan_AttachFanCurveData(t *testing.T) {
 	// Interpolated data starts at PWM 10 with RPM=10, first qualifying point is PWM 50 (RPM=50).
 	assert.Equal(t, 50, fan.GetMinPwm())
 	assert.Equal(t, 50, fan.GetStartPwm())
-	// maxPwm: highest PWM where RPM >= 95% of peak (200*0.95=190). Last qualifying PWM = 200.
-	assert.Equal(t, 200, fan.GetMaxPwm())
+	// maxPwm: lowest PWM where RPM >= 98% of peak (200*0.98=196).
+	assert.Equal(t, 196, fan.GetMaxPwm())
 }
 
 func TestHwMonFan_GetCurveId(t *testing.T) {

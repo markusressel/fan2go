@@ -34,6 +34,16 @@ func RunDaemon() error {
 	checkProcessOwner()
 
 	pers := persistence.NewPersistence(configuration.CurrentConfig.DbPath)
+	// only one process may control the fans of a database: refuse to run next to `fan2go fan init` or another daemon
+	if err := pers.Init(); err != nil {
+		return fmt.Errorf("unable to create the database directory: %w", err)
+	}
+	releaseLock, err := persistence.AcquireProcessLock(configuration.CurrentConfig.DbPath)
+	if err != nil {
+		return fmt.Errorf("unable to start: %w (e.g. 'fan2go fan init', a 'fan2go fan speed/mode' that is "+
+			"writing, or a second daemon); stop it first", err)
+	}
+	defer releaseLock()
 
 	fanMap, reg, err := InitializeObjects()
 	if err != nil {

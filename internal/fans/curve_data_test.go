@@ -91,9 +91,9 @@ func TestComputePwmBoundaries_IgnoresComputedStartPwm(t *testing.T) {
 	// WHEN
 	startPwm, maxPwm := ComputePwmBoundaries(fan)
 
-	// THEN
+	// THEN: the curve is flat from PWM 100, so that is also the lowest PWM with the peak RPM
 	assert.Equal(t, 100, startPwm)
-	assert.Equal(t, MaxPwmValue, maxPwm)
+	assert.Equal(t, 100, maxPwm)
 }
 
 func TestHwMonFan_AttachFanRpmCurveData_ClampsDerivedPwmBoundaries(t *testing.T) {
@@ -107,9 +107,10 @@ func TestHwMonFan_AttachFanRpmCurveData_ClampsDerivedPwmBoundaries(t *testing.T)
 		wantWarnings []string
 	}{
 		{
+			// the curve is flat from PWM 50, so that is also the lowest PWM with the peak RPM
 			name:      "no conflict",
 			curveData: curveStartingAt(50),
-			wantMin:   50, wantStart: 50, wantMax: 255,
+			wantMin:   50, wantStart: 50, wantMax: 50,
 		},
 		{
 			// the scaling of curve values to [minPwm..maxPwm] would be inverted
@@ -181,4 +182,60 @@ func captureWarnings(t *testing.T) *bytes.Buffer {
 	pterm.Warning = *pterm.Warning.WithWriter(&warnings)
 	t.Cleanup(func() { pterm.Warning = oldWarning })
 	return &warnings
+}
+
+func TestComputePwmBoundariesFromCurveData_SaturatingFan_LowestPwmWithTheRatio(t *testing.T) {
+	// GIVEN: a fan that starts at PWM 50 (1000 RPM) and saturates at PWM 150 (2000 RPM)
+	curve := map[int]float64{}
+	for pwm := MinPwmValue; pwm <= MaxPwmValue; pwm++ {
+		switch {
+		case pwm < 50:
+			curve[pwm] = 0
+		case pwm < 150:
+			curve[pwm] = 1000 + 10*float64(pwm-50)
+		default:
+			curve[pwm] = 2000
+		}
+	}
+
+	// WHEN
+	startPwm, maxPwm := ComputePwmBoundariesFromCurveData(curve, MaxPwmValue)
+
+	// THEN: 98% of 2000 RPM = 1960 RPM, reached at PWM 146; the flat range above it is cut off
+	assert.Equal(t, 50, startPwm)
+	assert.Equal(t, 146, maxPwm)
+}
+
+func TestComputePwmBoundariesFromCurveData_NoSpinningValue_MaxPwmIs255(t *testing.T) {
+	startPwm, maxPwm := ComputePwmBoundariesFromCurveData(map[int]float64{0: 0, 255: 10}, MaxPwmValue)
+
+	assert.Equal(t, MaxPwmValue, startPwm)
+	assert.Equal(t, MaxPwmValue, maxPwm)
+}
+
+func TestFailSafeMaxPwm(t *testing.T) {
+	configured := 200
+	derived := 150
+	tests := map[string]struct {
+		fan  Fan
+		want int
+	}{
+		"hwmon, derived maxPwm": {
+			fan:  &HwMonFan{Config: configuration.FanConfig{ID: "fan", HwMon: &configuration.HwMonFanConfig{}}, MaxPwm: &derived},
+			want: MaxPwmValue,
+		},
+		"hwmon, configured maxPwm": {
+			fan:  &HwMonFan{Config: configuration.FanConfig{ID: "fan", HwMon: &configuration.HwMonFanConfig{}, MaxPwm: &configured}, MaxPwm: &configured},
+			want: configured,
+		},
+		"file fan": {
+			fan:  &FileFan{Config: configuration.FanConfig{ID: "fan", File: &configuration.FileFanConfig{}}},
+			want: MaxPwmValue,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.want, FailSafeMaxPwm(tt.fan))
+		})
+	}
 }
