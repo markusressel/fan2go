@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -241,20 +242,33 @@ func TestFanController_ThirdPartyPwmChange_IsCountedOnEveryCycle(t *testing.T) {
 	// GIVEN a fan that was set to 100 by the controller
 	fan := &MockFan{ID: "fan"}
 	curveValue := 100.0
-	controller, _ := newPwmWriteFailureTestController(fan, &curveValue)
+	controller, clock := newPwmWriteFailureTestController(fan, &curveValue)
 	require.NoError(t, controller.UpdateFanSpeed())
 
-	// WHEN a third party changes the PWM value on every cycle
-	for i := 0; i < 2*failureLogInterval; i++ {
-		fan.mu.Lock()
-		fan.PWM = 50
-		fan.mu.Unlock()
-		require.NoError(t, controller.UpdateFanSpeed())
-	}
+	// WHEN a third party changes the PWM value again after each restore (each change is confirmed by a second read
+	// on the next update, after the confirmation delay)
+	log := captureLog(t, func() {
+		for i := 0; i < 2*failureLogInterval; i++ {
+			fan.mu.Lock()
+			fan.PWM = 50
+			fan.mu.Unlock()
+			require.NoError(t, controller.UpdateFanSpeed())
+			clock.Advance(minThirdPartyConfirmationDelay)
+			require.NoError(t, controller.UpdateFanSpeed())
+			require.Equal(t, 100, fan.PWM, "restored after the confirmation")
+		}
+	})
 
-	// THEN every change is counted (the warning is rate-limited), and the check recovers afterwards
+	// THEN every change is counted, the warning is rate-limited (first and every 25th), and the check recovers afterwards
 	assert.Equal(t, 2*failureLogInterval, controller.GetStatistics().UnexpectedPwmValueCount)
 	assert.Equal(t, 2*failureLogInterval, controller.thirdPartyPwmChanges.count)
-	require.NoError(t, controller.UpdateFanSpeed())
+	assert.Equal(t, 3, strings.Count(log, "was changed by third party"), log)
+	assert.Contains(t, log, "changes in a row: 1;")
+	assert.Contains(t, log, "changes in a row: 25;")
+	assert.Contains(t, log, "changes in a row: 50;")
+	log = captureLog(t, func() {
+		require.NoError(t, controller.UpdateFanSpeed())
+	})
 	assert.Equal(t, 0, controller.thirdPartyPwmChanges.count)
+	assert.Contains(t, log, "matches the value set by fan2go again, after 50 unexpected values in a row")
 }

@@ -358,7 +358,9 @@ use `util.Clock` (`util` imports `ui`); its wait is a replaceable function (`wor
 | `fan2go_curve_error{id}` | 1 if the curve's last evaluation failed, 0 if it succeeded; missing before the first one |
 | `fan2go_fan_pwm{id}` | Raw PWM value (after the `pwmMap`) the controller last set; missing until it set one |
 | `fan2go_fan_rpm{id}` | RPM moving average; missing until the RPM monitor seeded it |
-| `fan2go_controller_unexpected_pwm_value_count{id}` | Times the fan's PWM didn't match what fan2go set |
+| `fan2go_controller_unexpected_pwm_value_count{id}` | Times the fan's PWM didn't match what fan2go set (confirmed by a second read) |
+| `fan2go_controller_pwm_read_glitch_count{id}` | Unexpected PWM readings that a second read didn't confirm (read glitches) |
+| `fan2go_controller_control_mode_read_glitch_count{id}` | Unexpected control mode readings that a second read didn't confirm |
 | `fan2go_controller_increased_minPwm_count{id}` | Automatic minPwm increases because the fan stalled |
 | `fan2go_controller_minPwm_offset{id}` | Current offset added to the fan's minPwm because of stalls |
 | `fan2go_controller_state{id,state}` | 1 for the controller's current state, 0 for the others (see [fan-controller.md](fan-controller.md#controller-state)) |

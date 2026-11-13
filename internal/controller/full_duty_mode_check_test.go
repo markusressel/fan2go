@@ -55,9 +55,13 @@ func TestEnsureFanModeIsSetToExpectedMode_FullDutyReadsAsFullSpeed(t *testing.T)
 		t.Run(tt.name, func(t *testing.T) {
 			// GIVEN
 			fan, pwmEnablePath := newFullDutyHwMonFan(t, tt.hwmonName, tt.quirksEnabled)
-			controller := DefaultFanController{fan: fan, clock: util.NewFakeClock(time.Unix(1000, 0))}
+			clock := util.NewFakeClock(time.Unix(1000, 0))
+			controller := DefaultFanController{fan: fan, clock: clock}
 
-			// WHEN
+			// WHEN: checked, and confirmed after the confirmation delay
+			controller.ensureFanModeIsSetToExpectedMode()
+			assert.Equal(t, "0", readPwmEnableFile(t, pwmEnablePath))
+			clock.Advance(minThirdPartyConfirmationDelay)
 			controller.ensureFanModeIsSetToExpectedMode()
 
 			// THEN

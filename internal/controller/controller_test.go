@@ -1506,6 +1506,9 @@ func TestFanController_AlwaysSetPwmMode(t *testing.T) {
 		controlLoop: control_loop.NewDirectControlLoop(nil),
 	}
 
+	clock := util.NewFakeClock(time.Unix(1000, 0))
+	controller.SetClock(clock)
+
 	err := controller.computeFanSpecificMappings(context.Background())
 	assert.NoError(t, err)
 
@@ -1518,7 +1521,10 @@ func TestFanController_AlwaysSetPwmMode(t *testing.T) {
 	assertControlMode(t, fans.ControlModeAutomatic, controller.fan)
 
 	// UpdateFanSpeed() should reset the control mode to manual/ControlModePWM
-	// because sanityCheckFanModeChangedByThirdPartyEnabled is true
+	// because sanityCheckFanModeChangedByThirdPartyEnabled is true, once a second read confirms the change
+	tryUpdateFanSpeed(t, &controller)
+	assertControlMode(t, fans.ControlModeAutomatic, controller.fan)
+	clock.Advance(minThirdPartyConfirmationDelay)
 	tryUpdateFanSpeed(t, &controller)
 	assertControlMode(t, fans.ControlModePWM, controller.fan)
 }

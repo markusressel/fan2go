@@ -1651,6 +1651,10 @@ and something else (like f.ex. the mainboard or another fan control software) is
 of the fan, competing with fan2go. Since fan2go cannot figure out what other software is, you have to investigate
 this yourself.
 
+fan2go only reports a change after it read the PWM value again about 2 seconds later and it still didn't match.
+A single wrong reading (e.g. when the BIOS and the kernel driver access the same chip at the same time) is only
+logged at debug level and counted in the `fan2go_controller_pwm_read_glitch_count` metric.
+
 While the PWM value keeps being changed, only the first change, every 25th change in a row and the recovery are
 logged. Every change is counted in the `fan2go_controller_unexpected_pwm_value_count` metric
 (see [Statistics](#statistics)).

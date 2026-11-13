@@ -814,7 +814,10 @@ func TestEnsureNoThirdPartyIsMessingWithUs_CachedReadback_DetectsChangesAfterThe
 	clock.Advance(time.Second)
 	controller.ensureNoThirdPartyIsMessingWithUs()
 
-	// THEN
+	// THEN: it is reported once a second read confirms it
+	assert.Equal(t, 0, controller.GetStatistics().UnexpectedPwmValueCount)
+	clock.Advance(minThirdPartyConfirmationDelay)
+	controller.ensureNoThirdPartyIsMessingWithUs()
 	assert.Equal(t, 1, controller.GetStatistics().UnexpectedPwmValueCount)
 }
 

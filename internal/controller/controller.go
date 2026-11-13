@@ -49,8 +49,14 @@ var initializationLockWaitHook func(fanId string)
 
 type FanControllerStatistics struct {
 	UnexpectedPwmValueCount int
-	IncreasedMinPwmCount    int
-	MinPwmOffset            int
+	// PwmReadGlitchCount is the number of PWM mismatches of the pwmValueChangedByThirdParty check that a second
+	// read didn't confirm (see pendingConfirmation)
+	PwmReadGlitchCount int
+	// ControlModeReadGlitchCount is the number of control mode mismatches of the fanModeChangedByThirdParty check
+	// that a second read didn't confirm
+	ControlModeReadGlitchCount int
+	IncreasedMinPwmCount       int
+	MinPwmOffset               int
 	// StallCount is the number of times the stall check of a fan without neverStop found the fan stopped
 	// (once per stall, see checkStall)
 	StallCount int
@@ -300,6 +306,10 @@ type DefaultFanController struct {
 	// thirdPartyPwmChanges tracks consecutive updates where the PWM value of the fan didn't match the
 	// value fan2go set last (only used by the update loop)
 	thirdPartyPwmChanges consecutiveFailures
+	// pendingPwmMismatch and pendingModeMismatch are the mismatches of the pwmValueChangedByThirdParty and
+	// fanModeChangedByThirdParty checks that wait for their confirmation (only used by the update loop)
+	pendingPwmMismatch  pendingConfirmation
+	pendingModeMismatch pendingConfirmation
 	// rpmReadFailures tracks consecutive failures to read the RPM value of the fan (only used by the RPM monitor)
 	rpmReadFailures consecutiveFailures
 	// set once a missing setPwmToGetPwmMap (entry) has been logged, so it is logged only once per controller
@@ -768,6 +778,7 @@ func (f *DefaultFanController) resetRuntimeState() {
 	f.retakeManualControlFailed = false
 	f.pwmWriteFailures = consecutiveFailures{}
 	f.thirdPartyPwmChanges = consecutiveFailures{}
+	f.clearPendingThirdPartyChecks()
 	if f.controlLoop != nil {
 		f.controlLoop.Reset()
 	}
@@ -1617,6 +1628,7 @@ func (f *DefaultFanController) handleCurveFailure(err error) {
 			// fan2go didn't set the current PWM value, so don't compare it with the last target after the recovery
 			f.lastTarget = nil
 			f.thirdPartyPwmChanges.succeed()
+			f.clearPendingThirdPartyChecks()
 			description = "handed the fan back (onSensorFailure: restore)"
 		} else {
 			// fan2go still controls the fan, so it must be restored when the controller stops
@@ -1953,6 +1965,11 @@ func (f *DefaultFanController) getPwmSetDelay() time.Duration {
 // ensureNoThirdPartyIsMessingWithUs checks if the PWM value of the fan does not match the last
 // value PWM set by fan2go. If that is the case, it is assumed that a third party has changed the PWM value
 // of the fan, which can lead to unexpected behavior.
+//
+// A mismatch is only reported once a second read confirms it (see pendingConfirmation): the first one is
+// remembered, and a later update reads the value again after thirdPartyConfirmationDelay. If that read shows the
+// expected value, the first one was a read glitch (or, if fan2go wrote a PWM value in between, it can't tell).
+// While a mismatch is pending, setTargetPwm doesn't write just because of what the fan reports.
 func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 	fanConfig := f.fan.GetConfig()
 	sanityCheckConfig := fanConfig.SanityCheck
@@ -1974,27 +1991,56 @@ func (f *DefaultFanController) ensureNoThirdPartyIsMessingWithUs() {
 		return
 	}
 
-	if f.lastTarget != nil {
-		pwmMappedValue := f.applyPwmMapToTarget(*f.lastTarget)
-		expectedReportedPwm := f.getReportedPwmAfterApplyingPwm(pwmMappedValue)
-		if currentPwm, err := f.fan.GetPwm(); err == nil {
-			if currentPwm != expectedReportedPwm {
-				// the third party may have stopped the fan, give it time to start again after fan2go's write
-				f.restartStallReactionPeriod()
-				// the statistics count every change, the warning is rate-limited
-				f.statsMutex.Lock()
-				f.stats.UnexpectedPwmValueCount += 1
-				f.statsMutex.Unlock()
-				count, _, log := f.thirdPartyPwmChanges.fail(f.getClock().Now())
-				if log {
-					ui.Warning("PWM of %s was changed by third party! Last set PWM value was '%d', expected reported pwm '%d' but was '%d' "+
-						"(changes in a row: %d; only the first and every %dth change are logged)",
-						f.fan.GetId(), pwmMappedValue, expectedReportedPwm, currentPwm, count, failureLogInterval)
-				}
-			} else if count := f.thirdPartyPwmChanges.succeed(); count > 0 {
-				ui.Info("PWM of %s matches the value set by fan2go again, after %d unexpected values in a row", f.fan.GetId(), count)
-			}
+	now := f.getClock().Now()
+	if f.lastTarget == nil || f.pendingPwmMismatch.waiting(now) {
+		return
+	}
+	pwmMappedValue := f.applyPwmMapToTarget(*f.lastTarget)
+	expectedReportedPwm := f.getReportedPwmAfterApplyingPwm(pwmMappedValue)
+	currentPwm, err := f.fan.GetPwm()
+	if err != nil {
+		return
+	}
+	switch f.pendingPwmMismatch.observe(now, f.thirdPartyConfirmationDelay(), currentPwm == expectedReportedPwm) {
+	case confirmationStarted:
+		// a third party may have stopped the fan: don't report a stall before the mismatch is resolved
+		f.restartStallReactionPeriod()
+		ui.Debug("PWM of %s reads '%d' instead of the expected '%d', reading it again in %s before reacting",
+			f.fan.GetId(), currentPwm, expectedReportedPwm, f.thirdPartyConfirmationDelay())
+	case confirmationGlitch:
+		f.statsMutex.Lock()
+		f.stats.PwmReadGlitchCount += 1
+		f.statsMutex.Unlock()
+		ui.Debug("PWM of %s reads the expected '%d' again, the unexpected value before was a read glitch",
+			f.fan.GetId(), expectedReportedPwm)
+		f.logThirdPartyPwmRecovery()
+	case confirmationOverwritten:
+		ui.Debug("PWM of %s reads the expected '%d' again after fan2go wrote a new value, ignoring the unexpected value before",
+			f.fan.GetId(), expectedReportedPwm)
+		f.logThirdPartyPwmRecovery()
+	case confirmationMatch:
+		f.logThirdPartyPwmRecovery()
+	case confirmationConfirmed:
+		// the third party may have stopped the fan, give it time to start again after fan2go's write
+		f.restartStallReactionPeriod()
+		// the statistics count every change, the warning is rate-limited
+		f.statsMutex.Lock()
+		f.stats.UnexpectedPwmValueCount += 1
+		f.statsMutex.Unlock()
+		count, _, log := f.thirdPartyPwmChanges.fail(now)
+		if log {
+			ui.Warning("PWM of %s was changed by third party! Last set PWM value was '%d', expected reported pwm '%d' but was '%d' "+
+				"(changes in a row: %d; only the first and every %dth change are logged)",
+				f.fan.GetId(), pwmMappedValue, expectedReportedPwm, currentPwm, count, failureLogInterval)
 		}
+	}
+}
+
+// logThirdPartyPwmRecovery ends a series of PWM values changed by a third party (see ensureNoThirdPartyIsMessingWithUs),
+// and logs the recovery if there was one.
+func (f *DefaultFanController) logThirdPartyPwmRecovery() {
+	if count := f.thirdPartyPwmChanges.succeed(); count > 0 {
+		ui.Info("PWM of %s matches the value set by fan2go again, after %d unexpected values in a row", f.fan.GetId(), count)
 	}
 }
 
@@ -2019,6 +2065,10 @@ func (f *DefaultFanController) setTargetPwm(target int) (err error) {
 			// the readback may still show an older value (e.g. A, B, A within the delay would read A and skip the
 			// second A, so B would stay): compare with the value written last instead
 			alreadySet = f.lastPwmWriteValue == pwmMappedValue
+		} else if f.pendingPwmMismatch.pending() && f.lastTarget != nil {
+			// the fan reported an unexpected value that isn't confirmed yet (see ensureNoThirdPartyIsMessingWithUs):
+			// don't write just because of that read, which may have been a glitch. A new target is written as usual.
+			alreadySet = f.applyPwmMapToTarget(*f.lastTarget) == pwmMappedValue
 		} else {
 			current, err := f.getPwm()
 			alreadySet = err == nil && expectedReportedPwmValue == current
@@ -2046,6 +2096,7 @@ func (f *DefaultFanController) writePwm(raw int) error {
 		f.lastPwmWriteValue = raw
 		f.lastPwmWriteAt = f.getClock().Now()
 		f.pwmWriteCount++
+		f.pendingPwmMismatch.noteWrite()
 	}
 	return err
 }
@@ -2153,7 +2204,8 @@ func (f *DefaultFanController) probeReadbackDelay(ctx context.Context) (time.Dur
 }
 
 // ensureFanModeIsSetToExpectedMode makes sure that the fan control mode is set to the expected mode (manual PWM control),
-// by checking periodically.
+// by checking periodically. Like ensureNoThirdPartyIsMessingWithUs, it only reacts to a mode that a second read
+// confirms after thirdPartyConfirmationDelay (see pendingConfirmation); that read ignores the throttle.
 func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
 	sanityCheckConfig := f.fan.GetConfig().SanityCheck.FanModeChangedByThirdParty
 
@@ -2168,9 +2220,14 @@ func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
 		return
 	}
 
-	// make sure we don't check this too often
 	now := f.getClock().Now()
-	if f.lastFanModeCheckTime.Add(sanityCheckConfig.ThrottleDuration).After(now) {
+	if f.pendingModeMismatch.pending() {
+		// the confirmation of an unexpected mode is due after its delay, whatever the throttle says
+		if f.pendingModeMismatch.waiting(now) {
+			return
+		}
+	} else if f.lastFanModeCheckTime.Add(sanityCheckConfig.ThrottleDuration).After(now) {
+		// make sure we don't check this too often
 		return
 	}
 	f.lastFanModeCheckTime = now
@@ -2180,7 +2237,19 @@ func (f *DefaultFanController) ensureFanModeIsSetToExpectedMode() {
 		ui.Warning("Cannot read control mode of fan %s: %v", f.fan.GetId(), e)
 		return
 	}
-	if cm != fans.ControlModePWM {
+	switch f.pendingModeMismatch.observe(now, f.thirdPartyConfirmationDelay(), cm == fans.ControlModePWM) {
+	case confirmationStarted:
+		// the fan may run in another mode: don't report a stall before the mismatch is resolved
+		f.restartStallReactionPeriod()
+		ui.Debug("Fan mode of fan %s reads %v (expected PWM), reading it again in %s before reacting",
+			f.fan.GetId(), cm, f.thirdPartyConfirmationDelay())
+	case confirmationGlitch, confirmationOverwritten:
+		// PWM writes don't change the mode: both mean that the unexpected mode was a read glitch
+		f.statsMutex.Lock()
+		f.stats.ControlModeReadGlitchCount += 1
+		f.statsMutex.Unlock()
+		ui.Debug("Fan mode of fan %s reads PWM again, the unexpected mode before was a read glitch", f.fan.GetId())
+	case confirmationConfirmed:
 		// the fan may have been stopped in the other mode, give it time to start again
 		f.restartStallReactionPeriod()
 		restoreErr := trySetManualPwm(f.fan)
