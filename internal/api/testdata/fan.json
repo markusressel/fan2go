@@ -7,25 +7,13 @@
       "useUnscaledCurveValues": false,
       "sanityCheck": {
         "pwmValueChangedByThirdParty": {
-          "enabled": {
-            "Value": false,
-            "Present": false,
-            "RuntimeOverride": false
-          }
+          "enabled": true
         },
         "fanModeChangedByThirdParty": {
-          "enabled": {
-            "Value": false,
-            "Present": false,
-            "RuntimeOverride": false
-          }
+          "enabled": true
         },
         "fanStalled": {
-          "enabled": {
-            "Value": false,
-            "Present": false,
-            "RuntimeOverride": false
-          }
+          "enabled": true
         }
       },
       "cmd": {
@@ -60,25 +48,13 @@
       "useUnscaledCurveValues": false,
       "sanityCheck": {
         "pwmValueChangedByThirdParty": {
-          "enabled": {
-            "Value": false,
-            "Present": false,
-            "RuntimeOverride": false
-          }
+          "enabled": true
         },
         "fanModeChangedByThirdParty": {
-          "enabled": {
-            "Value": false,
-            "Present": false,
-            "RuntimeOverride": false
-          }
+          "enabled": true
         },
         "fanStalled": {
-          "enabled": {
-            "Value": false,
-            "Present": false,
-            "RuntimeOverride": false
-          }
+          "enabled": true
         }
       },
       "file": {
@@ -103,25 +79,13 @@
       "useUnscaledCurveValues": false,
       "sanityCheck": {
         "pwmValueChangedByThirdParty": {
-          "enabled": {
-            "Value": false,
-            "Present": true,
-            "RuntimeOverride": false
-          }
+          "enabled": false
         },
         "fanModeChangedByThirdParty": {
-          "enabled": {
-            "Value": false,
-            "Present": false,
-            "RuntimeOverride": false
-          }
+          "enabled": true
         },
         "fanStalled": {
-          "enabled": {
-            "Value": false,
-            "Present": false,
-            "RuntimeOverride": false
-          }
+          "enabled": true
         }
       },
       "hwMon": {

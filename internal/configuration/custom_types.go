@@ -46,6 +46,12 @@ func (b *DefaultTrueBool) Get() bool {
 	return b.Value
 }
 
+// MarshalJSON writes the effective value (see Get) as a plain bool, so the REST API shows
+// e.g. `"enabled": true` for an unset option instead of the internal Value/Present/RuntimeOverride fields.
+func (b DefaultTrueBool) MarshalJSON() ([]byte, error) {
+	return json.Marshal(b.Get())
+}
+
 // pwmMapPointsHookFunc returns a mapstructure decode hook that handles:
 //  1. Key-type conversion for PwmMapLinearConfig and PwmMapValuesConfig
 //     (interface{} keys from YAML → int).

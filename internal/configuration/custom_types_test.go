@@ -1,13 +1,51 @@
 package configuration
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestDefaultTrueBool_MarshalJSON(t *testing.T) {
+	overrideFalse := DefaultTrueBool{}
+	overrideFalse.SetOverride(false)
+	overrideTrue := DefaultTrueBool{Optional: Optional[bool]{Value: false, Present: true}}
+	overrideTrue.SetOverride(true)
+
+	tests := []struct {
+		name     string
+		input    DefaultTrueBool
+		expected string
+	}{
+		{name: "unset is true (default)", input: DefaultTrueBool{}, expected: "true"},
+		{name: "explicitly false", input: DefaultTrueBool{Optional: Optional[bool]{Value: false, Present: true}}, expected: "false"},
+		{name: "explicitly true", input: DefaultTrueBool{Optional: Optional[bool]{Value: true, Present: true}}, expected: "true"},
+		{name: "runtime override to false", input: overrideFalse, expected: "false"},
+		{name: "runtime override to true over explicit false", input: overrideTrue, expected: "true"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := json.Marshal(tt.input)
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.expected, string(data))
+
+			data, err = json.Marshal(&tt.input)
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.expected, string(data))
+
+			data, err = json.Marshal(PwmValueChangedByThirdPartyConfig{Enabled: tt.input})
+			require.NoError(t, err)
+			assert.JSONEq(t, `{"enabled":`+tt.expected+`}`, string(data))
+			assert.NotContains(t, string(data), "Present")
+		})
+	}
+}
 
 func TestDurationMillisecondsHookFunc_NumberToDuration(t *testing.T) {
 	type TestConfig struct {
