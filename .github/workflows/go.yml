@@ -133,6 +133,23 @@ jobs:
             exit 1
           fi
 
+      # A re-run uploads everything again. GoReleaser's replace_existing_artifacts didn't replace existing raw
+      # binaries (422 already_exists), so delete the assets of an earlier run first. Only names this job uploads are
+      # deleted; other assets and the release notes stay. On the first run, there is nothing to delete.
+      - name: Delete the assets of an earlier run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name' |
+            while read -r name; do
+              case "${name}" in
+                fan2go-linux-* | fan2go_*.deb | fan2go-*.rpm | fan2go-*-source.tar.gz | SHA256SUMS | fan2go-*.sigstore.json)
+                  echo "deleting ${name}"
+                  gh release delete-asset "${GITHUB_REF_NAME}" "${name}" --yes --repo "${GITHUB_REPOSITORY}" </dev/null
+                  ;;
+              esac
+            done
+
       - name: Build and upload the release assets
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:

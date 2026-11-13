@@ -72,9 +72,11 @@ For a breaking change:
      The workflow sets the release title to the tag and marks the release as a pre-release exactly if the tag has a
      pre-release suffix (e.g. `1.0.0-rc.1`), so edit neither in the draft. If no published release exists for the
      tag (e.g. the tag was pushed by hand), the workflow fails without uploading anything: publish the draft for the
-     tag, then re-run the failed job. If the workflow fails later, re-run it soon: assets that were already uploaded
-     are replaced with rebuilt ones (a much later re-run may build with a newer Go version and give different
-     checksums than files users already downloaded). Don't enable immutable releases for the repository: the assets
+     tag, then re-run the failed job. If the workflow fails later, re-run it soon: a re-run first deletes the
+     release assets of the earlier run (binaries, packages, source archive, `SHA256SUMS`, attestation bundle; other
+     assets stay), then uploads and attests rebuilt ones. Until it finishes, the release has no downloads, and a much
+     later re-run may build with a newer Go version and give different checksums than files users already
+     downloaded. Don't enable immutable releases for the repository: the assets
      are attached after publishing, which an immutable release doesn't allow.
    - the [AUR Packages workflow](.github/workflows/aur-packages.yml): test-builds the `fan2go` (from the tag's source
      tarball) and `fan2go-git` packages from [`packaging/aur`](packaging/aur). It doesn't publish anything.

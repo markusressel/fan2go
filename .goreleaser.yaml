@@ -211,5 +211,7 @@ release:
   mode: keep-existing
   name_template: "{{ .Tag }}"
   prerelease: auto
-  # a failed release run can be re-run: assets it uploaded already are replaced
+  # Replaces an asset GitHub reports as existing during an upload (e.g. stored despite a 504). Not enough for re-runs:
+  # re-uploading the raw binaries over existing assets failed with 422 already_exists, so the release job deletes
+  # the assets of an earlier run before GoReleaser uploads (see .github/workflows/go.yml).
   replace_existing_artifacts: true
