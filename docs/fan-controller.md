@@ -145,6 +145,50 @@ for `lastTarget`. A mismatch counts in `UnexpectedPwmValueCount` (metric
 mismatch, every 25th in a row and the recovery. fan2go does not fight back here; it overwrites the value with
 its own target on the same update anyway.
 
+A mismatch is only reacted to once a second read confirms it (see below).
+
+### Confirm third party changes before reacting
+
+**Decision**: When `pwmValueChangedByThirdParty` or `fanModeChangedByThirdParty` reads an unexpected value, the
+controller neither warns nor writes. It remembers the mismatch (`pendingConfirmation`) and reads the value again on
+the first update after the confirmation delay, `max(readbackDelay, pwmSetDelay, 2 s)` (`readbackDelay` is the
+measured readback delay, see [fan-analysis.md](fan-analysis.md)). The update loop doesn't wait for it: updates
+continue meanwhile, and no read of the checked value happens before the delay has passed.
+
+- The second read shows the expected value: the first one was a read glitch. It is logged at debug level and
+  counted in `PwmReadGlitchCount` / `ControlModeReadGlitchCount` (metrics `fan2go_controller_pwm_read_glitch_count`,
+  `fan2go_controller_control_mode_read_glitch_count`), not in `UnexpectedPwmValueCount`.
+- It still shows an unexpected value: a third party change. The controller reacts like before: the PWM check counts
+  it, warns (rate-limited, with the "changes in a row" count and the recovery INFO line) and `setTargetPwm`
+  writes the target again on the same update; the mode check sets manual mode again.
+
+While a PWM mismatch is pending, `setTargetPwm` compares the target with `lastTarget` instead of the readback, so a
+glitched read doesn't cause a write. A new target is written as usual. If fan2go wrote a PWM value while the
+mismatch was pending, the second read is compared with the new value: a match is ignored (neither a glitch nor a
+third party change, the write may have undone the change), a mismatch is a third party change. The second read is
+skipped like every check while the readback may be stale after a write (`readbackMayBeStale`), and then happens on
+the first update after that. The mode check reads the mode for the confirmation on the first update after the delay,
+regardless of its `throttleDuration`. Handing the fan back (`onSensorFailure: restore`) and a new run drop a pending
+mismatch.
+
+**Why**: On a board with an ITE IT8665 Super I/O whose BIOS also reads the chip (through ACPI/WMI, with the
+out-of-tree `it87` driver and `acpi_enforce_resources=lax`), single readings return garbage: both PWM channels of
+the chip read the same wrong value, and the next reading is fine again. The BIOS and the driver most likely race on
+the index/data register pair of the chip. The check warned on every such reading and wrote the value again, and on
+a racy bus every needless write risks landing in the wrong register. Warning only from two mismatches in a row
+doesn't work, because the write after the first mismatch fixes the value. A second read right away doesn't work
+either: `it87` caches the register values for 1.5 s and would return the same garbage; after 2 s, the read comes
+from a fresh update of the driver.
+
+**Who benefits**: Users of Super I/O chips that firmware accesses as well: no false warnings, fewer writes.
+
+**Trade-offs**: A real third party change is reported and undone about 2 s (one confirmation delay) later than
+before. A third party change that fan2go overwrites with a new target before the confirmation is not reported. With
+a target that changes on most updates and a measured readback delay, the confirmation rarely runs (like the check
+itself, see [fan-analysis.md](fan-analysis.md)). Without a measured readback delay, a stale readback right after a
+write is counted as a glitch instead of a third party change. A glitch in the read of `setTargetPwm` while no
+mismatch is pending (a separate read on drivers without a cache) still causes a write of the same value.
+
 **Why**: Another program, the BIOS or a driver with a "virtual" PWM can change the value behind fan2go's back
 (#64). Updating `lastTarget` only after a successful write keeps a failed write from being reported as a third
 party change (#552). Rate-limiting replaced a warning on every cycle, which flooded the log (#552, #64).
@@ -161,7 +205,8 @@ controller logs a warning once and calls `fan.DisableSanityCheck`, which sets a 
 config under the fan lock. The REST API shows the effective value, `"enabled": false`.
 
 `fanModeChangedByThirdParty` reads the control mode at most once per `throttleDuration` (default 10 s). If the
-mode is not manual PWM, it calls `trySetManualPwm` again, which writes `controlMode.active`. This check also runs
+mode is not manual PWM, and a second read after the confirmation delay confirms it (see "Confirm third party
+changes before reacting"), it calls `trySetManualPwm` again, which writes `controlMode.active`. This check also runs
 inside `setTargetPwm`, so it covers the max PWM writes during a sensor failure.
 
 **Why**: Some BIOSes and tools switch `pwm_enable` back to automatic while fan2go runs. The throttle avoids a

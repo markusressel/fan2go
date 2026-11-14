@@ -232,6 +232,8 @@ func TestControllerCollector_DescribesAllMetrics(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []string{
 		"fan2go_controller_unexpected_pwm_value_count",
+		"fan2go_controller_pwm_read_glitch_count",
+		"fan2go_controller_control_mode_read_glitch_count",
 		"fan2go_controller_increased_minPwm_count",
 		"fan2go_controller_minPwm_offset",
 		"fan2go_controller_stall_count",

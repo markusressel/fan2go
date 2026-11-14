@@ -686,9 +686,9 @@ func TestFanController_StallCheck_ThirdPartyPwmChangeRestartsTheReactionPeriod(t
 	s := newStallCheckTest(t, nil)
 	s.spinThenStop(t)
 
-	// WHEN a third party sets PWM 0
+	// WHEN a third party sets PWM 0 (found on the first update, confirmed by a second read 2 updates later)
 	require.NoError(t, os.WriteFile(s.pwmPath, []byte("0"), 0644))
-	s.pollAndUpdateN(t, 1)
+	s.pollAndUpdateN(t, 3)
 
 	// THEN
 	assert.Empty(t, s.notifications)

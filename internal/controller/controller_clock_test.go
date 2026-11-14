@@ -270,11 +270,14 @@ func TestEnsureFanModeIsSetToExpectedMode_ThrottleUsesClock(t *testing.T) {
 	clock := util.NewFakeClock(time.Unix(1000, 0))
 	controller := DefaultFanController{fan: fan, clock: clock}
 
-	// WHEN: first check
+	// WHEN: first check, and its confirmation after the confirmation delay (regardless of the throttle)
+	controller.ensureFanModeIsSetToExpectedMode()
+	assert.Equal(t, fans.ControlModeAutomatic, fan.ControlMode)
+	clock.Advance(minThirdPartyConfirmationDelay)
 	controller.ensureFanModeIsSetToExpectedMode()
 
 	// THEN
-	assert.Equal(t, 1, fan.controlModeReads)
+	assert.Equal(t, 2, fan.controlModeReads)
 	assert.Equal(t, fans.ControlModePWM, fan.ControlMode)
 
 	// WHEN: a third party changes the mode, and the throttle has not passed yet
@@ -283,15 +286,18 @@ func TestEnsureFanModeIsSetToExpectedMode_ThrottleUsesClock(t *testing.T) {
 	controller.ensureFanModeIsSetToExpectedMode()
 
 	// THEN
-	assert.Equal(t, 1, fan.controlModeReads)
+	assert.Equal(t, 2, fan.controlModeReads)
 	assert.Equal(t, fans.ControlModeAutomatic, fan.ControlMode)
 
-	// WHEN: the throttle has passed
+	// WHEN: the throttle has passed, and the confirmation delay after that
 	clock.Advance(time.Millisecond)
+	controller.ensureFanModeIsSetToExpectedMode()
+	assert.Equal(t, fans.ControlModeAutomatic, fan.ControlMode)
+	clock.Advance(minThirdPartyConfirmationDelay)
 	controller.ensureFanModeIsSetToExpectedMode()
 
 	// THEN
-	assert.Equal(t, 2, fan.controlModeReads)
+	assert.Equal(t, 4, fan.controlModeReads)
 	assert.Equal(t, fans.ControlModePWM, fan.ControlMode)
 }
 

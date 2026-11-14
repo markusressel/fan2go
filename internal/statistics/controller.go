@@ -13,6 +13,10 @@ const controllerSubsystem = "controller"
 type ControllerCollector struct {
 	controllers []controller.FanController
 
+	// read glitches: mismatches of the third party sanity checks that a second read didn't confirm
+	pwmReadGlitchCount         *prometheus.Desc
+	controlModeReadGlitchCount *prometheus.Desc
+
 	unexpectedPwmValueCount *prometheus.Desc
 	increasedMinPwmCount    *prometheus.Desc
 	minPwmOffset            *prometheus.Desc
@@ -28,6 +32,14 @@ func NewControllerCollector(controllers []controller.FanController) *ControllerC
 		controllers: controllers,
 		unexpectedPwmValueCount: prometheus.NewDesc(prometheus.BuildFQName(namespace, controllerSubsystem, "unexpected_pwm_value_count"),
 			"Counter for instances of a mismatch between expected PWM value and actual PWM value of for this controller",
+			[]string{"id"}, nil,
+		),
+		pwmReadGlitchCount: prometheus.NewDesc(prometheus.BuildFQName(namespace, controllerSubsystem, "pwm_read_glitch_count"),
+			"Counter for unexpected PWM values of this controller's fan that a second read didn't confirm (read glitches, not counted as unexpected_pwm_value_count)",
+			[]string{"id"}, nil,
+		),
+		controlModeReadGlitchCount: prometheus.NewDesc(prometheus.BuildFQName(namespace, controllerSubsystem, "control_mode_read_glitch_count"),
+			"Counter for unexpected control modes of this controller's fan that a second read didn't confirm (read glitches)",
 			[]string{"id"}, nil,
 		),
 		increasedMinPwmCount: prometheus.NewDesc(prometheus.BuildFQName(namespace, controllerSubsystem, "increased_minPwm_count"),
@@ -63,6 +75,8 @@ func NewControllerCollector(controllers []controller.FanController) *ControllerC
 
 func (collector *ControllerCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- collector.unexpectedPwmValueCount
+	ch <- collector.pwmReadGlitchCount
+	ch <- collector.controlModeReadGlitchCount
 	ch <- collector.increasedMinPwmCount
 	ch <- collector.minPwmOffset
 	ch <- collector.stallCount
@@ -80,6 +94,8 @@ func (collector *ControllerCollector) Collect(ch chan<- prometheus.Metric) {
 			fanId := contr.GetFanId()
 			stats := contr.GetStatistics()
 			ch <- prometheus.MustNewConstMetric(collector.unexpectedPwmValueCount, prometheus.CounterValue, float64(stats.UnexpectedPwmValueCount), fanId)
+			ch <- prometheus.MustNewConstMetric(collector.pwmReadGlitchCount, prometheus.CounterValue, float64(stats.PwmReadGlitchCount), fanId)
+			ch <- prometheus.MustNewConstMetric(collector.controlModeReadGlitchCount, prometheus.CounterValue, float64(stats.ControlModeReadGlitchCount), fanId)
 			ch <- prometheus.MustNewConstMetric(collector.increasedMinPwmCount, prometheus.CounterValue, float64(stats.IncreasedMinPwmCount), fanId)
 			ch <- prometheus.MustNewConstMetric(collector.minPwmOffset, prometheus.GaugeValue, float64(stats.MinPwmOffset), fanId)
 			ch <- prometheus.MustNewConstMetric(collector.stallCount, prometheus.CounterValue, float64(stats.StallCount), fanId)

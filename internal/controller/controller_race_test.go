@@ -67,6 +67,8 @@ func TestFanController_ConcurrentRpmMonitorUpdateAndStatistics_HwMonFan(t *testi
 	require.NoError(t, err)
 
 	controller := newIdentityMappedController(fan, 0)
+	clock := util.NewFakeClock(time.Unix(1000, 0))
+	controller.SetClock(clock)
 
 	// WHEN
 	const iterations = 100
@@ -88,6 +90,8 @@ func TestFanController_ConcurrentRpmMonitorUpdateAndStatistics_HwMonFan(t *testi
 			_ = controller.UpdateFanSpeed()
 			// simulate a third party changing the PWM value
 			_ = os.WriteFile(pwmPath, []byte("7"), 0644)
+			// the next update confirms the change
+			clock.Advance(minThirdPartyConfirmationDelay)
 		}
 	}()
 	go func() {
