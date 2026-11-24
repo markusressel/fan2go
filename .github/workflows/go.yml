@@ -41,7 +41,7 @@ jobs:
   # .github/scripts/check-binary.sh (glibc floor, no libsensors link, NVML symbols, qemu smoke test).
   snapshot:
     name: GoReleaser snapshot
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: test
     if: github.ref_type != 'tag'
 
@@ -92,7 +92,7 @@ jobs:
   # builds the release, attaches the assets to the existing release (its notes are kept) and attests every asset.
   release:
     name: Release
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: test
     if: github.ref_type == 'tag'
     concurrency:
