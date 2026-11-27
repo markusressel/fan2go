@@ -53,6 +53,8 @@ github.com/labstack/echo/v5 v5.4.5 h1:lEPtXOQXgDcJNgrFy85WU2xBPZ/m9R2R+pc4eAxymj
 github.com/labstack/echo/v5 v5.4.5/go.mod h1:4iEGNQiPPZnkfYpNR/L6fINd3NLiGWUD5+eBotFALas=
 github.com/labstack/echo/v5 v5.4.6 h1:i5xgG49AudvUPKjuE6Q8Jb3onm2Tfs/7xjUWbbcQPmo=
 github.com/labstack/echo/v5 v5.4.6/go.mod h1:4iEGNQiPPZnkfYpNR/L6fINd3NLiGWUD5+eBotFALas=
+github.com/labstack/echo/v5 v5.4.7 h1:u9lyNe8jeR2foESc3l+Pct6kN68WzU9LWCc6bCA96oo=
+github.com/labstack/echo/v5 v5.4.7/go.mod h1:4iEGNQiPPZnkfYpNR/L6fINd3NLiGWUD5+eBotFALas=
 github.com/lithammer/fuzzysearch v1.1.8 h1:/HIuJnjHuXS8bKaiTMeeDlW2/AyIWk2brx1V8LFgLN4=
 github.com/lithammer/fuzzysearch v1.1.8/go.mod h1:IdqeyBClc3FFqSzYq/MXESsS4S0FsZ5ajtkr5xPLts4=
 github.com/looplab/tarjan v0.1.0 h1:LycVSLuqFNb6S/RKau7inixXD0K45fTlZ0Zy9WTtwzw=
